@@ -32,6 +32,7 @@ Activate this skill as the workflow for restoring agreement between requirements
 
 ## Question Batching Rules
 
+- Before asking, check the current requirements, design, tasks, and recorded project decisions; do not ask for a decision that is already recorded.
 - Group related, independent questions that share one workflow context and readiness stage into a small batch, usually two to five questions.
 - Ask one question by itself only when its answer changes the next questions, it is a foundational product fork, or a previous answer needs clarification.
 - Always give one recommended answer and a brief reason for every question. When no product option can be responsibly preferred, recommend the next action, such as deferring the decision, gathering evidence, or asking the accountable owner.

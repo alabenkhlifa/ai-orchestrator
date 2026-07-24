@@ -35,6 +35,7 @@ Activate this skill as the workflow for creating one feature specification witho
 
 ## Question Batching Rules
 
+- Before asking, check the existing specifications and recorded project decisions; do not ask for a decision that is already recorded.
 - Group related, independent questions that share one workflow context and readiness stage into a small batch, usually two to five questions.
 - Ask one question by itself only when its answer changes the next questions, it is a foundational product fork, or a previous answer needs clarification.
 - Always give one recommended answer and a brief reason for every question. When no product option can be responsibly preferred, recommend the next action, such as deferring the decision, gathering evidence, or asking the accountable owner.
@@ -75,6 +76,7 @@ Activate this skill as the workflow for creating one feature specification witho
 - Match specificity to decision ownership. Be exact about outcomes and constraints without making requirements exhaustive about implementation mechanics.
 - Use representative examples and acceptance criteria when they establish the rule. Do not expand them into a combinatorial technical test matrix.
 - Consolidate related engineering unknowns into one design gate instead of asking a sequence of implementation-level questions.
+- Do not ask about frameworks, libraries, architecture, storage, deployment, or other implementation mechanics while product requirements remain unresolved. When product requirements are complete, state that explicitly before moving to technical-design decisions.
 
 ## Boundaries
 
