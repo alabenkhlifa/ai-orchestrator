@@ -105,6 +105,8 @@ Spec-only work must stop after the specification and directly requested project 
 - Requirements may be `Approved` while technical design, implementation, verification, or release work remains. `Approved` means the product agreement is stable enough to proceed, not that the feature is implemented or releasable.
 - Mark `tasks.md` as `Blocked` only when an unresolved decision prevents the active slice from starting, continuing, or completing its required verification.
 - Keep deployment-dependent evidence in an explicit release gate. It must block deployment and release claims without blocking implementation or local verification when the stable implementation contract is already approved.
+- Distinguish an environment or tooling blocker from an implementation blocker. When a required external dependency, service, runtime, or credential is unavailable, such as a stopped database engine, a missing daemon, or absent network access, pause only the proofs that need it, continue independent work, surface the blocker to the user with options, and record it in `tasks.md` as environment-blocked. Do not fake, skip, or silently weaken the affected proof, and do not treat the unavailability as an implementation defect.
+- A canonical check may flag work that a later task in the same slice owns. Defer that single finding with a narrowly scoped, documented suppression and a recorded follow-up owned by the naming task, rather than suppressing the whole check or leaving the finding hidden. This is distinct from an accepted exception for marking a slice `Verified`.
 
 ## Delivery Coverage
 
@@ -148,6 +150,7 @@ Do not continue by silently choosing a new product or architecture decision.
 - Update `requirements.md` when expected behavior, scope, or a business rule changes.
 - Update `design.md` when a technical decision or tradeoff changes.
 - Update `tasks.md` when progress, verification state, blocked decisions, or deferred work changes.
+- Record a resolved, non-behavioral engineering mechanism, such as a local port choice or a build-step ordering fix, in the `tasks.md` progress log, or in `design.md` when it changes a documented decision. Do not ask the user to choose it and do not leave it only in the conversation.
 
 Keep decisions in project files, not only in the conversation.
 
@@ -155,7 +158,8 @@ Keep decisions in project files, not only in the conversation.
 
 - Do not create Markdown files unless the user explicitly asks for them or an invoked SDD workflow requires its defined spec files.
 - Keep changes narrowly scoped to the active task.
-- When the user asks for a commit, stage the intended paths and create the local commit with one shell command.
+- Inspect the working tree before staging. Another agent or the user may hold concurrent uncommitted or newly committed changes; treat them as intentional and do not stage, revert, or reformat them.
+- When the user asks for a commit, stage only the active task's own paths by explicit path list and create the local commit with one shell command. Never stage with `git add -A`, `git add .`, or a broad glob, and confirm the staged set contains only your files before committing.
 - Always use a conventional semantic prefix such as `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, or `chore:` in commit messages and titles.
 - Do not add assistant, model, or tool authorship to commits or titles.
 - Commit only when the user asks.

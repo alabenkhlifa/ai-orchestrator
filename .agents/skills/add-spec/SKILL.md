@@ -63,6 +63,7 @@ Activate this skill as the workflow for creating one feature specification witho
 - Assign every surface to one primary implementation task through its `Owned surfaces` field. A surface is not covered when it appears only in purpose, proof, acceptance criteria, or the verification gate.
 - Prefer vertical workflow tasks that own user-visible UI and its supporting logic together when they can be implemented and proved through one coherent scenario.
 - A final end-to-end task integrates and verifies surfaces already owned elsewhere; it must not silently own all otherwise unassigned pages or behavior.
+- Prefer decomposing a large foundational or bootstrap task into smaller provable units, and give each task a proof whose sub-proofs can be recorded and verified independently, so partial and environment-blocked progress stays trackable.
 - Resolve every unmapped or ambiguously owned surface before completion, or record it as an active implementation blocker.
 
 ## Discovery Rules
