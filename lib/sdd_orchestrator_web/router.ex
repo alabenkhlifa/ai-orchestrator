@@ -20,6 +20,16 @@ defmodule SddOrchestratorWeb.Router do
     get "/", PageController, :home
   end
 
+  # Non-product design-system preview. Available only in dev and test as the
+  # render surface for the shared presentation-foundation proofs.
+  if Application.compile_env(:sdd_orchestrator, :ui_preview, false) do
+    scope "/", SddOrchestratorWeb do
+      pipe_through :browser
+
+      live "/_ui", UIPreviewLive
+    end
+  end
+
   # Other scopes may use custom stacks.
   # scope "/api", SddOrchestratorWeb do
   #   pipe_through :api

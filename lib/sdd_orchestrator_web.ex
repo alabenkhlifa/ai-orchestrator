@@ -84,8 +84,10 @@ defmodule SddOrchestratorWeb do
 
       # HTML escaping functionality
       import Phoenix.HTML
-      # Core UI components
+      # Core framework helpers, design-system primitives, and bundled icons
       import SddOrchestratorWeb.CoreComponents
+      import SddOrchestratorWeb.UI
+      import SddOrchestratorWeb.Icons
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

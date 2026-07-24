@@ -56,6 +56,9 @@ config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :sdd_orchestrator, dev_routes: true
 
+# Expose the non-product design-system preview at /_ui in development.
+config :sdd_orchestrator, :ui_preview, true
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

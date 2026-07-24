@@ -25,6 +25,24 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/sdd_orchestrator"
 import topbar from "../vendor/topbar"
 
+// Device-local theme toggle. A delegated click handler flips between an
+// explicit "light"/"dark" choice stored only in this device's localStorage.
+// It is a plain listener (not a LiveView hook) so it works as soon as this
+// deferred script runs, independent of the LiveView connection, and the value
+// is never sent to the server — signing in or out cannot change it. The
+// pre-paint script in root.html.heex reads the same key before first paint.
+const THEME_KEY = "sdd:theme"
+document.addEventListener("click", (e) => {
+  const toggle = e.target.closest("[data-theme-toggle]")
+  if (!toggle) return
+  const current =
+    document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light"
+  const next = current === "dark" ? "light" : "dark"
+  localStorage.setItem(THEME_KEY, next)
+  document.documentElement.setAttribute("data-theme", next)
+  document.documentElement.setAttribute("data-theme-source", "user")
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,

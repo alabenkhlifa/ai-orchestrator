@@ -21,6 +21,10 @@ config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
   secret_key_base: "0RsF1rYFR1sWZDLlCbUlRjb50f/EvCfhiXQsmytSMyRFgH9PiBys3KM9lG5o9x79",
   server: false
 
+# Expose the non-product design-system preview at /_ui so the shared
+# presentation-foundation LiveView and browser proofs can render it.
+config :sdd_orchestrator, :ui_preview, true
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

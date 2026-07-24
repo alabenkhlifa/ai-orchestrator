@@ -4,35 +4,40 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="SddOrchestrator" suffix=" · Phoenix Framework" phx-no-format>{assigns[:page_title]}</.live_title>
+    <.live_title default="SDD Orchestrator">{assigns[:page_title]}</.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
+    <%!-- Device-local theme, applied before first paint. The choice lives only in
+          this device's localStorage; it is never sent to the server, an identity,
+          or another device. With no explicit choice the OS preference is used. --%>
     <script>
       (() => {
-        const systemTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-
-        const setTheme = (theme) => {
-          if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.setAttribute("data-theme", systemTheme());
-            document.documentElement.setAttribute("data-theme-source", "system");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
-            document.documentElement.setAttribute("data-theme-source", "user");
-          }
+        const KEY = "sdd:theme";
+        const mm = window.matchMedia("(prefers-color-scheme: dark)");
+        const systemTheme = () => (mm.matches ? "dark" : "light");
+        const apply = (theme, source) => {
+          const root = document.documentElement;
+          root.setAttribute("data-theme", theme);
+          root.setAttribute("data-theme-source", source);
         };
-        if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
+        const stored = localStorage.getItem(KEY);
+        if (stored === "light" || stored === "dark") {
+          apply(stored, "user");
+        } else {
+          apply(systemTheme(), "system");
         }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
-
-        matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+        // Follow OS changes only while no explicit device choice exists.
+        mm.addEventListener("change", () => {
           if (document.documentElement.getAttribute("data-theme-source") === "system") {
-            document.documentElement.setAttribute("data-theme", systemTheme());
+            apply(systemTheme(), "system");
           }
+        });
+        // Keep tabs on the same device in sync with an explicit choice.
+        window.addEventListener("storage", (e) => {
+          if (e.key !== KEY) return;
+          const v = e.newValue;
+          v === "light" || v === "dark" ? apply(v, "user") : apply(systemTheme(), "system");
         });
       })();
     </script>

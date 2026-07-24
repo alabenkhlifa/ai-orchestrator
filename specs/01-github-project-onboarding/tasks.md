@@ -48,6 +48,13 @@ Release boundary:
 - The first usable release remains blocked until `specs/02-local-project-onboarding/` and every shared dependency invoked by both onboarding paths also pass their release gates.
 - Coordinated browser proof must show that `Login with GitHub` and `Work without GitHub` are both available and complete from the same entry surface.
 
+Traceability:
+
+- Deferred criteria: none.
+- Release criteria: AC-02
+- Deferred entities: none.
+- Release entities: none.
+
 Delivery ownership:
 
 - Every implementation task below names its primary UI, domain, persistence, integration, privacy, security, or operational surfaces in `Owned surfaces`.
@@ -65,7 +72,8 @@ Delivery ownership:
   - Proof: A clean checkout pins the approved runtime and dependencies; `mise install`, `docker compose up -d postgres`, `mix setup`, `mix check`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, the Playwright setup, production asset build, and production release succeed without committed secrets.
   - Status: Complete. All listed proofs pass (see 2026-07-24 bootstrap progress entry). No committed secrets.
 
-- [ ] Task 2 — Establish the shared LiveView presentation foundation.
+- [x] Task 2 — Establish the shared LiveView presentation foundation.
+  - Status: Complete. Shared primitives, tokens, self-hosted font, bundled icons, and device-local theme delivered; all attached proofs pass (see 2026-07-24 presentation-foundation entry). Sign-in/out theme continuity mechanism is implemented and device-local; its end-to-end browser assertion is carried by Task 9 once the auth surface exists.
   - Purpose: Make the approved visual system, theme behavior, responsive structure, and reusable interaction patterns available before workflow screens are implemented.
   - Owned surfaces: Frontend — the root LiveView layout and shared page frame; self-hosted `Public Sans`; locally bundled Lucide icons; graphite, teal, and semantic design tokens; the pre-paint operating-system theme fallback; the device-local manual theme control; reusable button, link, form, selection, status, notice, loading, empty, and failure-state components; baseline responsive containers, focus treatment, and non-color state cues. Supporting — only the JavaScript hooks required for local theme and browser behavior; no workflow-specific screen or hosted theme persistence.
   - Owns: AC-03, AC-04, AC-05, AC-06, AC-07, entity:ClientThemePreference
@@ -110,7 +118,7 @@ Delivery ownership:
 - [ ] Task 9 — Integrate onboarding navigation and run the complete frontend workflow proof.
   - Purpose: Connect the already-owned workflow surfaces and prove the complete responsive, accessible experience without becoming their first implementation owner.
   - Owned surfaces: Frontend integration — cross-task navigation, browser history behavior, focus placement after navigation and validation, resumable onboarding continuity, consistent shared-shell composition, responsive text fit and layout stability, and end-to-end browser scenario orchestration across the entry, catalog, grant, picker, storage, confirmation, and dashboard surfaces. Each workflow screen and its business behavior remain owned by Tasks 3 through 8.
-  - Owns: AC-02
+  - Owns: none (frontend integration proof; owns no unique acceptance criterion or data entity).
   - Proof: Desktop and mobile browser scenarios in both themes verify operating-system fallback, device-local manual persistence, no hosted synchronization, sign-in and sign-out continuity, unauthenticated entry, valid-session bypass, existing-project catalog routing, empty-workspace continuation, `Add project`, repository-access checking, grant and pending-approval recovery, valid return, keyboard repository search and selection, every approved catalog state, storage availability and setup return, explicit storage selection, confirmation and naming, duplicate prevention, actionable failures, direct dashboard routing, rename, connected and disconnected recovery, focus visibility and placement, non-color state cues, browser history, text fit, and layout stability. Passing this proof does not transfer implementation ownership from Tasks 3 through 8.
 
 - [ ] Task 10 — Define and enforce the slice GDPR data contract.
@@ -204,3 +212,12 @@ Delivery ownership:
 - Remaining: The Minor review items (repository-picker row metadata in Task 5's proof, a single owner for the shared `ProjectStorage` behaviour module, Task 2 and Task 11 CSP nonce coordination) are unchanged and still route to `update-spec` if pursued. Tasks 2-11 remain not started.
 - Failed checks: None. `python3 .agents/scripts/validate_spec.py specs/01-github-project-onboarding` passes with coverage enforced.
 - Spec updates: Acceptance criteria carry stable IDs and task ownership is now explicit and validator-enforced; no acceptance-criterion wording, scope, or design decision changed. The convention is wired into the `add-spec` and `update-spec` Delivery Coverage Gates and templates so later specs adopt it when created or next edited.
+
+### 2026-07-24 - Shared presentation foundation complete (Task 2)
+
+- Completed: Delivered the shared LiveView presentation foundation. Replaced the generator's daisyUI Phoenix/Elixir themes with the approved graphite/teal token system (light and dark) mapped into Tailwind v4; self-hosted `Public Sans` (400/500/600/700 + 400 italic woff2) with no Google Fonts request; a locally bundled Lucide icon component (`SddOrchestratorWeb.Icons.lucide/1`); a device-local, pre-paint theme with OS-preference fallback and a delegated toggle handler that never contacts the server; and the reusable primitives in `SddOrchestratorWeb.UI` (app shell, button, badge/status, notice, spinner, skeleton, empty/failure states, single-select radio row, text field) with keyboard-visible focus and non-color status cues. A dev/test-only design-system preview at `/_ui` is the render surface for the proofs.
+- Owns satisfied: AC-03, AC-04, AC-05, AC-06 (mechanism), AC-07 (mechanism), entity:ClientThemePreference (browser `localStorage` only; no server record).
+- Passing proofs: `mix check` (format, `compile --warnings-as-errors`, `credo --strict`, `mix test` = 17 passed); `mix dialyzer` (0 errors); `mix deps.audit` (no vulnerabilities); `mix sobelow --config`; `npm --prefix assets run test:e2e` (10 Playwright tests incl. axe light/dark, no external font/icon/analytics request, self-hosted Public Sans, OS fallback, device-local persistence across reload, keyboard focus visibility, non-color status cues, mobile+desktop layout fit); `MIX_ENV=prod mix assets.deploy` (fonts digested) and `MIX_ENV=prod mix release`.
+- Failed checks: None.
+- Deferred/coordination: AC-07's cross-sign-in browser assertion and AC-06's true cross-device check are inherently end-to-end; the mechanism is device-local and server-independent now, and the sign-in/out theme-continuity scenario is verified by Task 9 once the auth surface exists. Task 11 must add the strict CSP nonce/hash for the pre-paint inline theme script (already recorded as the Task 1 CSP deferral). Removed the unused `daisyui` dependency; added `@axe-core/playwright` for the accessibility proof.
+- Local engineering decisions (non-behavioral): design tokens are defined as CSS custom properties that switch on `:root[data-theme=dark]` and are exposed to Tailwind via `@theme inline`; the theme toggle is a delegated `document` click listener (not a LiveView hook) so it works before the socket connects and stays device-local; the `/_ui` preview route is compile-guarded by `config :sdd_orchestrator, :ui_preview` (dev + test only).
