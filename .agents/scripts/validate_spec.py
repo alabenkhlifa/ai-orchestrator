@@ -52,6 +52,15 @@ PLACEHOLDER_PATTERNS = (
     re.compile(r"Not Started \| In Progress \| Blocked \| Verified"),
 )
 
+# Traceability coverage: a spec opts in by giving its acceptance criteria stable
+# [AC-<n>] IDs. Once opted in, every criterion must be owned by exactly one task
+# and every data entity by at least one, declared through per-task `Owns:` lines.
+ACCEPTANCE_ID_RE = re.compile(r"^\[(AC-\d+)\]\s+\S")
+ENTITY_DEFINITION_RE = re.compile(r"^- `([A-Za-z][A-Za-z0-9]*)`:", re.MULTILINE)
+TASK_HEADING_RE = re.compile(r"^- \[[ xX]\]\s+(.+)$")
+OWNS_LINE_RE = re.compile(r"^\s*- Owns:\s*(.+)$")
+OWNS_TOKEN_RE = re.compile(r"^(AC-\d+|entity:[A-Za-z][A-Za-z0-9]*)$")
+
 
 def section_body(text: str, heading: str) -> str:
     lines = text.splitlines()
@@ -138,6 +147,98 @@ def validate_cross_file(spec_dir: Path, contents: dict[str, str]) -> list[str]:
     return errors
 
 
+def top_level_bullets(body: str) -> list[str]:
+    return [line[2:].strip() for line in body.splitlines() if line.startswith("- ")]
+
+
+def collect_task_owners(tasks_body: str) -> tuple[dict[str, list[str]], list[tuple[str, str]]]:
+    """Map each owned token to the tasks that claim it, plus malformed tokens."""
+    owners: dict[str, list[str]] = {}
+    malformed: list[tuple[str, str]] = []
+    current = "(before first task)"
+    for line in tasks_body.splitlines():
+        heading = TASK_HEADING_RE.match(line)
+        if heading:
+            current = re.split(r"\s[—-]\s", heading.group(1), maxsplit=1)[0].strip()
+            continue
+        owns = OWNS_LINE_RE.match(line)
+        if not owns:
+            continue
+        content = owns.group(1).strip()
+        # An `Owns: none ...` line marks a task that owns no criterion or entity.
+        if content.lower().startswith("none"):
+            continue
+        for raw in content.split(","):
+            token = raw.strip()
+            if not token or token.lower() in {"none", "none."}:
+                continue
+            if OWNS_TOKEN_RE.match(token):
+                owners.setdefault(token, []).append(current)
+            else:
+                malformed.append((current, token))
+    return owners, malformed
+
+
+def validate_traceability(spec_dir: Path, contents: dict[str, str]) -> list[str]:
+    """Enforce AC/entity ownership coverage once a spec adopts [AC-<n>] IDs."""
+    errors: list[str] = []
+    req_path = spec_dir / "requirements.md"
+    design_path = spec_dir / "design.md"
+    tasks_path = spec_dir / "tasks.md"
+
+    ac_bullets = top_level_bullets(section_body(contents["requirements.md"], "## Acceptance Criteria"))
+    defined_acs: list[str] = []
+    for bullet in ac_bullets:
+        match = ACCEPTANCE_ID_RE.match(bullet)
+        if match:
+            defined_acs.append(match.group(1))
+
+    # Opt-in: a spec without any [AC-<n>] ID keeps the legacy structural checks only.
+    if not defined_acs:
+        return errors
+
+    for bullet in ac_bullets:
+        if not ACCEPTANCE_ID_RE.match(bullet):
+            errors.append(f"{req_path}: acceptance criterion missing [AC-<n>] ID: {bullet[:60]!r}")
+
+    seen: set[str] = set()
+    for ac in defined_acs:
+        if ac in seen:
+            errors.append(f"{req_path}: duplicate acceptance-criterion ID {ac}")
+        seen.add(ac)
+    ac_ids = set(defined_acs)
+
+    entities = ENTITY_DEFINITION_RE.findall(section_body(contents["design.md"], "## Data and Access Boundaries"))
+    entity_ids = set(entities)
+
+    owners, malformed = collect_task_owners(section_body(contents["tasks.md"], "## Tasks"))
+    for task_label, token in malformed:
+        errors.append(f"{tasks_path}: {task_label} Owns token {token!r} is not 'AC-<n>' or 'entity:<Name>'")
+
+    for token, owning_tasks in owners.items():
+        if token.startswith("entity:"):
+            name = token.split(":", 1)[1]
+            if name not in entity_ids:
+                where = ", ".join(sorted(set(owning_tasks)))
+                errors.append(f"{tasks_path}: Owns references unknown entity {name!r} ({where})")
+        elif token not in ac_ids:
+            where = ", ".join(sorted(set(owning_tasks)))
+            errors.append(f"{tasks_path}: Owns references unknown acceptance criterion {token} ({where})")
+
+    for ac in sorted(ac_ids):
+        claimants = owners.get(ac, [])
+        if not claimants:
+            errors.append(f"{req_path}: {ac} has no owning task; add {ac} to one task's Owns line")
+        elif len(claimants) > 1:
+            errors.append(f"{req_path}: {ac} is owned by multiple tasks: {', '.join(claimants)}")
+
+    for name in sorted(entity_ids):
+        if not owners.get(f"entity:{name}"):
+            errors.append(f"{design_path}: entity {name!r} has no owning task; add entity:{name} to one task's Owns line")
+
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("spec_dir", type=Path, help="Directory containing requirements.md, design.md, and tasks.md")
@@ -160,6 +261,7 @@ def main() -> int:
 
     if len(contents) == len(REQUIRED_FILES):
         errors.extend(validate_cross_file(spec_dir, contents))
+        errors.extend(validate_traceability(spec_dir, contents))
 
     if errors:
         print(f"Spec validation failed: {spec_dir}", file=sys.stderr)

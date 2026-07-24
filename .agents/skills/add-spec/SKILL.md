@@ -66,6 +66,9 @@ Activate this skill as the workflow for creating one feature specification witho
 - A final end-to-end task integrates and verifies surfaces already owned elsewhere; it must not silently own all otherwise unassigned pages or behavior.
 - Prefer decomposing a large foundational or bootstrap task into smaller provable units, and give each task a proof whose sub-proofs can be recorded and verified independently, so partial and environment-blocked progress stays trackable.
 - Resolve every unmapped or ambiguously owned surface before completion, or record it as an active implementation blocker.
+- Give every acceptance criterion a stable `[AC-<n>]` ID and never renumber or reuse it; a new criterion takes the next unused integer. List every `## Data and Access Boundaries` data entity as a bullet that begins with its backticked name and a colon (`` - `EntityName`: ... ``); that name is its traceability ID.
+- Declare coverage on each task with an `Owns:` line that names the `AC-<n>` IDs and `entity:<Name>` items it is the primary owner of, or `Owns: none` when it owns neither (an application skeleton or a cross-cutting review). Every acceptance criterion must be owned by exactly one task and every data entity by at least one.
+- `validate_spec.py` enforces this coverage once a spec adopts `[AC-<n>]` IDs, so a fresh agent resuming the slice reads the `Owns:` lines to see what each task delivers and what is still unowned instead of re-deriving the map from prose.
 
 ## Discovery Rules
 

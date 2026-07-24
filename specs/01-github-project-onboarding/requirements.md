@@ -127,49 +127,49 @@ A BA, PO, PM, developer, or other project contributor can sign in with GitHub, f
 
 ## Acceptance Criteria
 
-- Given the current client has no valid protected session, when SDD Orchestrator opens, then the entry surface shows `Login with GitHub` and `Work without GitHub` as distinct primary actions.
-- Given a candidate first usable release, when either primary action is selected, then its specified onboarding path is available through completion without a disabled, placeholder, or dead action.
-- Given the entry or onboarding flow is displayed, when the user changes between light and dark themes, then the current screen remains usable with the same actions, content, status meaning, focus visibility, and layout stability.
-- Given the current device has no stored manual theme choice, when SDD Orchestrator opens, then it uses the current operating-system theme preference.
-- Given the user manually selects a theme, when SDD Orchestrator is reopened on the same device, then that local choice is restored without reading or writing a hosted theme preference.
-- Given the same user opens SDD Orchestrator on another device with no stored choice, when the application loads, then the other device uses its own operating-system preference rather than synchronizing the first device's choice.
-- Given the user signs in or out, when the entry or protected surface is shown, then the current device's manual theme choice remains unchanged.
-- Given the current client has a valid GitHub-backed application session, when SDD Orchestrator opens, then the personal workspace is restored and the project catalog is shown without rendering the entry surface or requiring GitHub authentication again.
-- Given the current session is invalid, expired, or revoked, when a protected route is opened, then no project catalog data is exposed and the client returns to the entry surface.
-- Given a GitHub-authenticated user signs out, when session termination succeeds, then the entry surface is shown and on-device project data remains unchanged.
-- Given GitHub authentication succeeds, when onboarding continues, then the user's stable personal workspace is created or restored without exposing credentials.
-- Given `Orchestra-workflow` requests repository access for onboarding, when its approved permission scope is inspected, then it uses `Metadata: read-only` and no repository write permission.
-- Given fresh GitHub authentication restores a workspace with existing projects, when routing completes, then the project catalog is shown with an `Add project` action and repository selection is not forced.
-- Given fresh GitHub authentication creates or restores an empty workspace, when routing completes, then the repository-access check runs without another application action.
-- Given the user selects `Add project` from the project catalog, when the action opens, then the repository-access check runs and no project or repository connection has been created yet.
-- Given the authenticated user has no accessible `Orchestra-workflow` installation, when the repository-access check completes, then a dedicated `Grant repository access` screen is shown with a `Continue to GitHub` action and no repository picker or partial project is exposed.
-- Given the grant screen is shown, when the user selects `Continue to GitHub`, then the public `Orchestra-workflow` installation flow opens.
-- Given an organization installation request is awaiting approval, when the user returns or selects `Check again`, then the grant screen shows `Waiting for organization approval` and no repository picker, project, or repository connection is exposed until access is confirmed.
-- Given a repository-access grant associated with the authenticated user becomes valid through a GitHub return or `Check again`, when the grant is accepted, then the repository picker opens directly with the newly granted repositories available.
-- Given GitHub returns accessible personal, private, or organization repositories, when the picker loads, then every returned repository is available and searchable without requiring a URL.
-- Given the repository picker has focus, when the user navigates and selects with a keyboard, then exactly one repository can be selected and confirmed without pointer input.
-- Given search has no matches, GitHub returns no repositories, retrieval fails, or organization policy restricts access, when the state is shown, then it is distinguishable from the other states and presents an appropriate recovery action.
-- Given repository retrieval is empty or fails, when the request ends, then the user sees an actionable state and no partial project is created.
-- Given the user continues with a repository, when the storage step opens, then it asks `Where should your project work be saved?`, explains what project work includes and that the linked repository stays where it is, and presents `On this device` and `In my SDD Orchestrator account`.
-- Given either storage mode is unavailable, when the storage step is shown, then both modes remain visible and the unavailable mode explains its missing prerequisite with a setup action that does not select the mode or create a project.
-- Given `On this device` requires setup, when device setup succeeds, is canceled, or fails, then onboarding returns to the same storage step with the selected repository preserved; success refreshes availability without selecting a mode, while cancellation or failure leaves the mode unavailable and creates no project.
-- Given no storage mode has been selected, when the user attempts to continue, then final confirmation and project creation remain unavailable without a silent default.
-- Given a storage mode is selected, when final confirmation opens, then the selected repository, project name, and storage mode are visible for review.
-- Given an unlinked repository is confirmed, when creation succeeds, then exactly one project and one repository connection are created atomically.
-- Given project creation commits successfully, when onboarding completes, then the new project's dashboard opens and shows the linked repository, selected storage mode, and current connection status.
-- Given a repository named `example` and no conflicting project name, when it is linked, then the default project name is `example`.
-- Given a repository named `Café Roadmap` and no conflicting project name, when confirmation opens, then the default project name remains `Café Roadmap` without slug conversion or character loss.
-- Given projects named `example` and `Example-1`, when another repository named `example` is linked, then the lowest available default is `example-2`.
-- Given two separate personal workspaces, when each user links the same repository or uses the same project name, then each workspace enforces uniqueness independently.
-- Given a project already links the selected repository, when the same workspace tries to link it again, then creation is blocked and the existing project is identified.
-- Given the user edits a project name, when the name is saved, then case-insensitive uniqueness is enforced without changing project or repository identity.
-- Given repository access is lost, when the project is shown, then it remains visible with a disconnected status and no stale credential is exposed.
-- Given repository access later returns, when the connection is revalidated, then the same project can return to connected.
-- Given onboarding completes, when repository state is inspected, then repository content and settings are unchanged and no AI agent has started.
-- Given any onboarding operation fails, when it ends, then no duplicate workspace, project, or repository connection exists.
-- Given any Slice 01 workflow is used, when stored and transmitted records are inspected, then no product-analytics event, identifier, or onboarding metric exists.
-- Given a verified rights request applies to Slice 01 data, when the operator handles it, then applicable access, correction, export, restriction, objection, or deletion reaches the governed active and retained copies under the approved lifecycle.
-- Given a public hosted deployment is missing any required deployment privacy record or review, when release readiness is evaluated, then that deployment remains blocked without blocking implementation or local verification.
+- [AC-01] Given the current client has no valid protected session, when SDD Orchestrator opens, then the entry surface shows `Login with GitHub` and `Work without GitHub` as distinct primary actions.
+- [AC-02] Given a candidate first usable release, when either primary action is selected, then its specified onboarding path is available through completion without a disabled, placeholder, or dead action.
+- [AC-03] Given the entry or onboarding flow is displayed, when the user changes between light and dark themes, then the current screen remains usable with the same actions, content, status meaning, focus visibility, and layout stability.
+- [AC-04] Given the current device has no stored manual theme choice, when SDD Orchestrator opens, then it uses the current operating-system theme preference.
+- [AC-05] Given the user manually selects a theme, when SDD Orchestrator is reopened on the same device, then that local choice is restored without reading or writing a hosted theme preference.
+- [AC-06] Given the same user opens SDD Orchestrator on another device with no stored choice, when the application loads, then the other device uses its own operating-system preference rather than synchronizing the first device's choice.
+- [AC-07] Given the user signs in or out, when the entry or protected surface is shown, then the current device's manual theme choice remains unchanged.
+- [AC-08] Given the current client has a valid GitHub-backed application session, when SDD Orchestrator opens, then the personal workspace is restored and the project catalog is shown without rendering the entry surface or requiring GitHub authentication again.
+- [AC-09] Given the current session is invalid, expired, or revoked, when a protected route is opened, then no project catalog data is exposed and the client returns to the entry surface.
+- [AC-10] Given a GitHub-authenticated user signs out, when session termination succeeds, then the entry surface is shown and on-device project data remains unchanged.
+- [AC-11] Given GitHub authentication succeeds, when onboarding continues, then the user's stable personal workspace is created or restored without exposing credentials.
+- [AC-12] Given `Orchestra-workflow` requests repository access for onboarding, when its approved permission scope is inspected, then it uses `Metadata: read-only` and no repository write permission.
+- [AC-13] Given fresh GitHub authentication restores a workspace with existing projects, when routing completes, then the project catalog is shown with an `Add project` action and repository selection is not forced.
+- [AC-14] Given fresh GitHub authentication creates or restores an empty workspace, when routing completes, then the repository-access check runs without another application action.
+- [AC-15] Given the user selects `Add project` from the project catalog, when the action opens, then the repository-access check runs and no project or repository connection has been created yet.
+- [AC-16] Given the authenticated user has no accessible `Orchestra-workflow` installation, when the repository-access check completes, then a dedicated `Grant repository access` screen is shown with a `Continue to GitHub` action and no repository picker or partial project is exposed.
+- [AC-17] Given the grant screen is shown, when the user selects `Continue to GitHub`, then the public `Orchestra-workflow` installation flow opens.
+- [AC-18] Given an organization installation request is awaiting approval, when the user returns or selects `Check again`, then the grant screen shows `Waiting for organization approval` and no repository picker, project, or repository connection is exposed until access is confirmed.
+- [AC-19] Given a repository-access grant associated with the authenticated user becomes valid through a GitHub return or `Check again`, when the grant is accepted, then the repository picker opens directly with the newly granted repositories available.
+- [AC-20] Given GitHub returns accessible personal, private, or organization repositories, when the picker loads, then every returned repository is available and searchable without requiring a URL.
+- [AC-21] Given the repository picker has focus, when the user navigates and selects with a keyboard, then exactly one repository can be selected and confirmed without pointer input.
+- [AC-22] Given search has no matches, GitHub returns no repositories, retrieval fails, or organization policy restricts access, when the state is shown, then it is distinguishable from the other states and presents an appropriate recovery action.
+- [AC-23] Given repository retrieval is empty or fails, when the request ends, then the user sees an actionable state and no partial project is created.
+- [AC-24] Given the user continues with a repository, when the storage step opens, then it asks `Where should your project work be saved?`, explains what project work includes and that the linked repository stays where it is, and presents `On this device` and `In my SDD Orchestrator account`.
+- [AC-25] Given either storage mode is unavailable, when the storage step is shown, then both modes remain visible and the unavailable mode explains its missing prerequisite with a setup action that does not select the mode or create a project.
+- [AC-26] Given `On this device` requires setup, when device setup succeeds, is canceled, or fails, then onboarding returns to the same storage step with the selected repository preserved; success refreshes availability without selecting a mode, while cancellation or failure leaves the mode unavailable and creates no project.
+- [AC-27] Given no storage mode has been selected, when the user attempts to continue, then final confirmation and project creation remain unavailable without a silent default.
+- [AC-28] Given a storage mode is selected, when final confirmation opens, then the selected repository, project name, and storage mode are visible for review.
+- [AC-29] Given an unlinked repository is confirmed, when creation succeeds, then exactly one project and one repository connection are created atomically.
+- [AC-30] Given project creation commits successfully, when onboarding completes, then the new project's dashboard opens and shows the linked repository, selected storage mode, and current connection status.
+- [AC-31] Given a repository named `example` and no conflicting project name, when it is linked, then the default project name is `example`.
+- [AC-32] Given a repository named `Café Roadmap` and no conflicting project name, when confirmation opens, then the default project name remains `Café Roadmap` without slug conversion or character loss.
+- [AC-33] Given projects named `example` and `Example-1`, when another repository named `example` is linked, then the lowest available default is `example-2`.
+- [AC-34] Given two separate personal workspaces, when each user links the same repository or uses the same project name, then each workspace enforces uniqueness independently.
+- [AC-35] Given a project already links the selected repository, when the same workspace tries to link it again, then creation is blocked and the existing project is identified.
+- [AC-36] Given the user edits a project name, when the name is saved, then case-insensitive uniqueness is enforced without changing project or repository identity.
+- [AC-37] Given repository access is lost, when the project is shown, then it remains visible with a disconnected status and no stale credential is exposed.
+- [AC-38] Given repository access later returns, when the connection is revalidated, then the same project can return to connected.
+- [AC-39] Given onboarding completes, when repository state is inspected, then repository content and settings are unchanged and no AI agent has started.
+- [AC-40] Given any onboarding operation fails, when it ends, then no duplicate workspace, project, or repository connection exists.
+- [AC-41] Given any Slice 01 workflow is used, when stored and transmitted records are inspected, then no product-analytics event, identifier, or onboarding metric exists.
+- [AC-42] Given a verified rights request applies to Slice 01 data, when the operator handles it, then applicable access, correction, export, restriction, objection, or deletion reaches the governed active and retained copies under the approved lifecycle.
+- [AC-43] Given a public hosted deployment is missing any required deployment privacy record or review, when release readiness is evaluated, then that deployment remains blocked without blocking implementation or local verification.
 
 ## Open Questions
 

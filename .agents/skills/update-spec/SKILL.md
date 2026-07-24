@@ -57,6 +57,8 @@ Activate this skill as the workflow for restoring agreement between requirements
 - Prefer vertical workflow tasks that own user-visible UI and its supporting logic together when one scenario can implement and prove them coherently.
 - Keep final end-to-end tasks focused on integration and verification of surfaces already owned elsewhere; do not make them the implicit owner of all pages or behavior.
 - Resolve every unmapped or ambiguously owned surface before completion, or mark tasks `Blocked` when the gap prevents active implementation.
+- Keep every acceptance criterion's `[AC-<n>]` ID stable across edits: assign the next unused integer to a new criterion and never renumber or reuse a retired one. Give each new `## Data and Access Boundaries` entity a backticked-name bullet.
+- Update the affected tasks' `Owns:` lines whenever a criterion or entity is added, removed, or reassigned, keeping every acceptance criterion owned by exactly one task and every entity by at least one. `validate_spec.py` enforces this coverage once the spec uses `[AC-<n>]` IDs; re-run it after the change.
 
 ## Decision Rules
 

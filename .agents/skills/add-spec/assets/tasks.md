@@ -32,11 +32,13 @@ Release gates:
 - [ ] <First implementation step>
   - Purpose: <Why this step is needed>
   - Owned surfaces: <UI, API, domain, persistence, integration, security or privacy, and operational surfaces for which this task is the primary owner>
+  - Owns: <AC-<n> IDs and entity:<Name> items this task is the primary owner of, or none>
   - Proof: <Check that shows this step works>
 
 - [ ] <Next implementation step>
   - Purpose: <Why this step is needed>
   - Owned surfaces: <Surfaces for which this task is the primary owner>
+  - Owns: <AC-<n> IDs and entity:<Name> items this task is the primary owner of, or none>
   - Proof: <Check that shows this step works>
 
 ## Verification Gate
