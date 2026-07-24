@@ -15,7 +15,9 @@ defmodule SddOrchestrator.MixProject do
       dialyzer: [
         plt_local_path: "priv/plts",
         plt_core_path: "priv/plts",
-        plt_add_apps: [:ex_unit, :mix]
+        plt_add_apps: [:ex_unit, :mix],
+        ignore_warnings: ".dialyzer_ignore.exs",
+        list_unused_filters: true
       ]
     ]
   end
@@ -69,6 +71,11 @@ defmodule SddOrchestrator.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
+
+      # GitHub provider adapter (HTTP) and authenticated field encryption for
+      # provider credentials and PKCE verifiers.
+      {:req, "~> 0.5"},
+      {:cloak_ecto, "~> 1.3"},
 
       # Code quality and security gate (see `mix check` alias and canonical checks).
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

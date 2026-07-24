@@ -146,13 +146,14 @@ defmodule SddOrchestratorWeb.UI do
   defp button_classes(assigns) do
     base =
       "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition " <>
-        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 " <> @focus_ring
+        "whitespace-nowrap cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 " <>
+        @focus_ring
 
     size =
       case assigns.size do
         "sm" -> "h-8 px-3 text-[13px]"
         "md" -> "h-10 px-4 text-sm"
-        "lg" -> "h-12 px-5 text-[15px]"
+        "lg" -> "h-13 px-5 text-base"
       end
 
     variant =

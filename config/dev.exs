@@ -59,6 +59,22 @@ config :sdd_orchestrator, dev_routes: true
 # Expose the non-product design-system preview at /_ui in development.
 config :sdd_orchestrator, :ui_preview, true
 
+# Field-encryption vault. This non-production key is intentionally checked in for
+# local development only; production supplies CLOAK_KEY at runtime.
+config :sdd_orchestrator, SddOrchestrator.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: Base.decode64!("3YLEhIU/FRrY0Rkv8c0vhwsD/yqMSRtmfv+IUAURsmo=")}
+  ]
+
+# GitHub App for local development. Configure real credentials via env when
+# exercising a live sign-in; the deterministic fake provider is used in tests.
+config :sdd_orchestrator, :github,
+  app_origin: System.get_env("APP_ORIGIN", "http://localhost:4000"),
+  client_id: System.get_env("GITHUB_CLIENT_ID", "dev-client-id"),
+  client_secret: System.get_env("GITHUB_CLIENT_SECRET", "dev-client-secret")
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

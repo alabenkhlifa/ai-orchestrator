@@ -85,6 +85,27 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  # Field-encryption key (base64 of 32 bytes) for the Cloak vault. Required so
+  # provider credentials and PKCE verifiers are encrypted at rest.
+  cloak_key =
+    System.get_env("CLOAK_KEY") ||
+      raise """
+      environment variable CLOAK_KEY is missing.
+      Generate one with: mix phx.gen.secret 32 | base64  (32 raw bytes, base64-encoded)
+      """
+
+  config :sdd_orchestrator, SddOrchestrator.Vault,
+    ciphers: [
+      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(cloak_key)}
+    ]
+
+  # Registered public GitHub App credentials and the deployment origin. The
+  # callback and setup URLs are derived from APP_ORIGIN by the application.
+  config :sdd_orchestrator, :github,
+    app_origin: System.fetch_env!("APP_ORIGIN"),
+    client_id: System.fetch_env!("GITHUB_CLIENT_ID"),
+    client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET")
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

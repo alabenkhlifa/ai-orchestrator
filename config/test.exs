@@ -25,6 +25,21 @@ config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
 # presentation-foundation LiveView and browser proofs can render it.
 config :sdd_orchestrator, :ui_preview, true
 
+# Field-encryption vault (fixed non-production test key).
+config :sdd_orchestrator, SddOrchestrator.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: Base.decode64!("3YLEhIU/FRrY0Rkv8c0vhwsD/yqMSRtmfv+IUAURsmo=")}
+  ]
+
+# Tests use the deterministic GitHub fake, never a live provider.
+config :sdd_orchestrator, :github,
+  provider: SddOrchestrator.GitHubIntegration.FakeProvider,
+  app_origin: "http://localhost:4002",
+  client_id: "test-client-id",
+  client_secret: "test-client-secret"
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

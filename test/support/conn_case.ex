@@ -35,4 +35,26 @@ defmodule SddOrchestratorWeb.ConnCase do
     SddOrchestrator.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc """
+  Creates an account, issues a session, and stores its opaque token in the test
+  connection's session so protected routes resolve the account.
+  """
+  def register_and_log_in_account(%{conn: conn} = context) do
+    account =
+      SddOrchestrator.AccountsFixtures.account_fixture(
+        Map.take(context, [:login, :github_user_id])
+      )
+
+    %{conn: log_in_account(conn, account), account: account}
+  end
+
+  @doc "Logs the given account into the connection via a real application session."
+  def log_in_account(conn, account) do
+    {:ok, token} = SddOrchestrator.Accounts.create_session(account)
+
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> Plug.Conn.put_session(:session_token, token)
+  end
 end

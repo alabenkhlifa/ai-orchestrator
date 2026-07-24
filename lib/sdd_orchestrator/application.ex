@@ -9,6 +9,7 @@ defmodule SddOrchestrator.Application do
   def start(_type, _args) do
     children = [
       SddOrchestratorWeb.Telemetry,
+      SddOrchestrator.Vault,
       SddOrchestrator.Repo,
       {DNSCluster, query: Application.get_env(:sdd_orchestrator, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: SddOrchestrator.PubSub},

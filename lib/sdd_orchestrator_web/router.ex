@@ -1,6 +1,8 @@
 defmodule SddOrchestratorWeb.Router do
   use SddOrchestratorWeb, :router
 
+  import SddOrchestratorWeb.UserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +10,7 @@ defmodule SddOrchestratorWeb.Router do
     plug :put_root_layout, html: {SddOrchestratorWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_account
   end
 
   pipeline :api do
@@ -17,7 +20,27 @@ defmodule SddOrchestratorWeb.Router do
   scope "/", SddOrchestratorWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    # GitHub authorization endpoints (full-page redirect flow).
+    get "/auth/github", AuthController, :request
+    get "/auth/github/callback", AuthController, :callback
+    delete "/auth/sign_out", AuthController, :sign_out
+
+    # Unauthenticated entry chooser; a valid session is sent to the catalog.
+    live_session :redirect_if_authenticated,
+      on_mount: [{SddOrchestratorWeb.UserAuth, :redirect_if_authenticated}] do
+      live "/", EntryLive
+    end
+
+    # Public handoff for the local onboarding action (owned by specs/02).
+    live_session :public, on_mount: [{SddOrchestratorWeb.UserAuth, :mount_current_account}] do
+      live "/onboarding/local", LocalOnboardingLive
+    end
+
+    # Protected surfaces require a valid application session.
+    live_session :authenticated,
+      on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
+      live "/projects", ProjectsLive
+    end
   end
 
   # Non-product design-system preview. Available only in dev and test as the

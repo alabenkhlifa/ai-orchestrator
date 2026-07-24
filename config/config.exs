@@ -57,6 +57,19 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# GitHub provider adapter and the registered public GitHub App identity.
+# Secrets (client id/secret, private key) and the deployment origin are supplied
+# per environment; only non-secret, stable defaults live here.
+config :sdd_orchestrator, :github,
+  provider: SddOrchestrator.GitHubIntegration.ReqProvider,
+  app_slug: "orchestra-workflow",
+  api_version: "2026-03-10",
+  authorize_url: "https://github.com/login/oauth/authorize",
+  token_url: "https://github.com/login/oauth/access_token",
+  api_base_url: "https://api.github.com"
+
+# Cloak vault ciphers are configured per environment because the key is a secret.
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
