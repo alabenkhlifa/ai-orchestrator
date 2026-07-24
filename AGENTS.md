@@ -78,10 +78,10 @@ Report product-requirement, technical-design, implementation, verification, and 
 - Do not create Markdown files unless the user explicitly asks for them or an invoked SDD workflow requires its defined spec files.
 - Keep changes narrowly scoped to the active task.
 - Inspect the working tree before staging. Another agent or the user may hold concurrent uncommitted or newly committed changes; treat them as intentional and do not stage, revert, or reformat them.
-- When the user asks for a commit, stage only the active task's own paths by explicit path list and create the local commit with one shell command. Never stage with `git add -A`, `git add .`, or a broad glob, and confirm the staged set contains only your files before committing.
+- When committing, stage only the active task's own paths by explicit path list and create the local commit with one shell command. Never stage with `git add -A`, `git add .`, or a broad glob, and confirm the staged set contains only your files before committing.
 - Always use a conventional semantic prefix such as `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, or `chore:` in commit messages and titles.
 - Do not add assistant, model, or tool authorship to commits or titles.
-- Commit only when the user asks.
+- Commit at each task boundary. Once a task's proof passes and its `tasks.md` write-back is recorded, create one local commit scoped to that task; also commit whenever the user explicitly asks. Do not batch multiple completed tasks into a single commit.
 
 ## Current Project Checks
 
@@ -93,6 +93,7 @@ For instruction and skill changes, run the checks that currently apply:
 - Claude skill links: `find -L .claude/skills -type l` must return no broken links.
 - Patch integrity: `git diff --check`
 - Skills: validate every changed canonical skill under `.agents/skills/` with the validator provided by the active skill-authoring environment.
+- Spec validator: `python3 .agents/scripts/test_validate_spec.py`
 - Specifications: `python3 .agents/scripts/validate_spec.py specs/<feature>`
 
 Slice 01 is the first approved executable slice. Its application-bootstrap task must establish these canonical commands:
