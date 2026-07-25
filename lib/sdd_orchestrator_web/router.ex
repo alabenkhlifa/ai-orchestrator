@@ -9,8 +9,43 @@ defmodule SddOrchestratorWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {SddOrchestratorWeb.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    # A static baseline Content-Security-Policy is set here; the plug below replaces
+    # it with the full per-request nonce policy (the nonce cannot be a compile-time
+    # plug option).
+    plug :put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"}
+    plug :put_content_security_policy
     plug :fetch_current_account
+  end
+
+  # A strict Content-Security-Policy with a per-request nonce for the device-local
+  # pre-paint theme script (the only inline script). Everything else is same-origin:
+  # no external scripts, styles, fonts, images, or connections, so an accidental
+  # third-party asset or injected inline script is blocked. The nonce is exposed as
+  # `@csp_nonce` for the root layout.
+  defp put_content_security_policy(conn, _opts) do
+    nonce = Base.encode64(:crypto.strong_rand_bytes(18))
+
+    conn
+    |> assign(:csp_nonce, nonce)
+    |> put_resp_header("content-security-policy", content_security_policy(nonce))
+  end
+
+  defp content_security_policy(nonce) do
+    Enum.join(
+      [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "style-src 'self'",
+        "script-src 'self' 'nonce-#{nonce}'",
+        "connect-src 'self'",
+        "form-action 'self'"
+      ],
+      "; "
+    )
   end
 
   pipeline :api do

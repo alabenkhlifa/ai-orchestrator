@@ -46,6 +46,22 @@ test.describe("entry surface", () => {
     await expect(page.getByRole("heading", { name: /Work without GitHub/i })).toBeVisible();
   });
 
+  test("serves a strict CSP and the pre-paint theme script still runs under it", async ({
+    page,
+  }) => {
+    const response = await page.goto("/");
+    const csp = response.headers()["content-security-policy"];
+
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toMatch(/script-src 'self' 'nonce-/);
+    expect(csp).not.toContain("unsafe-inline");
+
+    // The device-local theme script is nonce-allowed, so it executes and sets the
+    // theme attribute despite the strict policy blocking un-nonced inline scripts.
+    await expect(page.locator("html")).toHaveAttribute("data-theme", /light|dark/);
+  });
+
   test("a protected route redirects to the entry when unauthenticated", async ({ page }) => {
     await page.goto("/projects");
     await expect(page).toHaveURL(/\/$/);

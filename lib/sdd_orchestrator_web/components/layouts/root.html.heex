@@ -10,8 +10,9 @@
     </script>
     <%!-- Device-local theme, applied before first paint. The choice lives only in
           this device's localStorage; it is never sent to the server, an identity,
-          or another device. With no explicit choice the OS preference is used. --%>
-    <script>
+          or another device. With no explicit choice the OS preference is used.
+          The nonce lets this single inline script run under the strict CSP. --%>
+    <script nonce={assigns[:csp_nonce]}>
       (() => {
         const KEY = "sdd:theme";
         const mm = window.matchMedia("(prefers-color-scheme: dark)");

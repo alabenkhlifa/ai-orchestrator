@@ -2,15 +2,14 @@
 #
 # exit: "low"   -> the scan exits non-zero on any Low+ confidence finding, so the
 #                  security gate fails the build on regressions.
-# ignore: ["Config.CSP"] -> the Content-Security-Policy is intentionally deferred
-#                  to the theme/security-review tasks of specs/01: the onboarding
-#                  theme relies on an inline pre-paint <script>, so a correct strict
-#                  CSP needs a nonce or hash that those tasks own. This is the only
-#                  ignored check.
+# ignore: []    -> no ignored checks. The Content-Security-Policy deferral is
+#                  resolved: the security-review task sets a strict CSP with a
+#                  per-request nonce for the device-local pre-paint theme script
+#                  (see SddOrchestratorWeb.Router.put_content_security_policy/2).
 [
   exit: "low",
   format: "txt",
-  ignore: ["Config.CSP"],
+  ignore: [],
   ignore_files: [],
   out: nil,
   private: false,
