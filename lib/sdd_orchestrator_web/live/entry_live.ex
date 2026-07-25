@@ -51,10 +51,7 @@ defmodule SddOrchestratorWeb.EntryLive do
 
       <div :if={@auth_state != :idle} class="flex justify-center py-6 sm:py-10">
         <div class="w-full max-w-md rounded-xl border border-line bg-surface p-7 text-center">
-          <span class={[
-            "w-13 h-13 mx-auto rounded-xl flex items-center justify-center p-3",
-            (@auth_state == :failed && "bg-err-bg text-err-fg") || "bg-raised text-ink-muted"
-          ]}>
+          <span class="w-13 h-13 mx-auto rounded-xl bg-err-bg text-err-fg flex items-center justify-center p-3">
             <.lucide name={(@auth_state == :failed && "triangle-alert") || "x"} class="size-6" />
           </span>
 
