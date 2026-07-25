@@ -75,4 +75,15 @@ defmodule SddOrchestrator.Projects.ProjectOnboardingAttempt do
     |> cast(%{device_setup: device_setup}, [:device_setup])
     |> validate_required([:device_setup])
   end
+
+  @doc """
+  Marks the attempt consumed once its project commits, so it is never reused and
+  a retry resolves to the already-created project instead of a second one.
+  """
+  def consume_changeset(attempt) do
+    change(attempt, %{
+      status: "completed",
+      consumed_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+  end
 end

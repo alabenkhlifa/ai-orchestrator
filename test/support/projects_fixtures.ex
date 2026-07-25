@@ -47,4 +47,24 @@ defmodule SddOrchestrator.ProjectsFixtures do
     {:ok, attempt} = Projects.select_repository(workspace, attempt.id, repository)
     attempt
   end
+
+  @doc """
+  Starts an onboarding attempt ready for confirmation: a repository is selected and
+  a storage mode chosen (hosted by default), so `register_project/3` can run.
+  """
+  def attempt_ready(workspace, opts \\ []) do
+    repository = Keyword.get(opts, :repository, repository_metadata())
+    mode = Keyword.get(opts, :storage_mode, "hosted")
+
+    attempt = attempt_with_repository(workspace, repository)
+    {:ok, attempt} = Projects.select_storage_mode(workspace, attempt.id, mode)
+    attempt
+  end
+
+  @doc "Registers a project in a workspace through the real registration transaction."
+  def registered_project(workspace, opts \\ []) do
+    attempt = attempt_ready(workspace, opts)
+    {:ok, project} = Projects.register_project(workspace, attempt, Keyword.take(opts, [:name]))
+    project
+  end
 end

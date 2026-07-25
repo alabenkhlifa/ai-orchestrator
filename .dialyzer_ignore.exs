@@ -5,5 +5,6 @@
 # chain therefore reports a spurious `call_without_opaque` even though the code
 # is correct. This is a known Ecto + Dialyzer interaction, not a real defect.
 [
-  {"lib/sdd_orchestrator/accounts.ex", :call_without_opaque}
+  {"lib/sdd_orchestrator/accounts.ex", :call_without_opaque},
+  {"lib/sdd_orchestrator/projects.ex", :call_without_opaque}
 ]

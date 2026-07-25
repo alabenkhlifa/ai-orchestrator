@@ -1,24 +1,31 @@
 defmodule SddOrchestrator.Projects do
   @moduledoc """
-  Projects context: the workspace-scoped project catalog and the short-lived
-  onboarding-attempt lifecycle.
+  Projects context: the workspace-scoped project catalog, the short-lived
+  onboarding-attempt lifecycle, and atomic project registration.
 
-  This task owns the read side of the catalog (`list_catalog/1`,
-  `has_projects?/1`) and the creation of onboarding attempts. Attempts are always
-  scoped to a personal workspace, so a catalog query or attempt lookup can never
-  cross the workspace ownership boundary. The project-registration transaction,
-  naming, and repository connection are owned by the confirmation task.
+  Attempts and projects are always scoped to a personal workspace, so a catalog
+  query, attempt lookup, or registration can never cross the workspace ownership
+  boundary. `register_project/3` creates the project, its canonical repository
+  connection, and its storage state in one transaction — or leaves no partial
+  record — while `default_project_name/2` and `rename_project/2` own display-name
+  allocation, comparison, and uniqueness.
   """
   import Ecto.Query
 
+  alias Ecto.Multi
   alias SddOrchestrator.Accounts.PersonalWorkspace
-  alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt}
-  alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
+  alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt, RepositoryConnection}
+  alias SddOrchestrator.ProjectStorage
+  alias SddOrchestrator.ProjectStorage.{DeviceStorageReceipt, Hosted}
   alias SddOrchestrator.Repo
 
   # Abandoned onboarding attempts become unusable after this window and are
   # pruned by the retention job (approved development privacy contract).
   @attempt_ttl_seconds 24 * 60 * 60
+
+  # Bounds the default-name suffix search and its concurrency retry so a pathologically
+  # crowded workspace can never loop unbounded.
+  @max_suffix_retries 50
 
   ## Catalog
 
@@ -36,6 +43,26 @@ defmodule SddOrchestrator.Projects do
   @spec has_projects?(PersonalWorkspace.t()) :: boolean()
   def has_projects?(%PersonalWorkspace{id: workspace_id}) do
     Repo.exists?(from p in Project, where: p.workspace_id == ^workspace_id)
+  end
+
+  @doc """
+  Fetches one project by id, scoped to the workspace, with its repository
+  connection and hosted storage preloaded. Returns nil for a missing, malformed,
+  or cross-workspace id so a foreign project is never resolved.
+  """
+  @spec get_project(PersonalWorkspace.t(), String.t()) :: Project.t() | nil
+  def get_project(%PersonalWorkspace{id: workspace_id}, project_id) when is_binary(project_id) do
+    case Ecto.UUID.cast(project_id) do
+      {:ok, uuid} ->
+        Repo.one(
+          from p in Project,
+            where: p.id == ^uuid and p.workspace_id == ^workspace_id,
+            preload: [:repository_connection, :hosted_storage]
+        )
+
+      :error ->
+        nil
+    end
   end
 
   ## Onboarding attempts
@@ -144,6 +171,261 @@ defmodule SddOrchestrator.Projects do
         attempt,
         DeviceStorageReceipt.to_map(receipt)
       )
+    end)
+  end
+
+  ## Registration and naming
+
+  @doc """
+  The default project display name for a repository, allocating the lowest
+  available numeric suffix when the repository name is already used in the
+  workspace.
+
+  The repository name's display spelling and case are preserved; only the
+  case-insensitive comparison key is used to detect a conflict. `example` with no
+  conflict returns `example`; with `example` and `example-1` already present it
+  returns `example-2`.
+  """
+  @spec default_project_name(PersonalWorkspace.t(), String.t()) :: String.t()
+  def default_project_name(%PersonalWorkspace{} = workspace, base_name)
+      when is_binary(base_name) do
+    base = default_base(base_name)
+
+    if name_available?(workspace, base),
+      do: base,
+      else: next_suffixed_name(workspace, base, 1)
+  end
+
+  @doc """
+  Registers a project for a confirmed onboarding attempt: creates the project, its
+  canonical repository connection, and its storage state in one transaction, then
+  consumes the attempt.
+
+  Options:
+
+    * `:name` — the confirmed display name. Defaults to `default_project_name/2`
+      for the selected repository.
+    * `:allocate_suffix?` — when `true`, a workspace name collision re-allocates
+      the next available default suffix and retries (the user accepted the
+      suggested default). When `false` (the default), a collision returns an
+      inline changeset error so an edited name is never silently changed.
+
+  Returns `{:ok, project}` with the connection and storage preloaded, an idempotent
+  `{:ok, project}` when the attempt was already consumed, `{:error, changeset}` for
+  invalid or conflicting names, `{:error, {:repository_already_linked, project}}`
+  when the repository already links an existing project in the workspace, or
+  `{:error, reason}` for a storage or transaction failure. No partial project or
+  connection is left on any failure.
+  """
+  @spec register_project(PersonalWorkspace.t(), ProjectOnboardingAttempt.t(), keyword()) ::
+          {:ok, Project.t()}
+          | {:error, Ecto.Changeset.t()}
+          | {:error, {:repository_already_linked, Project.t()}}
+          | {:error, atom()}
+  def register_project(
+        %PersonalWorkspace{} = workspace,
+        %ProjectOnboardingAttempt{} = attempt,
+        opts \\ []
+      ) do
+    cond do
+      is_nil(attempt.selected_repository) -> {:error, :repository_required}
+      is_nil(attempt.storage_mode) -> {:error, :storage_mode_required}
+      not is_nil(attempt.consumed_at) -> committed_project(workspace, attempt)
+      not storage_ready?(attempt) -> {:error, :storage_not_ready}
+      true -> do_register(workspace, attempt, opts, 0)
+    end
+  end
+
+  @doc """
+  Renames a project, enforcing workspace-scoped case-insensitive uniqueness while
+  keeping project and repository identity stable. A conflict returns an inline
+  `{:error, changeset}` on `:name` rather than changing the value. This is the
+  reusable rename operation the post-creation control (Task 8) wires to.
+  """
+  @spec rename_project(Project.t(), String.t()) ::
+          {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
+  def rename_project(%Project{} = project, new_name) when is_binary(new_name) do
+    project
+    |> Project.rename_changeset(%{name: new_name})
+    |> Repo.update()
+  end
+
+  # Runs the registration transaction, retrying suffix allocation on a name
+  # collision only when the caller accepted the suggested default.
+  defp do_register(workspace, attempt, opts, tries) do
+    repo = attempt.selected_repository
+    name = registration_name(workspace, attempt, opts)
+
+    case build_and_run(workspace, attempt, repo, name) do
+      {:ok, %{project: project}} ->
+        {:ok, Repo.preload(project, [:repository_connection, :hosted_storage])}
+
+      {:error, :project, %Ecto.Changeset{} = changeset, _changes} ->
+        handle_name_conflict(workspace, attempt, opts, changeset, tries)
+
+      {:error, :connection, %Ecto.Changeset{} = changeset, _changes} ->
+        if unique_conflict?(changeset),
+          do: {:error, {:repository_already_linked, existing_project_for(workspace, repo)}},
+          else: {:error, changeset}
+
+      {:error, _step, reason, _changes} ->
+        {:error, reason}
+    end
+  end
+
+  # One `Ecto.Multi`: insert the project, its canonical repository connection, and
+  # (for hosted storage) the storage row, then consume the attempt. Every step
+  # commits together or rolls back together.
+  defp build_and_run(workspace, attempt, repo, name) do
+    {:ok, multi} =
+      Multi.new()
+      |> Multi.insert(
+        :project,
+        Project.registration_changeset(%Project{}, %{
+          name: name,
+          workspace_id: workspace.id,
+          storage_mode: attempt.storage_mode,
+          onboarding_attempt_id: attempt.id
+        })
+      )
+      |> Multi.insert(:connection, fn %{project: project} ->
+        RepositoryConnection.create_changeset(
+          %RepositoryConnection{},
+          connection_attrs(project, workspace, repo)
+        )
+      end)
+      |> prepare_storage(attempt)
+
+    multi
+    |> Multi.update(:attempt, ProjectOnboardingAttempt.consume_changeset(attempt))
+    |> Repo.transaction()
+  end
+
+  # Hosted storage joins the transaction through the shared adapter contract;
+  # device storage was prepared out-of-band by specs/02 and its readiness receipt
+  # is validated before the transaction, so it adds no server-side storage here.
+  defp prepare_storage(multi, %{storage_mode: "hosted"} = attempt),
+    do: Hosted.prepare(multi, attempt, [])
+
+  defp prepare_storage(multi, %{storage_mode: "device"}), do: {:ok, multi}
+
+  # Hosted is always ready; device requires a valid readiness receipt, checked
+  # through the shared ProjectStorage contract.
+  defp storage_ready?(%{storage_mode: "hosted"}), do: true
+
+  defp storage_ready?(%{storage_mode: "device"} = attempt),
+    do: ProjectStorage.available?(:device, attempt)
+
+  defp storage_ready?(_), do: false
+
+  defp registration_name(workspace, attempt, opts) do
+    case Keyword.get(opts, :name) do
+      name when is_binary(name) -> name
+      _ -> default_project_name(workspace, repository_name(attempt.selected_repository))
+    end
+  end
+
+  defp handle_name_conflict(workspace, attempt, opts, changeset, tries) do
+    cond do
+      not name_conflict?(changeset) ->
+        {:error, changeset}
+
+      Keyword.get(opts, :allocate_suffix?, false) and tries < @max_suffix_retries ->
+        next = default_project_name(workspace, repository_name(attempt.selected_repository))
+        do_register(workspace, attempt, Keyword.put(opts, :name, next), tries + 1)
+
+      true ->
+        {:error, changeset}
+    end
+  end
+
+  # Idempotent retry of an already-consumed attempt: return the project it created.
+  defp committed_project(%PersonalWorkspace{id: workspace_id}, attempt) do
+    query =
+      from p in Project,
+        where: p.onboarding_attempt_id == ^attempt.id and p.workspace_id == ^workspace_id,
+        preload: [:repository_connection, :hosted_storage]
+
+    case Repo.one(query) do
+      nil -> {:error, :already_consumed}
+      %Project{} = project -> {:ok, project}
+    end
+  end
+
+  defp existing_project_for(%PersonalWorkspace{id: workspace_id}, repo) do
+    provider = repo["provider"] || "github"
+    repository_id = repo["repository_id"]
+
+    Repo.one(
+      from c in RepositoryConnection,
+        join: p in assoc(c, :project),
+        where:
+          c.workspace_id == ^workspace_id and c.provider == ^provider and
+            c.provider_repository_id == ^repository_id,
+        select: p
+    )
+  end
+
+  defp connection_attrs(project, workspace, repo) do
+    %{
+      project_id: project.id,
+      workspace_id: workspace.id,
+      provider: repo["provider"] || "github",
+      provider_repository_id: repo["repository_id"],
+      owner: repo["owner"],
+      name: repo["name"],
+      full_name: repo["full_name"],
+      html_url: repo["html_url"],
+      visibility: repo["visibility"],
+      private: repo["private"],
+      organization: repo["organization"],
+      state: "connected",
+      last_validated_at: now()
+    }
+  end
+
+  defp repository_name(repo) when is_map(repo), do: repo["name"] || repo["full_name"] || "project"
+
+  defp default_base(base_name) do
+    case String.trim(base_name) do
+      "" -> "project"
+      trimmed -> trimmed
+    end
+  end
+
+  defp next_suffixed_name(workspace, base, n) when n <= @max_suffix_retries do
+    candidate = "#{base}-#{n}"
+
+    if name_available?(workspace, candidate),
+      do: candidate,
+      else: next_suffixed_name(workspace, base, n + 1)
+  end
+
+  # Fallback for a pathologically crowded workspace: a guaranteed-distinct suffix.
+  defp next_suffixed_name(_workspace, base, _n),
+    do: "#{base}-#{System.unique_integer([:positive])}"
+
+  defp name_available?(%PersonalWorkspace{id: workspace_id}, name) do
+    case Project.name_key(name) do
+      nil ->
+        false
+
+      key ->
+        not Repo.exists?(
+          from p in Project, where: p.workspace_id == ^workspace_id and p.name_key == ^key
+        )
+    end
+  end
+
+  defp name_conflict?(%Ecto.Changeset{} = changeset) do
+    Enum.any?(changeset.errors, fn {field, {_msg, opts}} ->
+      field == :name and Keyword.get(opts, :constraint) == :unique
+    end)
+  end
+
+  defp unique_conflict?(%Ecto.Changeset{} = changeset) do
+    Enum.any?(changeset.errors, fn {_field, {_msg, opts}} ->
+      Keyword.get(opts, :constraint) == :unique
     end)
   end
 
