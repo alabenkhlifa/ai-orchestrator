@@ -68,6 +68,22 @@ config :sdd_orchestrator, SddOrchestrator.Vault,
        tag: "AES.GCM.V1", key: Base.decode64!("3YLEhIU/FRrY0Rkv8c0vhwsD/yqMSRtmfv+IUAURsmo=")}
   ]
 
+# Load local secrets from a git-ignored `.env` (KEY=value lines) so `mix phx.server`
+# picks up the GitHub App credentials without exporting them on every command. Only
+# runs in dev; values set here feed the env reads below.
+env_file = Path.expand("../.env", __DIR__)
+
+if File.exists?(env_file) do
+  for line <- File.stream!(env_file),
+      trimmed = String.trim(line),
+      trimmed != "",
+      not String.starts_with?(trimmed, "#"),
+      [key, value] <- [String.split(trimmed, "=", parts: 2)],
+      value != nil do
+    System.put_env(String.trim(key), String.trim(value))
+  end
+end
+
 # GitHub App for local development. Configure real credentials via env when
 # exercising a live sign-in; the deterministic fake provider is used in tests.
 # The app private key is optional; the pending installation-request lookup

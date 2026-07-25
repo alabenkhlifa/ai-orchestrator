@@ -55,3 +55,8 @@ npm-debug.log
 
 # macOS metadata.
 .DS_Store
+
+# Local environment secrets (e.g. GitHub App credentials for `mix phx.server`).
+# Loaded by config/dev.exs; never committed.
+.env
+.env.*
