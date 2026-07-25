@@ -53,13 +53,20 @@ PLACEHOLDER_PATTERNS = (
 )
 
 # Traceability coverage: a spec opts in by giving its acceptance criteria stable
-# [AC-<n>] IDs. Once opted in, every criterion must be owned by exactly one task
-# and every data entity by at least one, declared through per-task `Owns:` lines.
+# [AC-<n>] IDs. Once opted in, every active criterion must be owned by exactly
+# one task and every active data entity by at least one. Deferred and release
+# coverage is classified explicitly in the implementation boundary.
 ACCEPTANCE_ID_RE = re.compile(r"^\[(AC-\d+)\]\s+\S")
 ENTITY_DEFINITION_RE = re.compile(r"^- `([A-Za-z][A-Za-z0-9]*)`:", re.MULTILINE)
 TASK_HEADING_RE = re.compile(r"^- \[[ xX]\]\s+(.+)$")
+TASK_ID_RE = re.compile(r"^Task \d+$")
+DEPENDS_LINE_RE = re.compile(r"^\s*- Depends on:\s*(.+)$")
 OWNS_LINE_RE = re.compile(r"^\s*- Owns:\s*(.+)$")
 OWNS_TOKEN_RE = re.compile(r"^(AC-\d+|entity:[A-Za-z][A-Za-z0-9]*)$")
+TRACEABILITY_CLASS_RE = re.compile(
+    r"^- (Deferred|Release) (criteria|entities):\s*(.+)$",
+    re.IGNORECASE,
+)
 
 
 def section_body(text: str, heading: str) -> str:
@@ -151,19 +158,30 @@ def top_level_bullets(body: str) -> list[str]:
     return [line[2:].strip() for line in body.splitlines() if line.startswith("- ")]
 
 
-def collect_task_owners(tasks_body: str) -> tuple[dict[str, list[str]], list[tuple[str, str]]]:
-    """Map each owned token to the tasks that claim it, plus malformed tokens."""
+def collect_task_owners(
+    tasks_body: str,
+) -> tuple[dict[str, list[str]], list[tuple[str, str]], list[tuple[str, int]], list[str]]:
+    """Map owned tokens and record whether every task declares one Owns line."""
     owners: dict[str, list[str]] = {}
     malformed: list[tuple[str, str]] = []
-    current = "(before first task)"
+    tasks: list[dict[str, str | int]] = []
+    structural_errors: list[str] = []
+    current: dict[str, str | int] | None = None
     for line in tasks_body.splitlines():
         heading = TASK_HEADING_RE.match(line)
         if heading:
-            current = re.split(r"\s[—-]\s", heading.group(1), maxsplit=1)[0].strip()
+            label = re.split(r"\s[—-]\s", heading.group(1), maxsplit=1)[0].strip()
+            current = {"label": label, "owns_count": 0}
+            tasks.append(current)
             continue
         owns = OWNS_LINE_RE.match(line)
         if not owns:
             continue
+        if current is None:
+            structural_errors.append("Owns line appears before the first task")
+            continue
+        current["owns_count"] = int(current["owns_count"]) + 1
+        current_label = str(current["label"])
         content = owns.group(1).strip()
         # An `Owns: none ...` line marks a task that owns no criterion or entity.
         if content.lower().startswith("none"):
@@ -173,10 +191,126 @@ def collect_task_owners(tasks_body: str) -> tuple[dict[str, list[str]], list[tup
             if not token or token.lower() in {"none", "none."}:
                 continue
             if OWNS_TOKEN_RE.match(token):
-                owners.setdefault(token, []).append(current)
+                owners.setdefault(token, []).append(current_label)
             else:
-                malformed.append((current, token))
-    return owners, malformed
+                malformed.append((current_label, token))
+    task_counts = [(str(task["label"]), int(task["owns_count"])) for task in tasks]
+    return owners, malformed, task_counts, structural_errors
+
+
+def collect_task_dependency_lines(tasks_body: str) -> tuple[list[tuple[str, list[str]]], list[str]]:
+    """Collect each task label and its Depends on declarations."""
+    tasks: list[tuple[str, list[str]]] = []
+    structural_errors: list[str] = []
+    current_index: int | None = None
+    for line in tasks_body.splitlines():
+        heading = TASK_HEADING_RE.match(line)
+        if heading:
+            label = re.split(r"\s[—-]\s", heading.group(1), maxsplit=1)[0].strip()
+            tasks.append((label, []))
+            current_index = len(tasks) - 1
+            continue
+        depends = DEPENDS_LINE_RE.match(line)
+        if not depends:
+            continue
+        if current_index is None:
+            structural_errors.append("Depends on line appears before the first task")
+            continue
+        tasks[current_index][1].append(depends.group(1).strip())
+    return tasks, structural_errors
+
+
+def validate_task_dependencies(spec_dir: Path, contents: dict[str, str]) -> list[str]:
+    """Validate stable task labels and backward-only dependencies when adopted."""
+    errors: list[str] = []
+    tasks_path = spec_dir / "tasks.md"
+    tasks, structural_errors = collect_task_dependency_lines(
+        section_body(contents["tasks.md"], "## Tasks")
+    )
+    for error in structural_errors:
+        errors.append(f"{tasks_path}: {error}")
+
+    # Opt-in: legacy specifications without Depends on declarations remain valid.
+    if not any(lines for _, lines in tasks):
+        return errors
+
+    labels = [label for label, _ in tasks]
+    positions: dict[str, int] = {}
+    for position, label in enumerate(labels):
+        if not TASK_ID_RE.fullmatch(label):
+            errors.append(
+                f"{tasks_path}: dependency-enabled task label {label!r} must be 'Task <n>'"
+            )
+        if label in positions:
+            errors.append(f"{tasks_path}: duplicate task label {label}")
+        else:
+            positions[label] = position
+
+    for position, (label, declarations) in enumerate(tasks):
+        if len(declarations) == 0:
+            errors.append(f"{tasks_path}: {label} is missing a Depends on line")
+            continue
+        if len(declarations) > 1:
+            errors.append(f"{tasks_path}: {label} has multiple Depends on lines")
+            continue
+
+        content = declarations[0]
+        if content.lower() in {"none", "none."}:
+            continue
+
+        dependencies = [raw.strip() for raw in content.split(",") if raw.strip()]
+        if not dependencies:
+            errors.append(f"{tasks_path}: {label} Depends on line is empty")
+            continue
+        seen: set[str] = set()
+        for dependency in dependencies:
+            if not TASK_ID_RE.fullmatch(dependency):
+                errors.append(
+                    f"{tasks_path}: {label} dependency {dependency!r} is not 'Task <n>' or 'none'"
+                )
+                continue
+            if dependency in seen:
+                errors.append(f"{tasks_path}: {label} repeats dependency {dependency}")
+                continue
+            seen.add(dependency)
+            dependency_position = positions.get(dependency)
+            if dependency_position is None:
+                errors.append(f"{tasks_path}: {label} depends on unknown task {dependency}")
+            elif dependency_position >= position:
+                errors.append(
+                    f"{tasks_path}: {label} depends on {dependency}, which is not an earlier task"
+                )
+
+    return errors
+
+
+def collect_traceability_classes(
+    boundary_body: str,
+) -> tuple[dict[str, list[str]], list[tuple[str, str]]]:
+    """Map deferred and release tokens to their declared readiness class."""
+    classes: dict[str, list[str]] = {}
+    malformed: list[tuple[str, str]] = []
+    for line in boundary_body.splitlines():
+        match = TRACEABILITY_CLASS_RE.match(line)
+        if not match:
+            continue
+        readiness = match.group(1).lower()
+        token_type = match.group(2).lower()
+        content = match.group(3).strip()
+        if content.lower().startswith("none"):
+            continue
+        for raw in content.split(","):
+            token = raw.strip()
+            expected = (
+                re.fullmatch(r"AC-\d+", token)
+                if token_type == "criteria"
+                else re.fullmatch(r"entity:[A-Za-z][A-Za-z0-9]*", token)
+            )
+            if expected:
+                classes.setdefault(token, []).append(readiness)
+            else:
+                malformed.append((f"{readiness} {token_type}", token))
+    return classes, malformed
 
 
 def validate_traceability(spec_dir: Path, contents: dict[str, str]) -> list[str]:
@@ -211,9 +345,25 @@ def validate_traceability(spec_dir: Path, contents: dict[str, str]) -> list[str]
     entities = ENTITY_DEFINITION_RE.findall(section_body(contents["design.md"], "## Data and Access Boundaries"))
     entity_ids = set(entities)
 
-    owners, malformed = collect_task_owners(section_body(contents["tasks.md"], "## Tasks"))
+    owners, malformed, task_counts, structural_errors = collect_task_owners(
+        section_body(contents["tasks.md"], "## Tasks")
+    )
+    classes, malformed_classes = collect_traceability_classes(
+        section_body(contents["tasks.md"], "## Implementation Boundary")
+    )
+    for error in structural_errors:
+        errors.append(f"{tasks_path}: {error}")
+    for task_label, count in task_counts:
+        if count == 0:
+            errors.append(f"{tasks_path}: {task_label} is missing an Owns line")
+        elif count > 1:
+            errors.append(f"{tasks_path}: {task_label} has multiple Owns lines")
     for task_label, token in malformed:
         errors.append(f"{tasks_path}: {task_label} Owns token {token!r} is not 'AC-<n>' or 'entity:<Name>'")
+    for classification, token in malformed_classes:
+        errors.append(
+            f"{tasks_path}: {classification} token {token!r} has the wrong format"
+        )
 
     for token, owning_tasks in owners.items():
         if token.startswith("entity:"):
@@ -225,16 +375,51 @@ def validate_traceability(spec_dir: Path, contents: dict[str, str]) -> list[str]
             where = ", ".join(sorted(set(owning_tasks)))
             errors.append(f"{tasks_path}: Owns references unknown acceptance criterion {token} ({where})")
 
+    for token, readiness_classes in classes.items():
+        if token.startswith("entity:"):
+            name = token.split(":", 1)[1]
+            if name not in entity_ids:
+                errors.append(
+                    f"{tasks_path}: traceability references unknown entity {name!r}"
+                )
+        elif token not in ac_ids:
+            errors.append(
+                f"{tasks_path}: traceability references unknown acceptance criterion {token}"
+            )
+        if len(readiness_classes) > 1:
+            errors.append(
+                f"{tasks_path}: {token} has multiple readiness classifications: "
+                f"{', '.join(readiness_classes)}"
+            )
+
     for ac in sorted(ac_ids):
         claimants = owners.get(ac, [])
-        if not claimants:
-            errors.append(f"{req_path}: {ac} has no owning task; add {ac} to one task's Owns line")
+        readiness_classes = classes.get(ac, [])
+        if claimants and readiness_classes:
+            errors.append(
+                f"{req_path}: {ac} is both task-owned and classified "
+                f"{readiness_classes[0]}"
+            )
+        elif not claimants and not readiness_classes:
+            errors.append(
+                f"{req_path}: {ac} has no coverage; assign one task or classify it deferred or release"
+            )
         elif len(claimants) > 1:
             errors.append(f"{req_path}: {ac} is owned by multiple tasks: {', '.join(claimants)}")
 
     for name in sorted(entity_ids):
-        if not owners.get(f"entity:{name}"):
-            errors.append(f"{design_path}: entity {name!r} has no owning task; add entity:{name} to one task's Owns line")
+        token = f"entity:{name}"
+        claimants = owners.get(token, [])
+        readiness_classes = classes.get(token, [])
+        if claimants and readiness_classes:
+            errors.append(
+                f"{design_path}: entity {name!r} is both task-owned and classified "
+                f"{readiness_classes[0]}"
+            )
+        elif not claimants and not readiness_classes:
+            errors.append(
+                f"{design_path}: entity {name!r} has no coverage; assign a task or classify it deferred or release"
+            )
 
     return errors
 
@@ -261,6 +446,7 @@ def main() -> int:
 
     if len(contents) == len(REQUIRED_FILES):
         errors.extend(validate_cross_file(spec_dir, contents))
+        errors.extend(validate_task_dependencies(spec_dir, contents))
         errors.extend(validate_traceability(spec_dir, contents))
 
     if errors:

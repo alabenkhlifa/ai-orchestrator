@@ -118,6 +118,12 @@ Required boundaries:
 - Reason: Returning users should resume existing work instead of being forced through new-project onboarding, while a first-time user should reach the next required action without an empty intermediate page.
 - Consequence: Workspace restoration must determine whether projects exist before routing, and `Add project` must be a non-mutating transition into the same repository-selection flow.
 
+### Project Catalog Read Model Before Registration
+
+- Choice: Introduce the stable base `Project` schema and catalog read model with project ID, workspace ID, display name, and timestamps in Task 4. Extend that same schema additively in Task 7 with the canonical name comparison key, workspace uniqueness, storage mode, lifecycle state, repository connection, and atomic registration behavior.
+- Reason: Task 4 must prove the approved non-empty project catalog before Task 7 implements new-project registration.
+- Consequence: Tasks 4 and 7 share `entity:Project` ownership at different delivery boundaries. Task 7 must extend the Task 4 schema without replacing its identity or invalidating existing catalog records.
+
 ### Open The New Project After Creation
 
 - Choice: Open the newly created project's dashboard immediately after onboarding succeeds.

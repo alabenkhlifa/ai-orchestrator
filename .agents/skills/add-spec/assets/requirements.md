@@ -36,8 +36,8 @@ Draft | Approved | Implementing | Verified
 
 ## Acceptance Criteria
 
-- [AC-1] Given <starting condition>, when <action happens>, then <observable result>.
-- [AC-2] Given <another condition>, when <action happens>, then <observable result>.
+- [AC-01] Given <starting condition>, when <action happens>, then <observable result>.
+- [AC-02] Given <another condition>, when <action happens>, then <observable result>.
 
 ## Open Questions
 
