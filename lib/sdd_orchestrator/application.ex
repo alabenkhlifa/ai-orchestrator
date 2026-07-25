@@ -7,17 +7,20 @@ defmodule SddOrchestrator.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      SddOrchestratorWeb.Telemetry,
-      SddOrchestrator.Vault,
-      SddOrchestrator.Repo,
-      {DNSCluster, query: Application.get_env(:sdd_orchestrator, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: SddOrchestrator.PubSub},
-      # Start a worker by calling: SddOrchestrator.Worker.start_link(arg)
-      # {SddOrchestrator.Worker, arg},
-      # Start to serve requests, typically the last entry
-      SddOrchestratorWeb.Endpoint
-    ]
+    children =
+      [
+        SddOrchestratorWeb.Telemetry,
+        SddOrchestrator.Vault,
+        SddOrchestrator.Repo,
+        {DNSCluster,
+         query: Application.get_env(:sdd_orchestrator, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: SddOrchestrator.PubSub}
+      ] ++
+        retention_children() ++
+        [
+          # Start to serve requests, typically the last entry
+          SddOrchestratorWeb.Endpoint
+        ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
@@ -31,5 +34,15 @@ defmodule SddOrchestrator.Application do
   def config_change(changed, _new, removed) do
     SddOrchestratorWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  # The hourly retention pruner runs in dev and prod; the test environment drives
+  # SddOrchestrator.Privacy.Retention directly instead of on a timer.
+  defp retention_children do
+    if Application.get_env(:sdd_orchestrator, :start_retention_pruner, true) do
+      [SddOrchestrator.Privacy.RetentionPruner]
+    else
+      []
+    end
   end
 end

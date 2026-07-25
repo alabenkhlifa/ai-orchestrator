@@ -33,6 +33,10 @@ config :sdd_orchestrator, SddOrchestrator.Vault,
        tag: "AES.GCM.V1", key: Base.decode64!("3YLEhIU/FRrY0Rkv8c0vhwsD/yqMSRtmfv+IUAURsmo=")}
   ]
 
+# The retention pruner is driven directly in tests, not on a timer, so it never
+# races the Ecto sandbox or deletes another test's data.
+config :sdd_orchestrator, start_retention_pruner: false
+
 # Tests use the deterministic GitHub fake, never a live provider.
 config :sdd_orchestrator, :github,
   provider: SddOrchestrator.GitHubIntegration.FakeProvider,
