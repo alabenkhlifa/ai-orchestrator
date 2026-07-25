@@ -19,6 +19,7 @@ defmodule SddOrchestrator.Accounts.Account do
 
     has_one :github_identity, SddOrchestrator.Accounts.GitHubIdentity
     has_one :github_credential, SddOrchestrator.Accounts.GitHubCredential
+    has_one :personal_workspace, SddOrchestrator.Accounts.PersonalWorkspace
     has_many :application_sessions, SddOrchestrator.Accounts.ApplicationSession
 
     timestamps()

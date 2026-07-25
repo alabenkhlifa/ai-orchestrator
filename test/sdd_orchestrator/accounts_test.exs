@@ -11,7 +11,8 @@ defmodule SddOrchestrator.AccountsTest do
   alias SddOrchestrator.Accounts.{
     ApplicationSession,
     GitHubAuthorizationAttempt,
-    GitHubCredential
+    GitHubCredential,
+    PersonalWorkspace
   }
 
   alias SddOrchestrator.AccountsFixtures
@@ -143,6 +144,60 @@ defmodule SddOrchestrator.AccountsTest do
 
       assert {:ok, token} = Accounts.valid_access_token(account.id)
       assert token =~ "refreshed-"
+    end
+  end
+
+  describe "personal workspaces" do
+    test "creates one stable workspace and restores the same row" do
+      account = AccountsFixtures.account_fixture()
+
+      workspace = Accounts.get_or_create_personal_workspace(account)
+      assert workspace.account_id == account.id
+
+      # Restoration returns the same workspace, not a new one.
+      assert Accounts.get_personal_workspace(account.id).id == workspace.id
+      assert Accounts.get_or_create_personal_workspace(account).id == workspace.id
+    end
+
+    test "is idempotent under retry: no duplicate workspace" do
+      account = AccountsFixtures.account_fixture()
+
+      first = Accounts.get_or_create_personal_workspace(account)
+      second = Accounts.get_or_create_personal_workspace(account)
+
+      assert first.id == second.id
+
+      assert Repo.aggregate(
+               from(w in PersonalWorkspace, where: w.account_id == ^account.id),
+               :count
+             ) ==
+               1
+    end
+
+    test "the unique account constraint makes a concurrent duplicate impossible" do
+      account = AccountsFixtures.account_fixture()
+      _first = Accounts.get_or_create_personal_workspace(account)
+
+      # A second plain insert (the losing side of a concurrent create) is rejected
+      # by the database rather than producing a second workspace.
+      assert {:error, changeset} =
+               %PersonalWorkspace{}
+               |> PersonalWorkspace.changeset(%{account_id: account.id})
+               |> Repo.insert()
+
+      assert %{account_id: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "workspaces are isolated between accounts" do
+      one = AccountsFixtures.account_fixture()
+      two = AccountsFixtures.account_fixture()
+
+      ws_one = Accounts.get_or_create_personal_workspace(one)
+      ws_two = Accounts.get_or_create_personal_workspace(two)
+
+      refute ws_one.id == ws_two.id
+      assert ws_one.account_id == one.id
+      assert ws_two.account_id == two.id
     end
   end
 

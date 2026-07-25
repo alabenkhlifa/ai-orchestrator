@@ -20,7 +20,8 @@ defmodule SddOrchestrator.Accounts do
     ApplicationSession,
     GitHubAuthorizationAttempt,
     GitHubCredential,
-    GitHubIdentity
+    GitHubIdentity,
+    PersonalWorkspace
   }
 
   alias SddOrchestrator.GitHubIntegration
@@ -169,6 +170,33 @@ defmodule SddOrchestrator.Accounts do
       nil -> nil
       identity -> Repo.get(Account, identity.account_id)
     end
+  end
+
+  ## Personal workspaces
+
+  @doc "Returns the personal workspace for an account, or nil."
+  @spec get_personal_workspace(binary()) :: PersonalWorkspace.t() | nil
+  def get_personal_workspace(account_id) when is_binary(account_id) do
+    Repo.get_by(PersonalWorkspace, account_id: account_id)
+  end
+
+  @doc """
+  Restores the account's one stable personal workspace, creating it on first
+  use. The unique `account_id` constraint plus `on_conflict: :nothing` makes this
+  idempotent under retry and safe under concurrency: at most one workspace can
+  ever exist for an account, and every caller resolves the same row.
+  """
+  @spec get_or_create_personal_workspace(Account.t() | binary()) :: PersonalWorkspace.t()
+  def get_or_create_personal_workspace(%Account{id: account_id}),
+    do: get_or_create_personal_workspace(account_id)
+
+  def get_or_create_personal_workspace(account_id) when is_binary(account_id) do
+    {:ok, _} =
+      %PersonalWorkspace{}
+      |> PersonalWorkspace.changeset(%{account_id: account_id})
+      |> Repo.insert(on_conflict: :nothing, conflict_target: :account_id)
+
+    Repo.get_by!(PersonalWorkspace, account_id: account_id)
   end
 
   defp upsert_account(user, token) do

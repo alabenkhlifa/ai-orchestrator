@@ -40,6 +40,7 @@ defmodule SddOrchestratorWeb.Router do
     live_session :authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
       live "/projects", ProjectsLive
+      live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
     end
   end
 

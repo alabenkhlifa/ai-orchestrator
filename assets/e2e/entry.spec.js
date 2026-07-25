@@ -52,6 +52,17 @@ test.describe("entry surface", () => {
     await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
   });
 
+  test("the onboarding repository-access route is protected when unauthenticated", async ({
+    page,
+  }) => {
+    // The catalog and repository-access screens are behind a valid session; their
+    // authenticated end-to-end browser scenarios are carried by the integration
+    // task (Task 9) once the full onboarding flow is wired.
+    await page.goto("/onboarding/repository-access/00000000-0000-0000-0000-000000000000");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
+  });
+
   for (const colorScheme of ["light", "dark"]) {
     test(`entry has no serious accessibility violations (${colorScheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme });
