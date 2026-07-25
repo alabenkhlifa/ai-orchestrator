@@ -4,6 +4,8 @@
 
 In Progress
 
+Implementation for Tasks 1–11 is complete and locally verified; the remaining items keep the slice short of `Verified`. See the 2026-07-25 slice-implementation-complete progress entry for the exact state: the authenticated end-to-end browser scenarios and the tagged live GitHub App smoke test run in the secret-backed staging environment (environment-blocked locally), and a public hosted release remains gated on the deployment privacy profile and the coordinated `specs/02-local-project-onboarding/` path (AC-02).
+
 ## Active Slice
 
 Deliver GitHub project onboarding end to end: authenticate one user, restore their personal workspace, list every repository under the granted access, select where the project work is saved, create one project for one confirmed repository, and open its dashboard with the repository, storage, and connection state.
@@ -155,18 +157,18 @@ Delivery ownership:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Entry routing, authentication, workspace, repository-access grant, repository catalog, storage selection, project-linking, naming, post-creation dashboard routing, and connection-state tests pass.
-- [ ] Deterministic GitHub provider-contract tests pass in normal CI, and the tagged live GitHub App smoke test passes in the secret-backed staging environment.
-- [ ] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
-- [ ] Required desktop and mobile browser scenarios pass.
-- [ ] Light and dark theme, operating-system fallback, device-local preference, no-sync, keyboard-only, focus, contrast, non-color status, responsive text-fit, and layout-stability checks pass.
-- [ ] PKCE, return validation, credential encryption and refresh, session rotation and expiry, provider revalidation, no-webhook behavior, and secret-isolation checks pass.
-- [ ] Hosted storage transaction, device readiness-receipt contract, idempotency, rollback, abort, concurrency, and no-partial-project checks pass.
-- [ ] The approved development data contract, retention cleanup, verified rights workflow, no-analytics proof, and deployment-privacy release-blocking checks pass.
-- [ ] Browser network and failure-log review proves that credentials, personal display values, external optional assets, and product analytics are absent.
-- [ ] New decisions and invalidated proof are written back.
+- [x] Active-slice acceptance criteria pass. (AC-02 is the coordinated release criterion, deferred to `specs/02`.)
+- [x] Entry routing, authentication, workspace, repository-access grant, repository catalog, storage selection, project-linking, naming, post-creation dashboard routing, and connection-state tests pass.
+- [ ] Deterministic GitHub provider-contract tests pass in normal CI **(passing)**; the tagged live GitHub App smoke test runs in the secret-backed staging environment **(environment-blocked locally)**.
+- [x] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
+- [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
+- [ ] Required desktop and mobile browser scenarios pass. **Unauthenticated entry, theme, focus, non-color, and layout scenarios pass locally; the authenticated end-to-end scenarios run in staging (environment-blocked locally), covered deterministically by the LiveView integration flow.**
+- [x] Light and dark theme, operating-system fallback, device-local preference, no-sync, keyboard-only, focus, contrast, non-color status, responsive text-fit, and layout-stability checks pass.
+- [x] PKCE, return validation, credential encryption and refresh, session rotation and expiry, provider revalidation, no-webhook behavior, and secret-isolation checks pass.
+- [x] Hosted storage transaction, device readiness-receipt contract, idempotency, rollback, abort, concurrency, and no-partial-project checks pass.
+- [x] The approved development data contract, retention cleanup, verified rights workflow, no-analytics proof, and deployment-privacy release-blocking checks pass.
+- [x] Browser network and failure-log review proves that credentials, personal display values, external optional assets, and product analytics are absent.
+- [x] New decisions and invalidated proof are written back.
 
 ## Blocked Decisions
 
@@ -343,3 +345,14 @@ Delivery ownership:
 - Passing proofs: `mix check` (format, `compile --warnings-as-errors`, `credo --strict`, `mix test` = 218 passed) including the new CSP header/nonce test and the credential log-redaction test; `mix dialyzer` (0, 2 documented Ecto.Multi opaqueness skips); `mix deps.audit` (no vulnerabilities); `mix sobelow --config` (exit 0, no ignored checks); `npm --prefix assets run test:e2e` (25 tests incl. the new strict-CSP browser check proving the nonce'd theme script still runs under the policy); `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release`.
 - Failed checks: None.
 - Local engineering decisions (non-behavioral): a static baseline `content-security-policy` is passed to `put_secure_browser_headers` (so Sobelow's `Config.CSP` static check recognizes a CSP is set) and is then replaced at runtime by the full per-request nonce policy in the following plug, since a nonce cannot be a compile-time plug option; the nonce is a base64 of 18 random bytes assigned as `@csp_nonce` and consumed only by the root layout on the dead render (the script runs once at page load); `connect-src 'self'` covers the same-origin LiveView WebSocket; `img-src 'self' data:` allows inline data images though none are used yet; the CSP is applied to the browser pipeline, so static assets served by `Plug.Static` (before the router) are unaffected.
+
+### 2026-07-25 - Slice implementation complete and locally verified
+
+- Completed: Tasks 1–11 are implemented and their attached proofs pass. The full deterministic gate is green — `mix check` (format, `compile --warnings-as-errors`, `credo --strict`, `mix test` = 218), `mix dialyzer` (0, 2 documented Ecto.Multi opaqueness skips), `mix deps.audit`, `mix sobelow --config` (no ignored checks), `npm --prefix assets run test:e2e` (25), `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` — and the end-to-end onboarding navigation is proven at the LiveView layer across every screen seam.
+- Readiness (reported separately):
+  - Product requirements: Approved (`requirements.md`).
+  - Technical design: Approved (`design.md`).
+  - Implementation: Complete for Tasks 1–11.
+  - Verification: Locally verified for every deterministic proof. Two required checks are environment-blocked locally and run in the secret-backed staging environment: the tagged live GitHub App smoke test, and the authenticated desktop and mobile end-to-end browser scenarios (the dev server the Playwright harness drives uses the live provider with no fake-backed browser login). Their behavior is covered deterministically at the LiveView and provider-contract layers.
+  - Release: Blocked. A public hosted deployment remains gated on a complete deployment privacy profile (AC-43 enforcement is implemented; the deployment's actual controller/processor/region/transfer/notice evidence is supplied per deployment) and on the coordinated first-release requirement that `specs/02-local-project-onboarding/` and the shared dependencies also pass their gates (AC-02).
+- The slice stays `In Progress` (not `Verified`) until the staging browser and live smoke proofs run and the release gates clear.
