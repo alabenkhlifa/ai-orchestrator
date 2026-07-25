@@ -10,14 +10,18 @@ defmodule SddOrchestratorWeb.ProjectsLive do
   to the repository-access check; neither creates a project or repository
   connection.
 
-  Per-row connection status is added by the connection-recovery task; the
-  repository-access check itself is owned by the repository-picker task, which
-  replaces the placeholder this handoff targets.
+  Each catalog row shows its repository-connection status. The initial paint shows
+  the last confirmed state; the connected mount revalidates access and updates
+  connected/disconnected transitions, and `Check again` re-runs the revalidation so
+  a project that lost access can reconnect without being replaced.
   """
   use SddOrchestratorWeb, :live_view
 
+  import SddOrchestratorWeb.ConnectionStatus
+
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Projects
+  alias SddOrchestrator.Projects.Connections
 
   @impl true
   def mount(_params, _session, socket) do
@@ -30,7 +34,7 @@ defmodule SddOrchestratorWeb.ProjectsLive do
        |> assign(:page_title, "Projects")
        |> assign(:workspace, workspace)
        |> assign(:identity, Accounts.get_github_identity(account.id))
-       |> assign(:projects, Projects.list_catalog(workspace))}
+       |> load_catalog(revalidate: connected?(socket))}
     else
       {:ok, continue_to_repository_access(socket, workspace)}
     end
@@ -39,6 +43,19 @@ defmodule SddOrchestratorWeb.ProjectsLive do
   @impl true
   def handle_event("add_project", _params, socket) do
     {:noreply, continue_to_repository_access(socket, socket.assigns.workspace)}
+  end
+
+  def handle_event("recheck", _params, socket) do
+    {:noreply, load_catalog(socket, revalidate: true)}
+  end
+
+  defp load_catalog(socket, opts) do
+    account = socket.assigns.current_account
+    entries = Connections.catalog(account, socket.assigns.workspace, opts)
+
+    socket
+    |> assign(:entries, entries)
+    |> assign(:any_needs_attention?, Enum.any?(entries, &(&1.status != :connected)))
   end
 
   # Non-mutating handoff into onboarding: reuse or open an onboarding attempt and
@@ -67,21 +84,38 @@ defmodule SddOrchestratorWeb.ProjectsLive do
 
       <div class="flex items-center justify-between gap-4">
         <h1 class="text-xl font-bold text-ink">Projects</h1>
-        <.button phx-click="add_project">
-          <.lucide name="plus" class="size-4" /> Add project
-        </.button>
+        <div class="flex items-center gap-2.5">
+          <.button
+            :if={@any_needs_attention?}
+            variant="secondary"
+            phx-click="recheck"
+            data-recheck
+          >
+            <.lucide name="refresh-cw" class="size-4" /> Check again
+          </.button>
+          <.button phx-click="add_project">
+            <.lucide name="plus" class="size-4" /> Add project
+          </.button>
+        </div>
       </div>
 
       <ul id="project-catalog" class="mt-6 flex flex-col gap-2.5">
-        <li :for={project <- @projects} id={"project-#{project.id}"}>
-          <div class="flex items-center gap-3 rounded-lg border border-line bg-surface p-4">
+        <li :for={entry <- @entries} id={"project-#{entry.project.id}"}>
+          <.link
+            navigate={~p"/projects/#{entry.project.id}"}
+            class="flex items-center gap-3 rounded-lg border border-line bg-surface p-4 hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
             <span class="flex-none w-9 h-9 rounded-lg bg-raised text-ink-muted flex items-center justify-center">
               <.lucide name="folder-git-2" class="size-[18px]" />
             </span>
-            <span class="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-              {project.name}
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold text-ink">{entry.project.name}</span>
+              <span :if={entry.connection} class="block truncate text-[13px] text-ink-muted">
+                {entry.connection.full_name}
+              </span>
             </span>
-          </div>
+            <.connection_badge status={entry.status} class="flex-none" />
+          </.link>
         </li>
       </ul>
     </.app_shell>

@@ -1,21 +1,30 @@
 defmodule SddOrchestratorWeb.ProjectDashboardLive do
   @moduledoc """
-  Placeholder destination for a newly created project's dashboard.
+  The created project's dashboard (Task 8).
 
-  Project registration routes here after the creation transaction commits. This
-  placeholder shows the linked repository, selected storage mode, and current
-  connection status so the post-creation handoff is visible end to end. The full
-  dashboard — the post-creation rename control, connection revalidation, and the
-  connected/disconnected/temporarily-unavailable recovery states — is owned by the
-  project-dashboard task (Task 8), which replaces this placeholder.
+  Opened after registration commits, it shows the linked repository, the selected
+  storage mode, and the current connection status. The initial paint shows the
+  last confirmed state; the connected mount revalidates GitHub access and persists
+  connected/disconnected transitions, while a transient provider outage shows a
+  temporarily-unavailable indicator without overwriting the last confirmed state.
+  `Check again` re-runs the revalidation so a project that lost access can
+  reconnect to the same project without being replaced.
+
+  The post-creation name control is wired to the reusable `Projects.rename_project/2`
+  operation (owned by Task 7): a valid rename saves inline; an invalid or
+  case-insensitively conflicting name returns inline feedback without changing the
+  project or repository identity.
 
   Mount is workspace-scoped: an unknown, malformed, or cross-workspace project id
   routes back to the catalog so a foreign project is never rendered.
   """
   use SddOrchestratorWeb, :live_view
 
+  import SddOrchestratorWeb.ConnectionStatus
+
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Projects
+  alias SddOrchestrator.Projects.Connections
   alias SddOrchestrator.ProjectStorage
 
   @impl true
@@ -23,16 +32,81 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
     account = socket.assigns.current_account
     workspace = Accounts.get_or_create_personal_workspace(account)
 
-    case Projects.get_project(workspace, project_id) do
+    case Connections.project(account, workspace, project_id, revalidate: connected?(socket)) do
       nil ->
         {:ok, push_navigate(socket, to: ~p"/projects")}
 
-      project ->
+      entry ->
         {:ok,
          socket
-         |> assign(:page_title, project.name)
+         |> assign(:workspace, workspace)
+         |> assign_entry(entry)
+         |> assign(:name, entry.project.name)
+         |> assign(:name_error, nil)
+         |> assign(:rename_saved?, false)}
+    end
+  end
+
+  @impl true
+  def handle_event("recheck", _params, socket) do
+    entry =
+      Connections.project(
+        socket.assigns.current_account,
+        socket.assigns.workspace,
+        socket.assigns.project.id,
+        revalidate: true
+      )
+
+    {:noreply, assign_entry(socket, entry)}
+  end
+
+  def handle_event("validate_name", %{"project" => %{"name" => name}}, socket) do
+    {:noreply, assign(socket, name: name, name_error: nil, rename_saved?: false)}
+  end
+
+  def handle_event("rename", %{"project" => %{"name" => name}}, socket) do
+    case Projects.rename_project(socket.assigns.project, name) do
+      {:ok, project} ->
+        {:noreply,
+         socket
          |> assign(:project, project)
-         |> assign(:connection, project.repository_connection)}
+         |> assign(:page_title, project.name)
+         |> assign(:name, project.name)
+         |> assign(:name_error, nil)
+         |> assign(:rename_saved?, true)}
+
+      {:error, changeset} ->
+        {:noreply,
+         assign(socket,
+           name: name,
+           name_error: name_error_message(changeset),
+           rename_saved?: false
+         )}
+    end
+  end
+
+  defp assign_entry(socket, entry) do
+    socket
+    |> assign(:page_title, entry.project.name)
+    |> assign(:project, entry.project)
+    |> assign(:connection, entry.connection)
+    |> assign(:status, entry.status)
+  end
+
+  defp name_error_message(%Ecto.Changeset{} = changeset) do
+    case changeset.errors[:name] do
+      {message, _opts} -> message
+      nil -> "is invalid"
+    end
+  end
+
+  defp storage_icon("device"), do: "hard-drive"
+  defp storage_icon(_), do: "cloud"
+
+  defp storage_label(mode) do
+    case ProjectStorage.parse_mode(mode) do
+      {:ok, parsed} -> ProjectStorage.label(parsed)
+      :error -> mode
     end
   end
 
@@ -56,9 +130,46 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
             <h1 class="text-xl font-bold text-ink truncate" data-project-name>{@project.name}</h1>
             <p class="mt-1 text-sm text-ink-muted">Your project is ready.</p>
           </div>
-          <.badge variant={connection_variant(@connection)} icon={connection_icon(@connection)}>
-            {connection_label(@connection)}
-          </.badge>
+          <.connection_badge status={@status} class="flex-none" />
+        </div>
+
+        <div :if={@status == :disconnected} data-disconnected class="mt-4">
+          <.notice variant="warn" icon="unplug">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                GitHub access to this repository was lost. Your project is safe — restore access on
+                GitHub, then check again.
+              </span>
+              <.button
+                variant="secondary"
+                size="sm"
+                phx-click="recheck"
+                data-recheck
+                class="flex-none"
+              >
+                <.lucide name="refresh-cw" class="size-4" /> Check again
+              </.button>
+            </div>
+          </.notice>
+        </div>
+
+        <div :if={@status == :temporarily_unavailable} data-unavailable class="mt-4">
+          <.notice variant="info" icon="refresh-cw">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                GitHub is temporarily unreachable, so the connection can't be confirmed right now.
+              </span>
+              <.button
+                variant="secondary"
+                size="sm"
+                phx-click="recheck"
+                data-recheck
+                class="flex-none"
+              >
+                <.lucide name="refresh-cw" class="size-4" /> Check again
+              </.button>
+            </div>
+          </.notice>
         </div>
 
         <dl class="mt-6 flex flex-col gap-3">
@@ -80,27 +191,33 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
             </dd>
           </div>
         </dl>
+
+        <form id="project-rename-form" phx-change="validate_name" phx-submit="rename" class="mt-6">
+          <.text_field
+            id="project-name"
+            name="project[name]"
+            label="Project name"
+            value={@name}
+            error={@name_error}
+            hint="You can use spaces and any language. Renaming keeps the linked repository."
+            autocomplete="off"
+            phx-debounce="200"
+          />
+          <div class="mt-3 flex items-center gap-3">
+            <.button type="submit">
+              <.lucide name="pencil" class="size-4" /> Save name
+            </.button>
+            <span
+              :if={@rename_saved?}
+              class="inline-flex items-center gap-1.5 text-[13px] text-ok-fg"
+              data-rename-saved
+            >
+              <.lucide name="circle-check" class="size-4" /> Saved
+            </span>
+          </div>
+        </form>
       </div>
     </.app_shell>
     """
-  end
-
-  defp connection_variant(%{state: "connected"}), do: "ok"
-  defp connection_variant(_), do: "warn"
-
-  defp connection_icon(%{state: "connected"}), do: "circle-check"
-  defp connection_icon(_), do: "unplug"
-
-  defp connection_label(%{state: "connected"}), do: "Connected"
-  defp connection_label(_), do: "Disconnected"
-
-  defp storage_icon("device"), do: "hard-drive"
-  defp storage_icon(_), do: "cloud"
-
-  defp storage_label(mode) do
-    case ProjectStorage.parse_mode(mode) do
-      {:ok, parsed} -> ProjectStorage.label(parsed)
-      :error -> mode
-    end
   end
 end

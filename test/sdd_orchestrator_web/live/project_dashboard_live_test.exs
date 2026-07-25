@@ -1,29 +1,32 @@
 defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
   @moduledoc """
-  Proof for the project-dashboard placeholder the registration transaction routes
-  to (Task 7 seam for Task 8): it renders the created project's repository, storage
-  mode, and connected status, refuses unknown or cross-workspace project ids, and
-  requires an authenticated session. The full dashboard, rename control, and
-  connection recovery replace this placeholder in Task 8.
+  Proof for the project dashboard (Task 8): it shows the linked repository, storage
+  mode, and connection status; renames inline through the reusable rename operation
+  with case-insensitive conflict feedback and stable identity; keeps a project
+  visible with a disconnected indicator and a recovery action when access is lost;
+  never exposes the access token; and refuses unknown or cross-workspace projects
+  behind a valid session.
   """
   use SddOrchestratorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 
+  alias SddOrchestrator.Accounts
   alias SddOrchestrator.AccountsFixtures
+  alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ProjectsFixtures
+  alias SddOrchestrator.Repo
 
-  describe "authenticated" do
-    setup %{conn: conn} do
-      %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
-      workspace = ProjectsFixtures.workspace_fixture(account)
-      %{conn: conn, workspace: workspace}
-    end
+  # Logs in an account whose login drives the given fake-provider scenario.
+  defp log_in_scenario(conn, login) do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn, login: login})
+    workspace = ProjectsFixtures.workspace_fixture(account)
+    %{conn: conn, account: account, workspace: workspace}
+  end
 
-    test "shows the repository, storage mode, and connected status", %{
-      conn: conn,
-      workspace: workspace
-    } do
+  describe "connected project (AC-30)" do
+    test "shows the repository, storage mode, and connected status", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
       project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
 
       {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}")
@@ -33,6 +36,92 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       assert html =~ "octo/example"
       assert html =~ "In my SDD Orchestrator account"
       assert html =~ "Connected"
+    end
+
+    test "does not expose the GitHub access token in the payload", %{conn: conn} do
+      %{conn: conn, account: account, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}")
+      credential = Accounts.get_github_credential(account.id)
+
+      refute html =~ credential.access_token
+    end
+  end
+
+  describe "rename control (AC-36)" do
+    test "saves a valid new name inline and keeps identity stable", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Original")
+      repo_id = project.repository_connection.provider_repository_id
+
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}")
+
+      html =
+        view |> form("#project-rename-form", project: %{name: "Renamed"}) |> render_submit()
+
+      assert html =~ "Saved"
+      assert html =~ "Renamed"
+
+      reloaded = Repo.get_by!(RepositoryConnection, project_id: project.id)
+      assert reloaded.provider_repository_id == repo_id
+    end
+
+    test "shows inline feedback for a case-insensitive conflict", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+
+      ProjectsFixtures.registered_project(workspace,
+        name: "Taken",
+        repository: ProjectsFixtures.repository_metadata(id: 1)
+      )
+
+      project =
+        ProjectsFixtures.registered_project(workspace,
+          name: "Movable",
+          repository: ProjectsFixtures.repository_metadata(id: 2)
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}")
+
+      html = view |> form("#project-rename-form", project: %{name: "taken"}) |> render_submit()
+
+      assert html =~ "already been taken"
+      # The project keeps its original name.
+      assert Repo.get!(SddOrchestrator.Projects.Project, project.id).name == "Movable"
+    end
+  end
+
+  describe "connection recovery (AC-37/38)" do
+    test "keeps a project visible with a disconnected indicator and a recovery action", %{
+      conn: conn
+    } do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "noinstall-x")
+      project = ProjectsFixtures.registered_project(workspace, name: "Orphaned")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}")
+
+      assert html =~ "Orphaned"
+      assert html =~ "Disconnected"
+      assert html =~ "data-disconnected"
+      assert html =~ "Check again"
+    end
+
+    test "Check again re-runs the revalidation", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "noinstall-x")
+      project = ProjectsFixtures.registered_project(workspace, name: "Orphaned")
+
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}")
+
+      html = view |> element("button[data-recheck]") |> render_click()
+      # Access is still unavailable in this scenario, so it stays disconnected.
+      assert html =~ "Disconnected"
+    end
+  end
+
+  describe "routing and access" do
+    setup %{conn: conn} do
+      %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+      %{conn: conn, workspace: ProjectsFixtures.workspace_fixture(account)}
     end
 
     test "routes an unknown project id back to the catalog", %{conn: conn} do

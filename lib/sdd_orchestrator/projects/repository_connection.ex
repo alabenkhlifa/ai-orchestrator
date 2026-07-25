@@ -25,6 +25,11 @@ defmodule SddOrchestrator.Projects.RepositoryConnection do
 
   @repo_unique_index :repository_connections_workspace_provider_repo_index
 
+  # Persisted connection states — the last confirmed result of a revalidation.
+  # A transient provider outage is a display-only state and is never persisted, so
+  # a temporary GitHub failure never overwrites the last confirmed state.
+  @states ~w(connected disconnected)
+
   schema "repository_connections" do
     field :provider, :string, default: "github"
     field :provider_repository_id, :integer
@@ -72,6 +77,32 @@ defmodule SddOrchestrator.Projects.RepositoryConnection do
     )
     |> unique_constraint(:project_id)
   end
+
+  @doc """
+  Updates the connection after a revalidation: the confirmed state, the validation
+  timestamp, and any refreshed display metadata. Only `connected` and
+  `disconnected` are persisted — a transient outage is never written here.
+  """
+  def status_changeset(connection, attrs) do
+    connection
+    |> cast(attrs, [
+      :state,
+      :last_validated_at,
+      :owner,
+      :name,
+      :full_name,
+      :html_url,
+      :visibility,
+      :private,
+      :organization,
+      :installation_id
+    ])
+    |> validate_required([:state, :last_validated_at])
+    |> validate_inclusion(:state, @states)
+  end
+
+  @doc "The persisted connection states."
+  def states, do: @states
 
   @doc "The name of the workspace/provider/repository-id unique index."
   def repo_unique_index, do: @repo_unique_index

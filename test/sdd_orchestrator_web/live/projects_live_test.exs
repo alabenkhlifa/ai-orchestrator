@@ -69,6 +69,24 @@ defmodule SddOrchestratorWeb.ProjectsLiveTest do
     end
   end
 
+  describe "connection status in catalog rows (AC-37/38)" do
+    test "shows a per-row connection status and a Check again recovery action", %{conn: conn} do
+      # The account login drives the fake provider to report no accessible
+      # installation, so the registered project's connection revalidates as lost.
+      %{conn: conn, account: account} =
+        register_and_log_in_account(%{conn: conn, login: "noinstall-cat"})
+
+      workspace = ProjectsFixtures.workspace_fixture(account)
+      ProjectsFixtures.registered_project(workspace, name: "Orphaned")
+
+      {:ok, view, html} = live(conn, ~p"/projects")
+
+      assert html =~ "Orphaned"
+      assert html =~ "Disconnected"
+      assert has_element?(view, "button[data-recheck]")
+    end
+  end
+
   describe "Add project handoff (AC-15)" do
     setup %{conn: conn, account: account} do
       workspace = ProjectsFixtures.workspace_fixture(account)
