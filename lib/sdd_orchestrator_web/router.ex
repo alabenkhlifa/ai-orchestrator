@@ -47,6 +47,8 @@ defmodule SddOrchestratorWeb.Router do
       live "/projects", ProjectsLive
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
       live "/onboarding/storage/:attempt_id", StorageSelectionLive
+      live "/onboarding/device-setup/:attempt_id", DeviceSetupLive
+      live "/onboarding/confirm/:attempt_id", ProjectConfirmationLive
     end
   end
 

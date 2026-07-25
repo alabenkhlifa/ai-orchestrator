@@ -56,4 +56,23 @@ defmodule SddOrchestrator.Projects.ProjectOnboardingAttempt do
     ])
     |> validate_required([:selected_repository])
   end
+
+  @doc "Changeset that records the explicitly chosen storage mode on the attempt."
+  def select_storage_changeset(attempt, storage_mode) do
+    attempt
+    |> cast(%{storage_mode: storage_mode}, [:storage_mode])
+    |> validate_required([:storage_mode])
+    |> validate_inclusion(:storage_mode, ["hosted", "device"])
+  end
+
+  @doc """
+  Changeset that records the device-setup readiness state (the opaque receipt map
+  supplied by the local-device boundary) on the attempt. Never selects a mode or
+  creates a project.
+  """
+  def device_setup_changeset(attempt, device_setup) do
+    attempt
+    |> cast(%{device_setup: device_setup}, [:device_setup])
+    |> validate_required([:device_setup])
+  end
 end

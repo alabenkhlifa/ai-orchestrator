@@ -13,6 +13,7 @@ defmodule SddOrchestrator.Projects do
 
   alias SddOrchestrator.Accounts.PersonalWorkspace
   alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt}
+  alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
   alias SddOrchestrator.Repo
 
   # Abandoned onboarding attempts become unusable after this window and are
@@ -104,14 +105,55 @@ defmodule SddOrchestrator.Projects do
           {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
   def select_repository(%PersonalWorkspace{} = workspace, attempt_id, repository)
       when is_binary(attempt_id) and is_map(repository) do
-    case get_onboarding_attempt(workspace, attempt_id) do
-      nil ->
-        {:error, :not_found}
+    update_attempt(workspace, attempt_id, fn attempt ->
+      ProjectOnboardingAttempt.select_repository_changeset(attempt, selected_metadata(repository))
+    end)
+  end
 
-      %ProjectOnboardingAttempt{} = attempt ->
-        attempt
-        |> ProjectOnboardingAttempt.select_repository_changeset(selected_metadata(repository))
-        |> Repo.update()
+  @doc """
+  Records the explicitly chosen storage mode on a workspace-scoped attempt. Does
+  not create a project. Returns `{:error, :not_found}` for a foreign attempt.
+  """
+  @spec select_storage_mode(PersonalWorkspace.t(), String.t(), String.t()) ::
+          {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def select_storage_mode(%PersonalWorkspace{} = workspace, attempt_id, mode)
+      when is_binary(attempt_id) and is_binary(mode) do
+    update_attempt(workspace, attempt_id, fn attempt ->
+      ProjectOnboardingAttempt.select_storage_changeset(attempt, mode)
+    end)
+  end
+
+  @doc """
+  Records a device-storage readiness receipt on a workspace-scoped attempt.
+
+  This is the local-device handoff boundary: `specs/02-local-project-onboarding/`
+  calls it after the user prepares on-device storage, so a later mount of the
+  storage step sees device storage as available. It never selects a mode or
+  creates a project. Returns `{:error, :not_found}` for a foreign attempt.
+  """
+  @spec record_device_receipt(PersonalWorkspace.t(), String.t(), DeviceStorageReceipt.t()) ::
+          {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def record_device_receipt(
+        %PersonalWorkspace{} = workspace,
+        attempt_id,
+        %DeviceStorageReceipt{} = receipt
+      )
+      when is_binary(attempt_id) do
+    update_attempt(workspace, attempt_id, fn attempt ->
+      ProjectOnboardingAttempt.device_setup_changeset(
+        attempt,
+        DeviceStorageReceipt.to_map(receipt)
+      )
+    end)
+  end
+
+  # Applies a changeset to a workspace-scoped attempt, or reports not_found for an
+  # unknown, malformed, or cross-workspace attempt so a foreign attempt is never
+  # written.
+  defp update_attempt(workspace, attempt_id, change_fun) do
+    case get_onboarding_attempt(workspace, attempt_id) do
+      nil -> {:error, :not_found}
+      %ProjectOnboardingAttempt{} = attempt -> attempt |> change_fun.() |> Repo.update()
     end
   end
 

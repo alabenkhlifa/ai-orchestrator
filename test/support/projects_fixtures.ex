@@ -3,6 +3,7 @@ defmodule SddOrchestrator.ProjectsFixtures do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Accounts.Account
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
@@ -21,5 +22,29 @@ defmodule SddOrchestrator.ProjectsFixtures do
       |> Repo.insert()
 
     project
+  end
+
+  @doc "A representative selected-repository metadata map."
+  def repository_metadata(attrs \\ %{}) do
+    Map.merge(
+      %{
+        id: 101,
+        owner: "octo",
+        name: "example",
+        full_name: "octo/example",
+        private: false,
+        visibility: "public",
+        html_url: "https://github.com/octo/example",
+        organization: nil
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc "Starts an onboarding attempt with a repository already selected."
+  def attempt_with_repository(workspace, repository \\ repository_metadata()) do
+    {:ok, attempt} = Projects.start_onboarding_attempt(workspace)
+    {:ok, attempt} = Projects.select_repository(workspace, attempt.id, repository)
+    attempt
   end
 end

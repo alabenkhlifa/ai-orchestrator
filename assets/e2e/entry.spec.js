@@ -77,6 +77,14 @@ test.describe("entry surface", () => {
     await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
   });
 
+  for (const path of ["device-setup", "confirm"]) {
+    test(`the onboarding ${path} route is protected when unauthenticated`, async ({ page }) => {
+      await page.goto(`/onboarding/${path}/00000000-0000-0000-0000-000000000000`);
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
+    });
+  }
+
   for (const colorScheme of ["light", "dark"]) {
     test(`entry has no serious accessibility violations (${colorScheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme });

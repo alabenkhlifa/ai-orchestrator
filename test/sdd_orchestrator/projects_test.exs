@@ -8,6 +8,7 @@ defmodule SddOrchestrator.ProjectsTest do
 
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
+  alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
 
   alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.ProjectsFixtures
@@ -158,6 +159,68 @@ defmodule SddOrchestrator.ProjectsTest do
 
     test "returns not_found for a malformed attempt id", %{workspace: workspace} do
       assert {:error, :not_found} = Projects.select_repository(workspace, "not-a-uuid", @repo)
+    end
+  end
+
+  describe "select_storage_mode/3" do
+    setup %{workspace: workspace} do
+      {:ok, attempt} = Projects.start_onboarding_attempt(workspace)
+      %{attempt: attempt}
+    end
+
+    test "persists the chosen mode without creating a project", %{
+      workspace: workspace,
+      attempt: attempt
+    } do
+      assert {:ok, updated} = Projects.select_storage_mode(workspace, attempt.id, "hosted")
+      assert updated.storage_mode == "hosted"
+      refute Projects.has_projects?(workspace)
+    end
+
+    test "rejects an unknown storage mode", %{workspace: workspace, attempt: attempt} do
+      assert {:error, changeset} = Projects.select_storage_mode(workspace, attempt.id, "cloud9")
+      assert %{storage_mode: [_ | _]} = errors_on(changeset)
+    end
+
+    test "never writes another workspace's attempt", %{attempt: attempt} do
+      other = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      assert {:error, :not_found} = Projects.select_storage_mode(other, attempt.id, "hosted")
+    end
+  end
+
+  describe "record_device_receipt/3" do
+    setup %{workspace: workspace} do
+      {:ok, attempt} = Projects.start_onboarding_attempt(workspace)
+      %{attempt: attempt}
+    end
+
+    test "records the receipt so device storage becomes available", %{
+      workspace: workspace,
+      attempt: attempt
+    } do
+      receipt = %DeviceStorageReceipt{
+        token: "opaque",
+        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
+        device_label: "Laptop"
+      }
+
+      assert {:ok, updated} = Projects.record_device_receipt(workspace, attempt.id, receipt)
+      assert updated.device_setup["token"] == "opaque"
+      # Recording a receipt selects no mode and creates no project.
+      assert is_nil(updated.storage_mode)
+      refute Projects.has_projects?(workspace)
+      assert SddOrchestrator.ProjectStorage.available?(:device, updated)
+    end
+
+    test "never writes another workspace's attempt", %{attempt: attempt} do
+      other = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+
+      receipt = %DeviceStorageReceipt{
+        token: "opaque",
+        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+      }
+
+      assert {:error, :not_found} = Projects.record_device_receipt(other, attempt.id, receipt)
     end
   end
 
