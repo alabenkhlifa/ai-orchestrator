@@ -70,10 +70,14 @@ config :sdd_orchestrator, SddOrchestrator.Vault,
 
 # GitHub App for local development. Configure real credentials via env when
 # exercising a live sign-in; the deterministic fake provider is used in tests.
+# The app private key is optional; the pending installation-request lookup
+# degrades gracefully to the grant screen when it is absent.
 config :sdd_orchestrator, :github,
   app_origin: System.get_env("APP_ORIGIN", "http://localhost:4000"),
   client_id: System.get_env("GITHUB_CLIENT_ID", "dev-client-id"),
-  client_secret: System.get_env("GITHUB_CLIENT_SECRET", "dev-client-secret")
+  client_secret: System.get_env("GITHUB_CLIENT_SECRET", "dev-client-secret"),
+  app_id: System.get_env("GITHUB_APP_ID"),
+  app_private_key: System.get_env("GITHUB_APP_PRIVATE_KEY")
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"

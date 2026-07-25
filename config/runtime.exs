@@ -100,11 +100,16 @@ if config_env() == :prod do
     ]
 
   # Registered public GitHub App credentials and the deployment origin. The
-  # callback and setup URLs are derived from APP_ORIGIN by the application.
+  # callback and setup URLs are derived from APP_ORIGIN by the application. The
+  # app id and PEM private key sign short-lived app JWTs for the pending
+  # installation-request lookup; they are optional so the app still boots without
+  # the app-level read configured.
   config :sdd_orchestrator, :github,
     app_origin: System.fetch_env!("APP_ORIGIN"),
     client_id: System.fetch_env!("GITHUB_CLIENT_ID"),
-    client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET")
+    client_secret: System.fetch_env!("GITHUB_CLIENT_SECRET"),
+    app_id: System.get_env("GITHUB_APP_ID"),
+    app_private_key: System.get_env("GITHUB_APP_PRIVATE_KEY")
 
   # ## SSL Support
   #

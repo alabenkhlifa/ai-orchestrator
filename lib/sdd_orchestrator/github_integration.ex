@@ -25,8 +25,23 @@ defmodule SddOrchestrator.GitHubIntegration do
   @doc "The exact OAuth callback URL, derived from the deployment origin."
   def callback_url, do: app_origin() <> "/auth/github/callback"
 
-  @doc "The public GitHub App installation URL for `Continue to GitHub`."
-  def installation_url, do: "https://github.com/apps/#{app_slug()}/installations/new"
+  @doc """
+  The public GitHub App installation URL for `Continue to GitHub`, carrying a
+  one-time `state` value GitHub echoes back to the setup return.
+  """
+  def installation_url(state) do
+    query = URI.encode_query(state: state)
+    "https://github.com/apps/#{app_slug()}/installations/new?#{query}"
+  end
+
+  @doc """
+  The exact repository permission scope onboarding relies on. Onboarding reads
+  repository metadata only; no repository write permission is approved or used.
+  """
+  @spec approved_repository_permissions() :: %{String.t() => String.t()}
+  def approved_repository_permissions do
+    config()[:approved_repository_permissions] || %{"metadata" => "read"}
+  end
 
   @doc """
   Builds the GitHub authorization URL for one attempt.
@@ -75,4 +90,97 @@ defmodule SddOrchestrator.GitHubIntegration do
 
   @spec refresh_token(String.t()) :: {:ok, Provider.token()} | {:error, term()}
   def refresh_token(refresh_token), do: provider().refresh_token(refresh_token)
+
+  ## Repository-access discovery
+
+  @typedoc "Normalized repository-access errors surfaced to the picker."
+  @type access_error :: :unauthorized | :rate_limited | :org_restricted | :provider_failure
+
+  @doc """
+  Determines the user's `Orchestra-workflow` repository access.
+
+  Returns:
+
+    * `{:ok, :granted, installations}` — at least one accessible installation.
+    * `{:ok, :pending, org_login}` — no installation, but the user has an
+      organization installation request awaiting approval.
+    * `{:ok, :none}` — no installation and no matching pending request; the grant
+      screen is shown.
+    * `{:error, reason}` — a normalized provider failure.
+
+  A pending request counts only when its `requester_id` matches the authenticated
+  GitHub user, so a pending request is never treated as granted access.
+  """
+  @spec check_repository_access(String.t(), integer()) ::
+          {:ok, :granted, [Provider.installation()]}
+          | {:ok, :pending, String.t() | nil}
+          | {:ok, :none}
+          | {:error, access_error()}
+  def check_repository_access(access_token, github_user_id) do
+    case provider().list_user_installations(access_token) do
+      {:ok, []} -> pending_or_none(github_user_id)
+      {:ok, installations} -> {:ok, :granted, installations}
+      {:error, reason} -> {:error, normalize_error(reason)}
+    end
+  end
+
+  defp pending_or_none(github_user_id) do
+    case provider().list_pending_installation_requests() do
+      {:ok, requests} ->
+        case Enum.find(requests, &(&1.requester_id == github_user_id)) do
+          nil -> {:ok, :none}
+          request -> {:ok, :pending, request.account_login}
+        end
+
+      {:error, _reason} ->
+        # Without a reliable pending-request read, fall back to the grant screen;
+        # the user can still start the installation from there.
+        {:ok, :none}
+    end
+  end
+
+  @doc """
+  Loads every repository accessible across the given installations, deduplicated
+  by numeric repository id and ordered by owner/name for stable display. The
+  catalog is fetched on demand and never persisted.
+  """
+  @spec list_accessible_repositories(String.t(), [Provider.installation()]) ::
+          {:ok, [Provider.repository()]} | {:error, access_error()}
+  def list_accessible_repositories(access_token, installations) do
+    installations
+    |> Enum.reduce_while({:ok, []}, fn installation, {:ok, acc} ->
+      case provider().list_installation_repositories(access_token, installation.id) do
+        {:ok, repos} -> {:cont, {:ok, acc ++ repos}}
+        {:error, reason} -> {:halt, {:error, normalize_error(reason)}}
+      end
+    end)
+    |> case do
+      {:ok, repos} -> {:ok, repos |> dedupe_by_id() |> sort_for_display()}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp dedupe_by_id(repos) do
+    {deduped, _seen} =
+      Enum.reduce(repos, {[], MapSet.new()}, fn repo, {kept, seen} ->
+        if MapSet.member?(seen, repo.id) do
+          {kept, seen}
+        else
+          {[repo | kept], MapSet.put(seen, repo.id)}
+        end
+      end)
+
+    Enum.reverse(deduped)
+  end
+
+  defp sort_for_display(repos) do
+    Enum.sort_by(repos, fn repo ->
+      {String.downcase(repo.owner || ""), String.downcase(repo.name || "")}
+    end)
+  end
+
+  defp normalize_error(reason) when reason in [:unauthorized, :rate_limited, :org_restricted],
+    do: reason
+
+  defp normalize_error(_reason), do: :provider_failure
 end

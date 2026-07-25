@@ -66,7 +66,10 @@ config :sdd_orchestrator, :github,
   api_version: "2026-03-10",
   authorize_url: "https://github.com/login/oauth/authorize",
   token_url: "https://github.com/login/oauth/access_token",
-  api_base_url: "https://api.github.com"
+  api_base_url: "https://api.github.com",
+  # Onboarding relies on repository metadata only. No repository write
+  # permission is approved for this slice; onboarding calls no write endpoint.
+  approved_repository_permissions: %{"metadata" => "read"}
 
 # Cloak vault ciphers are configured per environment because the key is a secret.
 

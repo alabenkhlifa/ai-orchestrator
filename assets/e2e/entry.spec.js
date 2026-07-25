@@ -63,6 +63,20 @@ test.describe("entry surface", () => {
     await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
   });
 
+  test("the onboarding storage route is protected when unauthenticated", async ({ page }) => {
+    // The grant, picker, and storage handoff are behind a valid session; the
+    // authenticated flow is carried by the integration task (Task 9).
+    await page.goto("/onboarding/storage/00000000-0000-0000-0000-000000000000");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
+  });
+
+  test("the GitHub install handoff is protected when unauthenticated", async ({ page }) => {
+    await page.goto("/github/install?attempt_id=00000000-0000-0000-0000-000000000000");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
+  });
+
   for (const colorScheme of ["light", "dark"]) {
     test(`entry has no serious accessibility violations (${colorScheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme });

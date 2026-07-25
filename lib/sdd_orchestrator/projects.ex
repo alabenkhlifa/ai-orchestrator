@@ -91,6 +91,50 @@ defmodule SddOrchestrator.Projects do
     end
   end
 
+  @doc """
+  Records the confirmed repository selection on a workspace-scoped attempt.
+
+  Only the approved repository metadata is stored (numeric id, owner, name,
+  visibility, organization, url). Returns `{:error, :not_found}` for an unknown,
+  malformed, or cross-workspace attempt so a foreign attempt is never written.
+  The repository is stored as-selected; whether it is already linked is enforced
+  by the registration transaction, not here.
+  """
+  @spec select_repository(PersonalWorkspace.t(), String.t(), map()) ::
+          {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def select_repository(%PersonalWorkspace{} = workspace, attempt_id, repository)
+      when is_binary(attempt_id) and is_map(repository) do
+    case get_onboarding_attempt(workspace, attempt_id) do
+      nil ->
+        {:error, :not_found}
+
+      %ProjectOnboardingAttempt{} = attempt ->
+        attempt
+        |> ProjectOnboardingAttempt.select_repository_changeset(selected_metadata(repository))
+        |> Repo.update()
+    end
+  end
+
+  # Persist only the approved metadata, with string keys for stable jsonb storage.
+  # Accepts a repository map keyed by either atoms (from the provider) or strings.
+  defp selected_metadata(repository) do
+    %{
+      "provider" => "github",
+      "repository_id" => field(repository, :id),
+      "owner" => field(repository, :owner),
+      "name" => field(repository, :name),
+      "full_name" => field(repository, :full_name),
+      "private" => field(repository, :private) || false,
+      "visibility" => field(repository, :visibility),
+      "html_url" => field(repository, :html_url),
+      "organization" => field(repository, :organization)
+    }
+  end
+
+  defp field(repository, key) do
+    Map.get(repository, key) || Map.get(repository, Atom.to_string(key))
+  end
+
   defp active_attempt_query(workspace_id) do
     now = now()
 

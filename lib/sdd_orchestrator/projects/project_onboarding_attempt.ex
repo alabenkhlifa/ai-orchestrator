@@ -42,4 +42,18 @@ defmodule SddOrchestrator.Projects.ProjectOnboardingAttempt do
     |> unique_constraint(:idempotency_key)
     |> foreign_key_constraint(:workspace_id)
   end
+
+  @doc """
+  Changeset that records the user's selected repository on the attempt. Stores
+  only the approved repository metadata as a map and advances the status. The
+  storage step and registration consume this later.
+  """
+  def select_repository_changeset(attempt, selected_repository) do
+    attempt
+    |> cast(%{selected_repository: selected_repository, status: "repository_selected"}, [
+      :selected_repository,
+      :status
+    ])
+    |> validate_required([:selected_repository])
+  end
 end

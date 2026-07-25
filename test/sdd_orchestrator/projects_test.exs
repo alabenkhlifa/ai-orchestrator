@@ -102,6 +102,65 @@ defmodule SddOrchestrator.ProjectsTest do
     end
   end
 
+  describe "select_repository/3" do
+    setup %{workspace: workspace} do
+      {:ok, attempt} = Projects.start_onboarding_attempt(workspace)
+      %{attempt: attempt}
+    end
+
+    @repo %{
+      id: 101,
+      owner: "octo",
+      name: "example",
+      full_name: "octo/example",
+      private: false,
+      visibility: "public",
+      html_url: "https://github.com/octo/example",
+      organization: nil,
+      # not part of the approved metadata; must not be persisted
+      description: "leaked"
+    }
+
+    test "persists only the approved repository metadata onto the attempt", %{
+      workspace: workspace,
+      attempt: attempt
+    } do
+      assert {:ok, updated} = Projects.select_repository(workspace, attempt.id, @repo)
+
+      assert updated.status == "repository_selected"
+
+      assert updated.selected_repository == %{
+               "provider" => "github",
+               "repository_id" => 101,
+               "owner" => "octo",
+               "name" => "example",
+               "full_name" => "octo/example",
+               "private" => false,
+               "visibility" => "public",
+               "html_url" => "https://github.com/octo/example",
+               "organization" => nil
+             }
+
+      refute Map.has_key?(updated.selected_repository, "description")
+    end
+
+    test "creates no project or repository connection", %{workspace: workspace, attempt: attempt} do
+      {:ok, _updated} = Projects.select_repository(workspace, attempt.id, @repo)
+
+      refute Projects.has_projects?(workspace)
+    end
+
+    test "never writes another workspace's attempt", %{attempt: attempt} do
+      other = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+
+      assert {:error, :not_found} = Projects.select_repository(other, attempt.id, @repo)
+    end
+
+    test "returns not_found for a malformed attempt id", %{workspace: workspace} do
+      assert {:error, :not_found} = Projects.select_repository(workspace, "not-a-uuid", @repo)
+    end
+  end
+
   describe "get_onboarding_attempt/2" do
     test "returns the attempt scoped to its workspace", %{workspace: workspace} do
       {:ok, attempt} = Projects.start_onboarding_attempt(workspace)

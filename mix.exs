@@ -77,6 +77,9 @@ defmodule SddOrchestrator.MixProject do
       {:req, "~> 0.5"},
       {:cloak_ecto, "~> 1.3"},
 
+      # Short-lived RS256 GitHub App JWTs (installation-request lookup).
+      {:joken, "~> 2.6"},
+
       # Code quality and security gate (see `mix check` alias and canonical checks).
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

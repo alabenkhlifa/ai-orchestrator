@@ -17,6 +17,11 @@ defmodule SddOrchestratorWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # Requires a valid application session for full-page controller routes.
+  pipeline :require_account do
+    plug :require_authenticated
+  end
+
   scope "/", SddOrchestratorWeb do
     pipe_through :browser
 
@@ -41,7 +46,17 @@ defmodule SddOrchestratorWeb.Router do
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
       live "/projects", ProjectsLive
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
+      live "/onboarding/storage/:attempt_id", StorageSelectionLive
     end
+  end
+
+  # GitHub App installation handoff and validated return (full-page redirects,
+  # not LiveView). Both require an authenticated session.
+  scope "/", SddOrchestratorWeb do
+    pipe_through [:browser, :require_account]
+
+    get "/github/install", GitHubSetupController, :install
+    get "/github/setup", GitHubSetupController, :setup
   end
 
   # Non-product design-system preview. Available only in dev and test as the
