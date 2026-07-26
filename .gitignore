@@ -61,5 +61,10 @@ npm-debug.log
 .env
 .env.*
 
+# GitHub App private keys (RS256 .pem, e.g. orchestra-workflow.<date>.private-key.pem).
+# Used only to sign the app JWT locally; never committed.
+*.pem
+*.private-key
+
 # Python bytecode cache (e.g. from the spec validator scripts).
 __pycache__/
