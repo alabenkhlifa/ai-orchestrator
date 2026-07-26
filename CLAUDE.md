@@ -86,6 +86,7 @@ Report product-requirement, technical-design, implementation, verification, and 
 - Before starting or resuming a slice, fetch and check whether its slice branch already exists locally or on the remote. If it exists, continue on it after rebasing or fast-forwarding onto the latest default branch and never create a second branch for the same slice; only create the branch, from an up-to-date default branch, when none exists.
 - Let task commits accumulate on the slice branch under the scoped, explicit-path, task-boundary rules above, and merge the slice branch into the default branch when the slice passes its verification gate.
 - Coordinate multiple agents or developers within one slice at task granularity through `tasks.md` ownership and the stop condition; use a short-lived per-task branch off the slice branch only for genuine parallel work inside the same slice, then merge it back into the slice branch.
+- When the user says this work will run in parallel with other AI agents, give each agent its own Git worktree and assigned branch, and run each concurrent local server on a distinct port. Never share one working directory or runtime port across parallel agents.
 
 ## Current Project Checks
 
