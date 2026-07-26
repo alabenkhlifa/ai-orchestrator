@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Approved
 
 ## Outcome
 
@@ -45,6 +45,7 @@ A user with separate GitHub and passwordless hosted identities can enter one sta
 - Durable suppression of automatic re-linking after explicit unlink.
 - Explicit two-proof re-linking, including when verified emails differ.
 - Audit, disclosure, GDPR governance, and account-neutral failure behavior.
+- First-release confirmed-merge dispute handling limited to support-assisted verified review.
 
 ## Out of Scope
 
@@ -86,6 +87,7 @@ A user with separate GitHub and passwordless hosted identities can enter one sta
 - After commit, the absorbed workspace is immediately replaced by one inaccessible merge record containing only source workspace ID, surviving workspace ID, merge event ID, status, completion time, and approved deletion deadline.
 - The merge record contains no project identifiers or content, repository metadata, email, credentials, sessions, worker secrets, conflict details, membership data, or analytics join keys.
 - The merge record is personal data accessible only to approved idempotency, security-audit, verified-support, rights, retention, and deletion workflows. Its lawful basis and shortest necessary retention require privacy or legal approval.
+- A merge the user explicitly confirmed is not reversible by self-service in the first release. A later dispute of a confirmed merge is handled only through an approved verified-support and data-subject-rights review using the audit trail and the minimal merge record; the product retains no additional absorbed-workspace state to reconstruct the merge automatically.
 - Identity merging must not create, reconcile, change, or delete collaboration membership, invitation, role, or permission records.
 - Candidate detection, proof, confirmation, merge attempts, and results are disclosed and auditable under the approved GDPR data contract.
 - A successfully linked GitHub identity remains a sign-in method for the surviving hosted identity and workspace.
@@ -98,6 +100,7 @@ A user with separate GitHub and passwordless hosted identities can enter one sta
 - Successful unlink creates a minimal privacy-governed policy that blocks future automatic GitHub linking.
 - Explicit re-link requires fresh GitHub authentication, fresh passwordless proof, identification and confirmation of both accounts, complete project conflict preflight, and atomic commit.
 - A returned verified primary GitHub email may differ from the passwordless email during explicit re-link; automatic normalization and ASCII rules neither authorize nor reject this two-proof flow.
+- Explicit re-link may proceed even when GitHub returns no verified primary email at all; fresh proof of both sign-in methods and explicit confirmation authorize re-link, and the automatic ASCII and normalization rules neither authorize nor block this two-proof path.
 - Failed, cancelled, unconfirmed, or conflicted re-link attempts preserve the unlink policy and both identity boundaries.
 - Re-linked repository connections remain disconnected until the new GitHub authorization is validated for each repository.
 - Accountless on-device projects are never attached, uploaded, synchronized, duplicated, or assigned to a hosted identity merely because authentication or linking occurs.
@@ -125,22 +128,18 @@ A user with separate GitHub and passwordless hosted identities can enter one sta
 - Given the absorbed workspace has a paired worker, when merge succeeds, then the old credential is revoked, the worker and files remain, and explicit re-pairing is required.
 - Given merge fails, when the old worker reconnects, then its prior pairing remains valid.
 - Given merge succeeds, when retained source-workspace storage is inspected, then only the six approved merge-record fields remain and the record is absent from ordinary interfaces.
-- Given the merge record lacks an approved lawful basis or retention, when implementation approval is evaluated, then the feature remains blocked.
+- Given the recorded merge-record data contract of fields, lawful basis, access, retention, and deletion, when implementation readiness is evaluated, then implementation may proceed while final legal confirmation of the lawful basis and exact retention remains a release-gate item.
+- Given a user disputes a merge they explicitly confirmed, when recovery is requested, then no self-service un-merge is offered and the case is handled only through the approved verified-support and rights workflow using audit and merge-record evidence.
 - Given passwordless email access is lost after GitHub was linked, when the linked GitHub identity authenticates successfully, then the surviving hosted identity and workspace are restored without changing the verified email.
 - Given only the linked GitHub identity or its hosted session is proven, when verified-email change, GitHub unlinking, or explicit re-linking is attempted, then the operation is denied without mutation.
 - Given fresh passwordless proof and confirmation, when unlink succeeds, then GitHub access is removed while the stable passwordless workspace and projects remain unchanged and dependent repositories become disconnected.
 - Given unlink proof is invalid, stale, mismatched, or cancelled, when the attempt ends, then no identity, credential, session, project, or connection changes.
 - Given the user later signs in with GitHub after unlinking, when authentication completes, then automatic linking remains disabled even if emails match.
 - Given both sign-in methods are freshly proven, the identified accounts are confirmed, and preflight passes, when explicit re-link commits, then GitHub is attached atomically even if the verified emails differ.
+- Given an explicit re-link where GitHub returns no verified primary email, when both sign-in methods are freshly proven and the user confirms, then re-link commits atomically under the two-proof rule without relying on automatic email matching.
 - Given explicit re-link fails or is cancelled, when it ends, then the unlink policy and both identity boundaries remain unchanged.
 - Given GitHub is re-linked, when repository connections are shown, then they remain disconnected until individually revalidated.
 
 ## Open Questions
 
-- Which exact domains and account types have sufficient official evidence for launch case folding, dot removal, `+tag` stripping, or combinations?
-- How are allowlist evidence, security review, versions, deployment, and removal of a rule governed?
-- What lawful basis and shortest retention receive privacy or legal approval for the minimal merge record?
-- Product requirements: What recovery is offered if a user later challenges a merge they explicitly confirmed?
-- Product requirements: Can explicit re-link proceed when GitHub returns no verified primary email, provided both sign-in methods are freshly proven?
-- What minimum fields, lawful basis, retention, deletion, rights behavior, and privacy review govern the unlink suppression policy?
-- Which provider permissions, transaction model, concurrency controls, audit data, notifications, and verification strategy implement these rules?
+- None.

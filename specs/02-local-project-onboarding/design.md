@@ -136,6 +136,48 @@ Required boundaries:
 - Reason: Repository similarity does not prove that two independently owned project histories are the same project.
 - Consequence: Catalog composition must use stable project identity and remain non-mutating. Exact labels and visual grouping are design decisions, but storage mode and device availability remain visible.
 
+### Minimum Outbound Connection Contract
+
+- Choice: The only data that leaves the device during onboarding is a fixed `RepositoryConnectionContract`: a server-generated opaque `connection_id`, the owning `workspace_id` and `worker_id`, a non-reversible `repository_fingerprint`, coarse compatibility descriptors (`app_version`, `protocol_version`, `os_family`, `os_major`), and a `connection_status`. The user-chosen project name travels through project registration, not the worker payload.
+- Reason: These fields authorize, deduplicate, restore, and display a connection while keeping local paths, remote URLs, filenames, Git history, and source on the device.
+- Consequence: No hostname, OS username, serial number, MAC address, full path, remote URL, filename, or raw commit id is sent. The folder basename and path stay local; only the naming-rule project name the user confirms is stored server-side.
+
+### Canonical Repository Fingerprint
+
+- Choice: Compute repository identity on the worker as a salted, non-reversible hash of the repository's root-commit object id(s), independent of path, worktree, clone, and remote. An unborn (no-commit) repository uses its local init identity until the first commit, after which the commit-rooted fingerprint applies.
+- Reason: Root-commit history is stable across moves, renames, re-clones, and remote changes and distinguishes unrelated repositories, while a salted hash avoids sending the raw commit id off-device.
+- Consequence: `Locate repository` and duplicate detection compare fingerprints; a non-matching selection is treated as a different repository. Worktrees and clones of the same history intentionally resolve to the same repository.
+
+### macOS Worker Packaging
+
+- Choice: The first worker targets the current macOS major and the immediately previous major (floor macOS 14). It ships as a Developer ID-signed, notarized `.app` delivered in a `.dmg`, updated through a signed in-app update check (appcast), with no App Store dependency and no terminal step.
+- Reason: Signing plus notarization satisfies Gatekeeper for non-technical graphical installation and updates.
+- Consequence: The worker contract stays OS-portable for later Windows and Linux slices. Real signing, notarization, and update-channel proof need an Apple signing identity and the notarization service and are release-gate items; worker protocol behavior is locally verifiable through a contract test double.
+
+### Workspace-Bound Pairing And Outbound Transport
+
+- Choice: Pairing uses a dashboard-issued, attempt-bound, single-use pairing code that expires in minutes; on completion the server issues a per-worker credential stored only as a salted hash server-side, with the raw secret held in the worker's OS keychain. The worker communicates outbound-only over TLS via a worker-initiated persistent connection, so no inbound public port is required. Credentials are rotatable and revocable; a replacement worker re-pairs for a new credential and the old one is revoked; a credential authorizes exactly one workspace.
+- Reason: Attempt binding and single use limit pairing abuse, and outbound-only transport avoids exposing the user's machine.
+- Consequence: Credentials never appear in client payloads, logs, analytics, or project data; incomplete attempts expire; cross-workspace use is denied.
+
+### On-Device Storage Seam
+
+- Choice: This slice owns only the `on_device` storage mode from `specs/05-project-storage-lifecycle/`. The storage-mode explanation reads the storage-selection contract but implements only on-device; hosted storage selection routes to `specs/03-hosted-passwordless-access/` and `specs/05-project-storage-lifecycle/` and stays deferred. The active slice has no authentication dependency.
+- Reason: Local onboarding is accountless; hosted modes need authentication and migration that are separate slices.
+- Consequence: Combined-catalog and hosted-storage integrations remain deferred; only the shared entry surface and shared naming/uniqueness rules are active cross-slice dependencies.
+
+### Worker Verification Strategy
+
+- Choice: Verify with the established Slice 01 toolchain: ExUnit contract and integration tests against a protocol-compatible worker test double over the same outbound transport, security tests for the pairing lifecycle and cross-workspace denial, and Playwright (`npm --prefix assets run test:e2e`) browser scenarios for graphical installation guidance, native selection, first-connection disclosure and confirmation, and connection-state UX, all under `mix check`.
+- Reason: The protocol boundary and application behavior are fully verifiable locally without a signed native binary.
+- Consequence: OS-level packaging, signing, and notarization on real macOS hosts are release-gate proofs; everything else is part of the standard local gate.
+
+### Device-Metadata Data-Protection Contract
+
+- Choice: Treat the outbound connection contract and the pairing-credential hash as personal data. Purpose is limited to establishing and maintaining the repository connection and worker authorization for the created project. Lawful basis is contract necessity for connection metadata and legitimate interest for pairing security events. Access is scoped to the owning workspace, and the credential hash is reachable only by the pairing and verification path. Retention: connection and compatibility for the project lifetime, credential hash until revoked or replaced, pairing attempts expired within minutes, and security-audit events bounded. Deleting the project deletes its connection, compatibility, and fingerprint. Analytics stay aggregate and anonymous with no fingerprint, workspace, or worker identifiers.
+- Reason: Applies data minimization, purpose limitation, storage limitation, and least privilege from the specification onward.
+- Consequence: Final retention durations, the hosting processor, region, and transfer safeguards (if hosted), and the required privacy review are release-gate items; the contract above is sufficient to build and locally verify.
+
 ## Risks
 
 - Pairing compromise could grant machine access. Bind attempts and credentials to one workspace, expire incomplete attempts, and make workers visible and revocable.
@@ -153,11 +195,5 @@ Required boundaries:
 
 ## Open Questions
 
-- Technical design: Which exact fields and internal identifiers satisfy the minimum connection and compatibility contract without exposing prohibited onboarding data?
-- Technical design: Which macOS versions, packaging format, update channel, and signing model apply to the first worker?
-- Technical design: Which pairing protocol, credential lifetime, rotation, and revocation model is approved?
-- Technical design: Which outbound transport works without inbound public access?
-- Technical design: Which canonical identity handles clones, worktrees, moved paths, changed remotes, and replacement workers?
-- Technical design: How does this path depend on the storage-selection, passwordless hosted-access, and project-portability specifications?
-- Technical design: How does catalog composition prove stable project identity and present separate same-repository projects clearly without mutating either boundary?
-- Required verification: Which automated, integration, security, and browser strategy verifies worker behavior on the supported macOS versions?
+- Deferred after this slice: How does combined-catalog composition prove stable project identity and present separate same-repository projects clearly without mutating either boundary? Owned by the combined-catalog work deferred after this slice.
+- Release gate: Real macOS signing, notarization, and update-channel verification; the hosting processor, region, and transfer safeguards if the control plane is hosted; and the final privacy review of the device-metadata and pairing-credential data contract.

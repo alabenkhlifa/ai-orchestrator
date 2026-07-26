@@ -115,13 +115,61 @@ Required boundaries:
 
 - Choice: Retain only source and survivor IDs, merge event ID, status, completion time, and approved deletion deadline.
 - Reason: Idempotency and approved security or support may need evidence, but a soft-deleted workspace would retain excessive personal data.
-- Consequence: Lawful basis, purpose, access, rights, shortest retention, and deletion need privacy or legal approval before implementation.
+- Consequence: The implementable data contract — legitimate-interest basis, minimized fields, restricted access, bounded retention, and enforced deletion — is recorded in `Merge-Record And Unlink-Policy Data Contract` below; final legal confirmation of the lawful basis and exact retention is a release-gate item and does not block implementation.
 
 ### Fresh Proof For Unlink And Re-Link
 
 - Choice: Require fresh passwordless proof to unlink and fresh proof of both sign-in methods plus confirmation to re-link.
 - Reason: A GitHub-only session must not remove or restore its own trust relationship unilaterally.
-- Consequence: Explicit re-link may join different verified emails because control of both identities replaces email equality, while automatic linking rules stay unchanged. A linked GitHub method may preserve account access after passwordless email loss, but it cannot authorize verified-email change, unlinking, or re-linking by itself.
+- Consequence: Explicit re-link may join different verified emails because control of both identities replaces email equality, while automatic linking rules stay unchanged. Explicit re-link may also proceed when GitHub returns no verified primary email, since the two fresh proofs and confirmation, not email, authorize it. A linked GitHub method may preserve account access after passwordless email loss, but it cannot authorize verified-email change, unlinking, or re-linking by itself.
+
+### Launch Provider-Normalization Registry
+
+- Choice: At launch the registry contains only Gmail personal accounts (`gmail.com`, `googlemail.com`), for which Google documents case-insensitive local parts, dot-insignificance, and `+tag` support, enabling case folding, dot removal, and `+tag` stripping for comparison only. Every other domain, including Google Workspace and other custom domains, uses base normalization only and fails closed for alias matching.
+- Reason: Gmail personal behavior is authoritatively documented, and a minimal launch set keeps unintended consolidation risk lowest while governance adds evidence-backed providers later.
+- Consequence: Comparison never rewrites the stored verified address. Adding or removing a provider is a governed change, not an implementation default.
+
+### Registry Governance
+
+- Choice: The registry is versioned; each entry cites official provider documentation and an account-type scope, and every addition, change, or removal requires security review, a version bump, and an audit entry, with rollback supported.
+- Reason: Provider email semantics are security-sensitive and change over time.
+- Consequence: Evidence review and approval for any provider beyond the launch entry are a governed release or operations gate, not an implementation blocker for the launch set.
+
+### GitHub Permission Scope
+
+- Choice: Request the minimum read-only permission needed to read the verified primary email (`user:email` / `read:user`); no repository write scope is requested for linking.
+- Reason: Linking needs only the authoritative verified-primary attribute.
+- Consequence: Secondary addresses are processed transiently and never retained.
+
+### Merge Transaction And Idempotency
+
+- Choice: Candidate state is transient with a short expiry in minutes, and both fresh proofs are bound to one `IdentityMergeAttempt` id. Commit runs as a single Ecto transaction with row-level locks on both identities and workspaces, enforcing project-name and repository uniqueness through database constraints that back the preflight. Idempotency keys on the attempt id and the `WorkspaceMergeRecord` make retries safe, so a duplicate commit is a no-op. Absorbed-workspace worker-credential hashes are invalidated inside the same commit. The deferred unlink and re-link flows reuse the same attempt-bound, locked, idempotent transaction pattern.
+- Reason: Locking, constraint-backed preflight, and idempotency prevent concurrent merges from duplicating or losing data and guarantee all-or-nothing commit.
+- Consequence: Any conflict or fault leaves both original boundaries unchanged, and credentials are revoked, never transferred.
+
+### Confirmed-Merge Dispute Recovery
+
+- Choice: A confirmed merge is not self-service reversible in the first release. A later dispute is handled only through an approved verified-support and data-subject-rights review using the audit trail and the minimal merge record; no additional absorbed-workspace state is retained to reconstruct the merge automatically.
+- Reason: The merge is atomic and irreversible by design, is gated by two fresh proofs and explicit confirmation, and deliberately reduces the absorbed workspace to a minimal record, so a self-service undo would require retaining personal data the minimization decision drops.
+- Consequence: Support and rights review can acknowledge and advise but cannot restore the absorbed workspace; a future reversible path would need a new specification and a retention change.
+
+### Notification, Audit, And Account-Neutral Failure
+
+- Choice: Merge, unlink, and re-link commits notify the surviving hosted identity by email; every attempt and outcome is written to an append-only security-audit log; failures return account-neutral responses and never disclose the matched account before proof.
+- Reason: Users need awareness of identity changes and operators need a diagnosable trail without an enumeration channel.
+- Consequence: Audit payloads exclude secondary emails, tokens, and secrets.
+
+### Verification Strategy
+
+- Choice: Verify with the Slice 01 toolchain: ExUnit unit and integration tests, StreamData property tests for normalization and eligibility, concurrency and fault-injection tests for the merge transaction and idempotency, Sobelow and targeted security tests for candidate secrecy, account-neutrality, and secret exposure, and Playwright (`npm --prefix assets run test:e2e`) scenarios for two-proof, confirmation, and account-neutral failure UX, all under `mix check`.
+- Reason: Every observable rule and the transaction guarantees are locally verifiable with the established gate.
+- Consequence: Only the final privacy or legal review remains a release-gate item.
+
+### Merge-Record And Unlink-Policy Data Contract
+
+- Choice: The `WorkspaceMergeRecord` retains only the six approved fields and the `IdentityLinkPolicy` retains only the minimal fields needed to suppress automatic re-link. Both are personal data on a legitimate-interest basis covering idempotency, security audit, takeover prevention, verified support, and rights handling. Access is restricted to those workflows and analytics linkage is prohibited. Retention: the merge record until its bounded deletion deadline, default 180 days after commit; the unlink policy while the identity exists, since it enforces an ongoing security suppression, then deleted with the identity. Both support rights and deletion workflows.
+- Reason: Minimized, access-restricted, bounded-retention evidence meets idempotency and security needs without an indefinite identity map.
+- Consequence: Final lawful-basis confirmation and exact retention durations are release-gate legal items; the contract above is sufficient to build and locally verify.
 
 ## Risks
 
@@ -137,10 +185,5 @@ Required boundaries:
 
 ## Open Questions
 
-- Technical design: Which provider domains and account types enter the launch normalization registry?
-- Technical design: How are registry review, versioning, deployment, rollback, and rule removal governed?
-- Active-slice implementation: Which lawful basis and retention are approved for the merge record and unlink policy?
-- Product requirements: Which user and support recovery process applies when a user challenges a merge they explicitly confirmed?
-- Product requirements: Is a verified primary GitHub email required for explicit re-link after both methods are proven?
-- Technical design: Which candidate expiry, proof binding, transaction, locking, idempotency, notification, audit, and credential-revocation mechanisms implement the contracts?
-- Required verification: Which privacy, security, integration, concurrency, and browser proof forms the verification gate?
+- Release gate: Final legal confirmation of the lawful basis and exact retention for the minimal merge record and the unlink-suppression policy, and the required privacy review.
+- Governed after launch: Provider-normalization registry changes beyond the Gmail launch entry, each requiring official provider evidence and security review under the recorded governance.

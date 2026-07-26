@@ -2,7 +2,7 @@
 
 ## Status
 
-Blocked
+Not Started
 
 ## Active Slice
 
@@ -74,14 +74,13 @@ Deferred after this slice:
 
 ## Blocked Decisions
 
-- Technical design: Define magic-link lifetime, resend invalidation, protected storage, attempt binding, and consumption behavior.
-- Technical design: Select email delivery, sender, bounce, availability, and processor strategy.
-- Technical design: Define account-neutral abuse controls and rate limits.
-- Technical design: Select session lifetime, inactivity, renewal, protected storage, device-identification, and revocation mechanisms within the approved behavior.
-- Technical design: Integrate pre-linked sign-in recovery without granting verified-email change authority.
-- Active-slice implementation: Approve the GDPR data contract, retention, rights, processor, transfer, anonymisation, and review decisions.
-- Technical design: Select the implementation architecture.
-- Required verification: Define canonical automated, integration, security, and browser commands.
+- None.
+
+## Release Gate
+
+- The production email delivery provider and its data-processing agreement, sender domain, region, and transfer safeguards.
+- Final retention durations for attempts, sessions, delivery records, and security logs recorded in `design.md`.
+- Required privacy or legal review and anonymisation confirmation for the authentication data-protection contract.
 
 ## Progress Log
 
@@ -91,3 +90,10 @@ Deferred after this slice:
 - Remaining: Resolve token, delivery, abuse, session mechanism, privacy implementation, architecture, and verification decisions.
 - Failed checks: None; implementation has not started.
 - Spec updates: Product requirements moved from `Draft` to `Approved`; tasks remain `Blocked` at technical design, privacy implementation, and verification readiness.
+
+### 2026-07-27 - Technical design and privacy contract resolved
+
+- Completed: Resolved the magic-link token and consumption mechanism, email delivery adapter, account-neutral abuse controls, persistent session mechanism, pre-linked sign-in seam, application architecture, verification strategy, and the authentication data-protection contract in `design.md`.
+- Remaining: Implement the slice on the approved contracts; complete the release-gate delivery-provider, retention-duration, and privacy-review items.
+- Failed checks: None; implementation has not started.
+- Spec updates: Cleared the technical-design and privacy blockers, replaced `Blocked Decisions` with a `Release Gate`, and moved tasks from `Blocked` to `Not Started`.

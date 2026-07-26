@@ -2,7 +2,7 @@
 
 ## Status
 
-Blocked
+Not Started
 
 ## Active Slice
 
@@ -87,13 +87,12 @@ Deferred after this slice:
 
 ## Blocked Decisions
 
-- Technical design: Approve exact launch provider rules and their governance.
-- Active-slice implementation: Approve the merge record's purpose, lawful basis, access, shortest retention, deletion, rights behavior, and required review.
-- Product requirements: Define recovery when a user challenges a merge they explicitly confirmed.
-- Product requirements: Define the explicit re-link rule when GitHub has no verified primary email.
-- Active-slice implementation: Approve the unlink-policy data contract and lifecycle before its later slice.
-- Technical design: Select GitHub permissions, candidate expiry, proof binding, identity transaction, locking, idempotency, credential-revocation, notification, and audit mechanisms.
-- Required verification: Define canonical automated, property, integration, concurrency, security, and browser commands.
+- None.
+
+## Release Gate
+
+- Final legal confirmation of the lawful basis and exact retention for the minimal merge record and the unlink-suppression policy, and the required privacy review.
+- Governed provider-normalization registry changes beyond the Gmail launch entry, each requiring official provider evidence and security review.
 
 ## Progress Log
 
@@ -103,3 +102,10 @@ Deferred after this slice:
 - Remaining: Resolve confirmed-merge recovery, no-primary re-link behavior, launch provider rules, privacy approvals, transaction architecture, and verification.
 - Failed checks: None; implementation has not started.
 - Spec updates: Replaced automatic merge with explicit proven linking across workflow, boundaries, proof, tasks, and blockers while preserving the minimal post-merge record.
+
+### 2026-07-27 - Product forks resolved and design unblocked
+
+- Completed: Resolved the two product forks — a disputed confirmed merge is support-assisted only, and explicit re-link may proceed with no verified primary GitHub email — and recorded the launch provider-normalization registry and governance, GitHub permission scope, merge transaction and idempotency mechanism, notification and audit behavior, verification strategy, and the merge-record and unlink-policy data contract in `design.md`.
+- Remaining: Implement the slice on the approved contracts; complete the release-gate final privacy or legal review and any governed registry additions.
+- Failed checks: None; implementation has not started.
+- Spec updates: Moved requirements from `Draft` to `Approved`, cleared the product, technical-design, and privacy blockers, replaced `Blocked Decisions` with a `Release Gate`, and moved tasks from `Blocked` to `Not Started`.

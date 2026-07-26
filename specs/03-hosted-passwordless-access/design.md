@@ -101,6 +101,54 @@ Required boundaries:
 - Reason: Users need predictable daily sign-out and a separate recovery action for lost or unknown devices.
 - Consequence: Session management must clearly identify the affected scope, revoke atomically, and leave on-device projects unchanged.
 
+### Magic-Link Token And Consumption
+
+- Choice: A magic link carries a high-entropy random token (256-bit) stored server-side only as a salted hash on a `MagicLinkAttempt` bound to the intended email. Default lifetime is 15 minutes. Consumption is an atomic compare-and-set on the unconsumed state, so a token verifies exactly once and replays fail closed. Requesting or resending a link invalidates prior unconsumed links for that email so only the newest is valid.
+- Reason: Single-use atomic consumption and newest-only validity remove replay and concurrent-credential risk without a password.
+- Consequence: The raw token exists only inside the delivered link; it never appears in persisted data, client payloads, analytics, or logs. Lifetime and resend windows are tunable defaults confirmed at security review.
+
+### Email Delivery Adapter
+
+- Choice: Deliver through a pluggable mailer behaviour (Swoosh adapter). Local and CI verification use a test or local adapter; the production delivery provider and its data-processing agreement, sender domain, and region are a release-gate decision. Delivery failure never changes the account-neutral acknowledgement, is logged internally with redaction, and is retriable; a provider outage does not weaken verification.
+- Reason: Decoupling delivery keeps the authentication contract and its tests independent of any single vendor.
+- Consequence: Implementation and local verification proceed against the adapter contract; the concrete processor is selected and reviewed at the release gate.
+
+### Account-Neutral Abuse Controls
+
+- Choice: Apply per-email and per-IP token-bucket rate limits plus a global send cap, returning the identical account-neutral acknowledgement whether or not a request is throttled or the email exists. Repeated requests back off; limits are tunable defaults.
+- Reason: Abuse controls must not become an account-enumeration or unwanted-mail channel.
+- Consequence: Throttling is invisible to the requester; internal diagnostics remain redacted. Final limit values are confirmed at security review.
+
+### Persistent Session Mechanism
+
+- Choice: Sessions are server-side records (Ecto-backed) referenced by a signed, HttpOnly, Secure cookie, independent per device and persistent across browser restarts. Default absolute lifetime is 30 days with sliding renewal on activity; revocation deletes the server record so the cookie is rejected. Device identification stores only coarse recognition fields (user-agent family, OS family, first-seen and last-seen timestamps) with no IP retention and no fingerprinting. Single sign-out deletes the current session record; `Sign out all devices` deletes every session record for the identity.
+- Reason: Server-side records make each device session independently visible, renewable, and revocable while keeping device data minimal.
+- Consequence: Coding-agent processes receive no session credential. Exact lifetime, inactivity, and renewal values are tunable defaults confirmed at security review.
+
+### Pre-Linked Sign-In Seam
+
+- Choice: A `HostedIdentity` may carry multiple `ExternalIdentity` sign-in methods; authenticating through any of them restores the same identity and workspace. The verification path never grants verified-email-change authority. In this slice the only additional sign-in method is GitHub, delivered by `specs/04-github-identity-linking/`; this slice implements the seam and the account-neutral failure when no pre-linked method exists.
+- Reason: Recovery through a pre-linked method must reuse the identity boundary without becoming an email-change or account-takeover path.
+- Consequence: The deferred two-proof email-change flow is the only route to change the verified email; no first-release support override exists.
+
+### Application Architecture
+
+- Choice: Implement on the existing Phoenix application: Phoenix and Ecto over Postgres, LiveView for the request, waiting, resend, and session-management flows, Swoosh for delivery, and a rate limiter for abuse controls, with tokens and session references handled by signed, hashed representations.
+- Reason: The authentication and session boundaries fit the established Slice 01 stack with no new platform.
+- Consequence: No implicit new technology is introduced; the architecture is an engineering decision within the approved behavior.
+
+### Verification Strategy
+
+- Choice: Verify with the Slice 01 toolchain: ExUnit for request, delivery, verification, replay, concurrency, session, restoration, and cross-user isolation; Sobelow and targeted security tests for enumeration, abuse, and secret exposure; and Playwright (`npm --prefix assets run test:e2e`) desktop and mobile scenarios for the complete flow, resend, expiry, failure, multi-device, and revocation, all under `mix check`.
+- Reason: Every observable authentication and session behavior is locally verifiable with the established gate.
+- Consequence: Only the production delivery provider and final privacy or legal review remain release-gate items.
+
+### Authentication Data-Protection Contract
+
+- Choice: Personal data is the verified email, `ExternalIdentity`, `MagicLinkAttempt` (hashed token, intended email, expiry, consumption state, minimal diagnostic), `HostedSession` (coarse device fields and timestamps), delivery records, and security logs. Purposes are authentication, session management, and abuse and security protection. Lawful basis is contract necessity for authentication and sessions and legitimate interest for abuse and security logging. Retention: attempts expire in minutes and are purged shortly after, sessions until revoked or expired then purged, delivery records short and redacted, and security logs bounded. Erasure removes the identity, its sessions, and attempts; analytics stay aggregate and anonymous with no email hash, IP address, pseudonym, or session or delivery identifier.
+- Reason: Applies data minimization, purpose limitation, storage limitation, and least privilege across primary, derived, and processor storage.
+- Consequence: Final retention durations, the delivery processor and its region and transfer safeguards, and the required privacy review are release-gate items; the recorded contract is sufficient to build and locally verify.
+
 ## Risks
 
 - Magic links can be stolen, replayed, leaked through referrers, or logged. Use protected token storage, short lifetime, single-use atomic consumption, and surface reviews.
@@ -117,12 +165,5 @@ Required boundaries:
 
 ## Open Questions
 
-- Technical design: Which token generation, protected storage, expiry, resend, and single-use mechanism is approved?
-- Technical design: Which delivery provider and processor contract is acceptable?
-- Technical design: Which abuse controls and rate limits preserve account-neutral behavior?
-- Technical design: Which session lifetime, inactivity limit, renewal, protected storage, device-identification, and revocation mechanisms satisfy the approved observable behavior?
-- Technical design: How does hosted access integrate a pre-linked sign-in method without allowing it, an existing session, or support to authorize verified-email changes?
-- Technical design: How does catalog composition prove stable project identity and present separate same-repository projects clearly without implicit identity or storage mutation?
-- Active-slice implementation: Which GDPR data contract and privacy review apply to email, delivery, authentication, device-session details, logs, and support?
-- Technical design: Which application architecture implements the approved authentication and session boundaries?
-- Required verification: Which automated, integration, security, and browser tests form the verification gate?
+- Deferred after this slice: How does combined-catalog composition prove stable project identity and present separate same-repository projects clearly without implicit identity or storage mutation? Owned by the catalog integration deferred after this slice.
+- Release gate: The production delivery provider and its processor agreement, sender domain, region, and transfer safeguards; final retention durations; and the required privacy or legal review of the authentication data-protection contract.

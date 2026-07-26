@@ -2,7 +2,7 @@
 
 ## Status
 
-Blocked
+Not Started
 
 ## Active Slice
 
@@ -88,13 +88,13 @@ Release boundary:
 
 ## Blocked Decisions
 
-- Technical design: Define the exact minimum connection and compatibility fields and internal identifiers within the approved outbound-data boundary.
-- Technical design: Select supported macOS versions, packaging, update, and signing mechanisms.
-- Technical design: Select the pairing protocol, credential lifecycle, outbound transport, replacement pairing, and revocation behavior.
-- Technical design: Define canonical local repository identity across clones, worktrees, moved paths, changed remotes, and replacement workers.
-- Technical design: Approve integration boundaries with project storage selection and hosted passwordless access.
-- Required verification: Select the application-to-worker test strategy and canonical commands.
-- Active-slice implementation: Approve the GDPR data contract, retention, processor, transfer, rights, and review decisions for outbound metadata and pairing credentials.
+- None.
+
+## Release Gate
+
+- Real macOS signing, notarization, and update-channel verification on supported macOS hosts, which needs an Apple signing identity and the notarization service.
+- If the control plane is hosted, the hosting processor, region, and transfer safeguards for outbound device metadata and pairing credentials.
+- Final privacy review and confirmation of retention durations for the device-metadata and pairing-credential data contract recorded in `design.md`.
 
 ## Progress Log
 
@@ -111,3 +111,10 @@ Release boundary:
 - Remaining: Resolve the classified metadata-contract, technical, privacy, and verification blockers before implementation can start.
 - Failed checks: None; implementation has not started.
 - Spec updates: Product requirements moved from `Draft` to `Approved`; tasks remain `Blocked` at technical design and implementation readiness.
+
+### 2026-07-27 - Technical design and privacy contract resolved
+
+- Completed: Resolved the minimum outbound connection contract, canonical repository fingerprint, macOS packaging and signing, workspace-bound pairing and outbound transport, on-device storage seam, worker verification strategy, and the device-metadata data-protection contract in `design.md`.
+- Remaining: Implement the slice on the approved contracts; complete the release-gate signing, notarization, hosting-processor, and final privacy-review items.
+- Failed checks: None; implementation has not started.
+- Spec updates: Cleared the technical-design and privacy blockers, replaced `Blocked Decisions` with a `Release Gate`, and moved tasks from `Blocked` to `Not Started`.
