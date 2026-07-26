@@ -29,7 +29,7 @@ defmodule SddOrchestrator.Projects.ProjectOnboardingAttempt do
     field :expires_at, :utc_datetime
     field :consumed_at, :utc_datetime
 
-    belongs_to :workspace, SddOrchestrator.Accounts.PersonalWorkspace
+    belongs_to :workspace, SddOrchestrator.Accounts.Workspace
 
     timestamps()
   end
@@ -62,7 +62,10 @@ defmodule SddOrchestrator.Projects.ProjectOnboardingAttempt do
     attempt
     |> cast(%{storage_mode: storage_mode}, [:storage_mode])
     |> validate_required([:storage_mode])
-    |> validate_inclusion(:storage_mode, ["hosted", "device"])
+    |> validate_inclusion(
+      :storage_mode,
+      SddOrchestrator.ProjectStorage.StorageMode.values()
+    )
   end
 
   @doc """

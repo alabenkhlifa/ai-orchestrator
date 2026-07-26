@@ -21,6 +21,7 @@ defmodule SddOrchestrator.ProjectStorage do
 
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
+  alias SddOrchestrator.ProjectStorage.StorageMode
 
   @type mode :: :hosted | :device
   @type availability :: :available | {:unavailable, atom()}
@@ -84,8 +85,6 @@ defmodule SddOrchestrator.ProjectStorage do
   def available?(mode, attempt), do: availability(mode, attempt) == :available
 
   @doc "Parses a storage-mode string into its atom, or `:error`."
-  @spec parse_mode(String.t()) :: {:ok, mode()} | :error
-  def parse_mode("hosted"), do: {:ok, :hosted}
-  def parse_mode("device"), do: {:ok, :device}
-  def parse_mode(_), do: :error
+  @spec parse_mode(String.t() | mode()) :: {:ok, mode()} | :error
+  def parse_mode(mode), do: StorageMode.to_atom(mode)
 end

@@ -15,13 +15,16 @@ defmodule SddOrchestrator.Accounts do
   """
   import Ecto.Query
 
+  alias Ecto.Multi
+
   alias SddOrchestrator.Accounts.{
     Account,
     ApplicationSession,
     GitHubAuthorizationAttempt,
     GitHubCredential,
     GitHubIdentity,
-    PersonalWorkspace
+    PersonalWorkspace,
+    Workspace
   }
 
   alias SddOrchestrator.GitHubIntegration
@@ -177,26 +180,64 @@ defmodule SddOrchestrator.Accounts do
   @doc "Returns the personal workspace for an account, or nil."
   @spec get_personal_workspace(binary()) :: PersonalWorkspace.t() | nil
   def get_personal_workspace(account_id) when is_binary(account_id) do
-    Repo.get_by(PersonalWorkspace, account_id: account_id)
+    case Repo.get_by(PersonalWorkspace, account_id: account_id) do
+      nil -> nil
+      %PersonalWorkspace{} = profile -> Repo.preload(profile, :workspace)
+    end
   end
 
   @doc """
   Restores the account's one stable personal workspace, creating it on first
-  use. The unique `account_id` constraint plus `on_conflict: :nothing` makes this
-  idempotent under retry and safe under concurrency: at most one workspace can
-  ever exist for an account, and every caller resolves the same row.
+  use. The common root and personal profile are inserted in one transaction.
+  The unique `account_id` constraint makes this idempotent under retry and safe
+  under concurrency: a losing transaction rolls back its unused root and every
+  caller resolves the same row.
   """
   @spec get_or_create_personal_workspace(Account.t() | binary()) :: PersonalWorkspace.t()
   def get_or_create_personal_workspace(%Account{id: account_id}),
     do: get_or_create_personal_workspace(account_id)
 
   def get_or_create_personal_workspace(account_id) when is_binary(account_id) do
-    {:ok, _} =
-      %PersonalWorkspace{}
-      |> PersonalWorkspace.changeset(%{account_id: account_id})
-      |> Repo.insert(on_conflict: :nothing, conflict_target: :account_id)
+    case get_personal_workspace(account_id) do
+      nil -> create_personal_workspace(account_id)
+      %PersonalWorkspace{} = workspace -> workspace
+    end
+  end
 
-    Repo.get_by!(PersonalWorkspace, account_id: account_id)
+  @doc "Returns a common logical workspace root, or nil."
+  @spec get_workspace(binary()) :: Workspace.t() | nil
+  def get_workspace(workspace_id) when is_binary(workspace_id),
+    do: Repo.get(Workspace, workspace_id)
+
+  # Create the common hosted root and its personal profile atomically. If a
+  # concurrent caller wins the account-level unique constraint, this transaction
+  # rolls back its unused root and restores the winner.
+  defp create_personal_workspace(account_id) do
+    workspace_id = Ecto.UUID.generate()
+
+    result =
+      Multi.new()
+      |> Multi.insert(
+        :workspace,
+        Workspace.changeset(%Workspace{id: workspace_id}, %{kind: "hosted"})
+      )
+      |> Multi.insert(:personal_workspace, fn %{workspace: workspace} ->
+        PersonalWorkspace.changeset(%PersonalWorkspace{}, %{
+          id: workspace.id,
+          account_id: account_id
+        })
+      end)
+      |> Repo.transaction()
+
+    case result do
+      {:ok, %{personal_workspace: workspace}} ->
+        Repo.preload(workspace, :workspace)
+
+      {:error, _step, _reason, _changes} ->
+        PersonalWorkspace
+        |> Repo.get_by!(account_id: account_id)
+        |> Repo.preload(:workspace)
+    end
   end
 
   defp upsert_account(user, token) do

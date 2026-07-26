@@ -22,6 +22,7 @@ defmodule SddOrchestrator.Projects.Project do
 
   alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ProjectStorage.HostedProjectStorage
+  alias SddOrchestrator.ProjectStorage.StorageMode
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -29,7 +30,6 @@ defmodule SddOrchestrator.Projects.Project do
 
   @type t :: %__MODULE__{}
 
-  @storage_modes ~w(hosted device)
   @name_index :projects_workspace_id_name_key_index
 
   schema "projects" do
@@ -38,7 +38,7 @@ defmodule SddOrchestrator.Projects.Project do
     field :storage_mode, :string
     field :lifecycle_state, :string, default: "active"
 
-    belongs_to :workspace, SddOrchestrator.Accounts.PersonalWorkspace
+    belongs_to :workspace, SddOrchestrator.Accounts.Workspace
     belongs_to :onboarding_attempt, SddOrchestrator.Projects.ProjectOnboardingAttempt
 
     has_one :repository_connection, RepositoryConnection
@@ -54,11 +54,14 @@ defmodule SddOrchestrator.Projects.Project do
   """
   def changeset(project, attrs) do
     project
-    |> cast(attrs, [:name, :workspace_id])
+    |> cast(attrs, [:name, :workspace_id, :storage_mode])
     |> validate_name()
     |> put_name_key()
-    |> validate_required([:name, :workspace_id, :name_key])
+    |> put_default(:storage_mode, "hosted")
+    |> validate_required([:name, :workspace_id, :name_key, :storage_mode])
+    |> validate_inclusion(:storage_mode, StorageMode.values())
     |> foreign_key_constraint(:workspace_id)
+    |> foreign_key_constraint(:workspace_id, name: :projects_workspace_storage_mode_fkey)
     |> unique_constraint(:name, name: @name_index)
   end
 
@@ -75,8 +78,9 @@ defmodule SddOrchestrator.Projects.Project do
     |> put_name_key()
     |> put_default(:lifecycle_state, "active")
     |> validate_required([:name, :workspace_id, :name_key, :storage_mode, :lifecycle_state])
-    |> validate_inclusion(:storage_mode, @storage_modes)
+    |> validate_inclusion(:storage_mode, StorageMode.values())
     |> foreign_key_constraint(:workspace_id)
+    |> foreign_key_constraint(:workspace_id, name: :projects_workspace_storage_mode_fkey)
     |> unique_constraint(:name, name: @name_index)
   end
 
@@ -96,7 +100,7 @@ defmodule SddOrchestrator.Projects.Project do
   end
 
   @doc "The storage modes a project may be registered with."
-  def storage_modes, do: @storage_modes
+  def storage_modes, do: StorageMode.values()
 
   @doc """
   Derives the canonical comparison key for a display name: trim boundary

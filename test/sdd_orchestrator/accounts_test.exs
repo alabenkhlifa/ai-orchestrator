@@ -12,7 +12,8 @@ defmodule SddOrchestrator.AccountsTest do
     ApplicationSession,
     GitHubAuthorizationAttempt,
     GitHubCredential,
-    PersonalWorkspace
+    PersonalWorkspace,
+    Workspace
   }
 
   alias SddOrchestrator.AccountsFixtures
@@ -180,9 +181,17 @@ defmodule SddOrchestrator.AccountsTest do
 
       # A second plain insert (the losing side of a concurrent create) is rejected
       # by the database rather than producing a second workspace.
+      duplicate_root =
+        %Workspace{}
+        |> Workspace.changeset(%{kind: "hosted"})
+        |> Repo.insert!()
+
       assert {:error, changeset} =
                %PersonalWorkspace{}
-               |> PersonalWorkspace.changeset(%{account_id: account.id})
+               |> PersonalWorkspace.changeset(%{
+                 id: duplicate_root.id,
+                 account_id: account.id
+               })
                |> Repo.insert()
 
       assert %{account_id: ["has already been taken"]} = errors_on(changeset)

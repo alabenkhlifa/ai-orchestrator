@@ -13,7 +13,8 @@ defmodule SddOrchestrator.Privacy.RightsTest do
     ApplicationSession,
     GitHubCredential,
     GitHubIdentity,
-    PersonalWorkspace
+    PersonalWorkspace,
+    Workspace
   }
 
   alias SddOrchestrator.Privacy.Rights
@@ -76,6 +77,7 @@ defmodule SddOrchestrator.Privacy.RightsTest do
       assert Repo.aggregate(GitHubCredential, :count) == 0
       assert Repo.aggregate(ApplicationSession, :count) == 0
       assert Repo.aggregate(PersonalWorkspace, :count) == 0
+      assert Repo.aggregate(Workspace, :count) == 0
       assert Repo.aggregate(Project, :count) == 0
       assert Repo.aggregate(RepositoryConnection, :count) == 0
       assert Repo.aggregate(HostedProjectStorage, :count) == 0

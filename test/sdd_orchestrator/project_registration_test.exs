@@ -7,8 +7,9 @@ defmodule SddOrchestrator.ProjectRegistrationTest do
   names with no slug conversion, Unicode `NFKC` plus default case-fold comparison,
   boundary whitespace, blank and control-character rejection, case-insensitive
   conflicts, cross-workspace independence, the `(workspace, provider, repository ID)`
-  constraint with duplicate-repository feedback, hosted and device storage,
-  idempotent retry, rollback with no partial records, and stable identities.
+  constraint with duplicate-repository feedback, hosted storage, rejection of
+  device rows in hosted persistence, idempotent retry, rollback with no partial
+  records, and stable identities.
   """
   use SddOrchestrator.DataCase, async: true
 
@@ -104,7 +105,7 @@ defmodule SddOrchestrator.ProjectRegistrationTest do
       assert project.name == "Roadmap"
     end
 
-    test "device storage creates the project without a hosted storage row", %{
+    test "device storage never writes a project or connection to hosted persistence", %{
       workspace: workspace
     } do
       receipt = %DeviceStorageReceipt{
@@ -120,11 +121,12 @@ defmodule SddOrchestrator.ProjectRegistrationTest do
       {:ok, _} = Projects.record_device_receipt(workspace, attempt.id, receipt)
       {:ok, attempt} = Projects.select_storage_mode(workspace, attempt.id, "device")
 
-      assert {:ok, project} = Projects.register_project(workspace, attempt)
-      assert project.storage_mode == "device"
-      assert project.hosted_storage == nil
+      assert {:error, :device_registration_not_available} =
+               Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(Project, :count) == 0
+      assert Repo.aggregate(RepositoryConnection, :count) == 0
       assert Repo.aggregate(HostedProjectStorage, :count) == 0
-      assert project.repository_connection.state == "connected"
     end
   end
 

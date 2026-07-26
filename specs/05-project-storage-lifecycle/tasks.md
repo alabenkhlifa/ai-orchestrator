@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -51,6 +51,7 @@ Release boundary:
   - Proof: Requirements, design, data contracts, task ownership, sequence, and canonical test commands have no unresolved active-slice blockers, and accountable privacy approval is recorded.
 
 - [ ] Task 2 - Implement the shared project-storage domain boundary.
+  - Status: In Progress.
   - Purpose: Introduce one common logical workspace schema across hosted and device persistence, represent one explicit authoritative mode, and validate ownership without changing existing hosted project identity or copying device project data.
   - Owned surfaces: `Workspace`, hosted-root backfill with stable existing IDs, device-local workspace schema contract, `StorageMode`, logical `ProjectStorageState`, `DeviceWorkspace`, `PersonalWorkspace`, per-destination workspace-kind and mode constraints, signed-in device-project ownership, availability contract, and adapter-specific persistence shape.
   - Owns: AC-05, AC-06, AC-15, entity:Workspace, entity:StorageMode, entity:ProjectStorageState, entity:DeviceWorkspace, entity:PersonalWorkspace, entity:HostedProjectStorage
@@ -105,6 +106,14 @@ Release boundary:
 - None.
 
 ## Progress Log
+
+### 2026-07-27 - Task 2 implementation started
+
+- In progress: Implementing the common logical `Workspace` root, the one-to-one hosted `PersonalWorkspace` profile, the device-local `DeviceWorkspace` contract, shared storage-mode and storage-state validation, stable hosted-ID backfill, and destination constraints.
+- Preflight: Task 1 is complete; Task 2 has no forward dependency; active-slice ownership and traceability validate successfully; the full specification-validator suite passes.
+- Implemented: Renamed the hosted ownership table into the common root through a reversible migration, backfilled one hosted personal profile per unchanged root ID, constrained hosted roots and projects to hosted mode, tied repository connections to their project's root, added the device-local profile and storage-state contracts without hosted device persistence, made personal-workspace creation root/profile atomic, and extended erasure to delete the root.
+- Passing proofs: `python3 .agents/scripts/validate_spec.py specs/05-project-storage-lifecycle`; `python3 .agents/scripts/test_validate_spec.py` (14); `mix format --check-formatted`; `git diff --check`; warnings-as-errors compilation of all changed source modules, database-backed test modules, and the migration against the existing build; standalone `ProjectStorageTest` (11); and direct hosted/device logical-state assertions.
+- Environment-blocked: After approval to use Docker and Mix outside the sandbox, the managed execution policy still rejected both escalations. Normal Docker access remains denied on the socket, while database Mix commands cannot acquire Mix's TCP filesystem lock (`:eperm`). Task 2 remains `In Progress`; its implementation is checkpoint-committed at the user's request, but it cannot be marked complete until the migration apply/rollback/reapply proof, focused database-backed ExUnit tests, and required project checks pass.
 
 ### 2026-07-26 - Scope health checkpoint
 

@@ -45,7 +45,7 @@ defmodule SddOrchestrator.Projects.RepositoryConnection do
     field :state, :string, default: "connected"
 
     belongs_to :project, SddOrchestrator.Projects.Project
-    belongs_to :workspace, SddOrchestrator.Accounts.PersonalWorkspace
+    belongs_to :workspace, SddOrchestrator.Accounts.Workspace
 
     timestamps()
   end
@@ -72,6 +72,9 @@ defmodule SddOrchestrator.Projects.RepositoryConnection do
     |> validate_required([:project_id, :workspace_id, :provider, :provider_repository_id, :state])
     |> foreign_key_constraint(:project_id)
     |> foreign_key_constraint(:workspace_id)
+    |> foreign_key_constraint(:workspace_id,
+      name: :repository_connections_project_workspace_fkey
+    )
     |> unique_constraint([:workspace_id, :provider, :provider_repository_id],
       name: @repo_unique_index
     )

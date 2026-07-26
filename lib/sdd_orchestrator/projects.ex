@@ -3,12 +3,12 @@ defmodule SddOrchestrator.Projects do
   Projects context: the workspace-scoped project catalog, the short-lived
   onboarding-attempt lifecycle, and atomic project registration.
 
-  Attempts and projects are always scoped to a personal workspace, so a catalog
-  query, attempt lookup, or registration can never cross the workspace ownership
-  boundary. `register_project/3` creates the project, its canonical repository
-  connection, and its storage state in one transaction — or leaves no partial
-  record — while `default_project_name/2` and `rename_project/2` own display-name
-  allocation, comparison, and uniqueness.
+  Hosted attempts and projects are scoped through a personal profile to the
+  common logical workspace root, so a catalog query, attempt lookup, or
+  registration can never cross the ownership boundary. `register_project/3`
+  creates a hosted project, its canonical repository connection, and its storage
+  state in one transaction — or leaves no partial record — while device
+  registration remains destination-owned by the worker transaction in Task 4.
   """
   import Ecto.Query
 
@@ -232,6 +232,7 @@ defmodule SddOrchestrator.Projects do
       is_nil(attempt.storage_mode) -> {:error, :storage_mode_required}
       not is_nil(attempt.consumed_at) -> committed_project(workspace, attempt)
       not storage_ready?(attempt) -> {:error, :storage_not_ready}
+      attempt.storage_mode == "device" -> {:error, :device_registration_not_available}
       true -> do_register(workspace, attempt, opts, 0)
     end
   end
@@ -301,13 +302,11 @@ defmodule SddOrchestrator.Projects do
     |> Repo.transaction()
   end
 
-  # Hosted storage joins the transaction through the shared adapter contract;
-  # device storage was prepared out-of-band by specs/02 and its readiness receipt
-  # is validated before the transaction, so it adds no server-side storage here.
+  # Hosted storage joins the transaction through the shared adapter contract.
+  # Task 4 dispatches device registration to the worker-owned local transaction;
+  # device project and connection rows are never written to hosted PostgreSQL.
   defp prepare_storage(multi, %{storage_mode: "hosted"} = attempt),
     do: Hosted.prepare(multi, attempt, [])
-
-  defp prepare_storage(multi, %{storage_mode: "device"}), do: {:ok, multi}
 
   # Hosted is always ready; device requires a valid readiness receipt, checked
   # through the shared ProjectStorage contract.

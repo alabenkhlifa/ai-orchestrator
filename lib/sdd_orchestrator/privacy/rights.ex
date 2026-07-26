@@ -8,9 +8,10 @@ defmodule SddOrchestrator.Privacy.Rights do
     * `export_account/1` — access and portability: gathers the account's identity,
       workspace, projects, repository connections, and session metadata into a
       structured, credential-free map.
-    * `erase_account/1` — erasure: deletes the account, which cascades to its
-      identity, credentials, sessions, workspace, projects, repository connections,
-      hosted storage, and onboarding attempts, reaching every active copy.
+    * `erase_account/1` — erasure: atomically deletes the hosted workspace root
+      and account, cascading to identity, credentials, sessions, the personal
+      profile, projects, repository connections, hosted storage, and onboarding
+      attempts, reaching every active copy.
 
   Retained copies outside the primary store (encrypted backups) are expired by the
   deployment's backup lifecycle, recorded in the deployment privacy profile.
@@ -20,7 +21,16 @@ defmodule SddOrchestrator.Privacy.Rights do
   """
   import Ecto.Query
 
-  alias SddOrchestrator.Accounts.{Account, ApplicationSession, GitHubIdentity, PersonalWorkspace}
+  alias Ecto.Multi
+
+  alias SddOrchestrator.Accounts.{
+    Account,
+    ApplicationSession,
+    GitHubIdentity,
+    PersonalWorkspace,
+    Workspace
+  }
+
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
@@ -46,7 +56,8 @@ defmodule SddOrchestrator.Privacy.Rights do
   end
 
   @doc """
-  Erases an account and every record that cascades from it. Returns
+  Erases an account, its hosted workspace root, and every record that cascades
+  from them. Returns
   `{:error, :not_found}` for an unknown account.
   """
   @spec erase_account(String.t()) :: {:ok, %{account_id: String.t()}} | {:error, :not_found}
@@ -56,9 +67,23 @@ defmodule SddOrchestrator.Privacy.Rights do
         {:error, :not_found}
 
       %Account{} = account ->
-        {:ok, _} = Repo.delete(account)
-        {:ok, %{account_id: account.id}}
+        workspace = Repo.get_by(PersonalWorkspace, account_id: account.id)
+
+        Multi.new()
+        |> maybe_delete_workspace(workspace)
+        |> Multi.delete(:account, account)
+        |> Repo.transaction()
+        |> case do
+          {:ok, _changes} -> {:ok, %{account_id: account.id}}
+          {:error, _step, _reason, _changes} -> {:error, :not_found}
+        end
     end
+  end
+
+  defp maybe_delete_workspace(multi, nil), do: multi
+
+  defp maybe_delete_workspace(multi, %PersonalWorkspace{id: workspace_id}) do
+    Multi.delete_all(multi, :workspace, from(w in Workspace, where: w.id == ^workspace_id))
   end
 
   defp export_identity(account_id) do

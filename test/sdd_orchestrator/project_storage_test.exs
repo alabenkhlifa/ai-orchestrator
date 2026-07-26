@@ -9,6 +9,7 @@ defmodule SddOrchestrator.ProjectStorageTest do
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
+  alias SddOrchestrator.ProjectStorage.StorageMode
 
   defp attempt(device_setup), do: %ProjectOnboardingAttempt{device_setup: device_setup}
 
@@ -28,6 +29,13 @@ defmodule SddOrchestrator.ProjectStorageTest do
       assert ProjectStorage.parse_mode("hosted") == {:ok, :hosted}
       assert ProjectStorage.parse_mode("device") == {:ok, :device}
       assert ProjectStorage.parse_mode("nope") == :error
+    end
+
+    test "normalizes the persisted storage-mode contract" do
+      assert StorageMode.values() == ["hosted", "device"]
+      assert StorageMode.cast(:hosted) == {:ok, "hosted"}
+      assert StorageMode.cast("device") == {:ok, "device"}
+      assert StorageMode.cast(:unknown) == :error
     end
   end
 
