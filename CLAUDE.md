@@ -82,6 +82,10 @@ Report product-requirement, technical-design, implementation, verification, and 
 - Always use a conventional semantic prefix such as `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, or `chore:` in commit messages and titles.
 - Do not add assistant, model, or tool authorship to commits or titles.
 - Commit at each task boundary. Once a task's proof passes and its `tasks.md` write-back is recorded, create one local commit scoped to that task; also commit whenever the user explicitly asks. Do not batch multiple completed tasks into a single commit.
+- Branch implementation per slice, not per task. Use one branch per active slice named `slice/<feature-directory>`, such as `slice/02-local-project-onboarding`, and open at most one pull request per slice.
+- Before starting or resuming a slice, fetch and check whether its slice branch already exists locally or on the remote. If it exists, continue on it after rebasing or fast-forwarding onto the latest default branch and never create a second branch for the same slice; only create the branch, from an up-to-date default branch, when none exists.
+- Let task commits accumulate on the slice branch under the scoped, explicit-path, task-boundary rules above, and merge the slice branch into the default branch when the slice passes its verification gate.
+- Coordinate multiple agents or developers within one slice at task granularity through `tasks.md` ownership and the stop condition; use a short-lived per-task branch off the slice branch only for genuine parallel work inside the same slice, then merge it back into the slice branch.
 
 ## Current Project Checks
 
