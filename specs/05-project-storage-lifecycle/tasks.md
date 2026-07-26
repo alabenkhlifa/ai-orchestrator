@@ -1,88 +1,114 @@
-# Project Storage Lifecycle Tasks
+# Project Storage Selection Tasks
 
 ## Status
 
-Blocked
+Not Started
 
 ## Active Slice
 
-Deliver explicit per-project storage selection at project creation, persist one authoritative storage mode, and show that mode consistently without implementing later migration.
+Deliver one shared storage-selection foundation that lets GitHub and local repository onboarding establish an explicit device or hosted storage mode, commit it atomically with project creation, and show it consistently without implementing later storage migration.
 
 ## Implementation Boundary
 
 Included:
 
-- Device and hosted storage-mode values and ownership boundaries.
+- Shared device and hosted storage-mode values, ownership boundaries, and prerequisite contracts.
 - Plain-language, explicit storage choice for GitHub and local repository projects.
-- Prerequisite validation for accountless device and authorized hosted modes.
-- Persistence and presentation of the authoritative mode in project catalogs and on the new-project dashboard.
-- GDPR data contracts for the introduced records and paths.
-- Automated and browser proof for selection, creation, restoration, and failure.
+- Resumable device setup and hosted sign-in with preserved repository and onboarding state.
+- Atomic persistence of project, repository connection, and authoritative storage mode.
+- Storage-mode and availability presentation in project catalogs and on the new-project dashboard.
+- Non-mutating identity-conflict presentation when currently available authoritative records share a stable project ID.
+- GDPR data contracts and security controls for introduced records and paths.
+- Shared-domain, integration, privacy, security, and browser proof.
 
 Excluded:
 
-- Direct migration, soft deletion, two-year cleanup, resynchronization, and full rehydration in the first slice.
-- Collaboration behavior, repository transfer, portability packages, and agent execution.
+- Authentication, worker installation, repository selection, and other source-specific onboarding mechanics already owned by `specs/01-github-project-onboarding/`, `specs/02-local-project-onboarding/`, and `specs/03-hosted-passwordless-access/`.
+- Storage-mode migration, transfer, authority handoff, synchronization, retained hosted copies, soft deletion, retention, cleanup, legal exceptions, and rehydration.
+- Collaboration behavior, repository transfer, portability packages, project deletion, and agent execution.
+- Resolution, merge, synchronization, deletion, or authority selection for later-visible same-ID records.
 
 Deferred after this slice:
 
-- Hosted-to-device and device-to-hosted migration.
-- Retention enforcement, incremental synchronization, full upload, analytics, legal exceptions, and rights propagation beyond created records.
+- A separate child specification for storage-mode migration and the resulting hosted-copy lifecycle.
+- Deferred criteria: none.
+- Deferred entities: none.
 
 Release boundary:
 
-- This active storage-selection slice is a shared dependency of the GitHub and local onboarding paths and must pass for both before the first usable release.
+- This shared selection slice and both source-owned onboarding integrations must pass before the first usable release.
+- A public hosted deployment remains gated on its deployment-specific controller, processor, region, transfer, notice, incident, retention-enforcement, and required privacy or legal evidence.
+- Release criteria: none.
+- Release entities: none.
 
 ## Tasks
 
-- [ ] Approve the device and hosted storage ownership contract.
-  - Purpose: Define prerequisites, authority, persistence, privacy, and failure behavior before coding.
-  - Proof: Requirements, design, data contracts, and test commands have no unresolved slice blockers.
+- [x] Task 1 - Approve the storage-selection privacy contract.
+  - Purpose: Resolve the active data inventory and lifecycle blocker before coding continues.
+  - Owned surfaces: Active-slice purpose, lawful basis, minimum fields, access, retention, deletion, rights, processor, transfer, review, and release-gate contract.
+  - Owns: none (agreement gate)
+  - Depends on: none
+  - Proof: Requirements, design, data contracts, task ownership, sequence, and canonical test commands have no unresolved active-slice blockers, and accountable privacy approval is recorded.
 
-- [ ] Implement the project-level storage-mode model.
-  - Purpose: Give every project-data record one explicit authoritative boundary.
-  - Proof: Schema and domain tests cover valid modes, ownership, missing-selection rejection, invalid state, and workspace isolation.
+- [ ] Task 2 - Implement the shared project-storage domain boundary.
+  - Purpose: Introduce one common logical workspace schema across hosted and device persistence, represent one explicit authoritative mode, and validate ownership without changing existing hosted project identity or copying device project data.
+  - Owned surfaces: `Workspace`, hosted-root backfill with stable existing IDs, device-local workspace schema contract, `StorageMode`, logical `ProjectStorageState`, `DeviceWorkspace`, `PersonalWorkspace`, per-destination workspace-kind and mode constraints, signed-in device-project ownership, availability contract, and adapter-specific persistence shape.
+  - Owns: AC-05, AC-06, AC-15, entity:Workspace, entity:StorageMode, entity:ProjectStorageState, entity:DeviceWorkspace, entity:PersonalWorkspace, entity:HostedProjectStorage
+  - Depends on: Task 1
+  - Proof: Migration, local-schema contract, constraint, and domain tests cover stable hosted backfill IDs, valid mode and workspace-kind pairs in each destination, hosted detail rows, absence of hosted device project and connection data, device ownership regardless of sign-in, non-owning personal-workspace composition, workspace isolation, invalid state, and rollback.
 
-- [ ] Implement storage selection for both repository sources.
-  - Purpose: Let users understand and explicitly choose where project work is saved without confusing it with repository or agent location.
-  - Proof: Service and browser tests show the approved title, project-work explanation, `On this device` and `In my SDD Orchestrator account` consequences, both modes visible when a prerequisite is missing, relevant setup actions, preserved repository and onboarding state across device setup, return after success, cancellation, or failure, availability refresh without implicit selection, and no silent default.
+- [ ] Task 3 - Implement the shared storage-selection and resumable prerequisite handoff.
+  - Purpose: Let users understand and explicitly choose where project work is saved while preserving repository state across prerequisite setup.
+  - Owned surfaces: Storage-selection LiveView and components, both approved options and cross-device-only hosted copy, availability states, origin and target workspace state, browser-flow and return binding, device-setup and hosted-sign-in return actions, `ProjectOnboardingAttempt`, bound and minimized `DeviceStorageReceipt`, and source-adapter handoff contract.
+  - Owns: AC-01, AC-02, AC-03, AC-14, AC-16, entity:ProjectOnboardingAttempt, entity:DeviceStorageReceipt
+  - Depends on: Task 2
+  - Proof: Service, LiveView, and browser tests cover both repository-source adapters, approved copy without a collaboration promise, visible unavailable modes, stable origin and explicit target ownership, device setup and hosted sign-in, preserved state, success, cancellation, failure, expiry, mismatch, replay, cross-workspace denial, minimized proof persistence, refreshed availability after success, account-neutral unsuccessful sign-in, and no implicit selection or project creation.
 
-- [ ] Integrate storage mode with atomic project creation.
-  - Purpose: Prevent projects with missing, ambiguous, or partially initialized storage.
-  - Proof: Transaction and fault-injection tests prove one committed mode or no project.
+- [ ] Task 4 - Integrate storage state with atomic project creation.
+  - Purpose: Prevent projects with a missing, ambiguous, unavailable, or partially initialized storage boundary.
+  - Owned surfaces: Explicit-selection validation, stable destination project ID, workspace-kind and mode revalidation, `Project`, hosted `Ecto.Multi`, device-local worker transaction, repository-connection transaction participation, hosted-root insertion or device-receipt consumption, destination acknowledgement, adapter preparation and abort or reconciliation, onboarding-attempt consumption, unique idempotency constraints, and committed retry.
+  - Owns: AC-04, AC-07, AC-08, entity:Project
+  - Depends on: Task 2, Task 3
+  - Proof: Hosted and device transaction, constraint, concurrency, retry, replay, lost-acknowledgement, and fault-injection tests prove one destination contains the project, connection, matching owner and mode, and adapter state or no partial destination state; committed retries return the same project, device reconciliation consumes the transient attempt without duplication, failed preparation is aborted or reconciled, and repository content remains unchanged.
 
-- [ ] Show storage mode and availability in project catalogs and on the new-project dashboard.
-  - Purpose: Make mixed device and hosted projects understandable.
-  - Proof: Desktop and mobile scenarios cover mixed modes, unavailable device data, hosted authorization, sign-out, and post-creation dashboard presentation with repository, storage mode, and connection status.
+- [ ] Task 5 - Show authoritative storage mode and availability after creation.
+  - Purpose: Make on-device and hosted projects understandable without catalog composition changing ownership or storage.
+  - Owned surfaces: Post-creation dashboard storage state, mixed-mode project catalog entries, device and connection availability, sign-in or sign-out catalog composition, current-session stable-ID collision detection, separate authoritative-record entries, non-mutating identity-conflict presentation, and absence of cross-boundary collision persistence or analytics.
+  - Owns: AC-09, AC-10, AC-11
+  - Depends on: Task 4
+  - Proof: Query, desktop and mobile LiveView, and browser scenarios cover common workspace scoping, both modes, mixed catalogs, non-owning device-project composition while signed in, unavailable device data, hosted authorization, sign-out with device access preserved, shared-repository entries, separate same-ID authoritative records with identity-conflict state and no resolution action, no cross-boundary collision link or analytics, cross-workspace denial, and post-creation dashboard presentation.
 
-- [ ] Enforce the slice GDPR data contract and security boundary.
-  - Purpose: Govern every introduced record, log, backup, processor, and metric from creation.
-  - Proof: Access, retention, rights, deletion, processor, transfer, anonymisation, and review checks pass.
+- [ ] Task 6 - Enforce the active-slice privacy and security contract.
+  - Purpose: Govern every introduced record, log, processor, and lifecycle without adding product analytics.
+  - Owned surfaces: Active data inventory, access controls, retention and deletion enforcement, rights behavior, processor and transfer configuration, log redaction, secret scanning, and no-analytics proof.
+  - Owns: AC-12, AC-13, AC-17
+  - Depends on: Task 2, Task 3, Task 4, Task 5
+  - Proof: Data-inventory, access, retention, deletion, rights, processor, transfer, log, secret-exposure, and negative analytics checks pass with required privacy or legal approval.
 
 ## Verification Gate
 
 - [ ] Active-slice acceptance criteria pass.
-- [ ] Storage-mode domain, ownership, prerequisite, transaction, and restoration tests pass.
-- [ ] GitHub and local onboarding integration tests pass for both modes.
-- [ ] Storage selection shows the approved labels and explanation, keeps unavailable modes visible with setup actions, preserves repository and onboarding state across device setup, returns to the same step without an implicit choice, and requires an explicit selection.
-- [ ] Mixed catalog, post-creation dashboard, and sign-out browser scenarios pass.
-- [ ] Failure leaves no project with partial or ambiguous storage state.
-- [ ] GDPR data contract, privacy review, and secret-exposure checks pass.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
+- [ ] Every active acceptance criterion and data entity has one clear primary task owner.
+- [ ] Storage-mode domain, ownership, prerequisite, and workspace-isolation tests pass.
+- [ ] Common workspace backfill preserves every existing hosted workspace, project, repository connection, and stable identifier, and invalid workspace-kind and storage-mode pairs are rejected.
+- [ ] GitHub and local source adapters pass shared storage-selection integration tests without transferring source-specific ownership into this specification.
+- [ ] Storage selection shows the approved labels and explanation, describes hosted storage as cross-device access without claiming collaboration, keeps unavailable modes visible with setup actions, preserves repository and onboarding state across device setup and hosted sign-in, returns after every outcome without an implicit choice, and requires an explicit available selection.
+- [ ] Hosted registration commits project, connection, hosted state, mode, and attempt in one `Ecto.Multi`; device registration commits project, local connection, mode, and receipt in one local transaction and reconciles a lost control-plane acknowledgement without duplication.
+- [ ] Expired, mismatched, replayed, or cross-workspace hosted returns and device receipts fail closed; stored prerequisite proof is minimized and one-time.
+- [ ] Mixed catalog, same-ID identity-conflict, post-creation dashboard, device availability, hosted authorization, sign-in, and sign-out browser scenarios pass without merging records or persisting a cross-boundary collision link.
+- [ ] GDPR data contract, retention and deletion controls, privacy review, log review, no-analytics proof, and secret-exposure checks pass.
+- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
+- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
 
 ## Blocked Decisions
 
-- Define the device and hosted persistence and authority model.
-- Define how accountless and hosted identity prerequisites integrate with project creation.
-- Select transaction and failure-recovery behavior for atomic project plus storage initialization.
-- Approve the slice processing purposes, lawful bases, fields, access, retention, deletion, rights, processors, transfers, analytics, and reviews.
-- Select implementation architecture and canonical verification commands.
+- None.
 
 ## Progress Log
 
-### 2026-07-23 - Extracted from project onboarding
+### 2026-07-26 - Scope health checkpoint
 
-- Completed: Isolated per-project storage, direct migration, hosted retention, resynchronization, GDPR lifecycle, anonymous analytics, and legal-retention decisions.
-- Remaining: Resolve the active storage-selection architecture and later migration, synchronization, cleanup, privacy, and analytics blockers.
-- Failed checks: None; implementation has not started.
-- Spec updates: Created a focused lifecycle specification and limited its first executable slice to storage selection.
+- Completed: Narrowed the prior lifecycle umbrella to focused initial storage selection; approved the product and privacy requirements; and defined the common logical workspace schema, single authoritative-mode persistence, bound prerequisite handoff, destination-atomic and idempotent registration, non-mutating presentation of later-visible same-ID records, lifecycle enforcement, and canonical verification design.
+- Remaining: Implement Tasks 2–6, reconcile source-specific onboarding specifications and adapters with the shared destination contract, run the verification gate, and create a separate child specification before implementing storage migration or the retained hosted-copy lifecycle.
+- Failed checks: None; specification validation passes after the consolidated discovery update.
+- Spec updates: Removed migration, synchronization, retention, cleanup, analytics, legal-exception, and identity-collision resolution behavior from this active agreement while preserving stable project and repository identity, keeping later-visible authoritative records separate, and exposing collisions without mutation or cross-boundary tracking.
