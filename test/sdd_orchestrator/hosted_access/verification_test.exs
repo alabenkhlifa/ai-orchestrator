@@ -49,7 +49,7 @@ defmodule SddOrchestrator.HostedAccess.VerificationTest do
                SessionCookie.digest_from_signed(result.session_cookie.value)
 
       assert digest == result.session.token_digest
-      assert SessionCookie.name() == "_sdd_orchestrator_hosted"
+      assert SessionCookie.session_key() == :hosted_session_token
 
       assert SessionCookie.options() == [
                http_only: true,

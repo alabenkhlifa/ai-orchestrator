@@ -3,7 +3,7 @@ defmodule SddOrchestratorWeb.HostedAccessController do
   use SddOrchestratorWeb, :controller
 
   alias SddOrchestrator.HostedAccess
-  alias SddOrchestrator.HostedAccess.{DeviceRecognition, SessionCookie}
+  alias SddOrchestrator.HostedAccess.DeviceRecognition
 
   def verify(conn, %{"attempt" => attempt_id, "token" => raw_token}) do
     device_context =
@@ -16,11 +16,7 @@ defmodule SddOrchestratorWeb.HostedAccessController do
       {:ok, %{session_cookie: session_cookie}} ->
         conn
         |> protect_credential_response()
-        |> put_resp_cookie(
-          SessionCookie.name(),
-          session_cookie.value,
-          SessionCookie.options()
-        )
+        |> SddOrchestratorWeb.HostedUserAuth.put_session_cookie(session_cookie)
         |> redirect(to: ~p"/?#{[hosted_access: "verified"]}")
 
       {:error, :invalid_or_expired} ->

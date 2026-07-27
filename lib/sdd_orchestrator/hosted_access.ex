@@ -39,6 +39,19 @@ defmodule SddOrchestrator.HostedAccess do
     to: SddOrchestrator.HostedAccess.Verification,
     as: :verify
 
+  @doc "Restores hosted access through an already verified, non-email linked method."
+  @spec restore_prelinked_identity(term(), map() | keyword()) ::
+          {:ok, SddOrchestrator.HostedAccess.Sessions.access()}
+          | {:error, :access_unavailable}
+  defdelegate restore_prelinked_identity(verified_external_identity, device_context \\ %{}),
+    to: SddOrchestrator.HostedAccess.Recovery,
+    as: :restore
+
+  @doc "Keeps verified email immutable until the deferred two-proof flow exists."
+  @spec change_verified_email(term(), term()) :: {:error, :fresh_email_proofs_required}
+  defdelegate change_verified_email(identity_or_session, requested_email),
+    to: SddOrchestrator.HostedAccess.Recovery
+
   @type identity_result :: %{
           account: Account.t(),
           external_identity: ExternalIdentity.t(),

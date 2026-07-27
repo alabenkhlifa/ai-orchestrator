@@ -66,7 +66,8 @@ Deferred after this slice:
   - Depends on: Task 2, Task 3
   - Proof: Transaction, constraint, concurrency, and security tests cover success, invalid token, expiry, replay, mismatch, tampering, concurrent consumption, stable restoration, signed-cookie issuance, and rollback without partial identity, workspace, attempt, or session state.
 
-- [ ] Task 5 - Implement protected hosted-session lifecycle, revocation, and pre-linked recovery.
+- [x] Task 5 - Implement protected hosted-session lifecycle, revocation, and pre-linked recovery.
+  - Status: Complete.
   - Purpose: Authorize hosted access independently per device while preserving the approved lost-email and verified-email-change boundaries.
   - Owned surfaces: Hosted-session lookup and authorization plug or LiveView hook, signed HttpOnly Secure cookie handling, 30-day absolute lifetime and sliding renewal, coarse device recognition fields, protected hosted routing, browser-restart restoration, current-device sign-out, active-session listing, individual and all-device revocation, concurrent revocation, coding-agent credential exclusion, pre-linked `ExternalIdentity` authentication seam, no-support-override failure, and verified-email-change denial.
   - Owns: AC-10, AC-11, AC-12, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-24
@@ -164,3 +165,16 @@ Deferred after this slice:
 - Failure behavior: Invalid identifiers, malformed or mismatched tokens, expiry, invalidation, undelivered attempts, replay, concurrent consumption, and session-persistence failure all return the same safe result. Session-persistence failure proves that identity, workspace, session, and attempt-consumption writes roll back together.
 - Proof: The Task 4 migration applies, rolls back, and reapplies on the `_slice03` database; 9 focused verification and return-endpoint tests pass; the combined hosted-access suite passes with 26 tests; `mix check` passes with 253 tests and one tagged live test excluded; specification validation and `git diff --check` pass.
 - Remaining: Task 5 owns hosted-session resolution, sliding activity updates, protected authorization, browser restart behavior, current, individual, and all-device revocation, and the pre-linked recovery boundary.
+
+### 2026-07-27 - Task 5 implementation started
+
+- In progress: Implementing hosted-cookie resolution and renewal, protected hosted authorization, independent device-session visibility and revocation, current and all-device sign-out, and the pre-linked sign-in recovery seam.
+- Preflight: Tasks 2 and 4 are complete; Task 5 owns the persisted-session lifecycle and authorization boundary and leaves the complete user-facing session-management experience to Task 6.
+
+### 2026-07-27 - Hosted-session lifecycle and recovery seam complete (Task 5)
+
+- Completed: Added hosted-session creation and signed-cookie resolution; a persistent `Secure`, `HttpOnly`, `SameSite=Lax` browser session; 30-day database-enforced absolute expiry; sliding `last_seen_at` activity with browser-cookie renewal; controller and LiveView authorization hooks; active-device listing; current, individual, and all-device deletion; scoped and concurrent revocation; protected revocation routes; and disabled-account denial.
+- Recovery boundary: Added a server-only seam that restores the same identity and workspace only from a persisted, verified, non-email `ExternalIdentity` supplied by an upstream authentication boundary. Missing, unpersisted, and email-only methods fail without a support override, and every attempted email replacement is denied pending the deferred two-proof flow.
+- Isolation: Hosted authorization remains separate from GitHub application sessions and is not copied into worker or coding-agent capabilities. Tests prove hosted sign-out and revocation leave device-authoritative project ownership and storage mode unchanged.
+- Proof: 15 focused lifecycle, authorization, revocation, recovery, immutable-email, and local-boundary tests pass; the combined hosted-access suite passes with 41 tests; `mix check` passes with 268 tests and one tagged live test excluded; specification validation and `git diff --check` pass.
+- Remaining: Task 6 owns the complete accessible request, waiting, resend, verification-result, recovery, and active-device LiveView experience plus desktop and mobile browser proof.

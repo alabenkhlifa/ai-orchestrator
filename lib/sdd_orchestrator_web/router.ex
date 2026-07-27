@@ -2,6 +2,7 @@ defmodule SddOrchestratorWeb.Router do
   use SddOrchestratorWeb, :router
 
   import SddOrchestratorWeb.UserAuth
+  import SddOrchestratorWeb.HostedUserAuth
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -15,6 +16,7 @@ defmodule SddOrchestratorWeb.Router do
     plug :put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"}
     plug :put_content_security_policy
     plug :fetch_current_account
+    plug :fetch_current_hosted_access
   end
 
   # A strict Content-Security-Policy with a per-request nonce for the device-local
@@ -55,6 +57,12 @@ defmodule SddOrchestratorWeb.Router do
   # Requires a valid application session for full-page controller routes.
   pipeline :require_account do
     plug :require_authenticated
+  end
+
+  # Hosted session-management actions never accept the GitHub application
+  # session as a substitute for a verified hosted identity.
+  pipeline :require_hosted do
+    plug :require_hosted_authenticated
   end
 
   scope "/", SddOrchestratorWeb do
@@ -99,6 +107,14 @@ defmodule SddOrchestratorWeb.Router do
 
     get "/github/install", GitHubSetupController, :install
     get "/github/setup", GitHubSetupController, :setup
+  end
+
+  scope "/", SddOrchestratorWeb do
+    pipe_through [:browser, :require_hosted]
+
+    delete "/hosted/session", HostedSessionController, :delete_current
+    delete "/hosted/sessions/:id", HostedSessionController, :delete
+    delete "/hosted/sessions", HostedSessionController, :delete_all
   end
 
   # Non-product design-system preview. Available only in dev and test as the

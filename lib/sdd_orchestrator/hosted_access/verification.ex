@@ -12,7 +12,7 @@ defmodule SddOrchestrator.HostedAccess.Verification do
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
 
   alias SddOrchestrator.HostedAccess
-  alias SddOrchestrator.HostedAccess.SessionCookie
+  alias SddOrchestrator.HostedAccess.{SessionCookie, Sessions}
   alias SddOrchestrator.Repo
 
   @failure {:error, :invalid_or_expired}
@@ -43,7 +43,7 @@ defmodule SddOrchestrator.HostedAccess.Verification do
            :ok <- validate_attempt(attempt, raw_token),
            {:ok, identity} <- HostedAccess.restore_or_create_identity(attempt.delivery_email),
            {:ok, session, session_cookie} <-
-             create_session(identity.hosted_identity, device_context),
+             Sessions.create(identity.hosted_identity, device_context),
            {1, _rows} <- consume_attempt(attempt) do
         Map.merge(identity, %{session: session, session_cookie: session_cookie})
       else
@@ -80,26 +80,6 @@ defmodule SddOrchestrator.HostedAccess.Verification do
     if valid?, do: :ok, else: :error
   end
 
-  defp create_session(hosted_identity, device_context) do
-    now = now()
-    {token_digest, session_cookie} = SessionCookie.issue()
-
-    attrs = %{
-      token_digest: token_digest,
-      hosted_identity_id: hosted_identity.id,
-      user_agent_family: context_value(device_context, :user_agent_family),
-      os_family: context_value(device_context, :os_family),
-      first_seen_at: now,
-      last_seen_at: now,
-      expires_at: DateTime.add(now, SessionCookie.session_lifetime_seconds(), :second)
-    }
-
-    case %HostedSession{} |> HostedSession.changeset(attrs) |> Repo.insert() do
-      {:ok, session} -> {:ok, session, session_cookie}
-      {:error, changeset} -> {:error, changeset}
-    end
-  end
-
   defp consume_attempt(attempt) do
     now = now()
 
@@ -129,10 +109,6 @@ defmodule SddOrchestrator.HostedAccess.Verification do
   end
 
   defp valid_token_shape?(_raw_token), do: false
-
-  defp context_value(context, key) when is_map(context), do: Map.get(context, key)
-  defp context_value(context, key) when is_list(context), do: Keyword.get(context, key)
-  defp context_value(_context, _key), do: nil
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 end

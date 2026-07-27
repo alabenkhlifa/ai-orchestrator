@@ -25,14 +25,19 @@ defmodule SddOrchestratorWeb.HostedAccessControllerTest do
       assert get_resp_header(conn, "cache-control") == ["no-store"]
       assert get_resp_header(conn, "referrer-policy") == ["no-referrer"]
 
-      cookie = conn.resp_cookies[SessionCookie.name()]
-      assert cookie.http_only
-      assert cookie.secure
-      assert cookie.same_site == "Lax"
-      assert cookie.max_age == 2_592_000
+      signed_cookie = get_session(conn, SessionCookie.session_key())
+      [set_cookie] = get_resp_header(conn, "set-cookie")
+      assert set_cookie =~ "_sdd_orchestrator_key="
+      assert set_cookie =~ "max-age=2592000"
+      assert set_cookie =~ "secure"
+      assert set_cookie =~ "HttpOnly"
+      assert set_cookie =~ "SameSite=Lax"
 
       session = Repo.one!(HostedSession)
-      assert {:ok, session.token_digest} == SessionCookie.digest_from_signed(cookie.value)
+
+      assert {:ok, session.token_digest} ==
+               SessionCookie.digest_from_signed(signed_cookie)
+
       assert session.user_agent_family == "Firefox"
       assert session.os_family == "Linux"
       assert Repo.reload!(attempt).consumed_at != nil

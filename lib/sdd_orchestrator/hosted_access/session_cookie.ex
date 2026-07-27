@@ -10,7 +10,7 @@ defmodule SddOrchestrator.HostedAccess.SessionCookie do
   alias SddOrchestratorWeb.Endpoint
 
   @signing_salt "hosted-session-v1"
-  @cookie_name "_sdd_orchestrator_hosted"
+  @session_key :hosted_session_token
 
   @enforce_keys [:value]
   @derive {Inspect, only: []}
@@ -40,9 +40,9 @@ defmodule SddOrchestrator.HostedAccess.SessionCookie do
 
   def digest_from_signed(_signed_value), do: :error
 
-  @doc "Cookie name reserved for hosted browser authorization."
-  @spec name() :: String.t()
-  def name, do: @cookie_name
+  @doc "Plug-session key reserved for hosted browser authorization."
+  @spec session_key() :: atom()
+  def session_key, do: @session_key
 
   @doc "Security attributes Task 5 must apply when writing the cookie."
   @spec options() :: keyword()
