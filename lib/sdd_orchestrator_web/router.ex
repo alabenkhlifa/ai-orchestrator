@@ -65,6 +65,10 @@ defmodule SddOrchestratorWeb.Router do
     get "/auth/github/callback", AuthController, :callback
     delete "/auth/sign_out", AuthController, :sign_out
 
+    # Delivered passwordless credentials return through one account-neutral
+    # verification endpoint before any hosted surface is exposed.
+    get "/hosted/access/verify", HostedAccessController, :verify
+
     # Unauthenticated entry chooser; a valid session is sent to the catalog.
     live_session :redirect_if_authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :redirect_if_authenticated}] do

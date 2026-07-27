@@ -28,6 +28,17 @@ defmodule SddOrchestrator.HostedAccess do
     to: SddOrchestrator.HostedAccess.MagicLinks,
     as: :request
 
+  @doc """
+  Atomically verifies one attempt-bound magic-link token and creates its first
+  hosted session. Every failure returns the same safe result.
+  """
+  @spec verify_magic_link(term(), term(), map() | keyword()) ::
+          {:ok, SddOrchestrator.HostedAccess.Verification.verification_result()}
+          | {:error, :invalid_or_expired}
+  defdelegate verify_magic_link(attempt_id, raw_token, device_context \\ %{}),
+    to: SddOrchestrator.HostedAccess.Verification,
+    as: :verify
+
   @type identity_result :: %{
           account: Account.t(),
           external_identity: ExternalIdentity.t(),

@@ -20,6 +20,7 @@ defmodule SddOrchestrator.Accounts.HostedIdentity do
     belongs_to :account, SddOrchestrator.Accounts.Account
 
     has_many :external_identities, SddOrchestrator.Accounts.ExternalIdentity
+    has_many :hosted_sessions, SddOrchestrator.Accounts.HostedSession
 
     timestamps()
   end

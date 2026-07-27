@@ -58,7 +58,8 @@ Deferred after this slice:
   - Depends on: Task 1, Task 2
   - Proof: Integration, concurrency, adapter-contract, and security tests cover new and existing emails, equivalent acknowledgements, resend invalidation, expiry setup, throttling, provider failure, retry, token non-persistence, redaction, and no identity disclosure.
 
-- [ ] Task 4 - Implement atomic magic-link verification, identity restoration, and initial session creation.
+- [x] Task 4 - Implement atomic magic-link verification, identity restoration, and initial session creation.
+  - Status: Complete.
   - Purpose: Establish hosted access only from one valid attempt-bound unused token and leave no partial identity, workspace, or session.
   - Owned surfaces: Verification service and return endpoint, token-digest lookup, attempt and intended-email binding, expiry and integrity validation, atomic compare-and-set consumption, `HostedSession` persistence and initial signed-cookie issuance contract, identity and workspace restoration through Task 2, transaction rollback, replay handling, and verification fixtures.
   - Owns: AC-01, AC-04, AC-05, entity:HostedSession
@@ -151,3 +152,15 @@ Deferred after this slice:
 - Architecture: `SddOrchestrator.HostedAccess.MagicLinks` never queries or creates an identity. It returns the same acknowledgement for invalid, throttled, existing, new, database-failed, and delivery-failed requests. The raw token is passed directly into the delivery-only email and is neither returned nor stored.
 - Proof: The Task 3 migration applies, rolls back, and reapplies on the `_slice03` database; 10 focused request, concurrency, delivery, and limiter tests pass; the combined hosted-access suite passes with 17 tests; `mix check` passes with 244 tests and one tagged live test excluded; `mix deps.audit`, specification validation, and `git diff --check` pass.
 - Remaining: Task 4 owns atomic attempt verification, single-use consumption, identity restoration, and initial hosted-session creation; production delivery provider and final retention and privacy decisions remain in the release gate.
+
+### 2026-07-27 - Task 4 implementation started
+
+- In progress: Implementing attempt-bound token verification, atomic single-use consumption, transaction-safe identity restoration, initial hosted-session persistence, and a signed-cookie issuance contract.
+- Preflight: Tasks 2 and 3 are complete; Task 4 owns the verification and first-session transaction and does not depend on the later authorization, revocation, or LiveView surfaces.
+
+### 2026-07-27 - Atomic verification and initial hosted session complete (Task 4)
+
+- Completed: Added `HostedSession` persistence; constant-time salted-digest verification; UUID and 256-bit token-shape validation; delivered, unexpired, newest, unused attempt enforcement; row locking plus compare-and-set consumption; transaction-safe identity/workspace restoration; coarse device recognition; a signed 30-day hosted-session cookie contract; and the public magic-link return endpoint with `no-store` and `no-referrer` response controls.
+- Failure behavior: Invalid identifiers, malformed or mismatched tokens, expiry, invalidation, undelivered attempts, replay, concurrent consumption, and session-persistence failure all return the same safe result. Session-persistence failure proves that identity, workspace, session, and attempt-consumption writes roll back together.
+- Proof: The Task 4 migration applies, rolls back, and reapplies on the `_slice03` database; 9 focused verification and return-endpoint tests pass; the combined hosted-access suite passes with 26 tests; `mix check` passes with 253 tests and one tagged live test excluded; specification validation and `git diff --check` pass.
+- Remaining: Task 5 owns hosted-session resolution, sliding activity updates, protected authorization, browser restart behavior, current, individual, and all-device revocation, and the pre-linked recovery boundary.

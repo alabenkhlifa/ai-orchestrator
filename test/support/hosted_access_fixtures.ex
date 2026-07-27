@@ -6,6 +6,8 @@ defmodule SddOrchestrator.HostedAccessFixtures do
 
   @doc "Creates or restores a hosted identity for a unique verified email."
   def hosted_identity_fixture(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
     email =
       Map.get_lazy(attrs, :email, fn ->
         "hosted-#{System.unique_integer([:positive])}@example.com"
@@ -22,6 +24,8 @@ defmodule SddOrchestrator.HostedAccessFixtures do
   application record contains only its salted digest.
   """
   def magic_link_attempt_fixture(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
     email =
       Map.get_lazy(attrs, :email, fn ->
         "attempt-#{System.unique_integer([:positive])}@example.com"
@@ -47,6 +51,23 @@ defmodule SddOrchestrator.HostedAccessFixtures do
       |> Repo.insert!()
 
     %{attempt: attempt, raw_token: raw_token}
+  end
+
+  @doc "Verifies a protected attempt and returns its hosted identity and session result."
+  def verified_hosted_session_fixture(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    %{attempt: attempt, raw_token: raw_token} = fixture = magic_link_attempt_fixture(attrs)
+
+    device_context = %{
+      user_agent_family: Map.get(attrs, :user_agent_family, "Test Browser"),
+      os_family: Map.get(attrs, :os_family, "Test OS")
+    }
+
+    {:ok, result} =
+      HostedAccess.verify_magic_link(attempt.id, raw_token, device_context)
+
+    Map.merge(result, fixture)
   end
 
   defp new_raw_token do

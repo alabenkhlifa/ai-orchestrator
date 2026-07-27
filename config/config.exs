@@ -70,6 +70,7 @@ config :sdd_orchestrator, :passwordless,
   app_origin: "http://localhost:4000",
   from_email: "no-reply@sdd-orchestrator.local",
   magic_link_ttl_seconds: 15 * 60,
+  session_lifetime_seconds: 30 * 24 * 60 * 60,
   rate_limits: [
     email: [capacity: 5, window_ms: 15 * 60 * 1_000],
     ip: [capacity: 20, window_ms: 15 * 60 * 1_000],
