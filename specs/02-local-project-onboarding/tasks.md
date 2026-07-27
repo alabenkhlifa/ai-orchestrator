@@ -63,9 +63,10 @@ Release boundary:
   - Proof: Integration and UI tests cover native folder selection, valid, invalid, inaccessible, moved, non-matching, and unavailable repositories plus canonical-identity reconnection without source upload.
   - Delivered: `Devices.RepositoryValidation` validates a repository on the worker boundary and returns only a non-reversible canonical fingerprint (HMAC over sorted root-commit ids, per-workspace salt) — stable across moved paths, clones, worktrees, and changed remotes, distinguishing unrelated repositories, with no path or source exposure. The native OS folder dialog is a release-gated native-worker capability; the browser display of the selected repository and the worker-unavailable state land in Task 7; the reconnection-is-not-history-restoration distinction lands with Task 6.
 
-- [ ] Define and enforce minimum outbound metadata.
+- [x] Define and enforce minimum outbound metadata.
   - Purpose: Establish connection and compatibility state without sending local paths, remote URLs, filenames, Git history, or source code during onboarding.
   - Proof: Contract and privacy tests reject prohibited fields and any outbound onboarding exchange before first-use confirmation, while allowing later unchanged connections without repeated confirmation.
+  - Delivered: `Devices.RepositoryConnectionContract` defines the exhaustive allowed outbound fields (opaque connection id, workspace and worker ids, repository fingerprint, coarse compatibility, connection status) and fails closed on any prohibited, unexpected, or missing field at the top level and inside compatibility. The first-use disclosure and confirmation gate, and the confirm-once behavior, are delivered in Task 7.
 
 - [ ] Create the project and local repository connection atomically.
   - Purpose: Apply shared naming and uniqueness rules without partial records.
@@ -150,3 +151,10 @@ Release boundary:
 - Note: a test initially exposed that two empty-init repositories share an identical root commit; fixtures were adjusted to give each a distinct root commit, mirroring genuinely unrelated repositories. The native OS folder dialog stays release-gated; browser display and the worker-unavailable state are Task 7.
 - Failed checks: None.
 - Spec updates: Task 4 checked.
+
+### 2026-07-27 - Task 5 complete: minimum outbound metadata contract
+
+- Completed: Added `Devices.RepositoryConnectionContract` enforcing the approved outbound field set from the `Minimum Outbound Connection Contract` design decision, failing closed on prohibited, unexpected, or missing fields at the top level and inside compatibility.
+- Proof: `mix test test/sdd_orchestrator/devices/repository_connection_contract_test.exs` passed (8 tests); full suite 324 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
+- Failed checks: None.
+- Spec updates: Task 5 checked. The first-use disclosure and confirmation gate lands in Task 7.
