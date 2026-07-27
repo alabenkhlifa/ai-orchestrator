@@ -118,3 +118,10 @@ Release boundary:
 - Remaining: Implement the slice on the approved contracts; complete the release-gate signing, notarization, hosting-processor, and final privacy-review items.
 - Failed checks: None; implementation has not started.
 - Spec updates: Cleared the technical-design and privacy blockers, replaced `Blocked Decisions` with a `Release Gate`, and moved tasks from `Blocked` to `Not Started`.
+
+### 2026-07-27 - Implementation preflight: greenfield confirmed, serialized behind slice 03 foundation
+
+- Completed: `implement-spec` preflight on branch `slice/02-local-project-onboarding` (dedicated worktree, dev/test server port 4002). The local-onboarding slice is greenfield on top of the slice-01 GitHub and slice-05 storage foundation, so `Not Started` is accurate and there is no spec-vs-code drift. Missing entirely: the local-worker subsystem — worker discovery UX, `LocalWorker`, `PairingAttempt`, on-worker git validation, the canonical salted `repository_fingerprint`, and the minimum outbound `RepositoryConnectionContract`. Partial: the device-workspace boundary is an in-memory struct with no persistence and the database rejects device roots (`workspaces_hosted_kind_only`); `Projects.register_project/3` refuses the device path; local onboarding UI is a placeholder; the connection-state vocabulary is GitHub-only.
+- Environment-blocked (coordination): slice 02 and Codex's active slice 03 both edit the same foundation — device versus hosted workspace persistence in `accounts.ex` and the `workspaces` table, session and accountless access in `user_auth.ex`, the shared `entry_live.ex` surface, and `privacy/processing_inventory.ex`. Per the parallel-agent contract the user chose to serialize behind slice 03: wait for Codex to commit its shared-foundation changes, then rebase `slice/02-local-project-onboarding` onto updated `main` and build device support on top. No application code changed.
+- Failed checks: None; implementation intentionally not started.
+- Spec updates: Progress recorded only; status remains `Not Started`.
