@@ -8,7 +8,7 @@ Hosted project data requires a recoverable authorization boundary for users who 
 
 Explain the verified-email access and recovery boundary, accept an email through an account-neutral endpoint, create a protected authentication attempt, deliver a short-lived single-use token, consume it exactly once for the intended attempt, and establish an independently revocable hosted device session for one stable identity and workspace. Preserve valid sessions across browser restarts, support multiple devices, and provide current-device, individual-session, and all-session revocation. A sign-in method linked before email access is lost may restore the same identity, but it cannot change the verified email. Compose hosted and local catalog references without changing local ownership or storage.
 
-Exact token format, delivery provider, storage representation, and session mechanism remain deferred.
+The authentication and session mechanisms are approved below. The production delivery provider and deployment-specific privacy evidence remain release-gate decisions.
 
 ## Components Affected
 
@@ -64,6 +64,12 @@ Required boundaries:
 - Choice: Use a verified email and magic link for non-GitHub hosted access.
 - Reason: Users can access hosted projects without a GitHub account or another password.
 - Consequence: Email delivery becomes an authentication dependency and requires explicit token, abuse, session, recovery, and privacy controls.
+
+### Case-Insensitive Email Identity
+
+- Choice: Trim surrounding whitespace and use a separate case-insensitive comparison key for hosted-identity uniqueness and passwordless sign-in. Preserve the successfully verified spelling separately for delivery and display; a later successful verification of a case-only variant may refresh that display spelling without changing identity or workspace.
+- Reason: Capitalization or accidental boundary whitespace must not create duplicate hosted identities or workspaces for the same verified address.
+- Consequence: Database uniqueness and concurrent creation use the comparison key, while delivery uses the trimmed spelling submitted for the current attempt. Case-only retries restore the existing identity and never merge unrelated records through any broader alias rule.
 
 ### Account-Neutral Responses
 
