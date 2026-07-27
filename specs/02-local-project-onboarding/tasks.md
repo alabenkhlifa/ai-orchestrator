@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -44,9 +44,10 @@ Release boundary:
 
 ## Tasks
 
-- [ ] Establish the accountless device-workspace boundary.
+- [x] Establish the accountless device-workspace boundary.
   - Purpose: Persist local project ownership without requiring an account.
   - Proof: Tests show stable access under the same OS boundary, isolation from hosted authorization, and a clear loss outcome that never presents repository reconnection as restoration of missing project history.
+  - Delivered: `DeviceStore` behaviour, durable local DETS adapter (`DeviceStore.Local`), and the `Devices` context; ownership derives from device id and storage mode only. The repository-reconnection-is-not-restoration clause is completed under Task 4, where a connection exists. Native worker adapter and durable device store are release-gated.
 
 - [ ] Implement worker discovery and installation guidance.
   - Purpose: Give non-technical users an actionable path when no worker is available.
@@ -125,3 +126,10 @@ Release boundary:
 - Environment-blocked (coordination): slice 02 and Codex's active slice 03 both edit the same foundation — device versus hosted workspace persistence in `accounts.ex` and the `workspaces` table, session and accountless access in `user_auth.ex`, the shared `entry_live.ex` surface, and `privacy/processing_inventory.ex`. Per the parallel-agent contract the user chose to serialize behind slice 03: wait for Codex to commit its shared-foundation changes, then rebase `slice/02-local-project-onboarding` onto updated `main` and build device support on top. No application code changed.
 - Failed checks: None; implementation intentionally not started.
 - Spec updates: Progress recorded only; status remains `Not Started`.
+
+### 2026-07-27 - Task 1 complete: accountless device-workspace persistence
+
+- Completed: Added the `DeviceStore` behaviour, a durable local DETS adapter (`DeviceStore.Local`), and the `Devices` context so the accountless device workspace persists under the operating-system boundary and never in the hosted database, plus the `Device Persistence Adapter` decision in `design.md`. Ownership derives from the device id and storage mode with no hosted identity.
+- Proof: `mix test test/sdd_orchestrator/devices/device_store_test.exs` passed (4 tests: stable access, hosted-identity isolation, cross-restart durability, and loss-yields-fresh-workspace); full suite 298 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
+- Failed checks: None.
+- Spec updates: Status `Not Started` → `In Progress`; Task 1 checked. The repository-reconnection-is-not-history-restoration clause is owned by Task 4; the native worker adapter and durable device store remain release-gated.

@@ -98,6 +98,11 @@ config :sdd_orchestrator, :github,
 config :sdd_orchestrator, :passwordless,
   app_origin: System.get_env("APP_ORIGIN", "http://localhost:4000")
 
+# Durable local DeviceStore standing in for the native worker in development.
+config :sdd_orchestrator, SddOrchestrator.Devices.DeviceStore.Local,
+  start: true,
+  path: "priv/device_store/dev.dets"
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

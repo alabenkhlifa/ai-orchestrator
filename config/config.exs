@@ -97,6 +97,12 @@ config :sdd_orchestrator, :github,
   # permission is approved for this slice; onboarding calls no write endpoint.
   approved_repository_permissions: %{"metadata" => "read"}
 
+# Accountless on-device data is served through a DeviceStore adapter and never
+# stored in the hosted database. Development and tests use the local adapter; the
+# native macOS worker adapter is a Slice 02 release gate.
+config :sdd_orchestrator, SddOrchestrator.Devices,
+  adapter: SddOrchestrator.Devices.DeviceStore.Local
+
 # Cloak vault ciphers are configured per environment because the key is a secret.
 
 # Import environment specific config. This must remain at the bottom

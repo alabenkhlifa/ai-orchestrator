@@ -18,6 +18,7 @@ defmodule SddOrchestrator.Application do
         {Phoenix.PubSub, name: SddOrchestrator.PubSub}
       ] ++
         retention_children() ++
+        device_store_children() ++
         [
           # Start to serve requests, typically the last entry
           SddOrchestratorWeb.Endpoint
@@ -42,6 +43,19 @@ defmodule SddOrchestrator.Application do
   defp retention_children do
     if Application.get_env(:sdd_orchestrator, :start_retention_pruner, true) do
       [SddOrchestrator.Privacy.RetentionPruner]
+    else
+      []
+    end
+  end
+
+  # The durable local DeviceStore stands in for the native worker in development.
+  # Tests start their own isolated instance; production uses the release-gated
+  # native worker adapter.
+  defp device_store_children do
+    config = Application.get_env(:sdd_orchestrator, SddOrchestrator.Devices.DeviceStore.Local, [])
+
+    if config[:start] do
+      [{SddOrchestrator.Devices.DeviceStore.Local, config}]
     else
       []
     end

@@ -166,6 +166,12 @@ Required boundaries:
 - Reason: Local onboarding is accountless; hosted modes need authentication and migration that are separate slices.
 - Consequence: Combined-catalog and hosted-storage integrations remain deferred; only the shared entry surface and shared naming/uniqueness rules are active cross-slice dependencies.
 
+### Device Persistence Adapter
+
+- Choice: Accountless device-authoritative data (the device workspace, and in later tasks its projects and repository connections) is served through a `DeviceStore` behaviour and never stored in the hosted control-plane database, honoring the storage foundation's `workspaces_hosted_kind_only` constraint. The production adapter is the native macOS worker persisting under the operating-system boundary (release-gated); a durable local adapter backs development and verification.
+- Reason: On-device projects are accountless and losable by design, so their authoritative data cannot live in hosted persistence keyed to an account.
+- Consequence: Development and verification run against the durable local adapter, so stable access and data loss are distinct events; the native worker adapter and its packaging are release-gated. The hosted database keeps rejecting device roots, and the combined catalog composes device-store reads with hosted rows only after authentication (deferred).
+
 ### Worker Verification Strategy
 
 - Choice: Verify with the established Slice 01 toolchain: ExUnit contract and integration tests against a protocol-compatible worker test double over the same outbound transport, security tests for the pairing lifecycle and cross-workspace denial, and Playwright (`npm --prefix assets run test:e2e`) browser scenarios for graphical installation guidance, native selection, first-connection disclosure and confirmation, and connection-state UX, all under `mix check`.

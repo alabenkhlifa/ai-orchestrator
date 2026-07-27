@@ -28,6 +28,9 @@ sdd_orchestrator-*.tar
 # Dialyzer PLT files (rebuilt from the locked dependency set).
 /priv/plts/
 
+# Local development DeviceStore (accountless on-device data stand-in).
+/priv/device_store/
+
 # Ignore assets that are produced by build tools.
 /priv/static/assets/
 
