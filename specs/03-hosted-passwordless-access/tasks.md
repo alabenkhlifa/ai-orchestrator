@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -42,7 +42,8 @@ Deferred after this slice:
   - Depends on: none
   - Proof: Approved requirements, design decisions, data contracts, active and deferred traceability, task sequence, and canonical test commands have no unresolved implementation or local-verification blockers.
 
-- [ ] Task 2 - Establish the hosted identity and workspace foundation.
+- [x] Task 2 - Establish the hosted identity and workspace foundation.
+  - Status: Complete.
   - Purpose: Give every verified passwordless address one stable hosted identity and personal workspace without case-variant duplication.
   - Owned surfaces: `HostedIdentity`, email `ExternalIdentity`, case-insensitive email comparison key with preserved verified spelling, identity lookup and concurrent creation, one-to-one `PersonalWorkspace` restoration, database constraints, context interfaces, and fixtures.
   - Owns: AC-03, AC-07, AC-08, entity:HostedIdentity, entity:ExternalIdentity, entity:PersonalWorkspace
@@ -130,3 +131,10 @@ Deferred after this slice:
 - Remaining: Implement Tasks 2–7 in order, run the complete verification gate, and complete the production delivery-provider, retention-duration, and final privacy or legal release gates.
 - Failed checks: None; implementation has not started.
 - Spec updates: Added stable acceptance-criterion and task labels, explicit owned surfaces, traceability, dependencies, deferred-criterion classification, and canonical verification commands without expanding the active behavior.
+
+### 2026-07-27 - Hosted identity and workspace foundation complete (Task 2)
+
+- Completed: Added stable `HostedIdentity` and email `ExternalIdentity` records, a trimmed case-insensitive comparison key with separately preserved verified spelling, atomic account/common-workspace/personal-workspace creation, idempotent restoration, unique destination constraints, and isolated fixtures.
+- Architecture: `SddOrchestrator.HostedAccess` is the Slice 03 context boundary; it accepts only successfully verified addresses and keeps request, delivery, token verification, and session lifecycle in later tasks. The new rows attach to the existing `Account` and hosted `Workspace` roots without changing GitHub identity behavior or persisting device-authoritative data.
+- Proof: The migration applies, rolls back, and reapplies on the `_slice03` database; focused domain and constraint tests pass (7); `mix check` passes with 234 tests and one tagged live test excluded; specification validation and `git diff --check` pass.
+- Parallel coordination: Work remains isolated in the dedicated Slice 03 worktree, with local server port `4003` reserved; no Slice 02 worker, repository, or device-workspace surface was changed.
