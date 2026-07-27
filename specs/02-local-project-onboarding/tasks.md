@@ -68,9 +68,10 @@ Release boundary:
   - Proof: Contract and privacy tests reject prohibited fields and any outbound onboarding exchange before first-use confirmation, while allowing later unchanged connections without repeated confirmation.
   - Delivered: `Devices.RepositoryConnectionContract` defines the exhaustive allowed outbound fields (opaque connection id, workspace and worker ids, repository fingerprint, coarse compatibility, connection status) and fails closed on any prohibited, unexpected, or missing field at the top level and inside compatibility. The first-use disclosure and confirmation gate, and the confirm-once behavior, are delivered in Task 7.
 
-- [ ] Create the project and local repository connection atomically.
+- [x] Create the project and local repository connection atomically.
   - Purpose: Apply shared naming and uniqueness rules without partial records.
   - Proof: Tests cover concurrency, duplicate identity, suffix allocation, rollback, and unchanged repository state.
+  - Delivered: `DeviceProject` plus device-store registration (`Devices.register_project/2`, `list_projects/0`, `get_project/1`, `find_by_fingerprint/1`) applying the shared workspace-scoped case-insensitive name key (reused from `Projects.Project.name_key/1`) with suffix allocation and one-project-per-repository (by fingerprint) uniqueness. Writes serialize through the store GenServer, so registration is atomic and a rejected registration writes nothing; device data never reaches Postgres and repository files are never touched. This also completes Task 1's deferred clause: after data loss the store is empty, so reconnecting a repository starts new history rather than restoring it.
 
 - [ ] Build local onboarding and connection-state UX.
   - Purpose: Complete the path without requiring terminal interaction beyond any approved installer step.
@@ -158,3 +159,11 @@ Release boundary:
 - Proof: `mix test test/sdd_orchestrator/devices/repository_connection_contract_test.exs` passed (8 tests); full suite 324 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
 - Failed checks: None.
 - Spec updates: Task 5 checked. The first-use disclosure and confirmation gate lands in Task 7.
+
+### 2026-07-27 - Task 6 complete: atomic device-project registration
+
+- Completed: Added `DeviceProject` and device-store registration in `Devices`/`DeviceStore.Local`, applying the shared case-insensitive naming (via `Projects.Project.name_key/1`), suffix allocation, and one-project-per-repository fingerprint uniqueness. Registration is atomic (serialized through the store) and device-authoritative data never reaches Postgres.
+- Proof: `mix test test/sdd_orchestrator/devices/device_registration_test.exs` passed (8 tests: register, invalid name, missing fingerprint, duplicate-repository, case-insensitive name uniqueness, suffix allocation, fingerprint lookup, loss-yields-new-history); full suite 332 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
+- Note: a `:dets.foldl` argument-order bug surfaced immediately in the tests and was fixed. Task 1's deferred reconnection-is-not-history-restoration clause is now proven.
+- Failed checks: None.
+- Spec updates: Task 6 checked. Native-worker-driven registration remains release-gated.

@@ -9,6 +9,7 @@ defmodule SddOrchestrator.Devices do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
+  alias SddOrchestrator.Devices.DeviceProject
 
   @doc "Returns the established accountless device workspace, creating it if absent."
   @spec establish_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, term()}
@@ -17,6 +18,28 @@ defmodule SddOrchestrator.Devices do
   @doc "Returns the established device workspace, or `{:error, :not_found}` after loss."
   @spec get_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, :not_found}
   def get_workspace, do: adapter().get_workspace()
+
+  @doc """
+  Registers one device project. `attrs` carries the user-chosen `:name`, the
+  `:repository_fingerprint`, and the connection `:status`. With
+  `allocate_suffix?: true`, a name collision takes the next available suffix
+  instead of failing.
+  """
+  @spec register_project(map(), keyword()) :: {:ok, DeviceProject.t()} | {:error, term()}
+  def register_project(attrs, opts \\ []) when is_map(attrs),
+    do: adapter().register_project(attrs, opts)
+
+  @doc "Lists the device projects, ordered by display name."
+  @spec list_projects() :: [DeviceProject.t()]
+  def list_projects, do: adapter().list_projects()
+
+  @doc "Fetches one device project by id."
+  @spec get_project(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
+  def get_project(id), do: adapter().get_project(id)
+
+  @doc "Finds a device project by its canonical repository fingerprint."
+  @spec find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
+  def find_by_fingerprint(fingerprint), do: adapter().find_by_fingerprint(fingerprint)
 
   defp adapter do
     Application.fetch_env!(:sdd_orchestrator, __MODULE__)[:adapter]
