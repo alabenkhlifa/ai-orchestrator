@@ -1,6 +1,6 @@
 defmodule SddOrchestrator.Privacy.Retention do
   @moduledoc """
-  Storage-limitation enforcement for Slice 01 (data minimization by lifecycle).
+  Storage-limitation enforcement for personal-data lifecycles.
 
   Deletes personal-data records once their approved retention window has passed:
 
@@ -11,6 +11,10 @@ defmodule SddOrchestrator.Privacy.Retention do
       does not linger once the project exists.
     * Application sessions — deleted 24 hours after expiry (idle or absolute) or
       revocation.
+    * Passwordless attempts — unusable after their short authentication window
+      and deleted after the configured post-expiry grace period.
+    * Hosted sessions — deleted after their configured post-expiry grace period;
+      explicit revocation deletes them immediately in the session context.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -21,6 +25,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   import Ecto.Query
 
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
+  alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.Repo
 
@@ -33,8 +38,10 @@ defmodule SddOrchestrator.Privacy.Retention do
 
     %{
       authorization_attempts: prune_authorization_attempts(now),
+      magic_link_attempts: prune_magic_link_attempts(now),
       onboarding_attempts: prune_onboarding_attempts(now),
-      sessions: prune_sessions(now)
+      sessions: prune_sessions(now),
+      hosted_sessions: prune_hosted_sessions(now)
     }
   end
 
@@ -43,6 +50,25 @@ defmodule SddOrchestrator.Privacy.Retention do
 
     {count, _} =
       Repo.delete_all(from a in GitHubAuthorizationAttempt, where: a.inserted_at < ^cutoff)
+
+    count
+  end
+
+  defp prune_magic_link_attempts(now) do
+    cutoff =
+      DateTime.add(
+        now,
+        -retention_seconds(:magic_link_attempt_grace_seconds),
+        :second
+      )
+
+    {count, _} =
+      Repo.delete_all(
+        from attempt in MagicLinkAttempt,
+          where:
+            attempt.expires_at < ^cutoff or attempt.consumed_at < ^cutoff or
+              attempt.invalidated_at < ^cutoff
+      )
 
     count
   end
@@ -73,5 +99,25 @@ defmodule SddOrchestrator.Privacy.Retention do
       )
 
     count
+  end
+
+  defp prune_hosted_sessions(now) do
+    cutoff =
+      DateTime.add(
+        now,
+        -retention_seconds(:hosted_session_grace_seconds),
+        :second
+      )
+
+    {count, _} =
+      Repo.delete_all(from session in HostedSession, where: session.expires_at < ^cutoff)
+
+    count
+  end
+
+  defp retention_seconds(key) do
+    :sdd_orchestrator
+    |> Application.fetch_env!(:passwordless_retention)
+    |> Keyword.fetch!(key)
   end
 end

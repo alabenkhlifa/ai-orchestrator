@@ -213,7 +213,7 @@ defmodule SddOrchestrator.HostedAccess.MagicLinksTest do
       assert failed.delivery_status == "failed"
       assert failed.failure_code == "delivery_failed"
       assert log =~ "magic_link_delivery_failed"
-      assert log =~ failed.id
+      refute log =~ failed.id
       refute log =~ "failure@example.com"
       refute log =~ "provider_unavailable"
       refute_email_sent()

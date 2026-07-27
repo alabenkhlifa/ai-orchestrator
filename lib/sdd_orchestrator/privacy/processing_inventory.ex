@@ -1,13 +1,14 @@
 defmodule SddOrchestrator.Privacy.ProcessingInventory do
   @moduledoc """
-  The approved Slice 01 processing inventory.
+  The approved processing inventory for the implemented slices.
 
-  Enumerates every processing activity that touches personal data in this slice —
-  identity, session, credential, transient authorization state, workspace, project
-  and repository metadata, transient onboarding state, and operational-security
-  logs — with its purpose, lawful basis, retention, rights behaviour, processors,
-  and transfers. Purpose limitation is explicit: no activity has an analytics,
-  advertising, or model-training purpose, and analytics is not a listed activity.
+  Enumerates every processing activity that touches personal data — identity,
+  session, credential, transient authorization state, passwordless delivery and
+  abuse protection, workspace, project and repository metadata, transient
+  onboarding state, and operational-security logs — with its purpose, lawful
+  basis, retention, rights behaviour, processors, and transfers. Purpose
+  limitation is explicit: no activity has an analytics, advertising, or
+  model-training purpose, and analytics is not a listed activity.
 
   Deployment-specific controller, processor, region, and transfer evidence lives in
   `DeploymentPrivacyProfile` and is enforced by the release gate, not here.
@@ -63,6 +64,98 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
       processors: ["Hosting database"],
       transfers: "Per deployment privacy profile.",
       review: "Approved development data contract (design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :hosted_identity,
+      purpose: "Restore one stable hosted account and personal workspace after verified sign-in.",
+      lawful_basis: :contract,
+      personal_data: ["account_id", "hosted_identity_id"],
+      access: "Authenticated user and authorized operations roles; never coding agents.",
+      retention: "While the hosted account is active; removed by account erasure.",
+      rights: "Access, erasure, restriction, objection, and portability via operator workflow.",
+      processors: ["Hosting database"],
+      transfers: "Per deployment privacy profile.",
+      review: "Approved passwordless authentication data contract (Slice 03 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :external_identity,
+      purpose: "Bind a verified sign-in method to the stable hosted identity.",
+      lawful_basis: :contract,
+      personal_data: ["provider", "provider subject", "verified email", "verified_at"],
+      access: "Protected authentication boundary and authorized operations roles.",
+      retention: "While the sign-in method or hosted account is active.",
+      rights: "Access, correction, erasure, restriction, and portability via operator workflow.",
+      processors: ["Hosting database"],
+      transfers: "Per deployment privacy profile.",
+      review: "Approved passwordless authentication data contract (Slice 03 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :magic_link_attempt,
+      purpose: "Issue and atomically verify one short-lived passwordless sign-in credential.",
+      lawful_basis: :contract,
+      personal_data: [
+        "verified email",
+        "salted token digest",
+        "expiry and lifecycle timestamps",
+        "delivery outcome class"
+      ],
+      access: "Protected authentication boundary and authorized operations roles.",
+      retention:
+        "Unusable after 15 minutes and pruned after the configured short grace period; final duration requires release approval.",
+      rights: "Access and erasure through the verified operator workflow.",
+      processors: ["Hosting database"],
+      transfers: "Per deployment privacy profile.",
+      review: "Approved passwordless authentication data contract (Slice 03 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :passwordless_email_delivery,
+      purpose: "Deliver the user-requested one-time passwordless sign-in link.",
+      lawful_basis: :contract,
+      personal_data: ["delivery email", "one-time sign-in link", "delivery outcome"],
+      access: "Configured delivery processor and protected authentication boundary only.",
+      retention:
+        "Provider copies and delivery records use the short duration approved at the release gate.",
+      rights:
+        "Access, erasure, and restriction through the verified operator workflow and processor.",
+      processors: ["Production email provider selected in the deployment privacy profile"],
+      transfers: "Provider region and safeguards must pass the passwordless release gate.",
+      review:
+        "Approved locally; provider, DPA, region, transfers, and retention are release gates."
+    },
+    %DataProcessingRecord{
+      activity: :hosted_session,
+      purpose: "Maintain and independently revoke a verified hosted browser session.",
+      lawful_basis: :contract,
+      personal_data: [
+        "hosted_identity_id",
+        "session token digest",
+        "coarse browser and OS family",
+        "first, last, and expiry timestamps"
+      ],
+      access: "Authenticated user and authorized operations roles; never coding agents.",
+      retention:
+        "Until revocation or expiry, then pruned after the configured short grace period.",
+      rights: "Access, erasure, restriction, and portability via operator workflow.",
+      processors: ["Hosting database"],
+      transfers: "Per deployment privacy profile.",
+      review: "Approved passwordless authentication data contract (Slice 03 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :passwordless_abuse_control,
+      purpose: "Limit unwanted passwordless sends and protect authentication availability.",
+      lawful_basis: :legitimate_interests,
+      personal_data: [
+        "process-secret HMAC email bucket",
+        "process-secret HMAC IP bucket",
+        "short-lived counters"
+      ],
+      access:
+        "In-memory authentication service only; no browser, worker, or coding-agent access.",
+      retention: "Memory-only refill windows; discarded on expiry or process restart.",
+      rights: "Restriction and objection via operator workflow; no durable profile is retained.",
+      processors: ["Application runtime"],
+      transfers: "No separate transfer; deployment hosting profile applies.",
+      review: "Approved passwordless abuse-control contract (Slice 03 design.md)."
     },
     %DataProcessingRecord{
       activity: :personal_workspace,
@@ -132,8 +225,8 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
   def activities, do: Enum.map(@records, & &1.activity)
 
   @doc """
-  Whether the inventory declares any analytics processing. Always false: Slice 01
-  emits and retains no product analytics.
+  Whether the inventory declares any analytics processing. Always false: the
+  implemented slices emit and retain no product analytics.
   """
   @spec analytics?() :: boolean()
   def analytics? do

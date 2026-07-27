@@ -76,9 +76,11 @@ defmodule SddOrchestrator.HostedAccess.Sessions do
         ]
   def list_active(%HostedIdentity{} = hosted_identity, current_cookie \\ nil) do
     current_digest =
-      case SessionCookie.digest_from_signed(current_cookie) do
-        {:ok, digest} -> digest
-        :error -> nil
+      if is_binary(current_cookie) do
+        case SessionCookie.digest_from_signed(current_cookie) do
+          {:ok, digest} -> digest
+          :error -> nil
+        end
       end
 
     from(session in HostedSession,

@@ -81,12 +81,12 @@ defmodule SddOrchestrator.HostedAccess.MagicLinks do
 
       {:error, _reason} ->
         set_delivery_result(attempt, "failed", "delivery_failed")
-        Logger.warning("magic_link_delivery_failed attempt_id=#{attempt.id}")
+        Logger.warning("magic_link_delivery_failed")
     end
   rescue
     _error ->
       set_delivery_result(attempt, "failed", "delivery_failed")
-      Logger.warning("magic_link_delivery_failed attempt_id=#{attempt.id}")
+      Logger.warning("magic_link_delivery_failed")
   end
 
   defp set_delivery_result(attempt, status, failure_code) do

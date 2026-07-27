@@ -5,10 +5,11 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
   The stable implementation contract is approved (see `ProcessingInventory`), but a
   public hosted deployment must additionally record the controller identity and
   contact, processor list, hosting and backup regions, cross-border transfer
-  safeguards, privacy notice, incident path, retention enforcement, and completed
-  reviews. A profile missing any of these blocks release — and only release: it does
-  not block implementation or local verification, so this gate is a separate,
-  explicit readiness check rather than part of `mix release`.
+  safeguards, privacy notice, incident path, retention enforcement, completed
+  reviews, and the passwordless delivery, retention, transfer, and review evidence.
+  A profile missing any of these blocks release — and only release: it does not
+  block implementation or local verification, so this gate is a separate, explicit
+  readiness check rather than part of `mix release`.
   """
   @required [
     :controller_contact,
@@ -18,7 +19,15 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
     :privacy_notice,
     :incident_path,
     :retention_enforcement,
-    :reviews
+    :reviews,
+    :passwordless_delivery_provider,
+    :passwordless_processor_agreement,
+    :passwordless_sender_domain,
+    :passwordless_provider_region,
+    :passwordless_transfer_safeguards,
+    :passwordless_retention_approval,
+    :passwordless_privacy_review,
+    :passwordless_anonymisation_confirmation
   ]
 
   defstruct Enum.map(@required, &{&1, nil})
@@ -55,6 +64,25 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
     case missing_requirements(profile) do
       [] -> :ok
       missing -> {:error, {:incomplete, missing}}
+    end
+  end
+
+  @doc """
+  Enforces both deployment evidence and a production-capable passwordless
+  delivery configuration.
+  """
+  @spec ensure_passwordless_release_ready(t(), map()) ::
+          :ok
+          | {:error, {:incomplete, [atom()]}}
+          | {:error, {:unsafe_delivery_configuration, atom()}}
+  def ensure_passwordless_release_ready(
+        %__MODULE__{} = profile,
+        delivery_configuration \\ SddOrchestrator.HostedAccess.DeliveryConfiguration.current()
+      ) do
+    with :ok <- ensure_release_ready(profile) do
+      SddOrchestrator.HostedAccess.DeliveryConfiguration.ensure_production_ready(
+        delivery_configuration
+      )
     end
   end
 

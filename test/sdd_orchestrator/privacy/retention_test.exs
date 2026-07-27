@@ -1,17 +1,24 @@
 defmodule SddOrchestrator.Privacy.RetentionTest do
   @moduledoc """
-  Storage-limitation proof (Task 10): the retention pruner deletes authorization
-  attempts, abandoned/consumed onboarding attempts, and expired or revoked sessions
-  past their approved windows, keeps still-live records, and is idempotent.
+  Storage-limitation proof: the retention pruner deletes authorization and
+  passwordless attempts, onboarding attempts, and application and hosted sessions
+  past their configured windows, keeps still-live records, and is idempotent.
   """
   use SddOrchestrator.DataCase, async: true
 
-  alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
+  alias SddOrchestrator.Accounts.{
+    ApplicationSession,
+    GitHubAuthorizationAttempt,
+    HostedSession,
+    MagicLinkAttempt
+  }
+
   alias SddOrchestrator.Privacy.Retention
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
 
   alias SddOrchestrator.AccountsFixtures
+  alias SddOrchestrator.HostedAccessFixtures
   alias SddOrchestrator.ProjectsFixtures
 
   @day 24 * 60 * 60
@@ -63,6 +70,36 @@ defmodule SddOrchestrator.Privacy.RetentionTest do
 
       refute Repo.get(GitHubAuthorizationAttempt, old.id)
       assert Repo.get(GitHubAuthorizationAttempt, recent.id)
+    end
+  end
+
+  describe "passwordless attempts" do
+    test "deletes expired, consumed, and invalidated attempts after the grace period" do
+      expired =
+        HostedAccessFixtures.magic_link_attempt_fixture(%{
+          expires_at: ago(@day + 60)
+        }).attempt
+
+      consumed = HostedAccessFixtures.magic_link_attempt_fixture().attempt
+      invalidated = HostedAccessFixtures.magic_link_attempt_fixture().attempt
+      active = HostedAccessFixtures.magic_link_attempt_fixture().attempt
+
+      Repo.update_all(
+        from(attempt in MagicLinkAttempt, where: attempt.id == ^consumed.id),
+        set: [consumed_at: ago(@day + 60)]
+      )
+
+      Repo.update_all(
+        from(attempt in MagicLinkAttempt, where: attempt.id == ^invalidated.id),
+        set: [invalidated_at: ago(@day + 60)]
+      )
+
+      assert %{magic_link_attempts: 3} = Retention.prune_all()
+
+      refute Repo.get(MagicLinkAttempt, expired.id)
+      refute Repo.get(MagicLinkAttempt, consumed.id)
+      refute Repo.get(MagicLinkAttempt, invalidated.id)
+      assert Repo.get(MagicLinkAttempt, active.id)
     end
   end
 
@@ -121,6 +158,23 @@ defmodule SddOrchestrator.Privacy.RetentionTest do
       refute Repo.get(ApplicationSession, absolute_expired.id)
       refute Repo.get(ApplicationSession, revoked.id)
       assert Repo.get(ApplicationSession, active.id)
+    end
+  end
+
+  describe "hosted sessions" do
+    test "deletes sessions expired past the grace period and keeps active sessions" do
+      expired_result = HostedAccessFixtures.verified_hosted_session_fixture()
+      active_result = HostedAccessFixtures.verified_hosted_session_fixture()
+
+      Repo.update_all(
+        from(session in HostedSession, where: session.id == ^expired_result.session.id),
+        set: [expires_at: ago(@day + 60)]
+      )
+
+      assert %{hosted_sessions: 1} = Retention.prune_all()
+
+      refute Repo.get(HostedSession, expired_result.session.id)
+      assert Repo.get(HostedSession, active_result.session.id)
     end
   end
 

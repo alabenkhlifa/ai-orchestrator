@@ -33,13 +33,9 @@ defmodule SddOrchestratorWeb.HostedUserAuth do
         |> assign_hosted_access(access)
 
       :error ->
-        if is_nil(signed_cookie) do
-          assign_hosted_access(conn, nil)
-        else
-          conn
-          |> delete_session(@session_key)
-          |> assign_hosted_access(nil)
-        end
+        conn
+        |> delete_session(@session_key)
+        |> assign_hosted_access(nil)
     end
   end
 

@@ -1,8 +1,7 @@
 defmodule SddOrchestrator.Privacy.RightsTest do
   @moduledoc """
-  Data-subject-rights proof (Task 10, AC-42): the operator export gathers an
-  account's data without exposing credentials, and erasure reaches every active copy
-  by cascading from the account.
+  Data-subject-rights proof: the operator export gathers an account's data without
+  exposing credentials, and erasure reaches application and passwordless copies.
   """
   use SddOrchestrator.DataCase, async: true
 
@@ -11,8 +10,12 @@ defmodule SddOrchestrator.Privacy.RightsTest do
   alias SddOrchestrator.Accounts.{
     Account,
     ApplicationSession,
+    ExternalIdentity,
     GitHubCredential,
     GitHubIdentity,
+    HostedIdentity,
+    HostedSession,
+    MagicLinkAttempt,
     PersonalWorkspace,
     Workspace
   }
@@ -22,6 +25,7 @@ defmodule SddOrchestrator.Privacy.RightsTest do
   alias SddOrchestrator.ProjectStorage.HostedProjectStorage
 
   alias SddOrchestrator.AccountsFixtures
+  alias SddOrchestrator.HostedAccessFixtures
   alias SddOrchestrator.ProjectsFixtures
 
   defp full_account do
@@ -86,6 +90,83 @@ defmodule SddOrchestrator.Privacy.RightsTest do
 
     test "returns not_found for an unknown account" do
       assert {:error, :not_found} = Rights.erase_account(Ecto.UUID.generate())
+    end
+  end
+
+  describe "passwordless authentication data" do
+    test "exports hosted identity, attempt, and coarse session data without credentials" do
+      result =
+        HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: "Hosted.Person@Example.com",
+          user_agent_family: "Firefox",
+          os_family: "Linux"
+        })
+
+      assert {:ok, export} = Rights.export_account(result.hosted_identity.account_id)
+
+      assert %{
+               external_identities: [
+                 %{
+                   provider: "email",
+                   display_identifier: "Hosted.Person@Example.com",
+                   subject_key: "hosted.person@example.com"
+                 }
+               ]
+             } = export.hosted_identity
+
+      assert [
+               %{
+                 delivery_email: "Hosted.Person@Example.com",
+                 delivery_status: "sent"
+               }
+             ] = export.magic_link_attempts
+
+      assert [%{user_agent_family: "Firefox", os_family: "Linux"}] =
+               export.hosted_sessions
+
+      dump = inspect(export)
+      refute dump =~ result.raw_token
+      refute dump =~ Base.encode64(result.attempt.token_digest)
+      refute dump =~ Base.encode64(result.session.token_digest)
+      refute dump =~ "token_salt"
+      refute dump =~ "token_digest"
+    end
+
+    test "account erasure removes hosted identity, methods, attempts, sessions, and workspace" do
+      result =
+        HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: "erase-hosted@example.com"
+        })
+
+      assert {:ok, %{account_id: account_id}} =
+               Rights.erase_account(result.hosted_identity.account_id)
+
+      assert account_id == result.hosted_identity.account_id
+      assert Repo.aggregate(Account, :count) == 0
+      assert Repo.aggregate(HostedIdentity, :count) == 0
+      assert Repo.aggregate(ExternalIdentity, :count) == 0
+      assert Repo.aggregate(MagicLinkAttempt, :count) == 0
+      assert Repo.aggregate(HostedSession, :count) == 0
+      assert Repo.aggregate(PersonalWorkspace, :count) == 0
+      assert Repo.aggregate(Workspace, :count) == 0
+    end
+
+    test "exports and erases attempts that never produced an account" do
+      fixture =
+        HostedAccessFixtures.magic_link_attempt_fixture(%{
+          email: "Attempt.Only@Example.com"
+        })
+
+      assert {:ok, [%{delivery_email: "Attempt.Only@Example.com"}]} =
+               Rights.export_passwordless_attempts(" attempt.only@example.COM ")
+
+      assert {:ok, 1} =
+               Rights.erase_passwordless_attempts(" attempt.only@example.COM ")
+
+      refute Repo.get(MagicLinkAttempt, fixture.attempt.id)
+
+      assert {:ok, []} =
+               Rights.export_passwordless_attempts("attempt.only@example.com")
     end
   end
 end

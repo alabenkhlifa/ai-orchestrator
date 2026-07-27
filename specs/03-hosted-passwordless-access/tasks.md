@@ -4,6 +4,11 @@
 
 In Progress
 
+Tasks 1–7 are implemented and locally verified. The slice remains short of
+`Verified` because the production delivery processor evidence, final retention
+approval, and privacy or legal and anonymisation review remain in the release
+gate below.
+
 ## Active Slice
 
 Deliver passwordless hosted sign-in from magic-link request through verified session and stable workspace restoration, with account-neutral failure behavior and the approved lost-email boundary.
@@ -82,7 +87,8 @@ Deferred after this slice:
   - Depends on: Task 3, Task 4, Task 5
   - Proof: LiveView and desktop/mobile Playwright scenarios cover the complete flow, approved access and lost-email disclosure, account-neutral request and failure presentation, waiting, resend, success, expiry, replay, recovery, browser restart, current-device sign-out, individual and all-device revocation, responsive layout, keyboard use, focus, and accessibility.
 
-- [ ] Task 7 - Enforce the passwordless privacy and security contract.
+- [x] Task 7 - Enforce the passwordless privacy and security contract.
+  - Status: Complete.
   - Purpose: Govern email, tokens, sessions, logs, processors, retention, rights, and allowed anonymous metrics.
   - Owned surfaces: Processing inventory, attempt and expired-session retention pruning, identity and authentication-data export and erasure, access boundaries, delivery-processor configuration seam, transfer and release-gate enforcement, log and inspection redaction, raw-token and cookie-secret exposure checks, Content-Security-Policy review, prohibited product analytics and stable pseudonym detection, and security diagnostics.
   - Owns: AC-25
@@ -91,17 +97,17 @@ Deferred after this slice:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Every active acceptance criterion and data entity has one clear primary task owner; deferred criteria remain outside the active implementation.
-- [ ] Request, delivery, verification, replay, concurrency, and session tests pass.
-- [ ] Account-enumeration and abuse-control review passes.
-- [ ] Token, credential, client-payload, analytics, and log exposure review passes.
-- [ ] Lost-email scenarios preserve access only through a sign-in method linked beforehand and never authorize verified-email replacement.
-- [ ] Browser-restart, multiple-device, current-session, individual-session, and all-session revocation scenarios pass.
-- [ ] Required desktop and mobile browser scenarios pass.
+- [x] Active-slice acceptance criteria pass.
+- [x] Every active acceptance criterion and data entity has one clear primary task owner; deferred criteria remain outside the active implementation.
+- [x] Request, delivery, verification, replay, concurrency, and session tests pass.
+- [x] Account-enumeration and abuse-control review passes.
+- [x] Token, credential, client-payload, analytics, and log exposure review passes.
+- [x] Lost-email scenarios preserve access only through a sign-in method linked beforehand and never authorize verified-email replacement.
+- [x] Browser-restart, multiple-device, current-session, individual-session, and all-session revocation scenarios pass.
+- [x] Required desktop and mobile browser scenarios pass.
 - [ ] GDPR data contract, retention, rights, processor, transfer, and privacy-review gates are complete.
-- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
+- [x] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
+- [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
 
 ## Blocked Decisions
 
@@ -192,3 +198,16 @@ Deferred after this slice:
 - Parallel environment: Browser proof runs on the reserved Slice 03 port `4003` with isolated database `sdd_orchestrator_dev_slice03`; Playwright prebuilds assets before server readiness and covers desktop Chrome plus a Pixel 7 profile.
 - Proof: 14 focused LiveView and return-controller tests pass; 58 combined hosted request, verification, session, and UI tests pass; `mix check` passes with 281 tests and one tagged live test excluded; all 56 Playwright scenarios pass across desktop and mobile, including request, resend, old-link invalidation, newest-link verification, browser restart, active-session display, current sign-out, safe failure, focus, responsive, and axe checks; specification validation and `git diff --check` pass.
 - Remaining: Task 7 owns attempt and expired-session retention, export and erasure integration, processor and release-gate enforcement, full secret and analytics review, CSP review, failure injection, Sobelow, and the final slice verification gate.
+
+### 2026-07-27 - Task 7 implementation started
+
+- In progress: Extending retention, rights, processing inventory, provider and transfer release-gate enforcement, redaction and secret-exposure checks, analytics exclusions, CSP review, security diagnostics, and the final local and production verification gates.
+- Preflight: Tasks 2–6 are complete; Task 7 may tighten their privacy and security controls but must preserve their account-neutral behavior, atomic rollback, and verified-session boundaries.
+
+### 2026-07-27 - Passwordless privacy and security contract complete (Task 7)
+
+- Completed: Extended the processing inventory across hosted identities, verified sign-in methods, magic-link attempts, passwordless delivery, hosted sessions, and in-memory abuse controls; added configurable attempt and expired-session pruning; extended credential-free account export and atomic erasure; and added export and erasure for attempts that never produced an account.
+- Release enforcement: Added runtime delivery-module and mailer-adapter seams, rejected local and test delivery configurations for public release, and extended the deployment privacy profile with provider, processor agreement, sender domain, region, transfer safeguards, retention approval, privacy review, and anonymisation evidence. The local adapter remains valid only for development and test.
+- Security: Removed linkable attempt IDs from delivery-failure logs; proved magic-link and session credentials stay out of inspection, logs, redirect bodies, assigns, and analytics; retained `Secure`, `HttpOnly`, `SameSite=Lax`, signed cookie handling; reviewed the same-origin CSP and no-referrer verification boundary; and fixed hosted-session Dialyzer typing without changing authorization behavior. Narrow `Ecto.Multi` opaque-type suppressions cover only the established false positive.
+- Proof: 39 focused privacy, rights, retention, processor, redaction, cookie, token, CSP, and failure tests pass; `mix check` passes with 294 tests and one tagged live test excluded; `mix deps.audit`, `mix sobelow --config`, and `mix dialyzer` pass; npm reports no vulnerabilities; all 56 Playwright scenarios pass across desktop and mobile; production assets and release assembly pass; specification validation and `git diff --check` pass.
+- Readiness: Product requirements remain approved; technical design, implementation, and local verification are complete. Public release remains blocked only by the production email provider and DPA, sender domain, region and transfer evidence, final retention-duration approval, and required privacy or legal and anonymisation review recorded in the release gate.

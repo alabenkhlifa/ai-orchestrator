@@ -23,6 +23,22 @@ end
 config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# A public deployment may select either a compiled delivery boundary or a
+# compiled Swoosh adapter without placing provider credentials in source.
+# Task 7's release gate still requires the matching processor, region, transfer,
+# retention, and review evidence before that deployment is considered ready.
+if delivery_module = System.get_env("PASSWORDLESS_DELIVERY_MODULE") do
+  config :sdd_orchestrator,
+         :magic_link_delivery,
+         Module.safe_concat(String.split(delivery_module, "."))
+end
+
+if mailer_adapter = System.get_env("PASSWORDLESS_MAILER_ADAPTER") do
+  config :sdd_orchestrator,
+         SddOrchestrator.Mailer,
+         adapter: Module.safe_concat(String.split(mailer_adapter, "."))
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,

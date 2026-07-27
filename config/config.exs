@@ -77,6 +77,10 @@ config :sdd_orchestrator, :passwordless,
     global: [capacity: 100, window_ms: 60 * 1_000]
   ]
 
+config :sdd_orchestrator, :passwordless_retention,
+  magic_link_attempt_grace_seconds: 24 * 60 * 60,
+  hosted_session_grace_seconds: 24 * 60 * 60
+
 config :swoosh, :api_client, false
 
 # GitHub provider adapter and the registered public GitHub App identity.
