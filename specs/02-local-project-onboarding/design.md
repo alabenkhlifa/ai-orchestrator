@@ -160,6 +160,12 @@ Required boundaries:
 - Reason: Attempt binding and single use limit pairing abuse, and outbound-only transport avoids exposing the user's machine.
 - Consequence: Credentials never appear in client payloads, logs, analytics, or project data; incomplete attempts expire; cross-workspace use is denied.
 
+### Pairing Authorization Persistence
+
+- Choice: `PairingAttempt` and `LocalWorker` authorization metadata live in the hosted control-plane database keyed by an opaque `device_workspace_id` with no foreign key to `workspaces`, because the control plane must verify inbound worker connections while accountless device roots are not hosted rows. Only the credential digest and salt, coarse compatibility descriptors, and lifecycle state are stored — never device-authoritative project data. Codes and credentials travel as an `id.secret` pair, where the id selects the row and the secret is compared in constant time against a per-row salted SHA-256 digest.
+- Reason: Verifying an inbound worker requires a server-side authorization record, and this record is connection metadata within the approved outbound boundary rather than device-authoritative data.
+- Consequence: Worker authorization is verifiable server-side without hosting a device workspace root or any device project data; raw codes and credentials are never persisted and are returned only once.
+
 ### On-Device Storage Seam
 
 - Choice: This slice owns only the `on_device` storage mode from `specs/05-project-storage-lifecycle/`. The storage-mode explanation reads the storage-selection contract but implements only on-device; hosted storage selection routes to `specs/03-hosted-passwordless-access/` and `specs/05-project-storage-lifecycle/` and stays deferred. The active slice has no authentication dependency.

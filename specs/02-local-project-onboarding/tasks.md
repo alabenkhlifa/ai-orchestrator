@@ -53,9 +53,10 @@ Release boundary:
   - Purpose: Give non-technical users an actionable path when no worker is available.
   - Proof: macOS browser scenarios cover detected, missing, incompatible, and unavailable worker states plus graphical installation without terminal commands.
 
-- [ ] Implement secure workspace-bound pairing.
+- [x] Implement secure workspace-bound pairing.
   - Purpose: Authorize one worker for one workspace without transferable credentials.
   - Proof: Security tests cover attempt expiry, confirmation, replay rejection, revocation, rotation, replacement-worker pairing, and cross-workspace denial.
+  - Delivered: `PairingAttempt` and `LocalWorker` (hosted authorization metadata keyed by an opaque `device_workspace_id`) and the `Pairing` context — single-use attempt-bound codes, per-worker salted-digest credentials, rotation, revocation, and workspace-scoped authorization. Raw codes and credentials are never persisted. The native worker endpoint and outbound transport remain release-gated.
 
 - [ ] Implement local repository selection and validation.
   - Purpose: Validate one user-selected Git repository entirely on the worker.
@@ -133,3 +134,10 @@ Release boundary:
 - Proof: `mix test test/sdd_orchestrator/devices/device_store_test.exs` passed (4 tests: stable access, hosted-identity isolation, cross-restart durability, and loss-yields-fresh-workspace); full suite 298 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
 - Failed checks: None.
 - Spec updates: Status `Not Started` → `In Progress`; Task 1 checked. The repository-reconnection-is-not-history-restoration clause is owned by Task 4; the native worker adapter and durable device store remain release-gated.
+
+### 2026-07-27 - Task 3 complete: secure workspace-bound pairing
+
+- Completed: Added `PairingAttempt`, `LocalWorker`, the `Pairing` context, and the `local_workers`/`pairing_attempts` migration, plus the `Pairing Authorization Persistence` decision in `design.md`. Implemented ahead of Task 2 because worker discovery reports on paired workers and needs the worker/pairing domain first (legacy tasks, reconstructed dependency).
+- Proof: `mix test test/sdd_orchestrator/devices/pairing_test.exs` passed (10 tests: confirmation, replay rejection, expiry, invalid-code rejection, cross-workspace denial, revocation, rotation, replacement-worker pairing, and digest-only persistence); full suite 308 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
+- Failed checks: None.
+- Spec updates: Task 3 checked. The native worker endpoint, outbound transport, and packaging remain release-gated.
