@@ -10,13 +10,14 @@ OpenAI Symphony provides a language-independent orchestration specification and 
 
 Represent each feature as a durable lifecycle record connected to versioned requirements, readiness findings, an approved implementation slice, agent runs, blocking questions, evidence, preview deployments, and notifications. Present the lifecycle through five first-release board columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`. Treat `Blocked` as an additional visible status so an interrupted run keeps its lifecycle position.
 
-Keep requirement guidance and readiness assessment separate from execution authorization. Starting development creates a run against one approved specification revision and isolated branch. The run emits durable progress and evidence events. A blocking product question pauses the run until an authorized answer is written back to the specification, after which the same run resumes. Successful agent work ends in human review. Authorized approval moves the feature to `Done`; authorized rejection records feedback and returns it to `In development` so work can resume.
+Keep requirement guidance and readiness assessment separate from execution authorization. Starting development creates a run against one approved specification revision and isolated branch. The run emits durable progress and evidence events. A blocking product question pauses the run until an authorized answer is written back to the specification, after which the same run resumes. When participation ends, consume the approved handoff by clearing current assignment, routing pending question and review responsibility to the project owner, preserving historical attribution, and leaving the active run under owner control. Successful agent work ends in human review. Authorized approval moves the feature to `Done`; authorized rejection records feedback and returns it to `In development` so work can resume.
 
-Treat screenshots, test results, branch metadata, and preview links as typed evidence rather than unstructured agent claims. Build the product-facing lifecycle inside the Phoenix control plane selected by `specs/01-github-project-onboarding/`; keep the worker, run, and Symphony orchestration protocols open until this feature's product requirements are complete.
+Treat required-check results, exact branch and revision identity, applicable screenshots, and preview outcomes as typed evidence rather than unstructured agent claims. Start an authorized preview automatically after successful verification, while keeping preview absence or failure separate from verification success and human review readiness. Deliver action-required and completion notifications in-product in the first release. Build the product-facing lifecycle inside the Phoenix control plane selected by `specs/01-github-project-onboarding/`; keep the worker, run, and Symphony orchestration protocols open until this feature's product requirements are complete.
 
 ## Components Affected
 
 - Project feature board and feature detail view.
+- External project-participation authorization boundary.
 - Guided requirement authoring and readiness assessment.
 - Specification revision and approval boundary.
 - Agent-run control and status presentation.
@@ -47,23 +48,32 @@ Required boundaries:
 
 - Every feature, revision, run, question, evidence item, preview, and notification belongs to one project.
 - Only authorized project participants can read project content, start runs, answer questions, or review evidence.
+- Current participant identity and authorization come from a separate project-participation boundary. This slice may read and enforce that state but cannot create, invite, grant, revoke, or otherwise mutate participation.
+- Current participant presentation consumes the project-specific display name and never exposes another participant's email.
+- Assignment, notification delivery, run control, review, and every project-content read revalidate current participation and fail closed when authorization is stale or absent.
+- The participation-removal handoff clears current assignment, routes pending question and review responsibility to the immutable project owner, preserves the last accepted project display name as non-interactive historical attribution, and keeps an active run available only under owner control.
 - Agents receive the minimum project, repository, specification, and credential capabilities required for the run.
 - Worker and provider secrets remain outside agent-readable requirements, comments, evidence, and analytics.
 - A run is bound to one immutable starting specification revision; accepted answers create recorded updates and an auditable resume point.
+- Every completion claim is bound to one isolated branch, the exact verified revision, and the configured required-check results.
+- Screenshots are required only for visual work when the configured environment can capture a meaningful result.
+- Preview deployment requires preconfigured project authorization, starts automatically only after successful verification, and cannot determine verification success or human review readiness.
+- The first release creates only in-product notifications; external delivery channels remain outside this slice.
 - Local and hosted data follow the authoritative storage mode and lifecycle defined by `specs/05-project-storage-lifecycle/`.
 
 ## Interfaces
 
 - Board interface: show the five lifecycle columns, creator, optional assignment, readiness, active run, completion outcome, and a visible `Blocked` status on an interrupted feature without moving it to another column. Let an authorized project participant select any authorized participant for `Assigned` or use `Assign to me`. Do not use free dragging to change lifecycle state; expose the gated workflow action available to an authorized user.
+- Participant interface: consume current project-participant identity, project display name, authorization, and removal handoff from the separate participation boundary for assignment, notification, run-control, review, content-access, responsibility routing, historical attribution, and active-run control without exposing participant emails or participation-management actions in this slice.
 - Specification guidance interface: describe required information, classify visible findings as blocking or non-blocking, and allow only non-blocking suggestions to be dismissed.
 - Start interface: remain unavailable while any blocker exists, then authorize one ready feature revision and create one run without duplicate dispatch.
 - Worker interface: start, observe, pause, resume, cancel, and recover a run on a configured local or remote worker.
 - Agent interface: provide approved scope and receive structured progress, questions, and evidence without exposing unrelated credentials.
 - Question interface: pause the run, record one focused question, tag the feature's assigned participant when present or its creator otherwise, and resume only after accepted specification write-back.
-- Evidence interface: validate, store, redact, and present typed proof with run and branch provenance.
-- Preview interface: request, observe, expire, and link a non-production branch deployment when supported.
+- Evidence interface: validate, store, redact, and present configured required-check results, isolated branch and exact revision identity, applicable screenshots, and preview outcomes with run provenance.
+- Preview interface: after verification succeeds, automatically request a non-production deployment only through the project's preconfigured authorized path, observe and link success, and expose absence or failure without blocking `Ready for review`.
 - Review interface: present the completed run and its evidence in `Ready for review`, accept a decision only from an authorized user, move an approved feature to `Done`, or record rejection feedback and return it to `In development`.
-- Notification interface: deliver action-required and completion events without leaking project content to unauthorized recipients.
+- Notification interface: deliver action-required and completion events in-product without leaking project content to unauthorized recipients.
 
 ## Decisions and Tradeoffs
 
@@ -103,11 +113,23 @@ Required boundaries:
 - Reason: Story responsibility should not depend on the creator or require a separate assignment role in the first release.
 - Consequence: Assignment selection must be limited to current authorized project participants, and `Assign to me` resolves to the current participant.
 
+### External Project-Participation Prerequisite
+
+- Choice: Define participant provisioning, invitations, membership, roles, access removal, and their lifecycle in a separate focused project-participation specification. This slice consumes only its current authorized-participant boundary.
+- Reason: Participation management is an independently valuable access-control workflow with its own identity, invitation, revocation, notification, privacy, and security lifecycle.
+- Consequence: Slice 07 remains focused on specification and delivery, but implementation cannot begin until the prerequisite exposes an approved participant-authorization contract. Stale or missing authorization fails closed, and no Slice 07 flow may change participation.
+
+### Removed-Participant Responsibility Handoff
+
+- Choice: Clear current assignment and route pending blocking-question and review responsibility to the immutable project owner when participation ends. Preserve prior contributions under the last accepted project display name as non-interactive historical attribution and keep an active run under owner control instead of canceling it automatically.
+- Reason: Removal must end access without erasing project history, losing pending work, or making a membership action implicitly destroy an active run.
+- Consequence: The former participant cannot receive project notifications or actions, the owner becomes the deterministic fallback, and historical attribution follows the retention and rights contract defined by the participation prerequisite.
+
 ### Evidence-Based Completion
 
-- Choice: Treat tests, screenshots, branch state, and preview links as typed evidence attached to the feature.
+- Choice: Require the configured project-check results plus isolated branch and exact verified-revision identity for every completion claim. Require screenshots only for visual work in a capable configured environment, and include a preview link only when an authorized preview path succeeds.
 - Reason: Users need inspectable proof rather than an unsupported agent completion message.
-- Consequence: Each project type needs an approved verification contract, and unavailable evidence must be reported honestly.
+- Consequence: Missing or failed required checks or missing branch and revision identity prevent successful completion. Conditional evidence stays visibly unavailable rather than being fabricated or treated as universally mandatory.
 
 ### Human Review Before Done
 
@@ -117,9 +139,15 @@ Required boundaries:
 
 ### Branch Preview Instead Of Production Deployment
 
-- Choice: Limit this workflow to an isolated branch and a non-production preview when supported.
-- Reason: Users need a way to test completed work without granting the first workflow authority to merge or deploy to production.
-- Consequence: Merge, release approval, production deployment, preview lifetime, and cleanup require later specifications.
+- Choice: After successful verification, automatically start a non-production branch preview only when the project has a preconfigured and authorized preview path.
+- Reason: Project-level authorization permits a useful test result without interrupting every run for repeated approval or granting authority to merge or deploy to production.
+- Consequence: Preview absence or failure remains visible but does not block an otherwise verified feature from reaching `Ready for review`. Merge, release approval, production deployment, preview lifetime, and cleanup beyond the configured path require later specifications.
+
+### In-Product Notifications Only
+
+- Choice: Deliver blocked, ready-for-review, and failed run notifications only inside the product in the first release.
+- Reason: The first workflow needs durable action and outcome visibility without adding external delivery integrations and their separate processor, retry, consent, and content-exposure boundaries.
+- Consequence: Email, chat, mobile, and webhook notifications are deferred. Recipient rules remain a product decision, while in-product delivery, retry, deduplication, and minimization remain technical-design work.
 
 ### Shared Phoenix Control Plane
 
@@ -136,6 +164,8 @@ Required boundaries:
 - Agent output may claim success without proof. Derive completion from the approved verification contract and typed evidence.
 - An agent or unauthorized participant may attempt to bypass review. Enforce the `Ready for review` boundary and authorized approval at the domain transition.
 - Questions may reach the wrong people or expose sensitive content. Restrict assignment actions and targets to authorized project participants and apply the recorded assignee-or-creator routing rule.
+- Stale participant state could permit an assignment, notification, action, or content read after access removal. Revalidate the external participant boundary at each protected action and delivery.
+- Removal during an active run could orphan responsibility or cancel useful work. Consume the participation handoff idempotently and make the project owner the current controller without restoring former access.
 - Screenshots, logs, comments, and preview URLs may expose personal data, source content, or secrets. Apply redaction, access control, retention, and deletion across every copy.
 - Preview deployments may create cost or security exposure. Require approved project configuration, isolation, lifecycle limits, and visible non-production status.
 - Local and remote workers may disconnect during a run. Preserve durable control-plane state and define reconciliation before implementation.
@@ -147,7 +177,7 @@ Required boundaries:
 - Which persistent state model and transition protocol make readiness, dispatch, blocking, resume, verification, and completion idempotent and auditable?
 - Which worker protocol and trust model support local and remote execution without exposing control-plane or provider credentials?
 - How are specification revisions and accepted blocking answers bound to a resumable agent context?
-- Which structured event and evidence contracts support tests, screenshots, comments, branch state, and preview deployments?
+- Which structured event and evidence contracts support configured checks, exact branch and revision identity, applicable screenshots, comments, and preview outcomes?
 - How are preview adapters, secrets, isolation, expiration, cleanup, and failure recovery implemented?
-- Which notification delivery, retry, deduplication, and content-minimization mechanisms satisfy the approved channels?
+- Which in-product notification persistence, delivery, retry, deduplication, read-state, and content-minimization mechanisms satisfy the approved recipient rules?
 - Which automated, integration, security, privacy, agent, browser, and live-preview commands form the verification gate?
