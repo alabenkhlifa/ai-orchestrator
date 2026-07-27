@@ -42,7 +42,8 @@ defmodule SddOrchestrator.HostedAccessFixtures do
       email_key: email_attrs.subject_key,
       delivery_email: email_attrs.display_identifier,
       delivery_status: Map.get(attrs, :delivery_status, "sent"),
-      expires_at: Map.get(attrs, :expires_at, DateTime.add(now, 15 * 60, :second))
+      expires_at: Map.get(attrs, :expires_at, DateTime.add(now, 15 * 60, :second)),
+      return_to: Map.get(attrs, :return_to, "/hosted/access/sessions")
     }
 
     attempt =

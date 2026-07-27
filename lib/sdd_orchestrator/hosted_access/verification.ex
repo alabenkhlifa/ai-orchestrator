@@ -22,6 +22,7 @@ defmodule SddOrchestrator.HostedAccess.Verification do
           external_identity: SddOrchestrator.Accounts.ExternalIdentity.t(),
           hosted_identity: SddOrchestrator.Accounts.HostedIdentity.t(),
           personal_workspace: SddOrchestrator.Accounts.PersonalWorkspace.t(),
+          return_to: String.t(),
           session: HostedSession.t(),
           session_cookie: SessionCookie.t()
         }
@@ -45,7 +46,11 @@ defmodule SddOrchestrator.HostedAccess.Verification do
            {:ok, session, session_cookie} <-
              Sessions.create(identity.hosted_identity, device_context),
            {1, _rows} <- consume_attempt(attempt) do
-        Map.merge(identity, %{session: session, session_cookie: session_cookie})
+        Map.merge(identity, %{
+          return_to: attempt.return_to,
+          session: session,
+          session_cookie: session_cookie
+        })
       else
         _failure -> Repo.rollback(:invalid_or_expired)
       end

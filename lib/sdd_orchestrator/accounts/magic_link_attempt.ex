@@ -37,6 +37,7 @@ defmodule SddOrchestrator.Accounts.MagicLinkAttempt do
     field :consumed_at, :utc_datetime
     field :invalidated_at, :utc_datetime
     field :failure_code, :string
+    field :return_to, :string, redact: true
 
     timestamps()
   end
@@ -53,7 +54,8 @@ defmodule SddOrchestrator.Accounts.MagicLinkAttempt do
       :expires_at,
       :consumed_at,
       :invalidated_at,
-      :failure_code
+      :failure_code,
+      :return_to
     ])
     |> validate_required([
       :token_digest,
@@ -66,6 +68,7 @@ defmodule SddOrchestrator.Accounts.MagicLinkAttempt do
     |> validate_inclusion(:delivery_status, @delivery_statuses)
     |> validate_length(:email_key, max: 320)
     |> validate_length(:delivery_email, max: 320)
+    |> validate_length(:return_to, max: 2_048)
     |> unique_constraint(:token_digest)
     |> unique_constraint(:email_key, name: :magic_link_attempts_one_active_email_index)
     |> check_constraint(:delivery_status,

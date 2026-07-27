@@ -6,7 +6,7 @@ config :sdd_orchestrator, SddOrchestrator.Repo,
   password: "postgres",
   hostname: "localhost",
   port: 5433,
-  database: "sdd_orchestrator_dev",
+  database: System.get_env("DATABASE_NAME", "sdd_orchestrator_dev"),
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10

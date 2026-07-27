@@ -76,6 +76,7 @@ defmodule SddOrchestratorWeb.Router do
     # Delivered passwordless credentials return through one account-neutral
     # verification endpoint before any hosted surface is exposed.
     get "/hosted/access/verify", HostedAccessController, :verify
+    delete "/hosted/session", HostedSessionController, :delete_current
 
     # Unauthenticated entry chooser; a valid session is sent to the catalog.
     live_session :redirect_if_authenticated,
@@ -86,6 +87,12 @@ defmodule SddOrchestratorWeb.Router do
     # Public handoff for the local onboarding action (owned by specs/02).
     live_session :public, on_mount: [{SddOrchestratorWeb.UserAuth, :mount_current_account}] do
       live "/onboarding/local", LocalOnboardingLive
+    end
+
+    live_session :hosted_access_public,
+      on_mount: [{SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}] do
+      live "/hosted/access", HostedAccessLive
+      live "/hosted/access/result", HostedAccessResultLive
     end
 
     # Protected surfaces require a valid application session.
@@ -112,7 +119,11 @@ defmodule SddOrchestratorWeb.Router do
   scope "/", SddOrchestratorWeb do
     pipe_through [:browser, :require_hosted]
 
-    delete "/hosted/session", HostedSessionController, :delete_current
+    live_session :hosted_access_authenticated,
+      on_mount: [{SddOrchestratorWeb.HostedUserAuth, :require_hosted_authenticated}] do
+      live "/hosted/access/sessions", HostedSessionsLive
+    end
+
     delete "/hosted/sessions/:id", HostedSessionController, :delete
     delete "/hosted/sessions", HostedSessionController, :delete_all
   end
@@ -145,6 +156,7 @@ defmodule SddOrchestratorWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: SddOrchestratorWeb.Telemetry
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
 end

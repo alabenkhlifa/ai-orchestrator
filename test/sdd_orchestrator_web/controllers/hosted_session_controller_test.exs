@@ -6,11 +6,21 @@ defmodule SddOrchestratorWeb.HostedSessionControllerTest do
   alias SddOrchestrator.HostedAccessFixtures
   alias SddOrchestrator.Repo
 
-  test "protected revocation routes reject a missing hosted session", %{conn: conn} do
-    conn = delete(conn, ~p"/hosted/session")
+  test "individual and all-device revocation routes reject a missing hosted session", %{
+    conn: conn
+  } do
+    session_id = Ecto.UUID.generate()
+    conn = delete(conn, ~p"/hosted/sessions/#{session_id}")
 
     assert redirected_to(conn) == ~p"/?#{[hosted_access: "required"]}"
     assert conn.halted
+  end
+
+  test "current-device sign-out is idempotent without an active session", %{conn: conn} do
+    conn = delete(conn, ~p"/hosted/session")
+
+    assert redirected_to(conn) == ~p"/?#{[hosted_access: "signed_out"]}"
+    assert get_session(conn, SessionCookie.session_key()) == nil
   end
 
   test "normal sign-out revokes only the current browser session", %{conn: conn} do

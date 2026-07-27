@@ -21,7 +21,9 @@ defmodule SddOrchestratorWeb.HostedAccessControllerTest do
         )
         |> get(~p"/hosted/access/verify?#{[attempt: attempt.id, token: raw_token]}")
 
-      assert redirected_to(conn) == ~p"/?#{[hosted_access: "verified"]}"
+      assert redirected_to(conn) ==
+               ~p"/hosted/access/result?#{[status: "verified", return_to: "/hosted/access/sessions"]}"
+
       assert get_resp_header(conn, "cache-control") == ["no-store"]
       assert get_resp_header(conn, "referrer-policy") == ["no-referrer"]
 
@@ -61,7 +63,8 @@ defmodule SddOrchestratorWeb.HostedAccessControllerTest do
           ~p"/hosted/access/verify?#{[attempt: valid.attempt.id, token: valid.raw_token]}"
         )
 
-      assert redirected_to(success) == ~p"/?#{[hosted_access: "verified"]}"
+      assert redirected_to(success) ==
+               ~p"/hosted/access/result?#{[status: "verified", return_to: "/hosted/access/sessions"]}"
 
       failure_locations =
         [
@@ -78,7 +81,10 @@ defmodule SddOrchestratorWeb.HostedAccessControllerTest do
         ]
         |> Enum.map(&redirected_to/1)
 
-      assert Enum.uniq(failure_locations) == [~p"/?#{[hosted_access: "invalid"]}"]
+      assert Enum.uniq(failure_locations) == [
+               ~p"/hosted/access/result?#{[status: "invalid"]}"
+             ]
+
       assert Repo.aggregate(HostedSession, :count) == 1
 
       assert Repo.aggregate(

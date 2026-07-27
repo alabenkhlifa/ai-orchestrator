@@ -74,7 +74,8 @@ Deferred after this slice:
   - Depends on: Task 2, Task 4
   - Proof: Session, authorization, recovery-seam, and concurrency tests cover browser restart, independent devices, expiry, renewal, protected-route denial, current-only sign-out, one-session and all-session revocation, simultaneous revocation, pre-linked restoration, missing-method failure, unchanged verified email, unaffected on-device access, and absence of session credentials from coding-agent boundaries.
 
-- [ ] Task 6 - Deliver the passwordless authentication and session-management experience.
+- [x] Task 6 - Deliver the passwordless authentication and session-management experience.
+  - Status: Complete.
   - Purpose: Make success, waiting, resend, expiry, and failure actionable for non-technical users.
   - Owned surfaces: Hosted-access disclosure; email request, neutral acknowledgement, waiting, resend, verification-result, expiry, and safe-failure LiveViews; current-session sign-out; active-device session-management UI; individual and all-device revocation feedback; pre-linked recovery and no-override copy; focus, responsive, keyboard, non-color, and accessible browser behavior; and source-specific return handoff to the caller without combined-catalog ownership.
   - Owns: AC-09
@@ -178,3 +179,16 @@ Deferred after this slice:
 - Isolation: Hosted authorization remains separate from GitHub application sessions and is not copied into worker or coding-agent capabilities. Tests prove hosted sign-out and revocation leave device-authoritative project ownership and storage mode unchanged.
 - Proof: 15 focused lifecycle, authorization, revocation, recovery, immutable-email, and local-boundary tests pass; the combined hosted-access suite passes with 41 tests; `mix check` passes with 268 tests and one tagged live test excluded; specification validation and `git diff --check` pass.
 - Remaining: Task 6 owns the complete accessible request, waiting, resend, verification-result, recovery, and active-device LiveView experience plus desktop and mobile browser proof.
+
+### 2026-07-27 - Task 6 implementation started
+
+- In progress: Implementing the hosted-access disclosure, neutral request acknowledgement, waiting and resend flow, safe verification results, current sign-out and device-session management, recovery-boundary copy, accessible interaction states, and desktop/mobile browser proof.
+- Preflight: Tasks 3, 4, and 5 are complete; Task 6 consumes their public interfaces and owns presentation and browser behavior without taking combined-catalog ownership.
+
+### 2026-07-27 - Passwordless and session-management experience complete (Task 6)
+
+- Completed: Added the hosted-access entry and recovery disclosure; email request, account-neutral acknowledgement, waiting, resend, and use-another-email states; safe verified and invalid, expired, replayed, or replaced result states; caller-scoped local return paths; active-device visibility; individual, current, and all-device sign-out actions and feedback; and explicit pre-linked recovery and no-support-override copy.
+- Accessibility and privacy: Request and result focus moves to the actionable heading or field; all controls are keyboard-operable and carry visible focus; status and failure meaning uses icon plus text; responsive layouts avoid horizontal overflow; submitted email is never echoed after request; active-session UI exposes only coarse browser and OS families and no IP or fingerprint.
+- Parallel environment: Browser proof runs on the reserved Slice 03 port `4003` with isolated database `sdd_orchestrator_dev_slice03`; Playwright prebuilds assets before server readiness and covers desktop Chrome plus a Pixel 7 profile.
+- Proof: 14 focused LiveView and return-controller tests pass; 58 combined hosted request, verification, session, and UI tests pass; `mix check` passes with 281 tests and one tagged live test excluded; all 56 Playwright scenarios pass across desktop and mobile, including request, resend, old-link invalidation, newest-link verification, browser restart, active-session display, current sign-out, safe failure, focus, responsive, and axe checks; specification validation and `git diff --check` pass.
+- Remaining: Task 7 owns attempt and expired-session retention, export and erasure integration, processor and release-gate enforcement, full secret and analytics review, CSP review, failure injection, Sobelow, and the final slice verification gate.

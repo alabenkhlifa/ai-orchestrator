@@ -13,11 +13,11 @@ defmodule SddOrchestratorWeb.HostedAccessController do
       |> DeviceRecognition.from_user_agent()
 
     case HostedAccess.verify_magic_link(attempt_id, raw_token, device_context) do
-      {:ok, %{session_cookie: session_cookie}} ->
+      {:ok, %{session_cookie: session_cookie, return_to: return_to}} ->
         conn
         |> protect_credential_response()
         |> SddOrchestratorWeb.HostedUserAuth.put_session_cookie(session_cookie)
-        |> redirect(to: ~p"/?#{[hosted_access: "verified"]}")
+        |> redirect(to: ~p"/hosted/access/result?#{[status: "verified", return_to: return_to]}")
 
       {:error, :invalid_or_expired} ->
         safe_failure(conn)
@@ -29,7 +29,7 @@ defmodule SddOrchestratorWeb.HostedAccessController do
   defp safe_failure(conn) do
     conn
     |> protect_credential_response()
-    |> redirect(to: ~p"/?#{[hosted_access: "invalid"]}")
+    |> redirect(to: ~p"/hosted/access/result?#{[status: "invalid"]}")
   end
 
   defp protect_credential_response(conn) do

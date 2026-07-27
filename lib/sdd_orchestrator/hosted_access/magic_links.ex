@@ -17,7 +17,8 @@ defmodule SddOrchestrator.HostedAccess.MagicLinks do
 
   alias SddOrchestrator.HostedAccess.{
     MagicLinkEmail,
-    RateLimiter
+    RateLimiter,
+    ReturnPath
   }
 
   alias SddOrchestrator.Repo
@@ -28,13 +29,13 @@ defmodule SddOrchestrator.HostedAccess.MagicLinks do
   def request(email, context \\ %{}) do
     with {:ok, email_attrs} <- ExternalIdentity.normalize_email(email),
          true <- RateLimiter.allow?(email_attrs.subject_key, context_value(context, :ip_address)) do
-      issue(email_attrs)
+      issue(email_attrs, context)
     end
 
     @acknowledgement
   end
 
-  defp issue(email_attrs) do
+  defp issue(email_attrs, context) do
     raw_token = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
     salt = :crypto.strong_rand_bytes(32)
     digest = :crypto.hash(:sha256, salt <> raw_token)
@@ -46,7 +47,8 @@ defmodule SddOrchestrator.HostedAccess.MagicLinks do
       email_key: email_attrs.subject_key,
       delivery_email: email_attrs.display_identifier,
       delivery_status: "pending",
-      expires_at: DateTime.add(now, ttl_seconds(), :second)
+      expires_at: DateTime.add(now, ttl_seconds(), :second),
+      return_to: ReturnPath.sanitize(context_value(context, :return_to))
     }
 
     Multi.new()
