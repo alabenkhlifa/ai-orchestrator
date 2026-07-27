@@ -79,6 +79,34 @@ defmodule SddOrchestrator.Devices.Pairing do
     end
   end
 
+  @doc """
+  Lists the active (non-revoked) workers paired to one device workspace.
+
+  Worker discovery reads this set to decide whether a compatible, reachable
+  worker is available. Revoked workers are excluded because they can no longer
+  authorize filesystem access.
+  """
+  @spec active_workers(Ecto.UUID.t()) :: [LocalWorker.t()]
+  def active_workers(device_workspace_id) do
+    LocalWorker
+    |> where([w], w.device_workspace_id == ^device_workspace_id and w.state == "active")
+    |> Repo.all()
+  end
+
+  @doc """
+  Records a worker heartbeat by stamping `last_seen_at`.
+
+  Worker liveness is modeled through this timestamp: the native worker refreshes
+  it over its outbound transport (release-gated), and discovery treats a recent
+  value as reachable. Returns the worker unchanged if it is not active.
+  """
+  @spec mark_seen(LocalWorker.t()) :: {:ok, LocalWorker.t()} | {:error, Ecto.Changeset.t()}
+  def mark_seen(%LocalWorker{state: "active"} = worker) do
+    worker |> Ecto.Changeset.change(last_seen_at: now()) |> Repo.update()
+  end
+
+  def mark_seen(%LocalWorker{} = worker), do: {:ok, worker}
+
   @doc "Authenticates an inbound worker by its credential. Only active workers pass."
   @spec authenticate_worker(String.t()) :: {:ok, LocalWorker.t()} | {:error, :unauthorized}
   def authenticate_worker(credential) do

@@ -103,6 +103,12 @@ config :sdd_orchestrator, :github,
 config :sdd_orchestrator, SddOrchestrator.Devices,
   adapter: SddOrchestrator.Devices.DeviceStore.Local
 
+# The native macOS worker (release-gated) completes pairing over its outbound
+# transport and opens the operating-system folder picker. Off (production) the
+# local-onboarding UI waits on the real worker; dev and test enable a local
+# stand-in so the graphical flow is exercisable without a signed binary.
+config :sdd_orchestrator, :device_worker_stub, false
+
 # Cloak vault ciphers are configured per environment because the key is a secret.
 
 # Import environment specific config. This must remain at the bottom

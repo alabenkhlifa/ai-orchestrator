@@ -37,6 +37,10 @@ config :sdd_orchestrator, SddOrchestrator.Vault,
 # races the Ecto sandbox or deletes another test's data.
 config :sdd_orchestrator, start_retention_pruner: false
 
+# Exercise the local worker stand-in (pairing completion and folder selection) so
+# the local-onboarding LiveView flow is driveable without the signed native worker.
+config :sdd_orchestrator, :device_worker_stub, true
+
 # Tests use the deterministic GitHub fake, never a live provider.
 config :sdd_orchestrator, :github,
   provider: SddOrchestrator.GitHubIntegration.FakeProvider,

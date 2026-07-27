@@ -49,9 +49,10 @@ Release boundary:
   - Proof: Tests show stable access under the same OS boundary, isolation from hosted authorization, and a clear loss outcome that never presents repository reconnection as restoration of missing project history.
   - Delivered: `DeviceStore` behaviour, durable local DETS adapter (`DeviceStore.Local`), and the `Devices` context; ownership derives from device id and storage mode only. The repository-reconnection-is-not-restoration clause is completed under Task 4, where a connection exists. Native worker adapter and durable device store are release-gated.
 
-- [ ] Implement worker discovery and installation guidance.
+- [x] Implement worker discovery and installation guidance.
   - Purpose: Give non-technical users an actionable path when no worker is available.
   - Proof: macOS browser scenarios cover detected, missing, incompatible, and unavailable worker states plus graphical installation without terminal commands.
+  - Delivered: `Devices.WorkerDiscovery` (macOS 14/15, protocol 1, `last_seen_at` reachability) plus `Devices.worker_status/1` over `Pairing.active_workers/1` and `Pairing.mark_seen/1`, and `LocalOnboardingLive` rendering all four states — `:missing` (graphical download + pairing-code entry, no terminal command), `:incompatible` (update/reinstall + replacement pairing), `:unavailable` (start-and-retry, projects stay visible), and `:detected` (continue to native selection). `ConnectionStatus.device_connection_badge/1` shows connection state. The `:device_worker_stub` flag (on in dev/test, off in prod) drives a local worker stand-in through pairing and native folder selection so the graphical flow is exercisable without the signed native worker. Proof is LiveView tests over all four states asserting terminal-free install guidance; the coordinated Playwright browser scenarios land with Task 7.
 
 - [x] Implement secure workspace-bound pairing.
   - Purpose: Authorize one worker for one workspace without transferable credentials.
@@ -167,3 +168,10 @@ Release boundary:
 - Note: a `:dets.foldl` argument-order bug surfaced immediately in the tests and was fixed. Task 1's deferred reconnection-is-not-history-restoration clause is now proven.
 - Failed checks: None.
 - Spec updates: Task 6 checked. Native-worker-driven registration remains release-gated.
+
+### 2026-07-27 - Task 2 complete: worker discovery, installation guidance, and local onboarding entry
+
+- Completed: Added `Devices.WorkerDiscovery` (compatibility + `last_seen_at` reachability policy for macOS 14/15, protocol 1), wired `Devices.worker_status/1` over `Pairing.active_workers/1` and `Pairing.mark_seen/1`, and replaced the `LocalOnboardingLive` placeholder with the accountless worker-discovery surface. It establishes the device workspace and renders all four states: `:missing` (graphical worker download + pairing-code entry, no terminal command), `:incompatible` (update/reinstall with replacement pairing), `:unavailable` (start-and-retry, projects stay visible with an unavailable state), and `:detected` (continue to native folder selection). `ConnectionStatus.device_connection_badge/1` renders the device connection state, and five Lucide glyphs (download, link, folder-open, play, wifi) were added. The `:device_worker_stub` flag (on in dev/test, off in prod) drives a local worker stand-in that completes pairing and yields a folder path so the graphical flow is exercisable without the signed native worker; the native selection step validates through `Devices.RepositoryValidation.validate/2` and shows the repository name and location locally.
+- Proof: `mix test test/sdd_orchestrator_web/live/local_onboarding_live_test.exs` passed (10 LiveView tests: four discovery states, terminal-free install guidance, re-check, stub pairing completion, empty-code rejection, and native selection of valid/non-git/inaccessible folders); full suite 362 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0. Coverage is LiveView-level; the coordinated Playwright browser scenarios land with Task 7.
+- Failed checks: None.
+- Spec updates: Task 2 checked. Real macOS installation, signing, and notarization remain release-gated.

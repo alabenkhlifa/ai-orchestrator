@@ -103,6 +103,10 @@ config :sdd_orchestrator, SddOrchestrator.Devices.DeviceStore.Local,
   start: true,
   path: "priv/device_store/dev.dets"
 
+# Enable the local worker stand-in so the graphical local-onboarding flow (pairing
+# completion and folder selection) is exercisable without the signed native worker.
+config :sdd_orchestrator, :device_worker_stub, true
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

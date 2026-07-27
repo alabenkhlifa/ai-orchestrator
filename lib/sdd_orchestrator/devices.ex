@@ -9,11 +9,26 @@ defmodule SddOrchestrator.Devices do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.DeviceProject
+  alias SddOrchestrator.Devices.{DeviceProject, Pairing, WorkerDiscovery}
 
   @doc "Returns the established accountless device workspace, creating it if absent."
   @spec establish_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, term()}
   def establish_workspace, do: adapter().establish_workspace()
+
+  @doc """
+  Reports the local worker discovery status for a device workspace.
+
+  Combines the workspace's active paired workers with the compatibility and
+  reachability policy in `WorkerDiscovery`, returning `:missing`,
+  `:incompatible`, `:unavailable`, or `:detected` so the onboarding UI can guide
+  installation, pairing, or repository selection.
+  """
+  @spec worker_status(Ecto.UUID.t()) :: WorkerDiscovery.status()
+  def worker_status(device_workspace_id) do
+    device_workspace_id
+    |> Pairing.active_workers()
+    |> WorkerDiscovery.status()
+  end
 
   @doc "Returns the established device workspace, or `{:error, :not_found}` after loss."
   @spec get_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, :not_found}
