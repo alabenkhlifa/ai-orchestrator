@@ -58,9 +58,10 @@ Release boundary:
   - Proof: Security tests cover attempt expiry, confirmation, replay rejection, revocation, rotation, replacement-worker pairing, and cross-workspace denial.
   - Delivered: `PairingAttempt` and `LocalWorker` (hosted authorization metadata keyed by an opaque `device_workspace_id`) and the `Pairing` context — single-use attempt-bound codes, per-worker salted-digest credentials, rotation, revocation, and workspace-scoped authorization. Raw codes and credentials are never persisted. The native worker endpoint and outbound transport remain release-gated.
 
-- [ ] Implement local repository selection and validation.
+- [x] Implement local repository selection and validation.
   - Purpose: Validate one user-selected Git repository entirely on the worker.
   - Proof: Integration and UI tests cover native folder selection, valid, invalid, inaccessible, moved, non-matching, and unavailable repositories plus canonical-identity reconnection without source upload.
+  - Delivered: `Devices.RepositoryValidation` validates a repository on the worker boundary and returns only a non-reversible canonical fingerprint (HMAC over sorted root-commit ids, per-workspace salt) — stable across moved paths, clones, worktrees, and changed remotes, distinguishing unrelated repositories, with no path or source exposure. The native OS folder dialog is a release-gated native-worker capability; the browser display of the selected repository and the worker-unavailable state land in Task 7; the reconnection-is-not-history-restoration distinction lands with Task 6.
 
 - [ ] Define and enforce minimum outbound metadata.
   - Purpose: Establish connection and compatibility state without sending local paths, remote URLs, filenames, Git history, or source code during onboarding.
@@ -141,3 +142,11 @@ Release boundary:
 - Proof: `mix test test/sdd_orchestrator/devices/pairing_test.exs` passed (10 tests: confirmation, replay rejection, expiry, invalid-code rejection, cross-workspace denial, revocation, rotation, replacement-worker pairing, and digest-only persistence); full suite 308 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
 - Failed checks: None.
 - Spec updates: Task 3 checked. The native worker endpoint, outbound transport, and packaging remain release-gated.
+
+### 2026-07-27 - Task 4 complete: local repository validation and canonical fingerprint
+
+- Completed: Added `Devices.RepositoryValidation` (worker-side reference implementation) computing the canonical fingerprint per the recorded `Canonical Repository Fingerprint` design decision.
+- Proof: `mix test test/sdd_orchestrator/devices/repository_validation_test.exs` passed (8 tests: valid, non-git, inaccessible, empty, moved-stable, clone/remote-stable, distinct-repos, salt-scoped); full suite 316 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
+- Note: a test initially exposed that two empty-init repositories share an identical root commit; fixtures were adjusted to give each a distinct root commit, mirroring genuinely unrelated repositories. The native OS folder dialog stays release-gated; browser display and the worker-unavailable state are Task 7.
+- Failed checks: None.
+- Spec updates: Task 4 checked.
