@@ -95,6 +95,9 @@ config :sdd_orchestrator, :github,
   app_id: System.get_env("GITHUB_APP_ID"),
   app_private_key: System.get_env("GITHUB_APP_PRIVATE_KEY")
 
+config :sdd_orchestrator, :passwordless,
+  app_origin: System.get_env("APP_ORIGIN", "http://localhost:4000")
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

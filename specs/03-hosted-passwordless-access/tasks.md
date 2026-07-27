@@ -50,7 +50,8 @@ Deferred after this slice:
   - Depends on: Task 1
   - Proof: Domain and database tests cover trimmed case-insensitive uniqueness, preserved delivery and display spelling, new identity creation, existing identity restoration, stable workspace identity, retry, concurrency, and cross-user isolation.
 
-- [ ] Task 3 - Implement account-neutral magic-link requests, delivery, resend, and abuse controls.
+- [x] Task 3 - Implement account-neutral magic-link requests, delivery, resend, and abuse controls.
+  - Status: Complete.
   - Purpose: Send one protected credential without exposing account existence, secrets, or throttling state.
   - Owned surfaces: Magic-link request and resend service boundary, `MagicLinkAttempt`, raw-token generation and delivery-only handoff, salted token digest persistence, 15-minute expiry, newest-only invalidation, per-email and per-IP token buckets, global send cap, Swoosh mailer behaviour and local/test adapter, account-neutral acknowledgement, redacted delivery diagnostics, and attempt fixtures.
   - Owns: AC-02, AC-06, entity:MagicLinkAttempt
@@ -138,3 +139,15 @@ Deferred after this slice:
 - Architecture: `SddOrchestrator.HostedAccess` is the Slice 03 context boundary; it accepts only successfully verified addresses and keeps request, delivery, token verification, and session lifecycle in later tasks. The new rows attach to the existing `Account` and hosted `Workspace` roots without changing GitHub identity behavior or persisting device-authoritative data.
 - Proof: The migration applies, rolls back, and reapplies on the `_slice03` database; focused domain and constraint tests pass (7); `mix check` passes with 234 tests and one tagged live test excluded; specification validation and `git diff --check` pass.
 - Parallel coordination: Work remains isolated in the dedicated Slice 03 worktree, with local server port `4003` reserved; no Slice 02 worker, repository, or device-workspace surface was changed.
+
+### 2026-07-27 - Task 3 implementation started
+
+- In progress: Implementing account-neutral magic-link request and resend, protected attempt storage, testable Swoosh delivery, newest-only invalidation, and non-disclosing abuse controls.
+- Preflight: Tasks 1 and 2 are complete; Task 3 introduces its own request, persistence, delivery, and limiter prerequisites and has no forward dependency.
+
+### 2026-07-27 - Magic-link request and delivery controls complete (Task 3)
+
+- Completed: Added the `MagicLinkAttempt` lifecycle and constraints; 256-bit raw-token generation with only a per-attempt salted SHA-256 digest persisted; 15-minute expiry; advisory-lock plus database-enforced newest-only invalidation; account-neutral request and resend behavior; Swoosh local/test delivery adapters; redacted failure diagnostics; and process-secret HMAC token buckets for per-email, per-IP, and global send limits.
+- Architecture: `SddOrchestrator.HostedAccess.MagicLinks` never queries or creates an identity. It returns the same acknowledgement for invalid, throttled, existing, new, database-failed, and delivery-failed requests. The raw token is passed directly into the delivery-only email and is neither returned nor stored.
+- Proof: The Task 3 migration applies, rolls back, and reapplies on the `_slice03` database; 10 focused request, concurrency, delivery, and limiter tests pass; the combined hosted-access suite passes with 17 tests; `mix check` passes with 244 tests and one tagged live test excluded; `mix deps.audit`, specification validation, and `git diff --check` pass.
+- Remaining: Task 4 owns atomic attempt verification, single-use consumption, identity restoration, and initial hosted-session creation; production delivery provider and final retention and privacy decisions remain in the release gate.

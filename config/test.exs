@@ -44,6 +44,9 @@ config :sdd_orchestrator, :github,
   client_id: "test-client-id",
   client_secret: "test-client-secret"
 
+config :sdd_orchestrator, SddOrchestrator.Mailer, adapter: Swoosh.Adapters.Test
+config :sdd_orchestrator, :passwordless, app_origin: "http://localhost:4003"
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

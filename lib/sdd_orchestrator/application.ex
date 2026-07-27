@@ -12,6 +12,7 @@ defmodule SddOrchestrator.Application do
         SddOrchestratorWeb.Telemetry,
         SddOrchestrator.Vault,
         SddOrchestrator.Repo,
+        SddOrchestrator.HostedAccess.RateLimiter,
         {DNSCluster,
          query: Application.get_env(:sdd_orchestrator, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: SddOrchestrator.PubSub}

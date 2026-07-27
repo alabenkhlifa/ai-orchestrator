@@ -2,9 +2,9 @@ defmodule SddOrchestrator.HostedAccess do
   @moduledoc """
   Passwordless hosted-identity and workspace boundary.
 
-  This context accepts only successfully verified email addresses. Request,
-  delivery, token verification, and hosted-session lifecycle are implemented by
-  later Slice 03 tasks.
+  Identity restoration accepts only successfully verified email addresses.
+  Magic-link requests remain account-neutral; token verification and
+  hosted-session lifecycle are implemented by later Slice 03 tasks.
   """
 
   alias Ecto.Multi
@@ -18,6 +18,15 @@ defmodule SddOrchestrator.HostedAccess do
   }
 
   alias SddOrchestrator.Repo
+
+  @doc """
+  Requests a passwordless sign-in link without revealing validation,
+  throttling, delivery, or account-existence state.
+  """
+  @spec request_magic_link(term(), map() | keyword()) :: {:ok, %{status: :accepted}}
+  defdelegate request_magic_link(email, context \\ %{}),
+    to: SddOrchestrator.HostedAccess.MagicLinks,
+    as: :request
 
   @type identity_result :: %{
           account: Account.t(),
