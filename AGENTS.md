@@ -87,6 +87,7 @@ Report product-requirement, technical-design, implementation, verification, and 
 - Let task commits accumulate on the slice branch under the scoped, explicit-path, task-boundary rules above, and merge the slice branch into the default branch when the slice passes its verification gate.
 - Coordinate multiple agents or developers within one slice at task granularity through `tasks.md` ownership and the stop condition; use a short-lived per-task branch off the slice branch only for genuine parallel work inside the same slice, then merge it back into the slice branch.
 - When the user says this work will run in parallel with other AI agents, give each agent its own Git worktree and assigned branch, and run each concurrent local server on a distinct port. Never share one working directory or runtime port across parallel agents.
+- Before running agents on more than one slice in parallel, analyze the surfaces those slices actually share — schemas, migrations, shared contexts and modules, shared UI, and cross-slice foundation — judged by what each slice will modify rather than by filenames, then choose and record a sequencing decision (serialize, partition by ownership, or foundation-first) in the affected slices' `tasks.md` before implementation starts. Do not defer discovering the overlap to an agent's implementation preflight.
 
 ## Current Project Checks
 
