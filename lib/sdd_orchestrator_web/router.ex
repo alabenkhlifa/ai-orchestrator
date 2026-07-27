@@ -2,6 +2,7 @@ defmodule SddOrchestratorWeb.Router do
   use SddOrchestratorWeb, :router
 
   import SddOrchestratorWeb.UserAuth
+  import SddOrchestratorWeb.HostedUserAuth
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -15,6 +16,7 @@ defmodule SddOrchestratorWeb.Router do
     plug :put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"}
     plug :put_content_security_policy
     plug :fetch_current_account
+    plug :fetch_current_hosted_access
   end
 
   # A strict Content-Security-Policy with a per-request nonce for the device-local
@@ -57,6 +59,12 @@ defmodule SddOrchestratorWeb.Router do
     plug :require_authenticated
   end
 
+  # Hosted session-management actions never accept the GitHub application
+  # session as a substitute for a verified hosted identity.
+  pipeline :require_hosted do
+    plug :require_hosted_authenticated
+  end
+
   scope "/", SddOrchestratorWeb do
     pipe_through :browser
 
@@ -64,6 +72,11 @@ defmodule SddOrchestratorWeb.Router do
     get "/auth/github", AuthController, :request
     get "/auth/github/callback", AuthController, :callback
     delete "/auth/sign_out", AuthController, :sign_out
+
+    # Delivered passwordless credentials return through one account-neutral
+    # verification endpoint before any hosted surface is exposed.
+    get "/hosted/access/verify", HostedAccessController, :verify
+    delete "/hosted/session", HostedSessionController, :delete_current
 
     # Unauthenticated entry chooser; a valid session is sent to the catalog.
     live_session :redirect_if_authenticated,
@@ -74,6 +87,12 @@ defmodule SddOrchestratorWeb.Router do
     # Public handoff for the local onboarding action (owned by specs/02).
     live_session :public, on_mount: [{SddOrchestratorWeb.UserAuth, :mount_current_account}] do
       live "/onboarding/local", LocalOnboardingLive
+    end
+
+    live_session :hosted_access_public,
+      on_mount: [{SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}] do
+      live "/hosted/access", HostedAccessLive
+      live "/hosted/access/result", HostedAccessResultLive
     end
 
     # Protected surfaces require a valid application session.
@@ -95,6 +114,18 @@ defmodule SddOrchestratorWeb.Router do
 
     get "/github/install", GitHubSetupController, :install
     get "/github/setup", GitHubSetupController, :setup
+  end
+
+  scope "/", SddOrchestratorWeb do
+    pipe_through [:browser, :require_hosted]
+
+    live_session :hosted_access_authenticated,
+      on_mount: [{SddOrchestratorWeb.HostedUserAuth, :require_hosted_authenticated}] do
+      live "/hosted/access/sessions", HostedSessionsLive
+    end
+
+    delete "/hosted/sessions/:id", HostedSessionController, :delete
+    delete "/hosted/sessions", HostedSessionController, :delete_all
   end
 
   # Non-product design-system preview. Available only in dev and test as the
@@ -125,6 +156,7 @@ defmodule SddOrchestratorWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: SddOrchestratorWeb.Telemetry
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
 end

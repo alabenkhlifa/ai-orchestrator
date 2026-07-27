@@ -1,8 +1,8 @@
 defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
   @moduledoc """
-  Proof that the approved Slice 01 processing inventory is complete and purpose-
-  limited (Task 10): every personal-data activity is recorded with the required
-  fields and an approved lawful basis, and no activity has an analytics purpose.
+  Proof that the approved processing inventory is complete and purpose-limited:
+  every personal-data activity is recorded with the required fields and an
+  approved lawful basis, and no activity has an analytics purpose.
   """
   use ExUnit.Case, async: true
 
@@ -11,6 +11,8 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
 
   @required_activities ~w(
     github_identity application_session github_credential github_authorization_attempt
+    hosted_identity external_identity magic_link_attempt passwordless_email_delivery
+    hosted_session passwordless_abuse_control
     personal_workspace project_and_repository_connection project_onboarding_attempt
     operational_security_log
   )a
@@ -46,5 +48,26 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
                "model training"
              ])
     end
+  end
+
+  test "treats hashed and stable authentication identifiers as personal data" do
+    authentication_data =
+      ProcessingInventory.records()
+      |> Enum.filter(
+        &(&1.activity in [
+            :external_identity,
+            :magic_link_attempt,
+            :hosted_session,
+            :passwordless_abuse_control
+          ])
+      )
+      |> Enum.flat_map(& &1.personal_data)
+      |> Enum.join(" ")
+      |> String.downcase()
+
+    assert authentication_data =~ "subject"
+    assert authentication_data =~ "digest"
+    assert authentication_data =~ "hmac"
+    refute authentication_data =~ "anonymous identifier"
   end
 end

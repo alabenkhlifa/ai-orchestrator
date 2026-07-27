@@ -14,12 +14,26 @@ defmodule SddOrchestratorWeb.EntryLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, assign(socket, :auth_state, auth_state(params["auth"]))}
+    {:noreply,
+     socket
+     |> assign(:auth_state, auth_state(params["auth"]))
+     |> assign(:hosted_notice, hosted_notice(params["hosted_access"]))}
   end
 
   defp auth_state("cancelled"), do: :cancelled
   defp auth_state("failed"), do: :failed
   defp auth_state(_), do: :idle
+
+  defp hosted_notice("required"),
+    do: {:warn, "Verify your email before opening hosted project data."}
+
+  defp hosted_notice("signed_out"), do: {:info, "This device has been signed out."}
+  defp hosted_notice("signed_out_all"), do: {:info, "All hosted device sessions were signed out."}
+
+  defp hosted_notice("session_revoked"),
+    do: {:info, "The selected device session was signed out."}
+
+  defp hosted_notice(_state), do: nil
 
   @impl true
   def render(assigns) do
@@ -46,6 +60,24 @@ defmodule SddOrchestratorWeb.EntryLive do
         <p class="mt-4 max-w-md text-[13px] leading-relaxed text-ink-muted text-pretty">
           “Work without GitHub” connects a repository stored on your computer. It doesn’t decide
           where AI agents run.
+        </p>
+
+        <.notice
+          :if={@hosted_notice}
+          variant={elem(@hosted_notice, 0) |> Atom.to_string()}
+          class="mt-5 w-full max-w-lg text-left"
+        >
+          {elem(@hosted_notice, 1)}
+        </.notice>
+
+        <p class="mt-5 max-w-md text-[13px] leading-relaxed text-ink-muted">
+          Want hosted project-data storage without GitHub?
+          <.link
+            navigate={~p"/hosted/access?#{[return_to: "/onboarding/local"]}"}
+            class="font-semibold text-primary underline underline-offset-2 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Use verified email
+          </.link>
         </p>
       </div>
 

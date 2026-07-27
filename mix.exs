@@ -72,6 +72,9 @@ defmodule SddOrchestrator.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
 
+      # Passwordless email composition and adapter-backed delivery.
+      {:swoosh, "~> 1.26"},
+
       # GitHub provider adapter (HTTP) and authenticated field encryption for
       # provider credentials and PKCE verifiers.
       {:req, "~> 0.5"},

@@ -51,6 +51,7 @@ A user who does not use GitHub can choose hosted project-data storage, verify an
 
 - Hosted storage must establish an authorized identity before hosted project data is created or exposed.
 - The non-GitHub hosted path uses a verified email and must not require or store a password.
+- For identity uniqueness and passwordless sign-in, trim surrounding whitespace and compare the complete email address case-insensitively. Preserve the successfully verified spelling for delivery and user-visible display.
 - A magic link must be short-lived, single-use, bound to the intended authentication attempt, and invalid after successful use.
 - Magic-link tokens and equivalent secrets must not appear in persisted application data beyond the approved protected representation, client-visible payloads, analytics, or logs.
 - Requesting a magic link must return the same user-facing response whether or not the email already has an account.
@@ -82,30 +83,31 @@ A user who does not use GitHub can choose hosted project-data storage, verify an
 
 ## Acceptance Criteria
 
-- Given a non-GitHub user selects hosted storage, when they continue, then email verification is required before hosted data is created or exposed.
-- Given any email is submitted, when the request is acknowledged, then the response does not reveal whether an account exists.
-- Given a valid unused magic link for the current attempt, when it is opened before expiry, then the email is verified and a protected hosted session is established without a password.
-- Given a link is invalid, expired, already used, replayed, or bound to another attempt, when it is opened, then no session or hosted access is created and the response remains account-neutral.
-- Given resend is requested, when a new link is issued, then the approved invalidation and rate-limit rules prevent uncontrolled concurrent credentials.
-- Given verification succeeds for an existing identity, when the session starts, then the same stable hosted workspace and projects are restored.
-- Given verification succeeds for a new identity, when workspace creation completes, then exactly one stable hosted workspace exists.
-- Given hosted setup begins, when the access method is explained, then the user is told that losing the verified email is not recoverable in the first release unless another sign-in method was linked beforehand.
-- Given the user loses access to the verified email and another sign-in method was linked beforehand, when that method authenticates successfully, then the same hosted identity and workspace are restored without changing the verified email.
-- Given the user loses access to the verified email and no other sign-in method was linked beforehand, when recovery is requested, then no self-service or support override grants access.
-- Given only an existing session or another linked sign-in method is proven, when a verified-email change is attempted, then the email remains unchanged.
-- Given the future verified-email change flow is used, when both the current email is freshly proven and the new email is verified, then the change may continue under its approved implementation contract.
-- Given a valid hosted session exists, when its browser restarts, then the same session restores hosted access without another magic link unless it was signed out, revoked, or expired.
-- Given the same hosted identity signs in on another device, when the new session starts, then both device sessions remain independently valid.
-- Given the user signs out normally, when another device session is checked, then only the session that signed out is revoked.
-- Given account settings shows active device sessions, when the user revokes one session, then that session loses hosted access and the other sessions remain valid.
-- Given the user selects `Sign out all devices`, when revocation completes, then every active hosted session for that identity loses access.
-- Given a session is revoked or expired, when it requests protected hosted data, then access is denied without affecting on-device projects available under the current operating-system boundary.
-- Given a signed-in user has on-device projects on the current device, when the catalog loads, then those projects appear with hosted projects without upload, reassignment, duplication, or storage-mode change.
-- Given distinct on-device and hosted projects link to the same repository, when the combined catalog loads, then both remain separate entries with their own storage mode and current availability.
-- Given one stable project has been explicitly migrated or resynchronized, when the combined catalog loads, then it appears once with its authoritative storage mode.
-- Given catalog entries refer to the same repository, when the catalog is composed, then no project merge, identity link, upload, synchronization, or storage-mode change occurs automatically.
-- Given the user signs out, when protected views are revisited, then hosted projects require authentication while on-device projects remain available under the local OS boundary.
-- Given a token, delivery, session, or provider failure occurs, when the flow ends, then no secret is exposed and no partial identity or workspace is created.
+- [AC-01] Given a non-GitHub user selects hosted storage, when they continue, then email verification is required before hosted data is created or exposed.
+- [AC-02] Given any email is submitted, when the request is acknowledged, then the response does not reveal whether an account exists.
+- [AC-03] Given email addresses differ only by case or surrounding whitespace, when either address is successfully verified, then both restore the same hosted identity and workspace while delivery and display preserve the successfully verified spelling.
+- [AC-04] Given a valid unused magic link for the current attempt, when it is opened before expiry, then the email is verified and a protected hosted session is established without a password.
+- [AC-05] Given a link is invalid, expired, already used, replayed, or bound to another attempt, when it is opened, then no session or hosted access is created and the response remains account-neutral.
+- [AC-06] Given resend is requested, when a new link is issued, then the approved invalidation and rate-limit rules prevent uncontrolled concurrent credentials.
+- [AC-07] Given verification succeeds for an existing identity, when the session starts, then the same stable hosted workspace and projects are restored.
+- [AC-08] Given verification succeeds for a new identity, when workspace creation completes, then exactly one stable hosted workspace exists.
+- [AC-09] Given hosted setup begins, when the access method is explained, then the user is told that losing the verified email is not recoverable in the first release unless another sign-in method was linked beforehand.
+- [AC-10] Given the user loses access to the verified email and another sign-in method was linked beforehand, when that method authenticates successfully, then the same hosted identity and workspace are restored without changing the verified email.
+- [AC-11] Given the user loses access to the verified email and no other sign-in method was linked beforehand, when recovery is requested, then no self-service or support override grants access.
+- [AC-12] Given only an existing session or another linked sign-in method is proven, when a verified-email change is attempted, then the email remains unchanged.
+- [AC-13] Given the future verified-email change flow is used, when both the current email is freshly proven and the new email is verified, then the change may continue under its approved implementation contract.
+- [AC-14] Given a valid hosted session exists, when its browser restarts, then the same session restores hosted access without another magic link unless it was signed out, revoked, or expired.
+- [AC-15] Given the same hosted identity signs in on another device, when the new session starts, then both device sessions remain independently valid.
+- [AC-16] Given the user signs out normally, when another device session is checked, then only the session that signed out is revoked.
+- [AC-17] Given account settings shows active device sessions, when the user revokes one session, then that session loses hosted access and the other sessions remain valid.
+- [AC-18] Given the user selects `Sign out all devices`, when revocation completes, then every active hosted session for that identity loses access.
+- [AC-19] Given a session is revoked or expired, when it requests protected hosted data, then access is denied without affecting on-device projects available under the current operating-system boundary.
+- [AC-20] Given a signed-in user has on-device projects on the current device, when the catalog loads, then those projects appear with hosted projects without upload, reassignment, duplication, or storage-mode change.
+- [AC-21] Given distinct on-device and hosted projects link to the same repository, when the combined catalog loads, then both remain separate entries with their own storage mode and current availability.
+- [AC-22] Given one stable project has been explicitly migrated or resynchronized, when the combined catalog loads, then it appears once with its authoritative storage mode.
+- [AC-23] Given catalog entries refer to the same repository, when the catalog is composed, then no project merge, identity link, upload, synchronization, or storage-mode change occurs automatically.
+- [AC-24] Given the user signs out, when protected views are revisited, then hosted projects require authentication while on-device projects remain available under the local OS boundary.
+- [AC-25] Given a token, delivery, session, or provider failure occurs, when the flow ends, then no secret is exposed and no partial identity or workspace is created.
 
 ## Open Questions
 

@@ -57,6 +57,32 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Passwordless delivery stays adapter-backed. Development uses the local mailbox;
+# tests override it with Swoosh's deterministic test adapter, and production
+# provider selection remains an explicit Slice 03 release gate.
+config :sdd_orchestrator, SddOrchestrator.Mailer, adapter: Swoosh.Adapters.Local
+
+config :sdd_orchestrator,
+       :magic_link_delivery,
+       SddOrchestrator.HostedAccess.SwooshDelivery
+
+config :sdd_orchestrator, :passwordless,
+  app_origin: "http://localhost:4000",
+  from_email: "no-reply@sdd-orchestrator.local",
+  magic_link_ttl_seconds: 15 * 60,
+  session_lifetime_seconds: 30 * 24 * 60 * 60,
+  rate_limits: [
+    email: [capacity: 5, window_ms: 15 * 60 * 1_000],
+    ip: [capacity: 20, window_ms: 15 * 60 * 1_000],
+    global: [capacity: 100, window_ms: 60 * 1_000]
+  ]
+
+config :sdd_orchestrator, :passwordless_retention,
+  magic_link_attempt_grace_seconds: 24 * 60 * 60,
+  hosted_session_grace_seconds: 24 * 60 * 60
+
+config :swoosh, :api_client, false
+
 # GitHub provider adapter and the registered public GitHub App identity.
 # Secrets (client id/secret, private key) and the deployment origin are supplied
 # per environment; only non-secret, stable defaults live here.

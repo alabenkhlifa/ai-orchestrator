@@ -6,7 +6,7 @@ config :sdd_orchestrator, SddOrchestrator.Repo,
   password: "postgres",
   hostname: "localhost",
   port: 5433,
-  database: "sdd_orchestrator_dev",
+  database: System.get_env("DATABASE_NAME", "sdd_orchestrator_dev"),
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
@@ -94,6 +94,9 @@ config :sdd_orchestrator, :github,
   client_secret: System.get_env("GITHUB_CLIENT_SECRET", "dev-client-secret"),
   app_id: System.get_env("GITHUB_APP_ID"),
   app_private_key: System.get_env("GITHUB_APP_PRIVATE_KEY")
+
+config :sdd_orchestrator, :passwordless,
+  app_origin: System.get_env("APP_ORIGIN", "http://localhost:4000")
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"

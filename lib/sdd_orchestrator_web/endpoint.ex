@@ -1,19 +1,22 @@
 defmodule SddOrchestratorWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :sdd_orchestrator
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # Browser authorization lives in one signed, persistent, HttpOnly, Secure
+  # session cookie. Server-side session records still enforce their own absolute
+  # expiry and revocation before protected data is returned.
   @session_options [
     store: :cookie,
     key: "_sdd_orchestrator_key",
     signing_salt: "Rb9qupER",
-    same_site: "Lax"
+    same_site: "Lax",
+    http_only: true,
+    secure: true,
+    max_age: 30 * 24 * 60 * 60
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [:peer_data, session: @session_options]],
+    longpoll: [connect_info: [:peer_data, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
