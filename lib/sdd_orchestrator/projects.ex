@@ -456,7 +456,7 @@ defmodule SddOrchestrator.Projects do
         {:ok, Repo.preload(project, [:repository_connection, :hosted_storage])}
 
       {:error, :project, %Ecto.Changeset{} = changeset, _changes} ->
-        handle_name_conflict(workspace, attempt, opts, changeset, tries)
+        handle_project_conflict(workspace, attempt, repo, opts, changeset, tries)
 
       {:error, :connection, %Ecto.Changeset{} = changeset, _changes} ->
         if unique_conflict?(changeset),
@@ -480,7 +480,9 @@ defmodule SddOrchestrator.Projects do
           name: name,
           workspace_id: workspace.id,
           storage_mode: attempt.storage_mode,
-          onboarding_attempt_id: attempt.id
+          onboarding_attempt_id: attempt.id,
+          repository_provider: repo["provider"] || "github",
+          canonical_repository_id: to_string(repo["repository_id"])
         })
       )
       |> Multi.insert(:connection, fn %{project: project} ->
@@ -532,6 +534,14 @@ defmodule SddOrchestrator.Projects do
     end
   end
 
+  defp handle_project_conflict(workspace, attempt, repo, opts, changeset, tries) do
+    if constraint_conflict?(changeset, :projects_workspace_repository_identity_index) do
+      {:error, {:repository_already_linked, existing_project_for(workspace, repo)}}
+    else
+      handle_name_conflict(workspace, attempt, opts, changeset, tries)
+    end
+  end
+
   # Idempotent retry of an already-consumed attempt: return the project it created.
   defp committed_project(%PersonalWorkspace{id: workspace_id}, attempt) do
     query =
@@ -547,15 +557,13 @@ defmodule SddOrchestrator.Projects do
 
   defp existing_project_for(%PersonalWorkspace{id: workspace_id}, repo) do
     provider = repo["provider"] || "github"
-    repository_id = repo["repository_id"]
+    repository_id = to_string(repo["repository_id"])
 
     Repo.one(
-      from c in RepositoryConnection,
-        join: p in assoc(c, :project),
+      from p in Project,
         where:
-          c.workspace_id == ^workspace_id and c.provider == ^provider and
-            c.provider_repository_id == ^repository_id,
-        select: p
+          p.workspace_id == ^workspace_id and p.repository_provider == ^provider and
+            p.canonical_repository_id == ^repository_id
     )
   end
 
@@ -619,6 +627,12 @@ defmodule SddOrchestrator.Projects do
   defp unique_conflict?(%Ecto.Changeset{} = changeset) do
     Enum.any?(changeset.errors, fn {_field, {_msg, opts}} ->
       Keyword.get(opts, :constraint) == :unique
+    end)
+  end
+
+  defp constraint_conflict?(%Ecto.Changeset{} = changeset, constraint_name) do
+    Enum.any?(changeset.errors, fn {_field, {_msg, opts}} ->
+      to_string(Keyword.get(opts, :constraint_name)) == to_string(constraint_name)
     end)
   end
 

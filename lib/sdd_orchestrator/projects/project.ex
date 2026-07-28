@@ -31,12 +31,15 @@ defmodule SddOrchestrator.Projects.Project do
   @type t :: %__MODULE__{}
 
   @name_index :projects_workspace_id_name_key_index
+  @repository_index :projects_workspace_repository_identity_index
 
   schema "projects" do
     field :name, :string
     field :name_key, :string
     field :storage_mode, :string
     field :lifecycle_state, :string, default: "active"
+    field :repository_provider, :string
+    field :canonical_repository_id, :string
 
     belongs_to :workspace, SddOrchestrator.Accounts.Workspace
     belongs_to :onboarding_attempt, SddOrchestrator.Projects.ProjectOnboardingAttempt
@@ -54,15 +57,23 @@ defmodule SddOrchestrator.Projects.Project do
   """
   def changeset(project, attrs) do
     project
-    |> cast(attrs, [:name, :workspace_id, :storage_mode])
+    |> cast(attrs, [
+      :name,
+      :workspace_id,
+      :storage_mode,
+      :repository_provider,
+      :canonical_repository_id
+    ])
     |> validate_name()
     |> put_name_key()
     |> put_default(:storage_mode, "hosted")
     |> validate_required([:name, :workspace_id, :name_key, :storage_mode])
     |> validate_inclusion(:storage_mode, StorageMode.values())
+    |> validate_repository_identity_shape()
     |> foreign_key_constraint(:workspace_id)
     |> foreign_key_constraint(:workspace_id, name: :projects_workspace_storage_mode_fkey)
     |> unique_constraint(:name, name: @name_index)
+    |> repository_constraints()
   end
 
   @doc """
@@ -73,15 +84,68 @@ defmodule SddOrchestrator.Projects.Project do
   """
   def registration_changeset(project, attrs) do
     project
-    |> cast(attrs, [:name, :workspace_id, :storage_mode, :lifecycle_state, :onboarding_attempt_id])
+    |> cast(attrs, [
+      :name,
+      :workspace_id,
+      :storage_mode,
+      :lifecycle_state,
+      :onboarding_attempt_id,
+      :repository_provider,
+      :canonical_repository_id
+    ])
     |> validate_name()
     |> put_name_key()
     |> put_default(:lifecycle_state, "active")
-    |> validate_required([:name, :workspace_id, :name_key, :storage_mode, :lifecycle_state])
+    |> validate_required([
+      :name,
+      :workspace_id,
+      :name_key,
+      :storage_mode,
+      :lifecycle_state
+    ])
     |> validate_inclusion(:storage_mode, StorageMode.values())
+    |> validate_repository_identity_shape()
     |> foreign_key_constraint(:workspace_id)
     |> foreign_key_constraint(:workspace_id, name: :projects_workspace_storage_mode_fkey)
     |> unique_constraint(:name, name: @name_index)
+    |> repository_constraints()
+  end
+
+  @doc """
+  Changeset for atomic restoration with caller-supplied stable project and
+  canonical repository identities.
+  """
+  def restore_changeset(project, attrs) do
+    project
+    |> cast(attrs, [
+      :id,
+      :name,
+      :workspace_id,
+      :storage_mode,
+      :lifecycle_state,
+      :repository_provider,
+      :canonical_repository_id
+    ])
+    |> validate_name()
+    |> put_name_key()
+    |> put_default(:lifecycle_state, "active")
+    |> validate_required([
+      :id,
+      :name,
+      :workspace_id,
+      :name_key,
+      :storage_mode,
+      :lifecycle_state,
+      :repository_provider,
+      :canonical_repository_id
+    ])
+    |> validate_inclusion(:storage_mode, ["hosted"])
+    |> validate_repository_identity_shape()
+    |> foreign_key_constraint(:workspace_id)
+    |> foreign_key_constraint(:workspace_id, name: :projects_workspace_storage_mode_fkey)
+    |> unique_constraint(:id, name: :projects_pkey)
+    |> unique_constraint(:name, name: @name_index)
+    |> repository_constraints()
   end
 
   @doc """
@@ -166,5 +230,27 @@ defmodule SddOrchestrator.Projects.Project do
     if is_nil(get_field(changeset, field)),
       do: put_change(changeset, field, default),
       else: changeset
+  end
+
+  defp validate_repository_identity_shape(changeset) do
+    provider = get_field(changeset, :repository_provider)
+    repository_id = get_field(changeset, :canonical_repository_id)
+
+    if (is_nil(provider) and is_nil(repository_id)) or
+         (is_binary(provider) and provider != "" and is_binary(repository_id) and
+            repository_id != "") do
+      changeset
+    else
+      add_error(changeset, :canonical_repository_id, "requires a provider and identity")
+    end
+  end
+
+  defp repository_constraints(changeset) do
+    changeset
+    |> unique_constraint(
+      [:workspace_id, :repository_provider, :canonical_repository_id],
+      name: @repository_index
+    )
+    |> check_constraint(:canonical_repository_id, name: :projects_repository_identity_shape)
   end
 end

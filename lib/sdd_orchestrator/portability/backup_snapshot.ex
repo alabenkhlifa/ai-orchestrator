@@ -18,9 +18,8 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
   @spec build(PersonalWorkspace.t() | DeviceWorkspace.t(), String.t()) ::
           {:ok, ProjectPackage.t()} | {:error, atom()}
   def build(%PersonalWorkspace{} = authority, project_id) do
-    with %{repository_connection: connection} = project <-
-           Projects.get_project(authority, project_id),
-         {:ok, repository} <- hosted_repository(connection),
+    with project when not is_nil(project) <- Projects.get_project(authority, project_id),
+         {:ok, repository} <- hosted_repository(project),
          {:ok, specifications} <- SpecificationStore.current_snapshot(authority, project.id) do
       package(project.id, project.name, repository, specifications.specifications)
     else
@@ -47,14 +46,14 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
   def build(_authority, _project_id), do: {:error, :not_found}
 
   defp hosted_repository(%{
-         provider: provider,
-         provider_repository_id: repository_id
+         repository_provider: provider,
+         canonical_repository_id: repository_id
        })
-       when is_binary(provider) and is_integer(repository_id) do
+       when is_binary(provider) and is_binary(repository_id) do
     {:ok,
      %{
        "provider" => provider,
-       "repository_id" => Integer.to_string(repository_id)
+       "repository_id" => repository_id
      }}
   end
 

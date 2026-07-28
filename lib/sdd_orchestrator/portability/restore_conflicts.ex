@@ -20,7 +20,7 @@ defmodule SddOrchestrator.Portability.RestoreConflicts do
     RestorePreflight
   }
 
-  alias SddOrchestrator.Projects.{Project, RepositoryConnection}
+  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
   @type conflict ::
@@ -116,24 +116,16 @@ defmodule SddOrchestrator.Portability.RestoreConflicts do
 
   defp repository_taken?(
          %PersonalWorkspace{id: workspace_id},
-         %{provider: "github", id: repository_id}
+         %{provider: provider, id: repository_id}
        ) do
-    case Integer.parse(repository_id) do
-      {integer_id, ""} ->
-        Repo.exists?(
-          from connection in RepositoryConnection,
-            where:
-              connection.workspace_id == ^workspace_id and
-                connection.provider == "github" and
-                connection.provider_repository_id == ^integer_id
-        )
-
-      _other ->
-        false
-    end
+    Repo.exists?(
+      from project in Project,
+        where:
+          project.workspace_id == ^workspace_id and
+            project.repository_provider == ^provider and
+            project.canonical_repository_id == ^repository_id
+    )
   end
-
-  defp repository_taken?(%PersonalWorkspace{}, _repository), do: false
 
   defp repository_taken?(%DeviceWorkspace{}, repository) do
     Devices.list_projects()

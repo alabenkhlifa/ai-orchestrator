@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, and 11 are complete. Task 12 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, and 12 are complete. Task 19 is the next implementation task.
 
 ## Active Slice
 
@@ -158,7 +158,7 @@ Release boundary:
   - Depends on: Task 5
   - Proof: Focused domain and constraint tests cover valid and invalid replacement names, repeat collisions, cancellation, repository conflicts with and without name conflicts, conflict precedence, and no identity, connection, or package mutation.
 
-- [ ] Task 12 - Implement the hosted atomic restoration adapter.
+- [x] Task 12 - Implement the hosted atomic restoration adapter.
   - Size: Standard
   - Purpose: Create the packaged project and current specifications exactly once in authorized hosted storage.
   - Owned surfaces: `Project`, `PackageProvenance`, hosted storage prerequisites, `SpecificationStore.prepare_restore` hosted contribution, one `Ecto.Multi`, stable project, repository, and specification identities, approved display name, database identity and canonical-repository constraints, minimal provenance insertion, rollback, idempotency, retry, and no duplicate specification persistence.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 12 complete: hosted atomic restoration
+
+- Completed: Added project-level canonical repository identity fields and a workspace-scoped database uniqueness constraint shared by normal registration and restoration; backfilled existing hosted registrations; added the minimal project-keyed `PackageProvenance`; and implemented `HostedRestore` as one `Ecto.Multi` covering the caller-supplied stable project ID, explicit display name, canonical repository identity, hosted storage root, payload schema version and restoration time, and the shared specification-store restore contribution. Restored projects have no repository connection. Exact committed retries reconcile the same aggregate, while different same-ID records, stale name or repository preflight races, specification identity collisions, and injected failures return structured errors with full rollback.
+- Remaining: Implement the device-authoritative atomic restoration adapter in Task 19.
+- Failed checks: The first broader regression run showed that requiring repository identity in the generic registration changeset broke the specification-store provider's caller-owned transaction fixtures; the repository pair remains optional at that generic seam while the public registration path supplies it and the restore changeset requires it. Strict Credo also requested alias ordering. Final proof passes: 136 focused hosted restore, conflict, snapshot, specification-transaction, registration, and identity-linking tests including 5 properties; the hosted restore suite also passed ten repeated concurrency runs; `git diff --check`; `mix format --check-formatted`; `mix compile --warnings-as-errors`; `mix credo --strict`; `mix deps.audit`; `mix sobelow --config`; the Slice 06 validator; and the global dependency graph.
+- Spec updates: Marked Task 12 complete and recorded deterministic UUIDv5-shaped revision identities derived from the packaged project and specification IDs as the idempotent bridge to the shared specification-store contribution; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 11 complete: restore conflict decisions
 
