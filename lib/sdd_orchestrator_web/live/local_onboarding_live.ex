@@ -16,6 +16,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
        dev/test) yields a path validated entirely on the worker boundary through
        `Devices.RepositoryValidation.validate/2`. Only the non-reversible
        fingerprint crosses the boundary; the name and location are shown locally.
+       Continuing hands off to the shared storage-selection step
+       (`specs/05-project-storage-lifecycle/`): a device-origin onboarding attempt
+       is created with the selected repository's fingerprint and name, the detected
+       worker's readiness is recorded as a bound receipt, and the user chooses
+       on-device storage (or signs in to save to a hosted account) before the flow
+       returns here at `:review` for the chosen on-device path.
     3. `:review` — the first-connection privacy disclosure. Before any approved
        onboarding metadata leaves the device it explains what stays local, what is
        shared, and the accountless data-loss limit (recoverable only by importing a
@@ -39,7 +45,13 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{Pairing, RepositoryValidation, WorkerDiscovery}
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectStorage
+  alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
+
+  # A device-readiness receipt from the detected worker stays valid for this
+  # window while the user completes the storage step.
+  @readiness_ttl_seconds 15 * 60
 
   @impl true
   def mount(_params, _session, socket) do
@@ -51,6 +63,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:workspace, workspace)
      |> assign(:step, :discovery)
      |> assign(:locate_project, nil)
+     |> assign(:onboarding_attempt, nil)
      |> assign(:pairing_error, nil)
      |> assign(:selection_error, nil)
      |> assign(:selected, nil)
@@ -75,6 +88,41 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
          |> assign(:selection_error, nil)}
 
       {:error, :not_found} ->
+        {:noreply, socket}
+    end
+  end
+
+  # The shared storage step returns here after the user chose on-device storage,
+  # carrying the onboarding attempt. Resume at the review step, reconstructing the
+  # selected repository from the attempt (only its fingerprint and name persist).
+  def handle_params(%{"attempt" => attempt_id}, _uri, socket) do
+    case Projects.get_device_onboarding_attempt(socket.assigns.workspace, attempt_id) do
+      %{storage_mode: "device", selected_repository: %{"fingerprint" => fingerprint} = repo} =
+          attempt ->
+        selected = %{name: repo["name"], fingerprint: fingerprint, location: nil}
+
+        {:noreply,
+         socket
+         |> assign(:onboarding_attempt, attempt)
+         |> assign(:selected, selected)
+         |> assign(:step, :review)
+         |> assign(:project_name, repo["name"] || "")
+         |> assign(:name_error, nil)
+         |> assign(:duplicate, nil)
+         |> assign(:disclosure_confirmed, false)}
+
+      %{storage_mode: "hosted"} ->
+        # Hosted storage for accountless local projects is owned by the
+        # atomic-registration task; nothing is created here yet.
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Saving local projects to a hosted account is coming soon. On-device projects are ready now."
+         )}
+
+      _ ->
+        # Unknown, cross-device, or not-yet-chosen attempt: stay put.
         {:noreply, socket}
     end
   end
@@ -141,16 +189,33 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     end
   end
 
-  def handle_event("continue_to_review", _params, socket) do
+  # Hand off to the shared storage-selection step. A device-origin onboarding
+  # attempt carries only the selected repository's fingerprint and display name,
+  # and the detected worker's readiness is recorded as a bound receipt so
+  # on-device storage is available at the step. On-device is the accountless
+  # default; the user can also sign in there to save to a hosted account.
+  def handle_event("continue_to_storage", _params, socket) do
     selected = socket.assigns.selected
+    workspace = socket.assigns.workspace
 
-    {:noreply,
-     socket
-     |> assign(:step, :review)
-     |> assign(:project_name, (selected && selected.name) || "")
-     |> assign(:name_error, nil)
-     |> assign(:duplicate, nil)
-     |> assign(:disclosure_confirmed, false)}
+    with {:ok, attempt} <- Projects.start_device_onboarding_attempt(workspace),
+         {:ok, attempt} <-
+           Projects.select_local_repository(workspace, attempt.id, %{
+             fingerprint: selected.fingerprint,
+             name: selected.name
+           }),
+         {:ok, _attempt} <-
+           Projects.record_device_receipt(
+             workspace,
+             attempt.id,
+             readiness_receipt(attempt, workspace)
+           ) do
+      {:noreply, push_navigate(socket, to: ~p"/onboarding/local/storage/#{attempt.id}")}
+    else
+      _ ->
+        {:noreply,
+         assign(socket, :selection_error, "Couldn't continue to the storage step. Try again.")}
+    end
   end
 
   def handle_event("back_to_selection", _params, socket) do
@@ -250,6 +315,21 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
              assign(socket, :name_error, "Enter a project name (letters, numbers, and spaces).")}
         end
     end
+  end
+
+  # A bound, minimized readiness receipt from the detected worker: it marks
+  # on-device storage ready for this attempt and this device workspace only.
+  defp readiness_receipt(attempt, workspace) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    DeviceStorageReceipt.issue(%{
+      token: Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false),
+      attempt_id: attempt.id,
+      device_workspace_id: workspace.id,
+      nonce: Base.url_encode64(:crypto.strong_rand_bytes(12), padding: false),
+      issued_at: now,
+      expires_at: DateTime.add(now, @readiness_ttl_seconds, :second)
+    })
   end
 
   defp selection_message(:not_a_git_repository),
@@ -624,8 +704,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
         <.button
           :if={!@locate_project}
-          phx-click="continue_to_review"
-          data-continue-review
+          phx-click="continue_to_storage"
+          data-continue-storage
           class="mt-4 w-full sm:w-auto"
         >
           Continue <.lucide name="arrow-right" class="size-4" />

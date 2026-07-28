@@ -180,9 +180,11 @@ defmodule SddOrchestratorWeb.StorageSelectionLive do
   defp device_setup_path(%{attempt: attempt}), do: ~p"/onboarding/device-setup/#{attempt.id}"
 
   # Continuing to project creation is source-owned. The hosted flow proceeds to
-  # its confirmation step; the accountless flow returns to the local flow, which
-  # owns device project creation (wired by the atomic-registration task).
-  defp continue_path(%{scope: :device}), do: ~p"/onboarding/local"
+  # its confirmation step; the accountless flow returns to the local flow with the
+  # attempt, which owns on-device project creation.
+  defp continue_path(%{scope: :device, attempt: attempt}),
+    do: ~p"/onboarding/local?#{[attempt: attempt.id]}"
+
   defp continue_path(%{attempt: attempt}), do: ~p"/onboarding/confirm/#{attempt.id}"
 
   @impl true

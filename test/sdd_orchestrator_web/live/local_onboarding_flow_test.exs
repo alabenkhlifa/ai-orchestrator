@@ -65,7 +65,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       assert has_element?(view, "[data-repository-name]", Path.basename(repo))
 
       # First-connection disclosure with the accountless data-loss warning.
-      render_click(view, "continue_to_review")
+      view = proceed_to_review(conn, view)
       assert has_element?(view, "[data-disclosure]")
       disclosure = render(view)
       assert disclosure =~ "never leave this computer"
@@ -96,7 +96,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
 
     test "does not send metadata when the disclosure is not confirmed", %{conn: conn, repo: repo} do
       {:ok, view, _html} = seed_detected_and_select(conn, repo)
-      render_click(view, "continue_to_review")
+      view = proceed_to_review(conn, view)
 
       # Attempting to create without confirming keeps the user in review and creates nothing.
       view
@@ -122,7 +122,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       on_exit(fn -> File.rm_rf!(other) end)
 
       {:ok, view, _html} = seed_detected_and_select(conn, other)
-      render_click(view, "continue_to_review")
+      view = proceed_to_review(conn, view)
 
       # No forced confirmation, but the disclosure stays available behind a disclosure control.
       refute has_element?(view, "[data-confirm-disclosure]")
@@ -135,7 +135,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
   describe "one project per repository" do
     test "rejects a repository that is already connected", %{conn: conn, repo: repo} do
       {:ok, view, _html} = seed_detected_and_select(conn, repo)
-      render_click(view, "continue_to_review")
+      view = proceed_to_review(conn, view)
       render_click(view, "toggle_disclosure")
 
       view
@@ -147,7 +147,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
 
       # Selecting the same repository again is blocked as a duplicate.
       {:ok, view2, _html} = seed_detected_and_select(conn, repo)
-      render_click(view2, "continue_to_review")
+      view2 = proceed_to_review(conn, view2)
 
       view2
       |> form("[data-step=review] form", project: %{name: "Second"})
@@ -224,6 +224,24 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
     repo = git_repo_fixture()
     on_exit(fn -> File.rm_rf!(repo) end)
     %{repo: repo}
+  end
+
+  # Drives the shared storage step: from a selected repository, hand off to the
+  # storage step, choose on-device (available via the worker readiness receipt),
+  # and return to the review step. Returns the resumed review view.
+  defp proceed_to_review(conn, view) do
+    render_click(view, "continue_to_storage")
+    {storage_to, _flash} = assert_redirect(view)
+    assert storage_to =~ ~r"^/onboarding/local/storage/"
+
+    {:ok, storage_view, _html} = live(conn, storage_to)
+    storage_view |> element("#storage-device") |> render_click()
+    storage_view |> element("button[phx-click=continue]") |> render_click()
+    {review_to, _flash} = assert_redirect(storage_view)
+
+    {:ok, review_view, _html} = live(conn, review_to)
+    assert has_element?(review_view, "[data-step=review]")
+    review_view
   end
 
   defp seed_detected_and_select(conn, repo) do
