@@ -44,7 +44,7 @@ Deferred after this slice:
   - Purpose: Produce one authoritative automatic-match candidate without retaining secondary addresses.
   - Proof: Integration and data-lifecycle tests cover primary, unverified, missing, multiple, secondary, permission, and provider-failure cases.
 
-- [ ] Implement conservative automatic-match canonicalization.
+- [x] Implement conservative automatic-match canonicalization.
   - Purpose: Apply ASCII eligibility and only approved exact-provider transformations.
   - Proof: Unit and property tests cover whitespace, domain case, local-part case, dot and tag rules, custom domains, Unicode, IDNA, ambiguity, and registry versions.
 
@@ -123,4 +123,12 @@ Deferred after this slice:
 - Completed: Task 2. Added a `get_verified_primary_email/1` provider callback that resolves at most one primary-and-verified address inside the adapter, with the real `ReqProvider` reading `GET /user/emails` (filters primary && verified, fails closed to `:none` on missing, unverified, or more-than-one primary; 403/404 → `:none`; 401 → error) and the deterministic `FakeProvider` modelling every case. Added `GitHubIntegration.verified_primary_email/1`, which passes through `{:ok, email}` / `{:ok, :none}` and normalizes provider read failures to `{:error, :provider_failure}`. Recorded the approved minimum email permission (`approved_email_permission: %{"email" => "read"}`).
 - Non-retention: secondary addresses are reduced away inside the adapter and never returned, so no caller can retain or disclose them; proven at the adapter (raw list → only the primary) and context (single-binary return, never a secondary) levels.
 - Proof: `mix test test/sdd_orchestrator/github_integration_test.exs test/sdd_orchestrator/github_integration/req_provider_test.exs` — 38 passed, exit 0. Covers primary, unverified, missing, multiple, secondary, permission, and provider-failure. `mix compile --warnings-as-errors` clean.
+- Failed checks: None.
+
+### 2026-07-28 - Task 3: conservative automatic-match canonicalization
+
+- Completed: Task 3. Added `IdentityLinking.EmailMatch.comparison_key/1` and `match?/2` implementing the pipeline in business-rule order: trim and structural validation (internal whitespace rejected), ASCII eligibility for both parts, `xn--` IDNA label exclusion (case-insensitive), base normalization (lowercase domain, preserve local case), then approved exact-provider rules applied in the canonical order case-fold → dot-removal → `+tag`-stripping. Added the versioned `IdentityLinking.ProviderRegistry` whose launch entry is Gmail personal only (`gmail.com`, `googlemail.com`) with cited evidence and account-type scope; every other domain, including Google Workspace and custom domains, gets no alias rules. The key is comparison-only and never rewrites a stored verified address.
+- Engineering mechanism: the registry lives in code as the single source of truth so a change is a reviewed code change with a version bump, matching the governance decision; no runtime config indirection was added.
+- Dependency: added `{:stream_data, "~> 1.1", only: [:dev, :test]}` (design-approved verification tool) for the normalization/eligibility property tests.
+- Proof: `mix test test/sdd_orchestrator/identity_linking/` — 24 passed (5 properties, 19 unit), exit 0. Covers whitespace, domain case, local-part case, Gmail dot/tag/case, custom-domain fail-closed, Unicode, IDNA, the ambiguity collision mechanism, and registry versions. `mix compile --warnings-as-errors` clean.
 - Failed checks: None.
