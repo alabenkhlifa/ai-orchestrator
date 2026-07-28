@@ -14,6 +14,8 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContract do
   contract.
   """
 
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
+
   @enforce_keys [:workspace_id, :worker_id, :repository_fingerprint, :status]
   defstruct [
     :connection_id,
@@ -63,6 +65,7 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContract do
          :ok <- only_allowed(attrs, @allowed_fields, :unexpected_field),
          {:ok, compatibility} <- build_compatibility(Map.get(attrs, :compatibility, %{})),
          :ok <- require_fields(attrs, @enforce_keys),
+         :ok <- validate_repository_fingerprint(Map.get(attrs, :repository_fingerprint)),
          :ok <- validate_status(Map.get(attrs, :status)) do
       {:ok,
        %__MODULE__{
@@ -111,6 +114,13 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContract do
 
   defp validate_status(status) when status in @statuses, do: :ok
   defp validate_status(status), do: {:error, {:invalid_status, status}}
+
+  defp validate_repository_fingerprint(fingerprint) do
+    case PortableRepositoryIdentity.parse(fingerprint) do
+      {:ok, _portable} -> :ok
+      {:error, _reason} -> {:error, :invalid_repository_fingerprint}
+    end
+  end
 
   defp atomize(map) do
     Map.new(map, fn

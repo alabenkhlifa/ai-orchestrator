@@ -27,7 +27,7 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLiveTest do
     {:ok, project} =
       Devices.register_project(%{
         name: "Ledger",
-        repository_fingerprint: "fp-ledger",
+        repository_fingerprint: legacy_identity(),
         status: "connected"
       })
 
@@ -48,7 +48,24 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLiveTest do
     assert has_element?(view, "[data-storage-mode]", "On this device")
     assert has_element?(view, "[data-repository]")
     assert has_element?(view, "[data-locate-repository]")
+    assert has_element?(view, "[data-backup-readiness=upgrade_required]")
+    assert has_element?(view, "[data-upgrade-repository-identity]")
     assert html =~ "project portability"
+  end
+
+  test "shows backup-ready handoff for a portable identity", %{conn: conn} do
+    {:ok, project} =
+      Devices.register_project(%{
+        name: "Portable",
+        repository_fingerprint: portable_identity(),
+        status: "connected"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/local/projects/#{project.id}")
+
+    assert has_element?(view, "[data-backup-readiness=backup_ready]")
+    refute has_element?(view, "[data-upgrade-repository-identity]")
+    assert render(view) =~ "Repository identity ready for export"
   end
 
   test "shows an unavailable status and keeps the project when the worker is not running", %{
@@ -124,5 +141,16 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLiveTest do
   defp store_path do
     dir = Path.join(System.tmp_dir!(), "sdd_device_dash_#{System.unique_integer([:positive])}")
     Path.join(dir, "store.dets")
+  end
+
+  defp legacy_identity do
+    :crypto.mac(:hmac, :sha256, "workspace", "root")
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp portable_identity do
+    salt = Base.url_encode64(:binary.copy(<<1>>, 32), padding: false)
+    digest = Base.url_encode64(:binary.copy(<<2>>, 32), padding: false)
+    "local-repo:v1:#{salt}:#{digest}"
   end
 end

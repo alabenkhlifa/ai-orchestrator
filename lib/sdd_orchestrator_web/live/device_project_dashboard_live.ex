@@ -10,8 +10,9 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
 
   `Locate repository` hands off to the onboarding folder picker in recovery mode
   for this project; only a matching canonical repository restores the connection.
-  A previous export can recover lost project history through project portability
-  (`specs/06`), which is mentioned here rather than implemented.
+  The dashboard also distinguishes a portable identity that is ready for future
+  replacement-environment backup from a legacy identity that must be upgraded by
+  explicitly locating the source repository first.
 
   Mount is by device-project id in the local store; an unknown id routes back to
   local onboarding rather than rendering a foreign project.
@@ -34,7 +35,8 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
          socket
          |> assign(:page_title, project.name)
          |> assign(:project, project)
-         |> assign(:connection_status, status)}
+         |> assign(:connection_status, status)
+         |> assign(:backup_readiness, Devices.repository_backup_readiness(project))}
 
       {:error, :not_found} ->
         {:ok, push_navigate(socket, to: ~p"/onboarding/local")}
@@ -134,15 +136,34 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
         </div>
 
         <div
-          class="mt-4 flex items-start gap-2 text-[13px] leading-relaxed text-ink-muted"
+          class="mt-4 rounded-lg border border-line bg-surface p-4"
           data-portability
+          data-backup-readiness={@backup_readiness}
         >
-          <.lucide name="info" class="size-4 flex-none mt-0.5" />
-          <span>
-            This project lives only on this device. To be able to recover it if this Mac's data is
-            lost, export it later through project portability — recovery is only possible from a
-            previous export.
-          </span>
+          <div class="flex items-start gap-2 text-[13px] leading-relaxed text-ink-muted">
+            <.lucide
+              name={if @backup_readiness == :backup_ready, do: "circle-check", else: "triangle-alert"}
+              class={[
+                "size-4 flex-none mt-0.5",
+                @backup_readiness == :backup_ready && "text-ok-fg",
+                @backup_readiness == :upgrade_required && "text-warn-fg"
+              ]}
+            />
+            <div>
+              <p class="font-semibold text-ink">
+                {backup_readiness_title(@backup_readiness)}
+              </p>
+              <p class="mt-0.5">{backup_readiness_message(@backup_readiness)}</p>
+              <.link
+                :if={@backup_readiness == :upgrade_required}
+                navigate={~p"/onboarding/local?#{[locate: @project.id]}"}
+                class="mt-2 inline-flex font-semibold text-primary underline underline-offset-2"
+                data-upgrade-repository-identity
+              >
+                Locate the source repository
+              </.link>
+            </div>
+          </div>
         </div>
       </div>
     </.app_shell>
@@ -156,4 +177,15 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
   defp connection_message(_authorization_required),
     do:
       "No worker is connected on this Mac, so this project's repository can't be reached. Set up or pair a worker, then check again."
+
+  defp backup_readiness_title(:backup_ready), do: "Repository identity ready for export"
+  defp backup_readiness_title(:upgrade_required), do: "Repository identity upgrade required"
+
+  defp backup_readiness_message(:backup_ready),
+    do:
+      "A future project portability export can carry this repository identity for exact reconnection on a replacement environment. Recovery still requires a previous export."
+
+  defp backup_readiness_message(:upgrade_required),
+    do:
+      "Before a future project portability export can reconnect this repository on a replacement environment, locate the original repository once. The project and repository stay unchanged if validation fails."
 end

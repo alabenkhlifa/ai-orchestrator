@@ -19,6 +19,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.Devices.Pairing
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
 
   setup do
     path = store_path()
@@ -71,6 +72,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       assert disclosure =~ "never leave this computer"
       assert disclosure =~ "no account"
       assert disclosure =~ "project portability"
+      assert disclosure =~ "independent connection gets a different identifier"
+      assert disclosure =~ "explicitly export and restore this same project"
 
       # Create is gated on confirmation.
       assert has_element?(view, "[data-create][disabled]")
@@ -89,9 +92,13 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       assert project.name == "My Local Project"
       assert project.storage_mode == "device"
 
+      assert {:ok, _portable} =
+               PortableRepositoryIdentity.parse(project.repository_fingerprint)
+
       {:ok, _dash, dash_html} = live(conn, to)
       assert dash_html =~ "My Local Project"
       assert dash_html =~ "On this device"
+      assert dash_html =~ "Repository identity ready for export"
     end
 
     test "does not send metadata when the disclosure is not confirmed", %{conn: conn, repo: repo} do
@@ -143,19 +150,19 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       |> render_submit()
 
       assert_redirect(view)
-      assert [_one] = Devices.list_projects()
+      assert [one] = Devices.list_projects()
 
-      # Selecting the same repository again is blocked as a duplicate.
-      {:ok, view2, _html} = seed_detected_and_select(conn, repo)
-      view2 = proceed_to_review(conn, view2)
+      # The worker compares the selected repository against the workspace's
+      # authorized identities and blocks it before allocating another identity.
+      stub_folder(repo)
+      {:ok, view2, _html} = live(conn, ~p"/onboarding/local")
+      render_click(view2, "continue_to_selection")
+      render_click(view2, "select_folder")
 
-      view2
-      |> form("[data-step=review] form", project: %{name: "Second"})
-      |> render_submit()
-
-      assert has_element?(view2, "[data-duplicate]")
+      assert has_element?(view2, "[data-step=selection] [data-duplicate]")
       assert render(view2) =~ "already connected"
-      assert [_still_one] = Devices.list_projects()
+      refute has_element?(view2, "[data-selected-repository]")
+      assert [^one] = Devices.list_projects()
     end
   end
 
@@ -178,6 +185,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
 
       {to, _flash} = assert_redirect(view)
       assert to == "/local/projects/#{project.id}"
+
+      assert {:ok, upgraded} = Devices.get_project(project.id)
+      refute upgraded.repository_fingerprint == fp
+
+      assert {:ok, _portable} =
+               PortableRepositoryIdentity.parse(upgraded.repository_fingerprint)
     end
 
     test "a non-matching repository is treated as different and does not replace", %{
@@ -203,6 +216,57 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
 
       assert has_element?(view, "[data-selection-error]", "different repository")
       refute has_element?(view, "[data-selected-repository]")
+      assert {:ok, unchanged} = Devices.get_project(project.id)
+      assert unchanged.repository_fingerprint == fp
+    end
+
+    test "a portable identity reconnects exactly without replacement", %{
+      conn: conn,
+      repo: repo,
+      workspace: workspace
+    } do
+      {:ok, %{fingerprint: identity}} = Devices.select_repository(repo, workspace)
+
+      {:ok, project} =
+        Devices.register_project(%{
+          name: "Portable",
+          repository_fingerprint: identity,
+          status: "connected"
+        })
+
+      stub_folder(repo)
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[locate: project.id]}")
+      render_click(view, "select_folder")
+
+      {to, _flash} = assert_redirect(view)
+      assert to == "/local/projects/#{project.id}"
+      assert {:ok, unchanged} = Devices.get_project(project.id)
+      assert unchanged.repository_fingerprint == identity
+    end
+
+    test "an unavailable worker leaves the legacy identity unchanged", %{
+      conn: conn,
+      repo: repo,
+      workspace: workspace
+    } do
+      {:ok, %{fingerprint: legacy}} = Devices.RepositoryValidation.validate(repo, workspace.id)
+
+      {:ok, project} =
+        Devices.register_project(%{
+          name: "Unavailable",
+          repository_fingerprint: legacy,
+          status: "unavailable"
+        })
+
+      Application.put_env(:sdd_orchestrator, :device_worker_stub, false)
+      on_exit(fn -> Application.put_env(:sdd_orchestrator, :device_worker_stub, true) end)
+
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[locate: project.id]}")
+      render_click(view, "select_folder")
+
+      assert has_element?(view, "[data-selection-error]", "Connect the worker")
+      assert {:ok, unchanged} = Devices.get_project(project.id)
+      assert unchanged.repository_fingerprint == legacy
     end
   end
 

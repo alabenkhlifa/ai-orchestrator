@@ -70,8 +70,16 @@ defmodule SddOrchestrator.ProjectsFixtures do
 
   @doc "The approved minimum local-repository metadata (fingerprint + display name)."
   def local_repository_metadata(attrs \\ %{}) do
+    unique = Integer.to_string(System.unique_integer([:positive]))
+    salt = :crypto.hash(:sha256, "fixture-salt:" <> unique)
+    digest = :crypto.hash(:sha256, "fixture-digest:" <> unique)
+
+    fingerprint =
+      "local-repo:v1:#{Base.url_encode64(salt, padding: false)}:" <>
+        Base.url_encode64(digest, padding: false)
+
     Map.merge(
-      %{fingerprint: "fp-#{System.unique_integer([:positive])}", name: "local-example"},
+      %{fingerprint: fingerprint, name: "local-example"},
       Map.new(attrs)
     )
   end

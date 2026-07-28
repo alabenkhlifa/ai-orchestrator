@@ -6,6 +6,7 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContractTest do
   """
   use ExUnit.Case, async: true
 
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
   alias SddOrchestrator.Devices.RepositoryConnectionContract, as: Contract
 
   defp valid_attrs(overrides \\ %{}) do
@@ -14,7 +15,7 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContractTest do
         connection_id: Ecto.UUID.generate(),
         workspace_id: Ecto.UUID.generate(),
         worker_id: Ecto.UUID.generate(),
-        repository_fingerprint: "fp-abc",
+        repository_fingerprint: portable_identifier(),
         status: "connected",
         compatibility: %{
           app_version: "1.2.3",
@@ -70,6 +71,20 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContractTest do
              Contract.build(Map.put(valid_attrs(), :workspace_id, ""))
   end
 
+  test "requires a strict portable repository identity" do
+    legacy =
+      :crypto.mac(:hmac, :sha256, "workspace", "root")
+      |> Base.url_encode64(padding: false)
+
+    assert PortableRepositoryIdentity.legacy_identifier?(legacy)
+
+    assert {:error, :invalid_repository_fingerprint} =
+             Contract.build(valid_attrs(%{repository_fingerprint: legacy}))
+
+    assert {:error, :invalid_repository_fingerprint} =
+             Contract.build(valid_attrs(%{repository_fingerprint: "local-repo:v1:malformed"}))
+  end
+
   test "accepts only the approved connection statuses" do
     for status <- Contract.statuses() do
       assert {:ok, _} = Contract.build(valid_attrs(%{status: status}))
@@ -82,5 +97,11 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContractTest do
   test "compatibility may be omitted" do
     assert {:ok, contract} = Contract.build(Map.delete(valid_attrs(), :compatibility))
     assert contract.compatibility == %{}
+  end
+
+  defp portable_identifier do
+    salt = Base.url_encode64(:binary.copy(<<1>>, 32), padding: false)
+    digest = Base.url_encode64(:binary.copy(<<2>>, 32), padding: false)
+    "local-repo:v1:#{salt}:#{digest}"
   end
 end

@@ -141,13 +141,14 @@ Release boundary:
   - Proof: Focused worker-boundary tests cover generation, round trip, exact and mismatched matches, independent salts, moved paths, clones, worktrees, changed remotes, malformed and legacy formats, constant-time comparison seam, forbidden-field absence, and unchanged Git fixtures.
   - Delivered: `Devices.PortableRepositoryIdentity` uses the strict canonical format `local-repo:v1:{validation_salt}:{digest}` with 32-byte URL-safe unpadded components, a fresh cryptographically random validation salt for every generation, and an HMAC-SHA256 digest over Task 4's sorted worker-local root commits. It strictly parses and round-trips portable values, rejects malformed and legacy values from portable matching, performs exact portable and original-workspace legacy matching through `Plug.Crypto.secure_compare/2`, and exposes an explicit comparison seam for proof. `RepositoryValidation.root_commit_ids/1` reuses Task 4's validation while keeping raw Git object ids inside the worker boundary.
 
-- [ ] Task 9 - Integrate portable identity creation, duplicate detection, and legacy upgrade.
+- [x] Task 9 - Integrate portable identity creation, duplicate detection, and legacy upgrade.
   - Size: Standard
   - Purpose: Use the portable identity in normal onboarding and upgrade an existing legacy connection only after explicit source-side proof.
   - Owned surfaces: `capability:portable-local-repository-identity`, new-connection identity allocation, workspace-authorized existing-identifier comparison before allocation, duplicate blocking, `RepositoryConnectionContract` versioned identity validation, `Locate repository` legacy-upgrade state, exact legacy proof, atomic device-store canonical-identity replacement and uniqueness recheck, failure and race rollback, actionable backup-readiness handoff, privacy disclosure update, and no global repository-equality query.
   - Owns: AC-12, AC-21, AC-22
   - Depends on: Task 7, Task 8
   - Proof: Focused device-store, onboarding, privacy, and desktop and mobile LiveView tests cover new identity creation, same-workspace duplicate detection, independent-workspace unlinkability, exact portable Locate matching, successful legacy upgrade, mismatch, unavailable worker, uniqueness race, rollback, unchanged repository state, and backup-ready versus upgrade-required results.
+  - Delivered: `Devices.select_repository/2` compares only the current device workspace's authorized portable and legacy identities before allocating a fresh portable identity, and local onboarding blocks a match at selection without a global equality query. `RepositoryConnectionContract` now rejects legacy and malformed onboarding identities. `Devices.locate_repository/3` performs exact portable reconnection or exact original-workspace legacy proof, then atomically replaces only the legacy identity through `DeviceStore.replace_repository_identity/4`; the store rechecks the expected project identity, every other identity compared by the worker, portable replacement validity, and repository uniqueness so mismatches, unavailable sources, concurrent changes, and uniqueness races preserve the original project. The privacy disclosure explains independent identifiers and deliberate same-project transfer, while the device dashboard reports `backup_ready` or an actionable `upgrade_required` handoff.
 
 ## Verification Gate
 
@@ -162,8 +163,8 @@ Release boundary:
 - [ ] The coordinated first-release browser scenarios prove that both primary entry actions are available and complete.
 - [ ] GDPR data contract and privacy review for device metadata and credentials are complete.
 - [x] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Portable identity generation, exact target matching, independent-workspace unlinkability, same-workspace duplicate detection, and malformed-identifier tests pass.
-- [ ] Legacy source-side upgrade, atomic rollback, backup-readiness handoff, and unchanged-repository proofs pass.
+- [x] Portable identity generation, exact target matching, independent-workspace unlinkability, same-workspace duplicate detection, and malformed-identifier tests pass.
+- [x] Legacy source-side upgrade, atomic rollback, backup-readiness handoff, and unchanged-repository proofs pass.
 
 ## Blocked Decisions
 
@@ -176,6 +177,14 @@ Release boundary:
 - Final privacy review and confirmation of retention durations for the device-metadata and pairing-credential data contract recorded in `design.md`.
 
 ## Progress Log
+
+### 2026-07-28 - Task 9 complete: portable identity integration and legacy upgrade
+
+- Completed: Integrated portable identity allocation into new local onboarding after workspace-authorized duplicate comparison; enforced strict portable identities in the outbound contract; replaced equality-only Locate recovery with exact portable matching and source-side legacy proof; added atomic identity replacement with comparison-snapshot, current-identity, portable-format, and uniqueness rechecks; added failure and race rollback; updated the privacy disclosure; and exposed backup-ready versus upgrade-required dashboard guidance. `capability:portable-local-repository-identity` is ready.
+- Proof: Focused Task 9 device-store, contract, onboarding, privacy, and dashboard proof passed (32 tests); the broader device, registration, and local-onboarding set passed (106 tests); `mix check` passed (575 passed including 5 properties, 1 excluded `:live`); `mix deps.audit` found no vulnerabilities; `mix sobelow --config` and `mix dialyzer` passed.
+- Remaining: Run and write back the complete Slice 02 verification gate, including browser, production-build, and release-readiness separation.
+- Failed checks: The initial focused run passed 31 of 32 tests because the new dashboard readiness copy omitted the established phrase `project portability`; the copy was corrected and the focused proof reran with all 32 passing.
+- Spec updates: Task 9 checked complete; both identity verification items checked; `capability:portable-local-repository-identity` is available after the completed task and proof.
 
 ### 2026-07-28 - Task 8 complete: versioned portable repository identity
 

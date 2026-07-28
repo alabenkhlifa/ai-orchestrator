@@ -14,8 +14,10 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
        also covers replacement-worker pairing). Unavailable keeps projects visible.
     2. `:selection` — the native folder picker (the local worker stand-in in
        dev/test) yields a path validated entirely on the worker boundary through
-       `Devices.RepositoryValidation.validate/2`. Only the non-reversible
-       fingerprint crosses the boundary; the name and location are shown locally.
+       `Devices.select_repository/2`. Existing workspace-authorized identities
+       are checked before a fresh portable identity is allocated. Only the
+       non-reversible identity crosses the boundary; the name and location are
+       shown locally.
        Continuing hands off to the shared storage-selection step
        (`specs/05-project-storage-lifecycle/`): a device-origin onboarding attempt
        is created with the selected repository's fingerprint and name, the detected
@@ -44,7 +46,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   import SddOrchestratorWeb.ConnectionStatus, only: [device_connection_badge: 1]
 
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Devices.{Pairing, RepositoryValidation, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{Pairing, WorkerDiscovery}
   alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
@@ -166,6 +168,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      socket
      |> assign(:step, :selection)
      |> assign(:selection_error, nil)
+     |> assign(:duplicate, nil)
      |> assign(:selected, nil)}
   end
 
@@ -174,6 +177,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      socket
      |> assign(:step, :discovery)
      |> assign(:selection_error, nil)
+     |> assign(:duplicate, nil)
      |> assign(:locate_project, nil)
      |> assign_worker_status()}
   end
@@ -240,10 +244,40 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   # ---- selection / creation internals ----
 
-  defp validate_selection(socket, path) do
-    salt = socket.assigns.workspace.id
+  defp validate_selection(
+         %{assigns: %{locate_project: %{} = project, workspace: workspace}} = socket,
+         path
+       ) do
+    case Devices.locate_repository(path, project, workspace) do
+      {:ok, %{project: reconnected, upgraded?: upgraded?}} ->
+        message =
+          if upgraded?,
+            do: "Repository reconnected and ready for future project exports.",
+            else: "Repository reconnected."
 
-    case RepositoryValidation.validate(path, salt) do
+        {:noreply,
+         socket
+         |> put_flash(:info, message)
+         |> push_navigate(to: ~p"/local/projects/#{reconnected.id}")}
+
+      {:error, {:repository_already_linked, existing}} ->
+        {:noreply,
+         socket
+         |> assign(:selected, nil)
+         |> assign(:selection_error, nil)
+         |> assign(:duplicate, existing)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:selected, nil)
+         |> assign(:duplicate, nil)
+         |> assign(:selection_error, locate_message(reason))}
+    end
+  end
+
+  defp validate_selection(socket, path) do
+    case Devices.select_repository(path, socket.assigns.workspace) do
       {:ok, %{fingerprint: fingerprint}} ->
         resolve_selection(socket, %{
           name: Path.basename(path),
@@ -251,28 +285,19 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           fingerprint: fingerprint
         })
 
+      {:error, {:repository_already_linked, existing}} ->
+        {:noreply,
+         socket
+         |> assign(:selected, nil)
+         |> assign(:selection_error, nil)
+         |> assign(:duplicate, existing)}
+
       {:error, reason} ->
         {:noreply,
-         socket |> assign(:selected, nil) |> assign(:selection_error, selection_message(reason))}
-    end
-  end
-
-  # In `Locate repository` recovery only a matching canonical identity restores the
-  # connection; a non-matching selection is treated as a different repository.
-  defp resolve_selection(%{assigns: %{locate_project: %{} = project}} = socket, selected) do
-    if selected.fingerprint == project.repository_fingerprint do
-      {:noreply,
-       socket
-       |> put_flash(:info, "Repository reconnected.")
-       |> push_navigate(to: ~p"/local/projects/#{project.id}")}
-    else
-      {:noreply,
-       socket
-       |> assign(:selected, nil)
-       |> assign(
-         :selection_error,
-         "That's a different repository, so it can't replace this project's repository. Choose the original repository, or start a new project instead."
-       )}
+         socket
+         |> assign(:selected, nil)
+         |> assign(:duplicate, nil)
+         |> assign(:selection_error, selection_message(reason))}
     end
   end
 
@@ -280,6 +305,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     {:noreply,
      socket
      |> assign(:selection_error, nil)
+     |> assign(:duplicate, nil)
      |> assign(:selected, selected)}
   end
 
@@ -352,6 +378,19 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   defp selection_message(:empty_repository),
     do: "That repository has no commits yet. Make your first commit, then select it again."
 
+  defp locate_message(:repository_mismatch),
+    do:
+      "That's a different repository, so it can't replace this project's repository. Choose the original repository, or start a new project instead."
+
+  defp locate_message(:invalid_repository_identity),
+    do:
+      "This project's saved repository identity can't be validated. The project is unchanged; create an export before repairing its connection."
+
+  defp locate_message(reason) when reason in [:identity_changed, :identity_race],
+    do: "Projects changed while the repository was checked. Nothing was updated; try again."
+
+  defp locate_message(reason), do: selection_message(reason)
+
   defp assign_worker_status(socket) do
     status = Devices.worker_status(socket.assigns.workspace.id)
     assign(socket, :worker_status, status)
@@ -415,6 +454,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           :if={@step == :selection}
           selected={@selected}
           selection_error={@selection_error}
+          duplicate={@duplicate}
           locate_project={@locate_project}
         />
         <.review_step
@@ -664,6 +704,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   attr :selected, :map, default: nil
   attr :selection_error, :string, default: nil
+  attr :duplicate, :map, default: nil
   attr :locate_project, :map, default: nil
 
   defp selection_step(assigns) do
@@ -698,6 +739,24 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
       <div :if={@selection_error} class="mt-5" data-selection-error>
         <.notice variant="err" icon="triangle-alert">{@selection_error}</.notice>
+      </div>
+
+      <div :if={@duplicate} class="mt-5" data-duplicate>
+        <.notice variant="warn" icon="triangle-alert">
+          <div class="flex flex-col gap-2">
+            <span>
+              This repository is already connected as <span class="font-semibold">{@duplicate.name}</span>. Its existing project was preserved.
+            </span>
+            <.button
+              variant="secondary"
+              size="sm"
+              navigate={~p"/local/projects/#{@duplicate.id}"}
+              class="w-full sm:w-auto"
+            >
+              Open {@duplicate.name} <.lucide name="arrow-right" class="size-4" />
+            </.button>
+          </div>
+        </.notice>
       </div>
 
       <div
@@ -864,9 +923,11 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
       <.notice variant="info" icon="external-link">
         <p class="font-semibold text-ink">What's shared</p>
         <p class="mt-0.5">
-          Only the minimum needed to keep the connection: a scrambled repository fingerprint that
-          can't be reversed, coarse worker and app version info, and the connection status. Never a
-          path, file name, URL, or any of your code.
+          Only the minimum needed to keep the connection: a versioned scrambled repository
+          identifier that can't be reversed, coarse worker and app version info, and the connection
+          status. An independent connection gets a different identifier; the exact identifier is
+          copied only when you explicitly export and restore this same project. Never a path, file
+          name, URL, or any of your code.
         </p>
       </.notice>
 
