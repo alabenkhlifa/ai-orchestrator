@@ -14,6 +14,7 @@ defmodule SddOrchestratorWeb.StorageSelectionLiveTest do
   alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectsFixtures
+  alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
 
   defp setup_account(conn) do
@@ -29,16 +30,45 @@ defmodule SddOrchestratorWeb.StorageSelectionLiveTest do
       Map.merge(ctx, %{attempt: attempt})
     end
 
-    test "asks the question, explains the repository stays put, and shows both choices (AC-24)",
+    test "asks the question, explains the project work and repository, and shows both choices (AC-01)",
          %{conn: conn, attempt: attempt} do
       {:ok, _view, html} = live(conn, ~p"/onboarding/storage/#{attempt.id}")
 
       assert html =~ ~s(data-screen="storage-selection")
       assert html =~ "Where should your project work be saved?"
-      assert html =~ "stays exactly where it is"
+
+      # Approved, source-neutral explanation copy (verbatim; never names GitHub).
+      assert html =~
+               "Your project work includes specifications, tasks, agent runs, and generated files. Your linked repository stays where it is."
+
+      refute html =~ "on GitHub"
       assert html =~ "octo/example"
+
+      # Both choices, with their approved access-consequence descriptions.
       assert html =~ "In my SDD Orchestrator account"
+
+      assert html =~
+               "Your project work is saved to your account so you can access it from other devices."
+
       assert html =~ "On this device"
+
+      assert html =~
+               "Your project work stays on this device. It will not be available on another device or to collaborators unless you move or export it later."
+    end
+
+    test "the hosted description does not state or imply collaboration is available (AC-16)", %{
+      conn: conn,
+      attempt: attempt
+    } do
+      {:ok, _view, html} = live(conn, ~p"/onboarding/storage/#{attempt.id}")
+
+      # The hosted option describes cross-device account access only.
+      assert html =~
+               "Your project work is saved to your account so you can access it from other devices."
+
+      # It must not promise collaboration, sharing, teammates, or invitations.
+      hosted_copy = ProjectStorage.description(:hosted)
+      refute hosted_copy =~ ~r/collaborat|team|invite|shar/i
     end
 
     test "keeps the unavailable device mode visible with a non-selecting setup action (AC-25)", %{

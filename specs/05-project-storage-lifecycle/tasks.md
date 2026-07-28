@@ -118,6 +118,13 @@ Release boundary:
 
 ## Progress Log
 
+### 2026-07-28 - Task 3 shared attempt origin and identity-gated hosted availability
+
+- Engineering mechanism: Extended the one shared `ProjectOnboardingAttempt` with `origin_kind` (`hosted`/`device`), an opaque `device_workspace_id` (no foreign key, since device workspaces never persist in the hosted database), a `hosted_prerequisite_workspace_id` FK recorded only by a verified sign-in, and a `browser_flow_binding`; made `workspace_id` nullable; and added a database `onboarding_attempt_origin_shape` check so a hosted-origin attempt owns a hosted workspace with no device reference while a device-origin attempt references a device workspace and never carries a hosted owning workspace.
+- Behavior: Hosted availability is now identity-gated — a hosted-origin attempt is always available, a device-origin attempt is `{:unavailable, :hosted_sign_in_required}` until a verified sign-in records the hosted prerequisite, and recording either the prerequisite or a device receipt only re-evaluates availability without selecting a mode. The approved, source-neutral storage-selection copy (question, work explanation, and both access-consequence descriptions, including the non-collaboration hosted copy) is centralized in `ProjectStorage`. Device-scoped `start_device_onboarding_attempt`, `get_device_onboarding_attempt`, `select_local_repository`, `record_hosted_prerequisite`, and device heads of `select_storage_mode`/`record_device_receipt` keep accountless attempts isolated from hosted scope.
+- Passing proofs: `MIX_ENV=test mix test test/sdd_orchestrator/project_storage/onboarding_origin_test.exs` (9); regression run of `projects_test`, `project_storage_test`, `project_registration_test`, `project_storage/domain_boundary_test`, `storage_selection_live_test` (72); migration apply, rollback, and reapply on the test database; `mix format --check-formatted`; `git diff --check`; and `MIX_ENV=test mix compile --warnings-as-errors`.
+- Remaining for Task 3: the bound and minimized `DeviceStorageReceipt` redesign; the accountless storage route with the shared storage LiveView accountless mount, the hosted sign-in return handoff (AC-14) and device-setup return (AC-03); and the source-adapter handoff browser proof for both repository sources.
+
 ### 2026-07-28 - Task 3 implementation started
 
 - Preflight: Task 2 is complete. Task 3 owns AC-01, AC-02, AC-03, AC-14, AC-16, `ProjectOnboardingAttempt`, `DeviceStorageReceipt`, the shared storage-selection surface, and the source-adapter handoff contract; its prerequisites exist in the hosted onboarding attempt, passwordless return, device workspace, worker, and local repository-validation foundations.

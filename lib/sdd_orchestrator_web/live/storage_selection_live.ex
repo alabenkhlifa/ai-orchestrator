@@ -96,6 +96,14 @@ defmodule SddOrchestratorWeb.StorageSelectionLive do
     end
   end
 
+  # Source-neutral display label for the selected repository. GitHub supplies a
+  # `full_name` (`owner/name`); the local adapter supplies only a display `name`
+  # with no path or URL. Falls back gracefully so neither source leaks the other's
+  # shape into the shared surface.
+  defp repository_label(%{"full_name" => full_name}) when is_binary(full_name), do: full_name
+  defp repository_label(%{"name" => name}) when is_binary(name), do: name
+  defp repository_label(_repository), do: "your repository"
+
   defp continue_enabled?(assigns) do
     assigns.selected_mode == :hosted or
       (assigns.selected_mode == :device and assigns.device_available)
@@ -120,14 +128,17 @@ defmodule SddOrchestratorWeb.StorageSelectionLive do
       </:actions>
 
       <div data-screen="storage-selection">
-        <h1 class="text-xl font-bold text-ink">Where should your project work be saved?</h1>
+        <h1 class="text-xl font-bold text-ink">{ProjectStorage.question()}</h1>
         <p class="mt-1.5 text-sm leading-relaxed text-ink-muted text-pretty">
-          This is where SDD Orchestrator keeps your specifications and project work — separate from
-          your code. Your linked repository
-          <span :if={@selected_repository} class="font-semibold text-ink">
-            {@selected_repository["full_name"]}
-          </span>
-          stays exactly where it is on GitHub; nothing about it changes.
+          {ProjectStorage.work_explanation()}
+        </p>
+        <p
+          :if={@selected_repository}
+          class="mt-1 text-[13px] text-ink-muted"
+          data-selected-repository
+        >
+          Linked repository:
+          <span class="font-semibold text-ink">{repository_label(@selected_repository)}</span>
         </p>
 
         <div
@@ -145,10 +156,10 @@ defmodule SddOrchestratorWeb.StorageSelectionLive do
           >
             <div class="flex items-center gap-2">
               <.lucide name="cloud" class="size-4 text-ink-muted" />
-              <span class="text-sm font-semibold text-ink">In my SDD Orchestrator account</span>
+              <span class="text-sm font-semibold text-ink">{ProjectStorage.label(:hosted)}</span>
             </div>
             <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
-              Saved in your hosted account. Available from any device you sign in on.
+              {ProjectStorage.description(:hosted)}
             </p>
           </.radio_option>
 
@@ -163,10 +174,10 @@ defmodule SddOrchestratorWeb.StorageSelectionLive do
             >
               <div class="flex items-center gap-2">
                 <.lucide name="hard-drive" class="size-4 text-ink-muted" />
-                <span class="text-sm font-semibold text-ink">On this device</span>
+                <span class="text-sm font-semibold text-ink">{ProjectStorage.label(:device)}</span>
               </div>
               <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
-                Saved on this computer. Stays on the device you set up.
+                {ProjectStorage.description(:device)}
               </p>
             </.radio_option>
 

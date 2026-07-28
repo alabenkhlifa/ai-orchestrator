@@ -3,6 +3,7 @@ defmodule SddOrchestrator.ProjectsFixtures do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Accounts.Account
+  alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
@@ -58,6 +59,26 @@ defmodule SddOrchestrator.ProjectsFixtures do
 
     attempt = attempt_with_repository(workspace, repository)
     {:ok, attempt} = Projects.select_storage_mode(workspace, attempt.id, mode)
+    attempt
+  end
+
+  @doc "A device workspace value (accountless local origin), distinct per call."
+  def device_workspace_fixture do
+    %DeviceWorkspace{id: Ecto.UUID.generate()}
+  end
+
+  @doc "The approved minimum local-repository metadata (fingerprint + display name)."
+  def local_repository_metadata(attrs \\ %{}) do
+    Map.merge(
+      %{fingerprint: "fp-#{System.unique_integer([:positive])}", name: "local-example"},
+      Map.new(attrs)
+    )
+  end
+
+  @doc "Starts a device-origin (accountless) attempt with a local repository selected."
+  def device_attempt_with_repository(device_workspace, repository \\ local_repository_metadata()) do
+    {:ok, attempt} = Projects.start_device_onboarding_attempt(device_workspace)
+    {:ok, attempt} = Projects.select_local_repository(device_workspace, attempt.id, repository)
     attempt
   end
 

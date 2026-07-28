@@ -13,7 +13,7 @@ defmodule SddOrchestrator.Projects do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias SddOrchestrator.Accounts.PersonalWorkspace
+  alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt, RepositoryConnection}
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.{DeviceStorageReceipt, Hosted}
@@ -141,11 +141,22 @@ defmodule SddOrchestrator.Projects do
   Records the explicitly chosen storage mode on a workspace-scoped attempt. Does
   not create a project. Returns `{:error, :not_found}` for a foreign attempt.
   """
-  @spec select_storage_mode(PersonalWorkspace.t(), String.t(), String.t()) ::
+  @spec select_storage_mode(
+          PersonalWorkspace.t() | DeviceWorkspace.t(),
+          String.t(),
+          String.t()
+        ) ::
           {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
   def select_storage_mode(%PersonalWorkspace{} = workspace, attempt_id, mode)
       when is_binary(attempt_id) and is_binary(mode) do
     update_attempt(workspace, attempt_id, fn attempt ->
+      ProjectOnboardingAttempt.select_storage_changeset(attempt, mode)
+    end)
+  end
+
+  def select_storage_mode(%DeviceWorkspace{} = workspace, attempt_id, mode)
+      when is_binary(attempt_id) and is_binary(mode) do
+    update_device_attempt(workspace, attempt_id, fn attempt ->
       ProjectOnboardingAttempt.select_storage_changeset(attempt, mode)
     end)
   end
@@ -158,7 +169,11 @@ defmodule SddOrchestrator.Projects do
   storage step sees device storage as available. It never selects a mode or
   creates a project. Returns `{:error, :not_found}` for a foreign attempt.
   """
-  @spec record_device_receipt(PersonalWorkspace.t(), String.t(), DeviceStorageReceipt.t()) ::
+  @spec record_device_receipt(
+          PersonalWorkspace.t() | DeviceWorkspace.t(),
+          String.t(),
+          DeviceStorageReceipt.t()
+        ) ::
           {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
   def record_device_receipt(
         %PersonalWorkspace{} = workspace,
@@ -171,6 +186,99 @@ defmodule SddOrchestrator.Projects do
         attempt,
         DeviceStorageReceipt.to_map(receipt)
       )
+    end)
+  end
+
+  def record_device_receipt(
+        %DeviceWorkspace{} = workspace,
+        attempt_id,
+        %DeviceStorageReceipt{} = receipt
+      )
+      when is_binary(attempt_id) do
+    update_device_attempt(workspace, attempt_id, fn attempt ->
+      ProjectOnboardingAttempt.device_setup_changeset(
+        attempt,
+        DeviceStorageReceipt.to_map(receipt)
+      )
+    end)
+  end
+
+  ## Device-origin (accountless) onboarding attempts
+
+  @doc """
+  Starts a fresh device-origin onboarding attempt for accountless local
+  onboarding.
+
+  It owns no hosted workspace; it references only the opaque device-workspace id
+  and, when supplied, binds to the current browser flow so a later prerequisite
+  return cannot be replayed against another browser.
+  """
+  @spec start_device_onboarding_attempt(DeviceWorkspace.t(), keyword()) ::
+          {:ok, ProjectOnboardingAttempt.t()} | {:error, Ecto.Changeset.t()}
+  def start_device_onboarding_attempt(%DeviceWorkspace{id: device_workspace_id}, opts \\ []) do
+    %ProjectOnboardingAttempt{}
+    |> ProjectOnboardingAttempt.create_device_changeset(%{
+      device_workspace_id: device_workspace_id,
+      idempotency_key: Ecto.UUID.generate(),
+      status: "started",
+      expires_at: DateTime.add(now(), @attempt_ttl_seconds, :second),
+      browser_flow_binding: Keyword.get(opts, :browser_flow_binding)
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Fetches a device-origin onboarding attempt scoped to its device workspace.
+  Returns nil for a missing, malformed, hosted-origin, or cross-device id so a
+  foreign attempt is never resolved.
+  """
+  @spec get_device_onboarding_attempt(DeviceWorkspace.t(), String.t()) ::
+          ProjectOnboardingAttempt.t() | nil
+  def get_device_onboarding_attempt(%DeviceWorkspace{id: device_workspace_id}, attempt_id)
+      when is_binary(attempt_id) do
+    case Ecto.UUID.cast(attempt_id) do
+      {:ok, uuid} ->
+        Repo.one(
+          from a in ProjectOnboardingAttempt,
+            where:
+              a.id == ^uuid and a.device_workspace_id == ^device_workspace_id and
+                a.origin_kind == "device"
+        )
+
+      :error ->
+        nil
+    end
+  end
+
+  @doc """
+  Records the confirmed local repository on a device-origin attempt. Only the
+  device-local canonical fingerprint and display name cross into the transient
+  handoff; no path, remote URL, filename, or source content is stored.
+  """
+  @spec select_local_repository(DeviceWorkspace.t(), String.t(), map()) ::
+          {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def select_local_repository(%DeviceWorkspace{} = workspace, attempt_id, repository)
+      when is_binary(attempt_id) and is_map(repository) do
+    update_device_attempt(workspace, attempt_id, fn attempt ->
+      ProjectOnboardingAttempt.select_repository_changeset(attempt, local_metadata(repository))
+    end)
+  end
+
+  @doc """
+  Records the hosted workspace proven by a verified sign-in on a device-origin
+  attempt, making hosted storage available. Never selects a mode or creates a
+  project. Returns `{:error, :not_found}` for a foreign attempt.
+  """
+  @spec record_hosted_prerequisite(DeviceWorkspace.t(), String.t(), PersonalWorkspace.t()) ::
+          {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def record_hosted_prerequisite(
+        %DeviceWorkspace{} = workspace,
+        attempt_id,
+        %PersonalWorkspace{id: hosted_workspace_id}
+      )
+      when is_binary(attempt_id) do
+    update_device_attempt(workspace, attempt_id, fn attempt ->
+      ProjectOnboardingAttempt.hosted_prerequisite_changeset(attempt, hosted_workspace_id)
     end)
   end
 
@@ -436,6 +544,27 @@ defmodule SddOrchestrator.Projects do
       nil -> {:error, :not_found}
       %ProjectOnboardingAttempt{} = attempt -> attempt |> change_fun.() |> Repo.update()
     end
+  end
+
+  # Device-scoped counterpart: applies a changeset to a device-origin attempt, or
+  # reports not_found for an unknown, malformed, hosted-origin, or cross-device
+  # attempt so a foreign attempt is never written.
+  defp update_device_attempt(workspace, attempt_id, change_fun) do
+    case get_device_onboarding_attempt(workspace, attempt_id) do
+      nil -> {:error, :not_found}
+      %ProjectOnboardingAttempt{} = attempt -> attempt |> change_fun.() |> Repo.update()
+    end
+  end
+
+  # The approved minimum local-repository metadata: provider, the non-reversible
+  # canonical fingerprint, and the display name. No path, remote URL, filename,
+  # Git history, or source content is stored.
+  defp local_metadata(repository) do
+    %{
+      "provider" => "local",
+      "fingerprint" => field(repository, :fingerprint),
+      "name" => field(repository, :name)
+    }
   end
 
   # Persist only the approved metadata, with string keys for stable jsonb storage.

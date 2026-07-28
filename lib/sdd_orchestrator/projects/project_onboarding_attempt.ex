@@ -21,6 +21,16 @@ defmodule SddOrchestrator.Projects.ProjectOnboardingAttempt do
   @type t :: %__MODULE__{}
 
   schema "project_onboarding_attempts" do
+    # Where onboarding started, and its one owning shape:
+    #   * "hosted" — GitHub onboarding while signed in; owns a hosted `workspace`.
+    #   * "device" — accountless local onboarding; references an opaque device
+    #     workspace and owns no hosted workspace. A verified hosted sign-in later
+    #     records `hosted_prerequisite_workspace_id` to make hosted available.
+    field :origin_kind, :string, default: "hosted"
+    field :device_workspace_id, :binary_id
+    field :hosted_prerequisite_workspace_id, :binary_id
+    field :browser_flow_binding, :string
+
     field :idempotency_key, :string
     field :status, :string, default: "started"
     field :selected_repository, :map
@@ -34,13 +44,51 @@ defmodule SddOrchestrator.Projects.ProjectOnboardingAttempt do
     timestamps()
   end
 
-  @doc "Changeset for creating a fresh onboarding attempt."
+  @doc "Changeset for creating a fresh hosted-origin onboarding attempt."
   def create_changeset(attempt, attrs) do
     attempt
     |> cast(attrs, [:workspace_id, :idempotency_key, :status, :expires_at])
+    |> put_change(:origin_kind, "hosted")
     |> validate_required([:workspace_id, :idempotency_key, :status, :expires_at])
     |> unique_constraint(:idempotency_key)
     |> foreign_key_constraint(:workspace_id)
+    |> check_constraint(:origin_kind, name: :onboarding_attempt_origin_shape)
+  end
+
+  @doc """
+  Changeset for creating a fresh device-origin (accountless) onboarding attempt.
+
+  It owns no hosted workspace; it references only the opaque device-workspace id
+  and binds to the current browser flow so a later prerequisite return cannot be
+  replayed against another browser.
+  """
+  def create_device_changeset(attempt, attrs) do
+    attempt
+    |> cast(attrs, [
+      :device_workspace_id,
+      :idempotency_key,
+      :status,
+      :expires_at,
+      :browser_flow_binding
+    ])
+    |> put_change(:origin_kind, "device")
+    |> validate_required([:device_workspace_id, :idempotency_key, :status, :expires_at])
+    |> unique_constraint(:idempotency_key)
+    |> check_constraint(:origin_kind, name: :onboarding_attempt_origin_shape)
+  end
+
+  @doc """
+  Records the hosted workspace proven by a verified sign-in on a device-origin
+  attempt, which makes hosted storage available. Never selects a mode or creates
+  a project.
+  """
+  def hosted_prerequisite_changeset(attempt, hosted_workspace_id) do
+    attempt
+    |> cast(%{hosted_prerequisite_workspace_id: hosted_workspace_id}, [
+      :hosted_prerequisite_workspace_id
+    ])
+    |> validate_required([:hosted_prerequisite_workspace_id])
+    |> foreign_key_constraint(:hosted_prerequisite_workspace_id)
   end
 
   @doc """

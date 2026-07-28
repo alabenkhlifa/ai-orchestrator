@@ -53,20 +53,67 @@ defmodule SddOrchestrator.ProjectStorage do
   @spec modes() :: [mode()]
   def modes, do: @modes
 
+  @doc """
+  The approved, source-neutral heading for the storage-selection step. Identical
+  for every repository source so the shared surface never leaks GitHub- or
+  local-specific wording.
+  """
+  @spec question() :: String.t()
+  def question, do: "Where should your project work be saved?"
+
+  @doc """
+  The approved explanation of what the storage choice covers. Source-neutral: it
+  never names GitHub or a local path, so it reads correctly for both onboarding
+  sources.
+  """
+  @spec work_explanation() :: String.t()
+  def work_explanation do
+    "Your project work includes specifications, tasks, agent runs, and generated files. " <>
+      "Your linked repository stays where it is."
+  end
+
   @doc "The plain-language label for a storage mode."
   @spec label(mode()) :: String.t()
   def label(:hosted), do: "In my SDD Orchestrator account"
   def label(:device), do: "On this device"
 
   @doc """
+  The approved, first-release access-consequence description for a storage mode.
+
+  The hosted copy states cross-device account access without stating or implying
+  that collaboration is available (AC-16). The device copy states the on-device
+  boundary and that moving or exporting is required to reach another device.
+  """
+  @spec description(mode()) :: String.t()
+  def description(:hosted),
+    do: "Your project work is saved to your account so you can access it from other devices."
+
+  def description(:device) do
+    "Your project work stays on this device. It will not be available on another device " <>
+      "or to collaborators unless you move or export it later."
+  end
+
+  @doc """
   Availability of a storage mode for an onboarding attempt.
 
-  Hosted is always available in this slice. Device is available only when the
-  attempt carries a valid, unexpired readiness receipt from the local-device
-  boundary.
+  Hosted requires an authorized identity: a hosted-origin attempt (the user is
+  already signed in) always has one, while a device-origin (accountless) attempt
+  has one only after a verified hosted sign-in records the hosted prerequisite —
+  until then hosted stays visible but unavailable with a sign-in action. Device is
+  available only when the attempt carries a valid, unexpired readiness receipt
+  from the local-device boundary.
   """
   @spec availability(mode(), ProjectOnboardingAttempt.t()) :: availability()
-  def availability(:hosted, _attempt), do: :available
+  def availability(:hosted, %ProjectOnboardingAttempt{origin_kind: "hosted"}), do: :available
+
+  def availability(:hosted, %ProjectOnboardingAttempt{
+        hosted_prerequisite_workspace_id: workspace_id
+      })
+      when not is_nil(workspace_id),
+      do: :available
+
+  def availability(:hosted, %ProjectOnboardingAttempt{}),
+    do: {:unavailable, :hosted_sign_in_required}
 
   def availability(:device, %ProjectOnboardingAttempt{} = attempt) do
     case DeviceStorageReceipt.from_attempt(attempt) do
