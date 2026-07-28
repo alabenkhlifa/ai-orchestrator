@@ -64,6 +64,8 @@ Invoke or activate the matching project skill through the current tool's skill s
 
 When one request combines a new or changed specification with implementation, complete the applicable spec workflow and stop. Begin `implement-spec` only after the specification is reviewed and its active slice is approved. Spec-only work must stop after the specification and directly requested project guidance are updated; do not continue into code, migrations, tests, dependencies, or runtime configuration.
 
+When the user asks to implement or complete work, carry every requested task through to completion in one pass. Do not pause to confirm pace, ask permission to continue, or offer to stop for review between tasks; commit at each task boundary for durable progress and proceed to the next. Stop only for a genuine blocker: a decision that is truly the user's to make, an unresolved specification decision, a hard environment or tooling failure, or an unrecoverable error — never for a routine check-in or review request.
+
 ## Readiness And Write-Back
 
 Report product-requirement, technical-design, implementation, verification, and release readiness separately, and name the earliest stage each unresolved item blocks; a later-stage unknown must not make an earlier ready stage look blocked. `Approved` requirements are not thereby implemented or releasable.
