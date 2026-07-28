@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, and 10 are complete. Task 14 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, and 14 are complete. Task 5 is the next implementation task.
 
 ## Active Slice
 
@@ -134,7 +134,7 @@ Release boundary:
   - Depends on: Task 4
   - Proof: Focused compatibility, parser, property, and resource-limit tests cover supported and unsupported versions, additive unknown fields, duplicate keys, non-finite numbers, malformed sections, oversized input, decompression bombs, prohibited attachments, excessive counts and lengths, cancellation, and validation without persistent project state.
 
-- [ ] Task 14 - Build the restore intake and validation interface.
+- [x] Task 14 - Build the restore intake and validation interface.
   - Size: Standard
   - Purpose: Let a user select a package, prove package control, authorize a destination, and understand validation without mutation.
   - Owned surfaces: Restore entry and LiveView, package selection, passphrase entry, destination storage selection, destination setup or sign-in handoff, validation progress, compatible result, missing and incorrect passphrase result, authorization failure, unsafe and unsupported result, cancellation, and responsive accessibility behavior.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 14 complete: restore intake and package validation interface
+
+- Completed: Added a dedicated restore entry from signed-in and accountless project surfaces; required explicit hosted or connected-device destination selection with setup handoffs; accepted one bounded `.sddbackup` upload and a transient passphrase; ran isolated validation with progress, compatible, missing or incorrect passphrase, unsafe, unsupported, authorization, and cancellation states; retained only the encrypted attempt identifier after successful validation; and kept project persistence untouched. The controls provide keyboard activation, focused actionable errors, mobile-width actions, and accessible desktop and mobile rendering.
+- Remaining: Implement visibility-bounded stable-identity preflight in Task 5.
+- Failed checks: The first browser runs exposed reused-device worker and LiveView join timing races in test setup; the helper now pairs through the existing event, waits for the joined LiveView, and waits for acknowledged storage selection. Strict Credo requested reducing upload-reader nesting, and Sobelow identified LiveView's framework-generated temporary upload path as a low-confidence traversal finding; the reader was extracted and the trusted framework boundary was documented. Final proof passes: 26 focused LiveView and navigation tests, the restore round-trip Playwright scenario in desktop Chromium and mobile Chromium, `git diff --check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, `mix sobelow --config`, the Slice 06 validator, and the global dependency graph.
+- Spec updates: Marked Task 14 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 10 complete: package compatibility and safety validation
 

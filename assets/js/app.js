@@ -63,6 +63,10 @@ window.addEventListener("phx:backup-form-error", () => {
   requestAnimationFrame(() => document.getElementById("backup-form-error")?.focus())
 })
 
+window.addEventListener("phx:restore-form-error", () => {
+  requestAnimationFrame(() => document.getElementById("restore-form-error")?.focus())
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,

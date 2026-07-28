@@ -103,6 +103,9 @@ defmodule SddOrchestratorWeb.ProjectsLive do
           <.button phx-click="add_project">
             <.lucide name="plus" class="size-4" /> Add project
           </.button>
+          <.button variant="secondary" navigate={~p"/restore"} data-restore-backup>
+            <.lucide name="folder-open" class="size-4" /> Restore backup
+          </.button>
         </div>
       </div>
 

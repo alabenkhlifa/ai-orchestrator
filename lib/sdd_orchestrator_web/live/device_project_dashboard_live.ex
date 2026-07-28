@@ -148,6 +148,15 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
           >
             <.lucide name="download" class="size-4" /> Create backup
           </.button>
+          <.button
+            variant="secondary"
+            size="sm"
+            navigate={~p"/restore"}
+            data-restore-backup
+            class="mt-2 w-full sm:ml-2 sm:w-auto"
+          >
+            <.lucide name="folder-open" class="size-4" /> Restore a backup
+          </.button>
         </div>
       </div>
     </.app_shell>

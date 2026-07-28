@@ -104,6 +104,7 @@ defmodule SddOrchestratorWeb.Router do
         {SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}
       ] do
       live "/onboarding/local/storage/:attempt_id", StorageSelectionLive, :device
+      live "/restore", ProjectRestoreLive
     end
 
     live_session :hosted_access_public,

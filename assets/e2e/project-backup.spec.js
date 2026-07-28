@@ -2,8 +2,30 @@ const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
 
 async function waitConnected(page) {
-  await page.waitForFunction(() => window.liveSocket && window.liveSocket.isConnected(), null, {
-    timeout: 15000,
+  await page.waitForFunction(
+    () =>
+      window.liveSocket &&
+      window.liveSocket.isConnected() &&
+      document.querySelector("[data-phx-main]")?.classList.contains("phx-connected"),
+    null,
+    { timeout: 15000 },
+  );
+}
+
+async function pairStubWorker(page) {
+  await page.evaluate(() => {
+    document.querySelector("[data-e2e-pair-form]")?.remove();
+
+    const liveRoot = document.querySelector("[data-phx-main]");
+    const form = document.createElement("form");
+    const input = document.createElement("input");
+    form.dataset.e2ePairForm = "";
+    form.setAttribute("phx-submit", "pair");
+    input.name = "pairing[code]";
+    input.value = "4K7Q-2P9X";
+    form.appendChild(input);
+    liveRoot.appendChild(form);
+    form.requestSubmit();
   });
 }
 
@@ -14,30 +36,19 @@ async function openDeviceProject(page) {
   await waitConnected(page);
 
   const pairForm = page.locator("[data-pairing-form]");
-  if (await pairForm.count()) {
+  const detectedWorker = page.locator("[data-worker-status=detected]");
+
+  if (await pairForm.isVisible().catch(() => false)) {
     await page.locator("#pairing-code").fill("4K7Q-2P9X");
     await page.locator("[data-pair]").click();
+  } else if (!(await detectedWorker.isVisible().catch(() => false))) {
+    // A reused dev database can contain only a stale stub worker. Pair a fresh
+    // stand-in through the same LiveView event as the visible replacement form;
+    // this is setup only and leaves the product backup path unchanged.
+    await pairStubWorker(page);
   }
 
-  // A reused dev database can contain only a stale stub worker. Pair a fresh
-  // stand-in through the same LiveView event as the visible replacement form;
-  // this is setup only and leaves the product backup path unchanged.
-  if (await page.locator("[data-worker-status=unavailable]").count()) {
-    await page.evaluate(() => {
-      const liveRoot = document.querySelector("[data-phx-main]");
-      const form = document.createElement("form");
-      const input = document.createElement("input");
-      form.setAttribute("phx-submit", "pair");
-      input.name = "pairing[code]";
-      input.value = "4K7Q-2P9X";
-      form.appendChild(input);
-      liveRoot.appendChild(form);
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      form.remove();
-    });
-  }
-
-  await expect(page.locator("[data-worker-status=detected]")).toBeVisible();
+  await expect(detectedWorker).toBeVisible({ timeout: 15000 });
   await page.locator("[data-continue]").click();
   await expect(page.locator("[data-select-folder]")).toBeVisible();
   await page.locator("[data-select-folder]").click();
@@ -45,8 +56,13 @@ async function openDeviceProject(page) {
   await page.locator("[data-continue-storage]").click();
 
   await expect(page).toHaveURL(/\/onboarding\/local\/storage\//);
-  await page.locator("#storage-device").click();
-  await page.locator("button[phx-click=continue]").click();
+  await waitConnected(page);
+  const deviceStorage = page.locator("#storage-device");
+  const continueStorage = page.locator("button[phx-click=continue]");
+  await deviceStorage.click();
+  await expect(deviceStorage).toHaveAttribute("aria-checked", "true");
+  await expect(continueStorage).toBeEnabled();
+  await continueStorage.click();
 
   await expect(page.locator("[data-step=review]")).toBeVisible();
   const disclosure = page.locator("[data-confirm-disclosure]");
@@ -76,6 +92,7 @@ test.describe("project backup", () => {
   test("creates and downloads an encrypted backup with responsive accessible controls", async ({
     page,
   }) => {
+    test.setTimeout(90000);
     await openDeviceProject(page);
     const dashboardURL = page.url();
 
@@ -134,7 +151,8 @@ test.describe("project backup", () => {
     const stream = await download.createReadStream();
     const chunks = [];
     for await (const chunk of stream) chunks.push(chunk);
-    expect(Buffer.concat(chunks).length).toBeGreaterThan(100);
+    const encryptedBackup = Buffer.concat(chunks);
+    expect(encryptedBackup.length).toBeGreaterThan(100);
     await expect(page.getByText("Your encrypted backup was downloaded.")).toBeVisible();
 
     const results = await new AxeBuilder({ page })
@@ -151,5 +169,47 @@ test.describe("project backup", () => {
 
     await page.locator("main [data-cancel-backup]").click();
     await expect(page).toHaveURL(dashboardURL);
+
+    await page.goto("/restore");
+    await waitConnected(page);
+    await expect(page.locator('[data-screen="project-restore"]')).toBeVisible();
+    await expect(page.locator("#restore-hosted")).toBeDisabled();
+    await expect(page.locator("[data-setup-hosted]")).toBeVisible();
+
+    const deviceDestination = page.locator("#restore-device");
+    await deviceDestination.focus();
+    await expect(deviceDestination).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(deviceDestination).toHaveAttribute("aria-checked", "true");
+
+    await page.locator("[data-package-input]").setInputFiles({
+      name: download.suggestedFilename(),
+      mimeType: "application/vnd.sdd-orchestrator.project-backup",
+      buffer: encryptedBackup,
+    });
+    await page.locator("#restore-passphrase").fill("browser recovery phrase");
+    await page.locator("[data-validate-package]").click();
+    await expect(page.locator("[data-validation-compatible]")).toBeVisible();
+    await expect(page.locator("[data-validation-compatible]")).toContainText(
+      "No project has been created yet.",
+    );
+
+    const restoreA11y = await new AxeBuilder({ page })
+      .include('[data-screen="project-restore"]')
+      .analyze();
+    expect(restoreA11y.violations).toEqual([]);
+
+    if (page.viewportSize().width < 640) {
+      const restoreFormWidth = await page
+        .locator("#project-restore-form")
+        .evaluate((el) => el.clientWidth);
+      const validateWidth = await page
+        .locator("[data-validate-package]")
+        .evaluate((el) => el.getBoundingClientRect().width);
+      expect(validateWidth).toBeGreaterThan(restoreFormWidth * 0.9);
+    }
+
+    await page.locator("main [data-cancel-restore]").click();
+    await expect(page).toHaveURL(/\/onboarding\/local$/);
   });
 });

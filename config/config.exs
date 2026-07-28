@@ -7,6 +7,10 @@
 # General application configuration
 import Config
 
+config :mime, :types, %{
+  "application/vnd.sdd-orchestrator.project-backup" => ["sddbackup"]
+}
+
 config :sdd_orchestrator,
   ecto_repos: [SddOrchestrator.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]

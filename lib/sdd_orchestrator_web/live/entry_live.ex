@@ -79,6 +79,14 @@ defmodule SddOrchestratorWeb.EntryLive do
             Use verified email
           </.link>
         </p>
+
+        <.link
+          navigate={~p"/restore"}
+          class="mt-4 inline-flex items-center gap-1.5 rounded text-[13px] font-semibold text-primary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          data-restore-backup
+        >
+          <.lucide name="folder-open" class="size-4" /> Restore a project backup
+        </.link>
       </div>
 
       <div :if={@auth_state != :idle} class="flex justify-center py-6 sm:py-10">
