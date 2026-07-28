@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+Blocked
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Task 8 is ready to begin without a cross-specification prerequisite. Task 2 remains blocked until the project-storage authority and project-specification store capabilities are delivered by their named provider tasks.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Task 8 is complete. Task 2 is the next implementation task and remains blocked until the project-specification store capability is delivered by its named provider task.
 
 ## Active Slice
 
@@ -78,7 +78,7 @@ Release boundary:
   - Depends on: none
   - Proof: Requirements, design, package schema, identity and authority model, threat model, data contract, capability dependencies, task ownership, sequence, and canonical test commands have no unresolved agreement decision.
 
-- [ ] Task 8 - Implement the deterministic package format and codec.
+- [x] Task 8 - Implement the deterministic package format and codec.
   - Size: Standard
   - Purpose: Establish one versioned package representation that can be proved independently of project persistence.
   - Owned surfaces: `ProjectPackage`, `PackageSection`, cleartext envelope field map, format and payload schema versions, deterministic JSON encoding with sorted keys, fixed project, repository, and specifications section order, DEFLATE compression and bounded decompression seam, single-file framing, and golden codec fixtures.
@@ -285,9 +285,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- No agreement decision remains unresolved. Task 8 is immediately executable. Task 2 is blocked until `capability:project-specification-store` is delivered by `specs/09-project-specification-storage#Task 8`; the project-storage authority and governance capabilities are available, while Task 22 additionally requires `capability:project-specification-governance`.
+- No agreement decision remains unresolved. Task 8 is complete. Task 2 is blocked until `capability:project-specification-store` is delivered by `specs/09-project-specification-storage#Task 8`; the project-storage authority and governance capabilities are available, while Task 22 additionally requires `capability:project-specification-governance`.
 
 ## Progress Log
+
+### 2026-07-28 - Task 8 complete: deterministic package codec
+
+- Completed: Added the versioned `ProjectPackage` and `PackageSection` value boundaries plus a deterministic codec with recursively sorted JSON keys, fixed project, repository, and specifications section order, versioned cleartext envelope, zlib DEFLATE compression, bounded streaming decompression, exact body-length framing, and committed golden payload and single-file package fixtures. The codec reads no project persistence and leaves encryption to Task 3.
+- Remaining: Deliver `capability:project-specification-store` through Slice 09 Task 8, then resume Task 2 and the remaining dependency-ordered portability work.
+- Failed checks: Initial compilation rejected remote calls in guards and strict Credo found one redundant final `with` clause; both were corrected. Final proof passes: `MIX_ENV=test mix test test/sdd_orchestrator/portability/package_codec_test.exs` (6 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 8 complete and the slice `Blocked` because Task 2 is now the next incomplete task and its specification-store capability is not yet available.
 
 ### 2026-07-28 - Specification-store provider task refined
 
