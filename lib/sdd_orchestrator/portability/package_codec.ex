@@ -100,15 +100,23 @@ defmodule SddOrchestrator.Portability.PackageCodec do
 
   @spec frame(envelope(), binary()) :: {:ok, binary()} | {:error, atom()}
   def frame(envelope, body) when is_map(envelope) and is_binary(body) do
-    with {:ok, canonical} <- canonical_object(envelope),
-         {:ok, header} <- Jason.encode(canonical, maps: :strict),
+    with {:ok, header} <- encode_envelope(envelope),
          :ok <- validate_header_size(byte_size(header)) do
       {:ok, <<@magic, byte_size(header)::unsigned-big-32, header::binary, body::binary>>}
-    else
-      {:error, %Jason.EncodeError{}} -> {:error, :invalid_envelope}
-      {:error, _reason} = error -> error
     end
   end
+
+  @spec encode_envelope(envelope()) :: {:ok, binary()} | {:error, atom()}
+  def encode_envelope(envelope) when is_map(envelope) do
+    with {:ok, canonical} <- canonical_object(envelope) do
+      case Jason.encode(canonical, maps: :strict) do
+        {:ok, header} -> {:ok, header}
+        {:error, _reason} -> {:error, :invalid_envelope}
+      end
+    end
+  end
+
+  def encode_envelope(_envelope), do: {:error, :invalid_envelope}
 
   @spec unframe(binary()) :: {:ok, map(), binary()} | {:error, atom()}
   def unframe(<<@magic, header_size::unsigned-big-32, remainder::binary>>) do

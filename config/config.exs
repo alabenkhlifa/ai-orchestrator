@@ -89,6 +89,12 @@ config :sdd_orchestrator, :specification_limits,
   max_specifications_per_project: 100,
   max_snapshot_bytes: 25 * 1_024 * 1_024
 
+config :sdd_orchestrator, :package_encryption,
+  time_cost: 3,
+  memory_kib: 65_536,
+  parallelism: 1,
+  max_decompressed_bytes: 16 * 1_024 * 1_024
+
 config :swoosh, :api_client, false
 
 # GitHub provider adapter and the registered public GitHub App identity.

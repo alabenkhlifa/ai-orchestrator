@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, and 9 are complete. Task 3 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, and 3 are complete. Task 6 is the next implementation task.
 
 ## Active Slice
 
@@ -102,7 +102,7 @@ Release boundary:
   - Depends on: Task 2
   - Proof: Focused negative secret, repository-source, excluded-category, association, persistence, and source-schema drift tests prove that every forbidden category is absent before encryption.
 
-- [ ] Task 3 - Implement passphrase derivation and authenticated package encryption.
+- [x] Task 3 - Implement passphrase derivation and authenticated package encryption.
   - Size: Standard
   - Purpose: Encrypt every approved payload with the user-set recovery passphrase and reject corruption or tampering without exposing plaintext.
   - Owned surfaces: Passphrase handling, Argon2id dependency and configured parameters, random salt, transient 32-byte key derivation, AES-256-GCM encryption and decryption, random nonce, envelope additional authenticated data, authentication tag, opaque failure, passphrase and key disposal, and encrypted-package fixtures.
@@ -287,6 +287,14 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 3 complete: passphrase derivation and authenticated encryption
+
+- Completed: Added `argon2_elixir` and configured Argon2id time cost 3, 64 MiB memory, and parallelism 1 defaults; derived transient 32-byte raw keys from per-package 16-byte salts; encrypted compressed payloads with AES-256-GCM, random 12-byte nonces, and 16-byte tags; authenticated every cleartext version, compression, KDF, salt, nonce, and length field as additional data; returned one opaque restore failure; and added a deterministic encrypted golden fixture through fixed test-only material.
+- Remaining: Build the backup creation and encrypted-download interface in Task 6, while restore intake can now consume the same cryptographic boundary in Task 4.
+- Failed checks: Initial compilation required pinned bitstring sizes in the implementation and test helper; both were corrected. Final proof passes: the codec and encryption suites (12 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 3 complete and recorded the resolved dependency version and raw-key mechanism; requirements, design, ownership, dependencies, and capability edges are unchanged.
+- Local engineering decision: `argon2_elixir` 4.1.3 returns `:raw_hash` as hexadecimal text, so the boundary decodes it to the approved 32-byte AES key and never exposes either representation.
 
 ### 2026-07-28 - Task 9 complete: payload allowlist and secret exclusion
 

@@ -79,6 +79,7 @@ defmodule SddOrchestrator.MixProject do
       # provider credentials and PKCE verifiers.
       {:req, "~> 0.5"},
       {:cloak_ecto, "~> 1.3"},
+      {:argon2_elixir, "~> 4.1"},
 
       # Short-lived RS256 GitHub App JWTs (installation-request lookup).
       {:joken, "~> 2.6"},
