@@ -80,6 +80,19 @@ Slice numbers are stable identifiers, not execution order. Express implementatio
 - Run the repository's global cross-specification dependency validator when available. It must reject missing or ambiguous providers, malformed references, cycles, unavailable prerequisites for active consumers, and provider/consumer contract conflicts.
 - When a capability edge changes, update both provider and consumer specifications in the same specification change and re-run their individual validators plus the global graph check.
 
+### Task Size Gate
+
+Adopt the task-size contract when Slice 06 or any later slice is next refined. Do not rewrite completed Slice 05 tasks solely to migrate them.
+
+- Every new or refined `tasks.md` must include `## Task Size Gate` after `## Cross-Specification Dependencies` and before `## Implementation Boundary`.
+- Give every task exactly one size declaration: `Size: Standard` or `Size: Exception — <why splitting creates an invalid intermediate state>.`
+- A standard task delivers one independently provable outcome, owns one primary state transition or invariant and normally one adapter or workflow, produces one task-boundary implementation commit, owns at most three acceptance criteria and two entities, and has focused proof expected to run in about ten minutes.
+- Use 30–45 minutes as a planning target, not a promise. Expected work beyond 60 minutes or more than one meaningful implementation commit is a split signal.
+- Split tasks that combine independently testable behaviors, multiple adapter integrations, domain foundation plus UI plus authentication or recovery, source-owned integration from another specification, or proof modalities that can fail independently.
+- Keep the full repository, production, security, and browser-matrix gates at slice verification. Task proof should be focused and include only directly applicable safety checks unless the task owns a broader gate.
+- Allow an exception only when splitting an atomic migration, transaction, or invariant would create a concrete invalid intermediate state. Complexity, convenience, chronology, or test duration is not an exception.
+- Preserve completed task labels and history. When splitting unfinished work, update affected task dependencies and cross-specification capability references together and re-run the individual and global validators.
+
 ## Readiness And Write-Back
 
 Report product-requirement, technical-design, implementation, verification, and release readiness separately, and name the earliest stage each unresolved item blocks; a later-stage unknown must not make an earlier ready stage look blocked. `Approved` requirements are not thereby implemented or releasable.
