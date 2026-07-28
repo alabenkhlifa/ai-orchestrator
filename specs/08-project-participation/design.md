@@ -10,7 +10,7 @@ On-device projects remain authoritative to one operating-system boundary and can
 
 Add one project-scoped invitation and participation boundary for hosted projects. The existing project owner invites an email without account discovery. The invitation grants no access. The invitee proves the invited email through the approved passwordless boundary, sees the identified project and participation consequence, and explicitly accepts. Acceptance creates one active participant authorization for the stable hosted identity and project atomically and idempotently.
 
-Expose current project participation through a read-only authorization interface. Participants may work with project specifications, feature content, comments, and run evidence, but they receive no membership administration, destructive project settings, repository or storage control, or credential authority. Acceptance records a case-insensitively unique project-specific display name while limiting email visibility to the owner for membership management and to each participant for their own identity. Invitations have a seven-day, single-pending lifecycle with invalidating resend, owner cancellation, invitee decline, and fresh re-invitation. Owner removal and participant self-leave end future authorization, clear current assignment, route pending responsibility to the owner, preserve the last display name as non-interactive historical attribution, and leave active runs under owner control. Send only the approved minimum email and in-product notifications for invitation and participation outcomes. Keep persistence mechanisms and privacy lifecycles open until the remaining technical decisions are resolved.
+Expose current project participation through a read-only authorization interface. Participants may work with project specifications, feature content, comments, and run evidence, but they receive no membership administration, destructive project settings, repository or storage control, or credential authority. Acceptance records a case-insensitively unique project-specific display name while limiting email visibility to the owner for membership management and to each participant for their own identity. Invitations have a seven-day, single-pending lifecycle with invalidating resend, owner cancellation, invitee decline, and fresh re-invitation. Owner removal and participant self-leave end future authorization, clear current assignment, route pending responsibility to the owner, preserve the last display name as non-interactive historical attribution only while necessary for project accountability, and leave active runs under owner control. Approved rights and deletion handling anonymizes attribution when continued identification is unnecessary. Send only the approved minimum email and in-product notifications for invitation and participation outcomes. Keep persistence mechanisms and privacy lifecycles open until the remaining technical decisions are resolved.
 
 ## Components Affected
 
@@ -50,7 +50,7 @@ Required boundaries:
 - Only the owner mutates invitations and other participants; an active participant may end only their own participation.
 - Current authorization revalidates active project participation and fails closed after removal, leave, invalidation, or absence.
 - Removal or leave clears current assignment, routes pending question and review responsibility to the owner, preserves non-interactive historical attribution, and leaves active agent runs under owner control.
-- Historical attribution resolves through stable identity, uses the current display name while active, and retains the last accepted display name after departure.
+- Historical attribution resolves through stable identity, uses the current display name while active, and retains the last accepted display name after departure only while necessary for project accountability; approved rights or deletion handling removes the account link and anonymizes the label when continued identification is unnecessary.
 - Notification channels and recipients follow the approved event matrix, and payloads contain only minimum project and action context without project content or credentials.
 - Participation does not transfer or expose repository, worker, model-provider, application-session, or invitation credentials.
 - Invitation and participant records, delivery and audit data, logs, caches, indexes, backups, exports, and derived records follow an approved personal-data lifecycle.
@@ -64,7 +64,7 @@ Required boundaries:
 - Acceptance interface: identify the project and consequence after proof, require explicit acceptance, and create one participant authorization or no partial state.
 - Current-participant interface: return the minimum current project-scoped identity and authorization required by Slice 07 and other approved consumers without mutating participation.
 - Project-capability interface: authorize project specifications, feature content, comments, and run evidence while denying participation management, destructive project settings, storage or repository changes, and credential access.
-- Display-identity interface: capture and let the participant change their trimmed project-specific display name, enforce case-insensitive project uniqueness without automatic suffixes, and preserve the last accepted label for historical attribution.
+- Display-identity interface: capture and let the participant change their trimmed project-specific display name, enforce case-insensitive project uniqueness without automatic suffixes, preserve the last accepted label for necessary historical attribution, and support approved anonymization without erasing stable contribution history.
 - Revocation interface: remove or leave atomically, invalidate current authorization, clear assignment, route pending responsibility to the owner, preserve historical attribution, keep active runs under owner control, and preserve the immutable owner.
 - Notification interface: deliver invitation, resend, and cancellation email; acceptance and decline in-product outcomes; expiry and leave owner notifications; and removal email plus account-level in-product notice using only approved minimum context.
 - Privacy interface: enforce purposes, access, retention, deletion, rights, processor, transfer, audit, support, and genuinely anonymous analytics boundaries.
@@ -117,7 +117,7 @@ Required boundaries:
 
 - Choice: On removal or leave, clear current assignment, route pending blocking-question and review responsibility to the owner, preserve prior contributions with non-interactive attribution, and keep active runs under owner control.
 - Reason: Access must end immediately without erasing project history, losing pending work, or making membership change an implicit run-cancellation action.
-- Consequence: Historical attribution becomes separately governed retained personal data. Slice 07 must consume the handoff and allow the owner to continue or cancel the run.
+- Consequence: Historical attribution becomes separately governed retained personal data. It preserves the last display name only while identifiable accountability remains necessary and becomes anonymous when an approved rights or deletion workflow determines it is not. Slice 07 must consume the handoff and allow the owner to continue or cancel the run.
 
 ### Seven-Day Single-Pending Invitation Lifecycle
 
@@ -130,6 +130,12 @@ Required boundaries:
 - Choice: Let participants change only their own project display name; trim and compare it case-insensitively within the project, preserve accepted spelling, reject conflicts, and never allocate an automatic suffix.
 - Reason: Unique project labels keep assignment understandable without exposing participant emails or confusing the label with stable identity.
 - Consequence: Historical records reference stable participant identity, render the current name while active, and preserve the last accepted name after departure.
+
+### Rights-Aware Historical Attribution
+
+- Choice: Preserve stable contribution history without requiring permanent identifiable attribution. Retain the departed participant's last display name only while necessary for project accountability, then remove the account link and replace the label with an anonymous former-participant label when an approved rights or deletion workflow requires it.
+- Reason: Project history must remain understandable, but a display name and stable identity link remain personal data and must not be retained indefinitely without necessity.
+- Consequence: Anonymization does not delete comments, decisions, evidence, or run history and cannot restore access. The privacy design must define the necessity decision, verified request path, propagation to derived copies, and backup expiry.
 
 ### Minimal Event-Specific Notifications
 
@@ -145,7 +151,7 @@ Required boundaries:
 - A participant could receive workspace or other-project access accidentally. Enforce project scope at domain, query, UI, and integration boundaries.
 - Participation can leak credentials or repository authority. Keep provider, worker, agent, session, and invitation secrets outside membership and consumer payloads.
 - Invitation and membership history can become an indefinite social graph. Minimize retained fields, restrict access, bound retention, and enforce deletion and rights behavior.
-- Removal can orphan Slice 07 responsibilities or erase historical accountability. Resolve handoff and attribution rules before implementation.
+- Removal can orphan Slice 07 responsibilities or erase historical accountability. Enforce the owner handoff and preserve stable contribution history while applying approved attribution necessity and anonymization.
 - Duplicate or misleading display names can make assignment ambiguous. Keep stable identity separate from the label and resolve editing and disambiguation before implementation.
 - Delivery or notification differences can disclose account or membership state. Preserve account-neutral invitation responses and keep event-specific notifications addressed only to already authorized or directly affected recipients.
 

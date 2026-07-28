@@ -86,12 +86,12 @@ The owner of one hosted project can invite another person by email to become an 
 - Display-name comparison trims surrounding whitespace and is case-insensitively unique within one project while preserving the accepted spelling for display.
 - A conflicting display name is rejected for explicit correction; the product must not select or append an automatic suffix.
 - Current project participants see the owner and participant display names. The owner may see invitation and verified participant emails for membership management; each participant may see their own email; participants do not see another participant's or the owner's email through this feature.
-- Historical attribution resolves through stable participant identity, shows the current project display name while participation is active, and preserves the last accepted display name as a non-interactive label after departure.
+- Historical attribution resolves through stable participant identity, shows the current project display name while participation is active, and preserves the last accepted display name as a non-interactive label after departure only while identifiable attribution remains necessary for project accountability. An approved rights or deletion workflow anonymizes the label when continued identification is unnecessary.
 - At most one active participant authorization may exist for one hosted identity and project.
 - Repeated, concurrent, invalid, canceled, expired, replayed, or otherwise unsuccessful invitation actions must not create duplicate or partial authorization.
 - Current-participant reads and every protected consumer action must fail closed when participation is inactive, removed, left, stale, or absent.
 - Removing or leaving ends future project access and cannot remove, replace, or transfer the immutable owner.
-- Removing or leaving clears the former participant from current assignment, routes their pending blocking-question and review responsibility to the project owner, and preserves prior comments, decisions, evidence, and other contributions with non-interactive historical attribution.
+- Removing or leaving clears the former participant from current assignment, routes their pending blocking-question and review responsibility to the project owner, and preserves prior comments, decisions, evidence, and other contributions with non-interactive historical attribution subject to the approved necessity, retention, and anonymization rules.
 - An active agent run is not canceled solely because its initiating, assigned, or responsible participant leaves or is removed; control returns to the project owner, who may continue or cancel it under Slice 07.
 - Participation must not expose or transfer repository-provider credentials, worker credentials, agent-provider credentials, session secrets, or invitation secrets.
 - Invitation and resend send email to the invited address.
@@ -127,6 +127,7 @@ The owner of one hosted project can invite another person by email to become an 
 - [AC-22] Given an invitation is accepted or declined, when notification runs, then acceptance confirms in-product to the participant and owner while decline notifies the owner in-product, with no project content or account-disclosure signal.
 - [AC-23] Given a participant is removed or leaves, when notification runs, then removal notifies the former participant in-product and by email, leave notifies the owner in-product, and no notification restores access or exposes project content.
 - [AC-24] Given any participation notification is inspected, when its payload and delivery records are reviewed, then they contain only the approved minimum project and action context and no specification, feature, comment, evidence, repository, credential, secret, or unrelated identity data.
+- [AC-25] Given a departed participant's last project display name remains on historical contributions, when continued identifiable attribution is no longer necessary or an approved rights workflow requires anonymization, then the stable contribution history remains but the display label and account link no longer identify that person.
 
 ## Open Questions
 

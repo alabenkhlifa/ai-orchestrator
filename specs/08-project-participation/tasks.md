@@ -78,16 +78,16 @@ Release gates:
 - [ ] Task 4 — Deliver participant management and current authorization.
   - Depends on: Task 3
   - Purpose: Expose current project-scoped participation and end access safely through owner removal or participant self-leave.
-  - Owned surfaces: Approved participant and invitation list fields, participant-controlled project-specific display-name changes, trimmed case-insensitive uniqueness, conflict rejection without suffix, owner-only membership email visibility, participant self-email visibility, other-email non-disclosure, owner and participant role presentation, participant project-content capabilities, protected management, destructive-setting and credential denials, project-scope authorization, current-participant read interface, Slice 07 consumer contract, owner removal, participant self-leave, immutable-owner denial, current authorization invalidation, active-session and cache handoff, assignment clearing, owner question and review handoff, current and last-name historical attribution, active-run continuity, removal account-level and email notification, leave owner notification, minimized notification payload, fixtures, and responsive accessible browser behavior.
+  - Owned surfaces: Approved participant and invitation list fields, participant-controlled project-specific display-name changes, trimmed case-insensitive uniqueness, conflict rejection without suffix, owner-only membership email visibility, participant self-email visibility, other-email non-disclosure, owner and participant role presentation, participant project-content capabilities, protected management, destructive-setting and credential denials, project-scope authorization, current-participant read interface, Slice 07 consumer contract, owner removal, participant self-leave, immutable-owner denial, current authorization invalidation, active-session and cache handoff, assignment clearing, owner question and review handoff, current and necessary last-name historical attribution, stable contribution-history seam for later privacy anonymization, active-run continuity, removal account-level and email notification, leave owner notification, minimized notification payload, fixtures, and responsive accessible browser behavior.
   - Owns: AC-05, AC-07, AC-08, AC-09, AC-11, AC-14, AC-15, AC-16, AC-17, AC-20, AC-23
   - Proof: Domain, authorization, integration, concurrency, notification, privacy, and browser tests cover current and stale membership, project and workspace isolation, allowed project-content capabilities, protected management, settings and credentials, display-name editing, normalization, uniqueness, conflict and history, email visibility, owner-only management, self-leave, removal, immutable owner, repeated actions, consumer reads, cache and session behavior, assignment clearing, owner responsibility handoff, historical attribution, active-run continuity, removal and leave notification recipients and minimized payloads, and immediate denial without participation mutation.
 
 - [ ] Task 5 — Enforce the participation privacy and security contract.
   - Depends on: Task 2, Task 3, Task 4
   - Purpose: Govern invitation, identity, participation, delivery, audit, support, log, derived, processor, and rights data without creating an identity directory or indefinite social graph.
-  - Owned surfaces: Active processing inventory; purpose, lawful-basis, necessity, access, retention, deletion, rights, processor, transfer, backup, cache, index, export, support, audit, and security-log enforcement; invitation and identity enumeration resistance; secret and project-content redaction; negative credential transfer; aggregate genuinely anonymous analytics; cleanup operations; and required privacy and security review.
-  - Owns: AC-13, AC-24
-  - Proof: Data-inventory, purpose and basis, access, retention, deletion, rights, processor, transfer, backup, cache, log, directory and enumeration, secret-exposure, project-content exposure, credential-transfer, audit-minimization, negative secondary-use, and anonymous-analytics checks pass with the required privacy and security review.
+  - Owned surfaces: Active processing inventory; purpose, lawful-basis, necessity, access, retention, deletion, rights, processor, transfer, backup, cache, index, export, support, audit, and security-log enforcement; historical-attribution necessity decision, verified anonymization workflow, stable contribution preservation, account-link and display-label removal, derived-copy propagation and backup expiry; invitation and identity enumeration resistance; secret and project-content redaction; negative credential transfer; aggregate genuinely anonymous analytics; cleanup operations; and required privacy and security review.
+  - Owns: AC-13, AC-24, AC-25
+  - Proof: Data-inventory, purpose and basis, access, retention, deletion, rights, historical-attribution necessity, verified anonymization, stable contribution preservation, account-link and display-label removal, derived-copy and backup propagation, processor, transfer, cache, log, directory and enumeration, secret-exposure, project-content exposure, credential-transfer, audit-minimization, negative secondary-use, and anonymous-analytics checks pass with the required privacy and security review.
 
 ## Verification Gate
 
@@ -97,7 +97,7 @@ Release gates:
 - [ ] Fresh invited-email proof, explicit acceptance, single-use, uniqueness, idempotency, concurrency, rollback, and no-partial-state tests pass.
 - [ ] Project, workspace, identity, owner, participant, and cross-user isolation tests pass.
 - [ ] Owner removal, participant self-leave, immutable-owner, stale authorization, session or cache invalidation, and Slice 07 current-participant consumer tests pass.
-- [ ] Display-name editing, trimming, case-insensitive uniqueness, no automatic suffix, current-name presentation, and last-name historical attribution tests pass.
+- [ ] Display-name editing, trimming, case-insensitive uniqueness, no automatic suffix, current-name presentation, necessary last-name historical attribution, verified anonymization, account-link removal, and stable contribution-history tests pass.
 - [ ] Invitation, acceptance, decline, expiry, cancellation, removal, and leave notifications pass channel, recipient, account-neutrality, minimization, and failure checks.
 - [ ] Invitation and participation UI passes desktop, mobile, keyboard, focus, non-color, responsive, and accessibility scenarios.
 - [ ] GDPR data contract, lifecycle enforcement, rights, processor, transfer, no-directory, secret-redaction, audit, and anonymous-analytics checks pass.
@@ -118,3 +118,10 @@ Release gates:
 - Remaining: Resolve technical, privacy, and verification decisions.
 - Failed checks: None; implementation has not started.
 - Spec updates: Created the focused participation prerequisite and first end-to-end invitation, acceptance, authorization, removal, and leave slice; completed the product agreement for capability, display identity, visibility, invitation lifecycle, notifications, and removal handoff; and kept workspace, organization, public-link, ownership-transfer, and Slice 07 implementation outside this slice.
+
+### 2026-07-28 - Historical-attribution privacy constraint
+
+- Completed: Clarified that departed-participant display attribution is retained only while necessary for project accountability and must be anonymized by an approved rights or deletion workflow without erasing stable contribution history.
+- Remaining: Resolve the existing technical, privacy, and verification decisions, including the necessity test, derived-copy propagation, and backup expiry mechanism.
+- Failed checks: None; implementation has not started.
+- Spec updates: Added stable anonymization acceptance coverage, assigned its implementation to the privacy task, and preserved Task 4 ownership of removal, authorization invalidation, and the contribution-history seam.

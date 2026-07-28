@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Approved
 
 ## Outcome
 
@@ -22,22 +22,23 @@ A developer or non-developer can turn a feature idea into development-ready requ
 2. The product explains the information and format needed for that feature and helps the user structure the requirements.
 3. The AI identifies missing, ambiguous, or conflicting product information, distinguishes blocking findings from non-blocking suggestions, and explains what prevents development readiness.
 4. The user resolves every blocking finding and may resolve or dismiss non-blocking suggestions.
-5. When no blocking finding remains, the feature is visibly marked development-ready and an explicit `Start development` action becomes available.
-6. The user starts development, and an authorized coding agent runs on the configured local or remote worker against an isolated feature branch.
+5. When no blocking finding remains, the feature is visibly marked development-ready and an explicit `Start development` action becomes available with the configured execution location, agent or model provider, preview provider when configured, and whether project content leaves its authoritative device or hosted store.
+6. A current participant confirms the configured processing boundary when it is new or changed and starts development, and an authorized coding agent runs on the configured local or remote worker against an isolated feature branch.
 7. The agent implements the approved scope, runs the required checks, captures screenshots when supported, and posts progress and evidence to the feature activity.
 8. If a product decision blocks progress, the run pauses, the feature is marked blocked, and the focused question tags the assigned participant when one exists or the feature creator otherwise.
 9. An accepted answer is written back to the specification, and the same run resumes from its preserved state.
-10. When implementation and verification finish, the agent posts the result, test evidence, and available screenshots to the feature.
-11. After verification succeeds, the product automatically starts a branch preview when the project has a preconfigured and authorized preview path, then attaches the test link when deployment succeeds.
-12. The feature moves to `Ready for review`, and the product sends an in-product notification that the run finished and exposes its evidence, branch, preview link when available, or visible preview failure.
-13. An authorized user reviews the result and explicitly approves it before the feature moves to `Done`.
-14. If the authorized reviewer rejects the result, the review feedback is attached to the feature, which returns to `In development` so work can resume.
+10. A transient execution failure retries the same run with bounded backoff while preserving its branch, workspace, and accepted progress; an exhausted or non-retryable failure leaves the feature in `In development` with a visible `Failed` status.
+11. When implementation and verification finish, the agent posts the result, test evidence, and available screenshots to the feature.
+12. After verification succeeds, the product automatically starts a branch preview when the project has a preconfigured and authorized preview path, then attaches the test link when deployment succeeds.
+13. The feature moves to `Ready for review`, and the product sends an in-product notification that the run finished and exposes its evidence, branch, preview link when available, or visible preview failure.
+14. An authorized user reviews the result and explicitly approves it before the feature moves to `Done`.
+15. If the authorized reviewer rejects the result, the review feedback is attached to the feature, which returns to `In development` and continues the same run and branch as a new attempt.
 
 ## In Scope
 
 - A project-level Kanban board organized around specification and delivery state.
 - Five first-release board columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`.
-- A visible `Blocked` status that does not create a separate board column.
+- Visible `Blocked` and `Failed` statuses that do not create separate board columns.
 - Guided feature requirement structure for technical and non-technical users.
 - AI identification of missing, ambiguous, or conflicting product information.
 - Visible development-readiness status and reasons.
@@ -49,9 +50,11 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - Progress, questions, answers, results, and evidence in feature activity and comments.
 - Required `Creator` and optional `Assigned` fields for each feature, with participant assignment controls and an `Assign to me` action.
 - Durable blocked state, user tagging, accepted-answer write-back, and run resumption.
+- Bounded automatic retry, terminal failure presentation, authorized manual retry, cancellation recovery, and same-run review-rejection continuation.
 - Branch preview deployment and test-link attachment when supported.
 - In-product action-required and completion notifications.
 - Human review, explicit approval before a feature is considered done, and feedback-based rejection to resumed development.
+- Pre-start processing-boundary disclosure and change-triggered confirmation.
 - GDPR data protection and lifecycle rules for specifications, comments, runs, evidence, notifications, credentials, and deployment metadata.
 
 ## Out of Scope
@@ -62,6 +65,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - Production deployment.
 - Project-participant provisioning, invitations, membership changes, roles, and removal, which require a separate focused project-participation specification.
 - Worker installation, provisioning, provider authentication, and model-selection experiences.
+- Self-service privacy-rights screens; the first release may use the existing verified operator workflow.
 - Billing, subscriptions, or usage purchasing.
 - Support for every application-specific screenshot or preview environment in the first executable slice.
 
@@ -69,10 +73,11 @@ A developer or non-developer can turn a feature idea into development-ready requ
 
 - The board represents feature specification and delivery state, not a generic task list.
 - The first-release board has exactly five lifecycle columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`.
-- `Blocked` is a visible status, not a lifecycle column. A blocked development run remains in `In development` while showing why it cannot continue.
+- `Blocked` and `Failed` are visible statuses, not lifecycle columns. A blocked or terminally failed development run remains in `In development` while showing why it cannot continue.
 - Cards cannot be freely dragged between lifecycle columns. A feature changes columns only through the workflow's gated actions and validated outcomes.
 - A user interaction must not bypass specification readiness, explicit development start, successful verification, or authorized review.
 - Every feature has a required `Creator` field and an optional `Assigned` field; the two fields may identify different authorized participants.
+- The current responsible participant is the current participant in `Assigned` when present, otherwise the current participant in `Creator`, with the project owner as the fail-closed fallback when neither remains authorized or a participation-removal handoff routes pending responsibility to the owner.
 - Creator, assignment, notification, run-control, and review authorization consume the current authorized participants supplied by the separate project-participation boundary; this workflow cannot create, invite, grant, revoke, or otherwise change project participation.
 - Current participant selectors, responsibility labels, and notifications use the project-specific display name from the participation boundary and must not expose another participant's email.
 - A stale or unauthorized participant must fail closed at action and notification-delivery time without exposing project content.
@@ -86,29 +91,48 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - Every readiness finding must be visibly classified as blocking or non-blocking.
 - A blocking finding cannot be dismissed or overridden, and `Start development` must remain unavailable until every blocking finding is resolved.
 - An authorized user may dismiss a non-blocking suggestion without preventing the feature from becoming development-ready.
-- Development must never start automatically when a feature becomes ready; an authorized user explicitly starts it.
+- Before `Start development`, the feature must identify whether execution is local or remote, the configured agent or model provider, the configured preview provider when present, and whether specifications, source context, prompts, outputs, evidence, or other project content leave the authoritative device or hosted store.
+- The participant must confirm that processing boundary before the first run and again only when the disclosed execution, provider, or data-transfer boundary changes.
+- Development must never start automatically when a feature becomes ready; any current authorized project participant may explicitly start it.
+- Only the current run initiator or the project owner may cancel an active run. A former initiator loses cancellation authority when participation ends, and the owner retains control.
+- Cancellation preserves the canceled run, branch identity, activity, and evidence as governed history. It returns the feature to `Ready for development` when its current revision still satisfies readiness and to `Draft` otherwise.
+- Starting after cancellation creates a new run against the then-current approved revision and a new isolated branch; it does not resume the canceled run.
 - The run must use the approved specification and active implementation slice as its scope.
 - An agent must not silently invent or change a product requirement during implementation.
 - When a product decision is required, the run pauses and asks one focused question with enough context for the tagged users to answer.
 - An accepted blocking answer must be written back to the specification before the run resumes.
 - A paused run must preserve its branch, workspace, progress, evidence, and pending question so accepted work is not repeated unnecessarily.
+- A retryable worker, transport, provider, or execution failure retries the same run with bounded backoff and preserves its branch, workspace, checkpoint, progress, and evidence.
+- A non-retryable failure or exhausted automatic retry budget leaves the feature in `In development` with a visible `Failed` status and reason. It sends the failed-run notification only after that terminal state is recorded.
+- Any current authorized project participant may manually retry a failed run. Manual retry continues the same run and branch as a new attempt; cancellation followed by `Start development` is the path to a new run.
 - Implementation runs occur on isolated branches and must not write directly to the default branch.
 - The feature activity must distinguish agent progress, user comments, blocking questions, accepted answers, verification evidence, preview deployments, and final outcomes.
 - A successful claim requires the project’s required verification to pass. Missing or failed proof must remain visible and must not be represented as successful completion.
 - Successful agent execution and verification move the feature to `Ready for review`; an agent cannot move a feature directly to `Done`.
-- Only an authorized user may approve a feature in `Ready for review` and move it to `Done`.
+- Only the current responsible participant or the project owner may approve a feature in `Ready for review` and move it to `Done`.
 - Until authorized approval occurs, the feature must remain outside `Done` even when all agent work and verification have finished.
-- An authorized reviewer may reject a feature in `Ready for review`; the rejection must record review feedback, return the feature to `In development`, and make the feedback available when work resumes.
+- Only the current responsible participant or the project owner may reject a feature in `Ready for review`; the rejection must record review feedback, return the feature to `In development`, and continue the same run and branch as a new attempt with prior evidence and feedback preserved.
 - A preview deployment starts automatically after successful verification only when the project has a preconfigured and authorized branch-preview path.
 - Preview deployments are non-production and must identify the branch and run that produced them.
 - Preview failure must remain visible with its reason but must not prevent an otherwise successfully verified feature from reaching `Ready for review`.
 - In-product notifications are the only notification channel in the first release. Email, chat, mobile, and webhook delivery are deferred.
 - Every run must present the configured required-check results and the identity of the isolated branch and exact verified revision. Missing or failed required checks, or missing branch and revision identity, prevent a successful completion claim.
 - Screenshots are mandatory evidence only when the feature has a visual result and the configured environment can capture a meaningful view. A preview link is evidence only when the project has the authorized preview path.
-- A completion notification must state whether the run is ready for review, failed, or remains blocked and link back to its available evidence.
+- A blocked notification goes to the current responsible participant.
+- A ready-for-review notification goes to the current responsible participant and project owner.
+- A failed-run notification goes to the current run initiator, current responsible participant, and project owner.
+- Notification recipients must be current authorized participants at delivery time, and a person who matches more than one recipient role receives one notification for the event.
+- A run notification must state whether the run is ready for review, failed, or remains blocked and link back to its available evidence.
 - Secrets used by repositories, agents, workers, model providers, notifications, or deployments must not appear in requirements, comments, evidence, screenshots, logs exposed to users, or analytics.
-- Personal data and project content must follow approved purpose, access, retention, deletion, rights, processor, transfer, and security rules.
-- Analytics must remain aggregate and genuinely anonymous under the project-wide privacy contract.
+- Core project, identity, source-context, prompt, output, evidence, review, and notification processing is limited to providing the participant-requested specification and delivery workflow under the approved contract-necessity basis. Minimum security processing is limited to the documented service-security purpose and approved legitimate-interest assessment.
+- Slice 07 data must not be reused for advertising, model training, unrelated product improvement, or another secondary purpose. Slice 07 collects no product analytics; operational metrics and logs remain governed personal data and cannot become analytics.
+- Active feature, specification, normalized activity, minimal run and attempt metadata, accepted evidence, review decisions, and historical attribution are retained only while the active project requires them.
+- Raw provider events are not persisted. Temporary command payloads, checkpoints, provider-thread references, transient logs, and superseded artifacts are deleted within 30 days after they are no longer active; notifications are deleted within 90 days; hosted relay and cache data for device-authoritative projects is deleted within 24 hours; operational-security logs are deleted within 30 days; and encrypted rolling backups expire within 35 days.
+- Project deletion ends access immediately, removes authoritative active copies through the selected storage boundary, requests configured preview and external-artifact cleanup, and leaves only backup copies until their approved expiry. A failed external cleanup remains visible for reconciliation and cannot restore project access.
+- Current project participants receive only their approved project-scoped access. Support or operations access is verified, least-privilege, time-bounded, purpose-limited, and audited, with project content excluded by default.
+- The verified rights workflow must support applicable access, correction, export or portability, erasure, restriction, and objection across authoritative records, artifacts, notifications, caches, logs, and configured processors. Historical attribution retains the last project display name only while necessary for project accountability and is anonymized when continued identification is no longer necessary.
+- Local device-authoritative data stays under the operating-system boundary unless the disclosed configured worker, model provider, or preview path requires an approved transfer. Hosted relays must not create a durable device-project copy.
+- Workers, model providers, preview providers, artifact stores, hosting, backups, and support services are processors or other recipients only as classified by the actual deployment contract. Raw credentials remain outside project records and provider-side retention or training must match the approved deployment configuration.
 
 ## Acceptance Criteria
 
@@ -124,9 +148,9 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - [AC-10] Given one or more blocking findings remain, when readiness is evaluated, then the feature is not marked development-ready, each blocker remains visible, and `Start development` is unavailable.
 - [AC-11] Given an authorized user tries to dismiss a blocking finding, when the action is evaluated, then the blocker remains active and development cannot start.
 - [AC-12] Given a readiness finding is non-blocking, when an authorized user dismisses it, then the suggestion no longer prevents readiness.
-- [AC-13] Given every blocking finding is resolved, when readiness is evaluated, then the feature is marked development-ready and an authorized user can explicitly start development.
+- [AC-13] Given every blocking finding is resolved, when readiness is evaluated, then the feature is marked development-ready and any current authorized project participant can explicitly start development.
 - [AC-14] Given development has not been explicitly started, when a feature becomes ready, then no coding agent or deployment begins automatically.
-- [AC-15] Given an authorized user starts a ready feature, when the run begins, then the agent works from the approved scope on an isolated branch through the configured worker.
+- [AC-15] Given any current authorized project participant starts a ready feature, when the run begins, then the agent works from the approved scope on an isolated branch through the configured worker.
 - [AC-16] Given the agent can continue without product input, when it implements the feature, then progress and verification evidence appear in the feature activity.
 - [AC-17] Given the agent reaches a product decision it cannot safely make, when it becomes blocked, then the run pauses, preserves its state, tags the relevant users, and posts one focused question.
 - [AC-18] Given a tagged user provides an accepted answer, when the answer is written back to the specification, then the same run can resume without silently discarding completed work.
@@ -135,16 +159,23 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - [AC-21] Given a preconfigured and authorized web-preview path and successful verification, when delivery finishes, then the branch preview starts automatically and its test link is attached when deployment succeeds.
 - [AC-22] Given no authorized preview path exists or preview deployment fails, when delivery finishes, then the absence or failure remains visible and an otherwise successfully verified feature can still reach `Ready for review` without presenting a nonexistent link.
 - [AC-23] Given implementation and required verification succeed, when the agent run finishes, then the feature moves to `Ready for review` rather than `Done`.
-- [AC-24] Given a feature is `Ready for review`, when an unauthorized user or an agent attempts to mark it `Done`, then the transition is rejected.
-- [AC-25] Given an authorized user approves a feature in `Ready for review`, when approval is recorded, then the feature moves to `Done`.
-- [AC-26] Given an authorized reviewer rejects a feature in `Ready for review`, when the rejection and feedback are recorded, then the feedback appears in the feature activity, the feature returns to `In development`, and work can resume.
-- [AC-27] Given a run requires user action or reaches a terminal outcome, when notification is delivered, then an in-product notification states whether the run is blocked, ready for review, or failed and links to its available branch, exact revision, evidence, and preview when available.
+- [AC-24] Given a feature is `Ready for review`, when a participant other than the current responsible participant or project owner, or an agent, attempts to approve or reject it, then the transition is rejected.
+- [AC-25] Given the current responsible participant or project owner approves a feature in `Ready for review`, when approval is recorded, then the feature moves to `Done`.
+- [AC-26] Given the current responsible participant or project owner rejects a feature in `Ready for review`, when the rejection and feedback are recorded, then the feedback appears in the feature activity, the feature returns to `In development`, and the same run and branch continue as a new attempt with prior evidence preserved.
+- [AC-27] Given a run becomes blocked, ready for review, or terminally failed, when in-product notifications are delivered, then blocked reaches the current responsible participant, ready for review reaches the current responsible participant and project owner, failed reaches the current run initiator, current responsible participant, and project owner, duplicate roles produce one notification per person, stale recipients receive none, and each notification links to the available branch, exact revision, evidence, and preview.
 - [AC-28] Given specifications, comments, runs, questions, evidence, previews, notifications, credentials, or deployment metadata are processed, when access, retention, deletion, logging, or analytics behavior runs, then the approved data contract is enforced, secrets and unauthorized project content are not exposed, and analytics remain aggregate and genuinely anonymous.
 - [AC-29] Given an identity is not a current authorized project participant, when assignment, notification delivery, run control, review, or project-content access is evaluated, then the action fails closed, no participation state changes, and no project content is exposed.
 - [AC-30] Given a participant with current assignment, pending blocking-question or review responsibility, historical contributions, or an active run leaves or is removed, when Slice 07 consumes the participation handoff, then current assignment clears, pending responsibility routes to the project owner, prior contributions retain the last accepted project display name as non-interactive attribution, the run remains active under owner control, and the former participant receives no further access.
 - [AC-31] Given a current participant appears in assignment, responsibility, notification, activity, or review presentation, when Slice 07 renders their identity, then it uses the project-specific display name and exposes no other participant email.
+- [AC-32] Given an active run, when its current initiator or the project owner cancels it, then cancellation is accepted; when any other participant or a former initiator attempts cancellation, then the action is rejected and the run remains under its current control.
+- [AC-33] Given an active run is canceled, when cancellation commits, then its history and evidence remain governed records and the feature returns to `Ready for development` if the current revision remains ready or to `Draft` otherwise; a later start creates a new run and isolated branch.
+- [AC-34] Given a retryable execution failure, when recovery is evaluated, then the same run retries with bounded backoff and preserves its branch, workspace, checkpoint, progress, and evidence; given the failure is non-retryable or the automatic budget is exhausted, then the feature remains in `In development` with visible `Failed` status until any current participant retries the same run or an authorized cancellation ends it.
+- [AC-35] Given a feature is rejected from `Ready for review`, when development resumes, then the same run and branch begin a new attempt with the rejection feedback and prior evidence available.
+- [AC-36] Given a feature is ready for development, when a participant opens the start action, then the product shows the configured execution location, agent or model provider, preview provider when configured, and whether project content leaves its authoritative store; the participant confirms before the first run and again only after that boundary changes.
+- [AC-37] Given temporary run data, notifications, relay or cache data, security logs, backups, project deletion, preview cleanup, or external-artifact cleanup reaches its approved lifecycle event, when retention enforcement runs, then access ends and every active or derived copy is deleted, expired, or visibly queued for reconciliation within its approved boundary and deadline.
+- [AC-38] Given a verified person exercises an applicable data right, when the operator workflow runs, then authorized project, identity, contribution, run, evidence, notification, artifact, cache, log, backup, and processor records are exported, corrected, restricted, objected to, erased, or anonymized as required without exposing another participant's data or erasing necessary project accountability.
+- [AC-39] Given Slice 07 processing, browser traffic, worker exchange, provider configuration, stored records, logs, or metrics are inspected, when purpose limitation is verified, then no product analytics, advertising, model-training reuse, unrelated secondary use, raw credential, or unauthorized durable device-project copy exists.
 
 ## Open Questions
 
-- Which authorized project participants receive blocked, ready-for-review, and failed in-product notifications?
-- Which authorized project participants may start, cancel, approve, and reject an agent run in the first release?
+None.
