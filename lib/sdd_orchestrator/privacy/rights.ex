@@ -43,6 +43,11 @@ defmodule SddOrchestrator.Privacy.Rights do
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
+  alias SddOrchestrator.Specifications.{
+    ProjectSpecification,
+    SpecificationRevision
+  }
+
   @doc """
   Assembles a credential-free export of everything the deployment holds for an
   account. Returns `{:error, :not_found}` for an unknown account.
@@ -292,8 +297,47 @@ defmodule SddOrchestrator.Privacy.Rights do
       id: project.id,
       name: project.name,
       storage_mode: project.storage_mode,
-      repository: export_connection(project.repository_connection)
+      repository: export_connection(project.repository_connection),
+      specifications: export_specifications(project.id)
     }
+  end
+
+  defp export_specifications(project_id) do
+    from(specification in ProjectSpecification,
+      where: specification.project_id == ^project_id,
+      order_by: [asc: specification.id]
+    )
+    |> Repo.all()
+    |> Enum.map(fn specification ->
+      %{
+        id: specification.id,
+        title: specification.title,
+        current_revision_id: specification.current_revision_id,
+        inserted_at: specification.inserted_at,
+        updated_at: specification.updated_at,
+        revisions: export_revisions(project_id, specification.id)
+      }
+    end)
+  end
+
+  defp export_revisions(project_id, specification_id) do
+    from(revision in SpecificationRevision,
+      where:
+        revision.project_id == ^project_id and
+          revision.specification_id == ^specification_id,
+      order_by: [asc: revision.sequence],
+      select: %{
+        id: revision.id,
+        sequence: revision.sequence,
+        requirements_document: revision.requirements_document,
+        design_document: revision.design_document,
+        tasks_document: revision.tasks_document,
+        content_digest: revision.content_digest,
+        actor_ref: revision.actor_ref,
+        inserted_at: revision.inserted_at
+      }
+    )
+    |> Repo.all()
   end
 
   defp export_connection(nil), do: nil

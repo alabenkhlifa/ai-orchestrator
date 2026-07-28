@@ -34,9 +34,21 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
 
   @type t :: %__MODULE__{}
 
+  @retention_requirements %{
+    operational_security_logs_days: 30,
+    encrypted_rolling_backups_days: 35
+  }
+
   @doc "The deployment evidence fields required before a public hosted release."
   @spec required_fields() :: [atom()]
   def required_fields, do: @required
+
+  @doc "Infrastructure-enforced expiry ceilings required by the privacy release gate."
+  @spec retention_requirements() :: %{
+          operational_security_logs_days: pos_integer(),
+          encrypted_rolling_backups_days: pos_integer()
+        }
+  def retention_requirements, do: @retention_requirements
 
   @doc "Builds a profile from a map of provided evidence."
   @spec new(map()) :: t()

@@ -9,7 +9,7 @@ defmodule SddOrchestrator.Devices do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.{DeviceProject, Pairing, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction, Pairing, WorkerDiscovery}
 
   @doc "Returns the established accountless device workspace, creating it if absent."
   @spec establish_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, term()}
@@ -52,9 +52,54 @@ defmodule SddOrchestrator.Devices do
   @spec get_project(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
   def get_project(id), do: adapter().get_project(id)
 
+  @doc "Deletes a device project and all worker-owned project data."
+  @spec delete_project(String.t()) ::
+          {:ok, %{project_id: String.t(), deleted_specifications: non_neg_integer()}}
+          | {:error, :not_found}
+  def delete_project(id), do: adapter().delete_project(id)
+
   @doc "Finds a device project by its canonical repository fingerprint."
   @spec find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
   def find_by_fingerprint(fingerprint), do: adapter().find_by_fingerprint(fingerprint)
+
+  @doc "Atomically creates one device-authoritative specification aggregate."
+  def create_specification(project_id, specification, revision) do
+    adapter().create_specification(project_id, specification, revision)
+  end
+
+  @doc "Atomically appends one device-authoritative specification revision."
+  def append_specification_revision(
+        project_id,
+        specification_id,
+        expected_revision_id,
+        revision,
+        specification_attrs
+      ) do
+    adapter().append_specification_revision(
+      project_id,
+      specification_id,
+      expected_revision_id,
+      revision,
+      specification_attrs
+    )
+  end
+
+  @doc "Returns one device-authoritative specification and current revision."
+  def get_current_specification(project_id, specification_id) do
+    adapter().get_current_specification(project_id, specification_id)
+  end
+
+  @doc "Counts the device-authoritative specifications for one project."
+  def specification_count(project_id), do: adapter().specification_count(project_id)
+
+  @doc "Returns all current device-authoritative specifications for one project."
+  def current_specifications(project_id), do: adapter().current_specifications(project_id)
+
+  @doc "Commits a caller-owned transaction through the device worker boundary."
+  @spec commit_transaction(DeviceTransaction.t()) :: {:ok, map()} | {:error, term()}
+  def commit_transaction(%DeviceTransaction{} = transaction) do
+    adapter().commit_transaction(transaction)
+  end
 
   defp adapter do
     Application.fetch_env!(:sdd_orchestrator, __MODULE__)[:adapter]

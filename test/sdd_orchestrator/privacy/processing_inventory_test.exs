@@ -15,6 +15,7 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
     hosted_session passwordless_abuse_control
     personal_workspace workspace hosted_project_storage
     project_and_repository_connection project_onboarding_attempt
+    project_specification_storage
     operational_security_log
   )a
 

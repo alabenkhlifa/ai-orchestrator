@@ -64,6 +64,13 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfileTest do
     assert Profile.ensure_release_ready(profile) == :ok
   end
 
+  test "records the specification log and encrypted-backup expiry ceilings" do
+    assert Profile.retention_requirements() == %{
+             operational_security_logs_days: 30,
+             encrypted_rolling_backups_days: 35
+           }
+  end
+
   test "blank and empty-list evidence do not satisfy a requirement" do
     profile = Profile.new(%{complete_attrs() | processors: [], controller_contact: ""})
 

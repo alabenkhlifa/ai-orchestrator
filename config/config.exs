@@ -81,6 +81,14 @@ config :sdd_orchestrator, :passwordless_retention,
   magic_link_attempt_grace_seconds: 24 * 60 * 60,
   hosted_session_grace_seconds: 24 * 60 * 60
 
+config :sdd_orchestrator, :specification_limits,
+  max_title_bytes: 200,
+  max_actor_ref_bytes: 128,
+  max_document_bytes: 256 * 1_024,
+  max_revision_bytes: 768 * 1_024,
+  max_specifications_per_project: 100,
+  max_snapshot_bytes: 25 * 1_024 * 1_024
+
 config :swoosh, :api_client, false
 
 # GitHub provider adapter and the registered public GitHub App identity.

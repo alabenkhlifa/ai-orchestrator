@@ -10,7 +10,13 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.DeviceProject
+  alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
+  alias SddOrchestrator.SpecificationStore
+
+  alias SddOrchestrator.Specifications.{
+    DeviceProjectSpecification,
+    DeviceSpecificationRevision
+  }
 
   @doc "Returns the established device workspace, creating it if none exists."
   @callback establish_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, term()}
@@ -27,6 +33,41 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Fetches one device project by id."
   @callback get_project(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
 
+  @doc "Deletes one device project and every device-authoritative specification aggregate."
+  @callback delete_project(String.t()) ::
+              {:ok, %{project_id: String.t(), deleted_specifications: non_neg_integer()}}
+              | {:error, :not_found}
+
   @doc "Finds a device project by its canonical repository fingerprint, for reconnection."
   @callback find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
+
+  @doc "Atomically creates one specification and its first complete revision."
+  @callback create_specification(
+              String.t(),
+              DeviceProjectSpecification.t(),
+              DeviceSpecificationRevision.t()
+            ) :: {:ok, SpecificationStore.current()} | {:error, term()}
+
+  @doc "Atomically appends and advances one expected specification head."
+  @callback append_specification_revision(
+              String.t(),
+              String.t(),
+              String.t(),
+              DeviceSpecificationRevision.t(),
+              map()
+            ) :: {:ok, SpecificationStore.current()} | {:error, term()}
+
+  @doc "Returns one device-authoritative specification and its current revision."
+  @callback get_current_specification(String.t(), String.t()) ::
+              {:ok, SpecificationStore.current()} | {:error, :not_found}
+
+  @doc "Counts the device-authoritative specifications for one project."
+  @callback specification_count(String.t()) :: non_neg_integer()
+
+  @doc "Returns all current device-authoritative specifications for one project."
+  @callback current_specifications(String.t()) :: [SpecificationStore.current()]
+
+  @doc "Commits the supported contributions in one worker-owned device transaction."
+  @callback commit_transaction(DeviceTransaction.t()) ::
+              {:ok, map()} | {:error, term()}
 end

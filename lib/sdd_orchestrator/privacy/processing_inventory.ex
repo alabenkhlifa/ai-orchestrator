@@ -237,6 +237,35 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
       review: "Approved storage-selection data contract (Slice 05 design.md)."
     },
     %DataProcessingRecord{
+      activity: :project_specification_storage,
+      purpose:
+        "Persist versioned specification documents and current heads for the user-requested project workflows.",
+      lawful_basis: :contract,
+      personal_data: [
+        "project and specification ids",
+        "display title",
+        "current revision id",
+        "complete requirements, design, and tasks documents",
+        "content digest",
+        "minimum non-email actor reference",
+        "revision sequence and lifecycle timestamps"
+      ],
+      access:
+        "Authorized project workflows in the selected hosted or device boundary; operations and coding agents receive content only through an explicitly authorized workflow.",
+      retention:
+        "While the project exists or an approved accountability need applies; authoritative records are deleted with the project or verified rights outcome, security logs after 30 days, and encrypted rolling backups within 35 days.",
+      rights:
+        "Access and portability include version history; correction appends a revision; erasure and restriction use the verified project or account workflow and processor propagation.",
+      processors: [
+        "Hosting database for hosted projects",
+        "Device worker under the operating-system boundary for device projects"
+      ],
+      transfers:
+        "Hosted processing follows the deployment privacy profile; device-authoritative content has no hosted transfer.",
+      review:
+        "Approved local specification-storage privacy and security contract; deployment processor, region, transfer, notice, retention-enforcement, and accountable review evidence remain release gates."
+    },
+    %DataProcessingRecord{
       activity: :operational_security_log,
       purpose: "Diagnose failures and protect the service (security and reliability).",
       lawful_basis: :legitimate_interests,
@@ -257,6 +286,33 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
   @doc "The set of activity keys covered by the inventory."
   @spec activities() :: [atom()]
   def activities, do: Enum.map(@records, & &1.activity)
+
+  @doc "Purpose limitation for every persisted specification field."
+  @spec specification_field_purposes() :: %{atom() => %{atom() => String.t()}}
+  def specification_field_purposes do
+    %{
+      project_specification: %{
+        id: "Preserve the stable project-scoped specification identity.",
+        project_id: "Bind the specification to its authoritative project and deletion lifecycle.",
+        title: "Present the current user-facing specification label.",
+        current_revision_id: "Select one complete immutable current document set.",
+        inserted_at: "Record specification creation for lifecycle accountability.",
+        updated_at: "Record current-head or title changes for lifecycle accountability."
+      },
+      specification_revision: %{
+        id: "Preserve the stable immutable revision identity.",
+        specification_id: "Bind the revision to its stable specification.",
+        project_id: "Enforce project isolation and deletion propagation.",
+        sequence: "Order immutable revisions within one specification.",
+        requirements_document: "Provide the approved requirements document.",
+        design_document: "Provide the approved design document.",
+        tasks_document: "Provide the approved tasks document.",
+        content_digest: "Verify deterministic document-set integrity and committed retries.",
+        actor_ref: "Attribute an authorized change without retaining an email address.",
+        inserted_at: "Record immutable revision creation for lifecycle accountability."
+      }
+    }
+  end
 
   @doc """
   Whether the inventory declares any analytics processing. Always false: the
