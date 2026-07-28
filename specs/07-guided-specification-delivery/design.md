@@ -2,13 +2,13 @@
 
 ## Context
 
-SDD Orchestrator exists to move feature work from requirements to verified implementation while keeping agent behavior, stop conditions, progress, decisions, and proof visible. The current specifications establish repository, identity, storage, and portability boundaries but do not yet define the core product loop.
+SDD Orchestrator exists to move feature work from requirements to verified implementation while keeping agent behavior, stop conditions, progress, decisions, and proof visible. The current specifications establish repository, identity, storage, portability, participation, and shared specification-persistence boundaries but do not yet define the core product loop.
 
 OpenAI Symphony provides a language-independent orchestration specification and an experimental Elixir reference implementation for isolated workspaces, agent execution, reconciliation, retries, blocked state, and operational visibility. This feature adapts those capabilities to a specification-first workflow controlled from a project board.
 
 ## Proposed Approach
 
-Represent each feature as a durable lifecycle record connected to versioned requirements, readiness findings, an approved implementation slice, agent runs, blocking questions, evidence, preview deployments, and notifications. Present the lifecycle through five first-release board columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`. Treat `Blocked` and `Failed` as additional visible statuses so interrupted and terminally failed runs keep their lifecycle position.
+Represent each feature as a durable lifecycle record connected to a shared-store project specification and immutable revisions, readiness findings, an approved implementation slice, agent runs, blocking questions, evidence, preview deployments, and notifications. Present the lifecycle through five first-release board columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`. Treat `Blocked` and `Failed` as additional visible statuses so interrupted and terminally failed runs keep their lifecycle position.
 
 Keep requirement guidance and readiness assessment separate from execution authorization. Any current participant may start development, which creates a run against one approved specification revision and isolated branch. The run emits durable progress and evidence events and may be canceled only by its current initiator or the project owner. Cancellation ends that run and returns the feature to the readiness state of its current revision; a later start creates a new run and branch. A blocking product question pauses the run until an authorized answer is written back to the specification, after which the same run resumes. Retryable execution failures use bounded backoff on the same run, workspace, and branch; terminal failure remains visibly `Failed` in `In development` until any current participant retries it or an authorized cancellation ends it. When participation ends, consume the approved handoff by clearing current assignment, routing pending question and review responsibility to the project owner, preserving historical attribution, and leaving the active run under owner control. Successful agent work ends in human review. The current responsible participant or owner may approve it into `Done` or reject it with feedback into `In development`, where the same run and branch continue as a new attempt.
 
@@ -20,8 +20,9 @@ Implement the orchestration semantics natively behind the Phoenix control plane 
 
 - Project feature board and feature detail view.
 - External project-participation authorization boundary.
+- External project-specification identity, revision, snapshot, and append boundary.
 - Guided requirement authoring and readiness assessment.
-- Specification revision and approval boundary.
+- Specification revision consumer and approval boundary.
 - Agent-run control and status presentation.
 - Authoritative delivery-store, command outbox, ordered-attempt, lease, and reconciliation boundaries.
 - Local and remote worker dispatch boundary.
@@ -37,7 +38,6 @@ Implement the orchestration semantics natively behind the Phoenix control plane 
 ## Data and Access Boundaries
 
 - `Feature`: the stable project-scoped unit shown on the board, with its recorded creator and an optional assigned authorized participant.
-- `SpecificationRevision`: the recorded requirements and acceptance agreement used by readiness and execution.
 - `ReadinessAssessment`: visible blocking findings, active non-blocking suggestions, dismissed non-blocking suggestions, and satisfied product information for one revision.
 - `AgentRun`: one authorized feature-delivery lifecycle that preserves one branch and contains ordered execution attempts until approval, cancellation, or governed cleanup.
 - `RunAttempt`: one exclusive worker execution or continuation within a run, bound to an exact specification revision, execution manifest, worker lease, and attempt number.
@@ -58,6 +58,7 @@ Required boundaries:
 - The current responsible participant resolves to the current assigned participant, otherwise the current creator, with the owner as the fail-closed fallback.
 - Current participant identity and authorization come from a separate project-participation boundary. This slice may read and enforce that state but cannot create, invite, grant, revoke, or otherwise mutate participation.
 - Current participant presentation consumes the project-specific display name and never exposes another participant's email.
+- Project specification identity, immutable revision storage, current retrieval, snapshots, and append operations come from `capability:project-specification-store`. This slice references and appends those records but creates no duplicate schema or authoritative copy.
 - Assignment, notification delivery, run control, review, and every project-content read revalidate current participation and fail closed when authorization is stale or absent.
 - Before the first start and after any execution, provider, preview, or transfer-boundary change, the start interface requires confirmation of the configured processing summary. An unchanged boundary does not interrupt every run.
 - Slice 07 idempotently claims the versioned `ParticipationRevocation` handoff produced by Slice 08, clears current assignment, routes pending question and review responsibility to the immutable project owner, preserves the last accepted project display name as non-interactive historical attribution, keeps an active run available only under owner control, and acknowledges the handoff after its authoritative transaction commits.
@@ -104,6 +105,7 @@ Required boundaries:
 
 - Board interface: show the five lifecycle columns, creator, optional assignment, readiness, active run, completion outcome, and visible `Blocked` or `Failed` status without moving the feature to another column. Let an authorized project participant select any authorized participant for `Assigned` or use `Assign to me`. Do not use free dragging to change lifecycle state; expose the gated workflow action available to an authorized user.
 - Participant interface: consume current project-participant identity, project display name, authorization, and the versioned `ParticipationRevocation` claim and acknowledgement contract from the separate participation boundary for assignment, notification, run-control, review, content-access, responsibility routing, historical attribution, and active-run control without exposing participant emails or participation-management actions in this slice.
+- Specification-store consumer interface: resolve stable project specifications and immutable current revisions, append complete revisions for accepted write-back through expected-head concurrency, and bind readiness and execution to exact shared-store revision identities without defining persistence.
 - Specification guidance interface: describe required information, classify visible findings as blocking or non-blocking, and allow only non-blocking suggestions to be dismissed.
 - Start interface: remain unavailable while any blocker exists, show the configured execution location, agent or model provider, preview provider, and data-transfer boundary, require confirmation before the first run and after a boundary change, then let any current authorized participant authorize one ready feature revision and create one run without duplicate dispatch.
 - Delivery-store interface: transactionally read and transition feature and run state, append ordered activity, enqueue idempotent commands, claim one current attempt, record fenced events, and reconcile through the authoritative hosted or device adapter.

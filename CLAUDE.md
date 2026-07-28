@@ -66,6 +66,20 @@ When one request combines a new or changed specification with implementation, co
 
 When the user asks to implement or complete work, carry every requested task through to completion in one pass. Do not pause to confirm pace, ask permission to continue, or offer to stop for review between tasks; commit at each task boundary for durable progress and proceed to the next. Stop only for a genuine blocker: a decision that is truly the user's to make, an unresolved specification decision, a hard environment or tooling failure, or an unrecoverable error — never for a routine check-in or review request.
 
+### Cross-Specification Capability Dependencies
+
+Slice numbers are stable identifiers, not execution order. Express implementation order through task-level capabilities instead of relying on numbering or broad whole-slice dependencies.
+
+- Every new or changed `tasks.md` must include `## Cross-Specification Dependencies` after `## Active Slice`, with `Requires:` and `Provides:` lists.
+- Use the exact requirement form ``- `capability:<name>` — provider `specs/<feature>#Task <n>` — required before `Task <n>`.`` Use `- None.` when there is no requirement.
+- Use the exact provider form ``- `capability:<name>` — ready after `Task <n>`.`` Use `- None.` when the slice provides no downstream capability.
+- Name one primary provider task for each capability. A consumer may not redefine the provider's schema, interface, authoritative data, or lifecycle.
+- Depend on the smallest stable capability, not an entire slice, when the consumer needs only one provider contract.
+- A provided capability becomes available only after its named task is checked complete, its full proof passes, and the readiness write-back is recorded. Release-only evidence does not delay an implementation capability unless the consumer crosses that release boundary.
+- Keep the earliest affected consumer task `Blocked` while its required capability is unavailable. Keep the slice `Blocked` only when its next executable task is blocked; a later unavailable capability must not prevent independent earlier tasks. Before changing status, confirm the provider paths needed at that stage.
+- Run the repository's global cross-specification dependency validator when available. It must reject missing or ambiguous providers, malformed references, cycles, unavailable prerequisites for active consumers, and provider/consumer contract conflicts.
+- When a capability edge changes, update both provider and consumer specifications in the same specification change and re-run their individual validators plus the global graph check.
+
 ## Readiness And Write-Back
 
 Report product-requirement, technical-design, implementation, verification, and release readiness separately, and name the earliest stage each unresolved item blocks; a later-stage unknown must not make an earlier ready stage look blocked. `Approved` requirements are not thereby implemented or releasable.

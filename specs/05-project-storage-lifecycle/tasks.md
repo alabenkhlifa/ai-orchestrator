@@ -8,6 +8,17 @@ In Progress
 
 Deliver one shared storage-selection foundation that lets GitHub and local repository onboarding establish an explicit device or hosted storage mode, commit it atomically with project creation, and show it consistently without implementing later storage migration.
 
+## Cross-Specification Dependencies
+
+Requires:
+
+- None.
+
+Provides:
+
+- `capability:project-storage-authority` — ready after `Task 4`.
+- `capability:project-storage-governance` — ready after `Task 6`.
+
 ## Implementation Boundary
 
 Included:
@@ -67,7 +78,7 @@ Release boundary:
 
 - [ ] Task 4 - Integrate storage state with atomic project creation.
   - Purpose: Prevent projects with a missing, ambiguous, unavailable, or partially initialized storage boundary.
-  - Owned surfaces: Explicit-selection validation, stable destination project ID, workspace-kind and mode revalidation, `Project`, hosted `Ecto.Multi`, device-local worker transaction, repository-connection transaction participation, hosted-root insertion or device-receipt consumption, destination acknowledgement, adapter preparation and abort or reconciliation, onboarding-attempt consumption, unique idempotency constraints, and committed retry.
+  - Owned surfaces: Explicit-selection validation, stable destination project ID, workspace-kind and mode revalidation, `Project`, hosted `Ecto.Multi`, device-local worker transaction, repository-connection transaction participation, hosted-root insertion or device-receipt consumption, destination acknowledgement, adapter preparation and abort or reconciliation, onboarding-attempt consumption, unique idempotency constraints, committed retry, and `capability:project-storage-authority` readiness write-back.
   - Owns: AC-04, AC-07, AC-08, entity:Project
   - Depends on: Task 2, Task 3
   - Proof: Hosted and device transaction, constraint, concurrency, retry, replay, lost-acknowledgement, and fault-injection tests prove one destination contains the project, connection, matching owner and mode, and adapter state or no partial destination state; committed retries return the same project, device reconciliation consumes the transient attempt without duplication, failed preparation is aborted or reconciled, and repository content remains unchanged.
@@ -81,7 +92,7 @@ Release boundary:
 
 - [ ] Task 6 - Enforce the active-slice privacy and security contract.
   - Purpose: Govern every introduced record, log, processor, and lifecycle without adding product analytics.
-  - Owned surfaces: Active data inventory, access controls, retention and deletion enforcement, rights behavior, processor and transfer configuration, log redaction, secret scanning, and no-analytics proof.
+  - Owned surfaces: Active data inventory, access controls, retention and deletion enforcement, rights behavior, processor and transfer configuration, log redaction, secret scanning, no-analytics proof, and `capability:project-storage-governance` readiness write-back.
   - Owns: AC-12, AC-13, AC-17
   - Depends on: Task 2, Task 3, Task 4, Task 5
   - Proof: Data-inventory, access, retention, deletion, rights, processor, transfer, log, secret-exposure, and negative analytics checks pass with required privacy or legal approval.
@@ -106,6 +117,13 @@ Release boundary:
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Cross-specification capability ownership recorded
+
+- Completed: Named Slice 05 as the sole provider of `capability:project-storage-authority` after Task 4 and `capability:project-storage-governance` after Task 6 so downstream work depends only on the provider task it actually needs.
+- Remaining: Complete Tasks 2–6 and the verification gate; each capability remains unavailable while its provider task is incomplete.
+- Failed checks: None; this change records dependency ownership without changing the active product behavior.
+- Spec updates: Added the canonical cross-specification dependency section, assigned storage authority readiness to Task 4, and assigned storage governance readiness to Task 6.
 
 ### 2026-07-27 - Task 2 implementation started
 

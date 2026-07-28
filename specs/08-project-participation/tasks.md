@@ -12,6 +12,17 @@ consumer and is not an implementation prerequisite for this slice.
 
 Deliver one project-owner email invitation through fresh invited-email proof and explicit acceptance into one active hosted-project participant authorization, with owner removal, participant self-leave, account-neutral failure, and a fail-closed current-participant handoff to Slice 07.
 
+## Cross-Specification Dependencies
+
+Requires:
+
+- None.
+
+Provides:
+
+- `capability:project-participation-boundary` — ready after `Task 4`.
+- `capability:project-participation-governance` — ready after `Task 5`.
+
 ## Implementation Boundary
 
 Included:
@@ -84,14 +95,14 @@ Release gates:
 - [ ] Task 4 — Deliver participant management and current authorization.
   - Depends on: Task 3
   - Purpose: Expose current project-scoped participation and end access safely through owner removal or participant self-leave.
-  - Owned surfaces: `ParticipationRevocation`, approved participant and invitation list fields, owner and participant self-controlled display-name changes, trimmed case-insensitive uniqueness, conflict rejection without suffix, owner-only membership email visibility, participant self-email visibility, other-email non-disclosure, owner and participant role presentation, read-only approved project-capability decisions, protected management, destructive-setting and credential denials, project-scope authorization, current-participant read interface, owner removal, participant self-leave, immutable-owner denial, immediate current-authorization invalidation without long-lived caching, atomic versioned revocation-handoff insertion, idempotent handoff claim and acknowledgement, owner fallback and last-label payload minimization, stable Slice 07 producer contract without consumer-record mutation, necessary historical-label seam for later privacy anonymization, removal account-level and email notification, leave owner notification, minimized notification payload, fixtures, and responsive accessible browser behavior.
+  - Owned surfaces: `ParticipationRevocation`, approved participant and invitation list fields, owner and participant self-controlled display-name changes, trimmed case-insensitive uniqueness, conflict rejection without suffix, owner-only membership email visibility, participant self-email visibility, other-email non-disclosure, owner and participant role presentation, read-only approved project-capability decisions, protected management, destructive-setting and credential denials, project-scope authorization, current-participant read interface, owner removal, participant self-leave, immutable-owner denial, immediate current-authorization invalidation without long-lived caching, atomic versioned revocation-handoff insertion, idempotent handoff claim and acknowledgement, owner fallback and last-label payload minimization, stable Slice 07 producer contract without consumer-record mutation, necessary historical-label seam for later privacy anonymization, removal account-level and email notification, leave owner notification, minimized notification payload, fixtures, responsive accessible browser behavior, and `capability:project-participation-boundary` readiness write-back.
   - Owns: AC-05, AC-07, AC-08, AC-09, AC-11, AC-14, AC-15, AC-17, AC-20, AC-23, AC-27, AC-30, entity:ParticipationRevocation
   - Proof: Domain, authorization, transaction, outbox-contract, concurrency, notification, privacy, and browser tests cover current and stale membership, project and workspace isolation, allowed and denied project-capability decisions, protected management, settings and credentials, display-name editing and history, email visibility, owner-only management, self-leave, removal, immutable owner, repeated actions, direct fail-closed reads without authorization-cache staleness, exactly-one versioned handoff insertion, claim and acknowledgement replay, minimized owner-fallback and historical-label payload, absence of Slice 07 record mutation, removal and leave notification recipients and minimized payloads, and immediate denial without session revocation.
 
 - [ ] Task 5 — Enforce the participation privacy and security contract.
   - Depends on: Task 2, Task 3, Task 4
   - Purpose: Govern invitation, identity, participation, delivery, audit, support, log, derived, processor, and rights data without creating an identity directory or indefinite social graph.
-  - Owned surfaces: Active processing inventory; purpose, lawful-basis, necessity, access, retention, deletion, rights, processor, transfer, backup, cache, index, export, support, audit, and security-log enforcement; seven-day pending-invitation expiry; immediate terminal credential erasure; 30-day terminal invitation, delivery-diagnostic, departed-identity-link, and security-log cleanup; 90-day in-product notification cleanup; 35-day encrypted-backup expiry; historical-attribution necessity decision, verified anonymization workflow, stable contribution preservation, account-link and display-label removal, derived-copy propagation; invitation and identity enumeration resistance; secret and project-content redaction; negative credential transfer; aggregate genuinely anonymous analytics; cleanup reconciliation; and required privacy and security review.
+  - Owned surfaces: Active processing inventory; purpose, lawful-basis, necessity, access, retention, deletion, rights, processor, transfer, backup, cache, index, export, support, audit, and security-log enforcement; seven-day pending-invitation expiry; immediate terminal credential erasure; 30-day terminal invitation, delivery-diagnostic, departed-identity-link, and security-log cleanup; 90-day in-product notification cleanup; 35-day encrypted-backup expiry; historical-attribution necessity decision, verified anonymization workflow, stable contribution preservation, account-link and display-label removal, derived-copy propagation; invitation and identity enumeration resistance; secret and project-content redaction; negative credential transfer; aggregate genuinely anonymous analytics; cleanup reconciliation; required privacy and security review; and `capability:project-participation-governance` readiness write-back.
   - Owns: AC-13, AC-24, AC-25
   - Proof: Data-inventory, purpose and basis, access, retention, deletion, rights, historical-attribution necessity, verified anonymization, stable contribution preservation, account-link and display-label removal, derived-copy and backup propagation, processor, transfer, cache, log, directory and enumeration, secret-exposure, project-content exposure, credential-transfer, audit-minimization, negative secondary-use, and anonymous-analytics checks pass with the required privacy and security review.
 
@@ -117,6 +128,13 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Participation capability ownership recorded
+
+- Completed: Named Slice 08 as the sole provider of `capability:project-participation-boundary` after Task 4 and `capability:project-participation-governance` after Task 5, separating the usable authorization and handoff interface from its final lifecycle proof.
+- Remaining: Implement Tasks 2–5 and the verification gate; each capability remains unavailable while its provider task is incomplete.
+- Failed checks: None; implementation has not started.
+- Spec updates: Added the canonical cross-specification dependency section, assigned participation-boundary readiness to Task 4, and assigned governance readiness to Task 5 without making Slice 07 an implementation prerequisite.
 
 ### 2026-07-27 - Initial project-participation draft
 

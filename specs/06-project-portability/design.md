@@ -4,13 +4,16 @@
 
 Users need a controlled way to back up one project and restore the same stable project after loss or in a replacement environment. A backup package crosses storage and trust boundaries and can carry sensitive project content, malformed data, unsafe paths, leaked credentials, or an identity that already exists. Cross-user exchange and creating a new copy have different authority, identity, provenance, and privacy requirements and are not part of this agreement.
 
+The project-storage authority and shared project-specification store are external prerequisites. This slice consumes their current-snapshot and destination-transaction contracts; it does not own project storage selection, specification identity, revision persistence, or authoritative document storage.
+
 ## Proposed Approach
 
-Define an allowlisted, versioned backup manifest with integrity metadata, one stable project identity, and three decrypted content categories: stable project metadata, canonical repository identity, and current specifications. Export those categories from one consistent authorized snapshot after secret filtering, require the user to set and confirm a recovery passphrase, and encrypt the package without persisting the passphrase or derived key. Restore through isolated temporary processing after transient passphrase-based decryption, validate structural, safety, compatibility, and destination-authorization rules, check identity conflicts only in the selected destination and catalogs already accessible to the restore session, reject an existing stable identity or canonical repository conflict, allow an explicit valid display-name replacement for a name-only conflict, then create the same project atomically in the selected storage mode. Re-establish repository authorization separately.
+Define an allowlisted, versioned backup manifest with integrity metadata, one stable project identity, and three decrypted content categories: stable project metadata, canonical repository identity, and current specifications. Read current specifications through the shared specification-store snapshot instead of repository or filesystem discovery. Export the three categories from one consistent authorized snapshot after secret filtering, require the user to set and confirm a recovery passphrase, and encrypt the package without persisting the passphrase or derived key. Restore through isolated temporary processing after transient passphrase-based decryption, validate structural, safety, compatibility, and destination-authorization rules, check identity conflicts only in the selected destination and catalogs already accessible to the restore session, reject an existing stable identity or canonical repository conflict, allow an explicit valid display-name replacement for a name-only conflict, then create the same project and its specifications atomically through the project-storage and specification-store destination seams. Re-establish repository authorization separately.
 
 ## Components Affected
 
 - Project backup and consistent-snapshot service.
+- Shared project-storage authority and project-specification snapshot and restore capability consumers.
 - Package manifest, schema versions, integrity, and compatibility registry.
 - Secret and sensitive-field filtering, passphrase handling, key derivation, and package encryption.
 - Upload or local-file intake and isolated temporary processing.
@@ -29,6 +32,7 @@ Define an allowlisted, versioned backup manifest with integrity metadata, one st
 Required boundaries:
 
 - Backup reads only authorized data for one project from one consistent snapshot.
+- Current specification identity, title, and documents come only from `capability:project-specification-store`; this slice creates no second specification schema, revision store, or authoritative document copy.
 - Secret filtering occurs before serialization and is verified after package creation.
 - The user sets and confirms one recovery passphrase for each package after acknowledging that it cannot be retrieved, reset, bypassed, or recovered.
 - The package payload is encrypted before delivery. The recovery passphrase and derived encryption key exist only transiently for encryption or decryption and do not persist in the package, service, device database, logs, diagnostics, analytics, exports, or backups.
@@ -51,7 +55,7 @@ Required boundaries:
 - A later-visible same-ID record does not retroactively mutate either authoritative record. Combined-catalog composition keeps them separate under the storage-selection contract and persists no cross-boundary ownership or collision link.
 - A case-insensitive display-name conflict may change only the restored project's mutable display label after explicit user input and normal name validation.
 - A canonical repository identity already linked to another destination project blocks restoration; the conflict flow cannot relink, unlink, substitute, or weaken repository uniqueness.
-- Project creation and an explicitly resolved display-name conflict commit atomically with the packaged stable project and repository identities.
+- Project creation, restored current specifications, and an explicitly resolved display-name conflict commit atomically with the packaged stable project, specification, and repository identities through destination-local provider transactions.
 - Repository credentials never cross the package boundary; reconnection uses normal provider or worker flows.
 - Reconnection does not modify repository content or configuration.
 - Package, temporary, log, backup, provenance, and restored project data remain personal or confidential project data unless proven otherwise and follow the approved lifecycle.
@@ -66,12 +70,13 @@ Required boundaries:
 ## Interfaces
 
 - Backup interface: select one authorized project, show the three included content categories and the excluded history, run, artifact, comment, attachment, log, and source categories, require and confirm a recovery passphrase and the unrecoverable-loss warning, snapshot the project, filter secrets, encrypt and serialize it, and return version and integrity information.
+- Specification-store consumer interface: request one authorized consistent current-project snapshot for export and contribute validated stable specification identities and current document sets to the destination-local project-creation transaction during restoration.
 - Package schema interface: define the project, repository, and current-specifications sections, their exact fields and document payloads, stable identity, non-secret encryption parameters, versions, compatibility, limits, and unknown-field behavior.
 - Restore intake interface: isolate the package, require the recovery passphrase, limit resources, establish the selected storage destination, and begin decryption and validation without persistent project mutation.
 - Restore-authority interface: treat successful package decryption as control of backup contents and separately verify the normal device or hosted-identity authorization required by the selected destination.
 - Validation interface: check integrity, format, versions, size, paths, attachments, content types, stable identity, and forbidden secret categories.
 - Conflict interface: derive the duplicate-check scope from the selected destination and catalogs already accessible in the current restore session, reject same-identity and canonical-repository conflicts in that scope, allow a new user-entered display name only for a name-only conflict, apply the destination's normal name validation and case-insensitive uniqueness rules, and permit cancellation without mutation.
-- Restore commit interface: reject an existing stable identity or create the project and related data atomically with the packaged identity in the chosen mode.
+- Restore commit interface: reject an existing stable identity or create the project and shared-store specification data atomically with the packaged identities in the chosen mode.
 - Repository reconnection interface: require normal authorization and validation independently from package contents.
 - Cleanup and rights interface: discard passphrases, keys, and decrypted content immediately; remove terminal encrypted temporary data and attempts immediately and stranded copies within 24 hours; retain no completed service package; expire logs within 30 days and encrypted backups within 35 days; delete provenance with the project; and propagate verified rights and deletion to derived records and processors.
 
@@ -112,6 +117,12 @@ Required boundaries:
 - Choice: Apart from minimum envelope metadata, export only stable project ID and display name, provider and canonical repository identity, and each current specification's logical identity, title, and current `requirements.md`, `design.md`, and `tasks.md` content under a declared schema version.
 - Reason: This is the minimum current state needed to restore the same SDD project while keeping environment-specific ownership, connection, storage, execution, history, and source data outside the package.
 - Consequence: History, runs, generated artifacts, comments, attachments, audit or security logs, analytics, repository source, mutable repository metadata, storage mode, lifecycle state, and workspace identity are excluded. Adding any of them requires a later approved package-version or child-specification decision.
+
+### Shared Specification Store Is A Required Provider
+
+- Choice: Consume `capability:project-specification-store` for the current snapshot and destination-local restoration transaction.
+- Reason: Specification identity and persistence are shared domain foundations needed by both portability and guided delivery; backup must not become their accidental owner.
+- Consequence: Slice 06 remains blocked until the provider task is complete. Package behavior stays owned here, while specification schemas, revisions, storage adapters, authorization seams, and authoritative copies stay owned by Slice 09.
 
 ### No Accepted Secrets
 

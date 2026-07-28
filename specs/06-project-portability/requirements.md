@@ -32,6 +32,7 @@ A project owner can export a passphrase-encrypted, versioned backup package and 
 
 - Explicit backup of one authorized project through a documented versioned package.
 - An initial decrypted-payload allowlist containing only stable project identity and display name, non-secret canonical repository identity, and current specification identity and `requirements.md`, `design.md`, and `tasks.md` content.
+- Consumption of the shared project-specification current-snapshot and destination-restore interfaces without defining a second specification identity or document store.
 - User-set recovery passphrase, package encryption, passphrase-loss warning, and required passphrase entry during restoration.
 - Restoration of that same project with its stable project identity preserved.
 - Package integrity, compatibility, size, content, and path-safety validation.
@@ -80,6 +81,7 @@ Cross-user exchange and create-copy behavior require a separate child specificat
   - the stable project ID and current display name;
   - the repository provider kind and the source onboarding contract's canonical stable repository identifier, such as GitHub's numeric repository ID or the local source's approved canonical identifier; and
   - for each current specification, its stable logical identifier, current display title, and current `requirements.md`, `design.md`, and `tasks.md` content.
+- Current specification data must come from `capability:project-specification-store`. Backup and restoration must not infer specifications from repository files, scan the filesystem, or create a second authoritative specification store.
 - Project storage mode, workspace or account identity, lifecycle state, onboarding and connection record IDs, connection state, installation ID, last-validation time, local path, repository owner or display name, remote or clone URL, visibility, and other mutable repository display or access metadata are not part of the initial decrypted payload.
 - Separate project or specification revision history, agent runs, run output, generated artifacts, comments, attachments, audit or security logs, analytics, and repository source are excluded from the initial package.
 - Current `tasks.md` content is included as a current specification document even when that document contains its own progress log; excluded history means separately retained prior revisions and historical records.
@@ -100,6 +102,7 @@ Cross-user exchange and create-copy behavior require a separate child specificat
 - Restoring or reconnecting must not modify repository files, branches, remotes, settings, or Git configuration.
 - The selected storage mode must satisfy its normal device or hosted identity prerequisites before restoration commits.
 - Restoration commits atomically or leaves no partial project, package record, attachment, or repository connection.
+- Restored specification identities and current document sets must be prepared through the shared specification-store destination transaction seam so project and specification state commit together or not at all.
 - The hosted deployment operator is controller only for the personal data its deployment receives while generating, delivering, validating, or restoring a package, handling verified rights, or providing minimum operational security. Device-only processing remains under the device and operating-system boundary.
 - Core package and restoration processing is limited to providing the user-requested backup and restoration service and uses the approved service-performance basis. Minimum operational-security processing uses the documented legitimate-interest basis and approved balancing assessment.
 - Package data, restored project data, provenance, logs, and encrypted or otherwise linkable identifiers remain personal or confidential data; encryption does not make them anonymous.

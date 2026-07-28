@@ -37,6 +37,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 ## In Scope
 
 - A project-level Kanban board organized around specification and delivery state.
+- Consumption of the shared project-specification identity, immutable revision, current-snapshot, and append interfaces.
 - Five first-release board columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`.
 - Visible `Blocked` and `Failed` statuses that do not create separate board columns.
 - Guided feature requirement structure for technical and non-technical users.
@@ -64,6 +65,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - Automatic merge to the default branch.
 - Production deployment.
 - Project-participant provisioning, invitations, membership changes, roles, and removal, which require a separate focused project-participation specification.
+- Defining a second project-specification identity, revision schema, or authoritative document store outside the shared project-specification capability.
 - Worker installation, provisioning, provider authentication, and model-selection experiences.
 - Self-service privacy-rights screens; the first release may use the existing verified operator workflow.
 - Billing, subscriptions, or usage purchasing.
@@ -98,6 +100,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - Cancellation preserves the canceled run, branch identity, activity, and evidence as governed history. It returns the feature to `Ready for development` when its current revision still satisfies readiness and to `Draft` otherwise.
 - Starting after cancellation creates a new run against the then-current approved revision and a new isolated branch; it does not resume the canceled run.
 - The run must use the approved specification and active implementation slice as its scope.
+- Feature guidance, accepted-answer write-back, readiness, and run binding must consume `capability:project-specification-store`; this slice may append revisions through that interface but cannot create a second authoritative specification store.
 - An agent must not silently invent or change a product requirement during implementation.
 - When a product decision is required, the run pauses and asks one focused question with enough context for the tagged users to answer.
 - An accepted blocking answer must be written back to the specification before the run resumes.

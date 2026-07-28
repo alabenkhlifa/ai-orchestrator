@@ -2,11 +2,26 @@
 
 ## Status
 
-Not Started
+Blocked
+
+The product, package, cryptographic, privacy, and verification agreements remain approved. Active implementation is blocked until the project-storage authority and project-specification store capabilities are delivered by their named provider tasks.
 
 ## Active Slice
 
 Deliver passphrase-encrypted backup and restoration of one minimal project package containing stable project ID and display name, non-secret canonical repository identity, and current specification identity and `requirements.md`, `design.md`, and `tasks.md` content, while preserving the stable project identity, rejecting an existing same-project identity, and providing version, integrity, secret exclusion, validation, and atomic restore behavior.
+
+## Cross-Specification Dependencies
+
+Requires:
+
+- `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 2`.
+- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 7`.
+- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 4` — required before `Task 2`.
+- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 7`.
+
+Provides:
+
+- `capability:project-portability` — ready after `Task 7`.
 
 ## Implementation Boundary
 
@@ -54,14 +69,15 @@ Release boundary:
   - Owned surfaces: Active package scope, stable-identity semantics, passphrase and destination-authorization contract, conflict policy, package and compatibility contract, threat model, privacy data contract, and canonical verification commands.
   - Owns: none (agreement gate)
   - Depends on: none
-  - Proof: Requirements, design, package schema, identity and authority model, threat model, data contract, task ownership, sequence, and canonical test commands have no unresolved active-slice blockers.
+  - Proof: Requirements, design, package schema, identity and authority model, threat model, data contract, capability dependencies, task ownership, sequence, and canonical test commands have no unresolved agreement decision.
 
 - [ ] Task 2 - Implement the consistent backup snapshot and allowlisted package.
+  - Status: Blocked by the two cross-specification capabilities.
   - Purpose: Produce one deterministic, versioned package from authorized current project data while preserving the stable project identity.
-  - Owned surfaces: `ProjectPackage`, `PackageSection`, authorization at snapshot time, minimum envelope metadata, explicit project ID and display-name field map, provider and canonical-repository-identity field map, current specification identity, title, and three-document serialization, excluded-association boundary, manifest and section versions, section ordering, stable identity, and concurrent-update behavior.
+  - Owned surfaces: `ProjectPackage`, `PackageSection`, authorization at snapshot time, read-only `SpecificationStore.current_snapshot` capability consumer, minimum envelope metadata, explicit project ID and display-name field map, provider and canonical-repository-identity field map, current specification identity, title, and three-document serialization, excluded-association boundary, manifest and section versions, section ordering, stable identity, and concurrent-update behavior without a second specification store.
   - Owns: AC-01, entity:ProjectPackage, entity:PackageSection
   - Depends on: Task 1
-  - Proof: Golden decrypted-payload, authorization, explicit field-map, excluded-field, deterministic-ordering, and concurrent-update tests cover every approved and forbidden field, all three sections, every current specification document, versions, and stable-identity values.
+  - Proof: Shared-capability contract, golden decrypted-payload, authorization, explicit field-map, excluded-field, deterministic-ordering, and concurrent-update tests cover every approved and forbidden field, all three sections, every current specification document, versions, and stable-identity values without duplicate persistence.
 
 - [ ] Task 3 - Implement secret exclusion, package encryption, and integrity.
   - Purpose: Prevent credential leakage, encrypt every package with the user-set recovery passphrase, and detect corruption or tampering before restoration.
@@ -79,7 +95,7 @@ Release boundary:
 
 - [ ] Task 5 - Implement conflict preflight and atomic same-project restoration.
   - Purpose: Restore the packaged stable project once without silent overwrite, copy identity, duplicate repository identity, or partial state.
-  - Owned surfaces: `Project`, `PackageProvenance`, packaged-identity validation, selected-destination and current-accessible-catalog scope derivation, visibility-bounded duplicate checks, no global registry or unavailable-boundary query, later-visible collision handoff to the combined-catalog contract, case-insensitive display-name conflict detection, user-supplied replacement-name validation, cancellation without mutation, canonical-repository hard block, conflict precedence, selected storage prerequisites, atomic restore with packaged identity and approved display name, rollback, idempotency, and explicit repository reconnection boundary.
+  - Owned surfaces: `Project`, `PackageProvenance`, packaged-identity validation, selected-destination and current-accessible-catalog scope derivation, visibility-bounded duplicate checks, no global registry or unavailable-boundary query, later-visible collision handoff to the combined-catalog contract, case-insensitive display-name conflict detection, user-supplied replacement-name validation, cancellation without mutation, canonical-repository hard block, conflict precedence, selected storage prerequisites, `SpecificationStore.prepare_restore` capability consumer, atomic restore with packaged project and specification identities and approved display name, rollback, idempotency, no duplicate specification persistence, and explicit repository reconnection boundary.
   - Owns: AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-15, entity:Project, entity:PackageProvenance
   - Depends on: Task 4
   - Proof: Domain, adapter, transaction, constraint, concurrency, retry, and fault-injection tests cover identity preservation, same-identity rejection in every accessible boundary, absence of signed-out or unavailable-device queries and global reporting, later-visible collision handoff without record mutation, conflicting packaged names, explicit valid and invalid replacement names, repeat name collisions, cancellation, repository hard blocks with and without name conflicts, both storage modes, missing authorization, atomic success, rollback, no partial records, and unchanged repository content and configuration.
@@ -92,6 +108,7 @@ Release boundary:
   - Proof: LiveView and desktop and mobile browser scenarios cover included and excluded scope, passphrase confirmation, unrecoverable-loss warning, encrypted backup, missing and incorrect restore passphrases, compatible restore, destination-authorization failure, unsafe rejection, same-identity rejection, explicit replacement-name success and validation failure, repository conflict with no bypass, cancellation, completion, and absence of cross-user sharing or create-copy claims.
 
 - [ ] Task 7 - Enforce the backup privacy lifecycle and security review.
+  - Status: Blocked until both governance capabilities and Tasks 2–6 are complete.
   - Purpose: Govern packages, temporary files, logs, backups, provenance, restored records, processors, transfers, rights, and deletion.
   - Owned surfaces: Active data inventory, approved service and security purposes and lawful bases, authorized-user and operations access controls, no completed service-package retention, immediate passphrase, derived-key, and decrypted-content disposal, immediate terminal and 24-hour stranded encrypted-temporary and `ImportAttempt` cleanup, minimal schema-version and restoration-time `PackageProvenance`, project-bound provenance deletion, 30-day structured security-log expiry, 35-day encrypted-backup expiry, derived-record and processor deletion propagation, verified rights behavior, processor and transfer configuration, no analytics, advertising, model training, identity tracking, or unrelated reuse, log redaction, audit minimization, and required privacy or legal review.
   - Owns: AC-12, AC-16
@@ -117,9 +134,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- None. The technical-design and verification-design decisions that previously blocked this slice are resolved in `design.md` Decisions and Tradeoffs and closed in its Open Questions.
+- No agreement decision remains unresolved. Task 2 is blocked until `capability:project-storage-authority` is delivered by `specs/05-project-storage-lifecycle#Task 4` and `capability:project-specification-store` by `specs/09-project-specification-storage#Task 4`; Task 7 additionally requires both providers' governance capabilities.
 
 ## Progress Log
+
+### 2026-07-28 - Cross-specification prerequisites corrected
+
+- Completed: Replaced the implicit dependency on Slice 07's later-owned `SpecificationRevision` with the focused `capability:project-specification-store`, recorded the separate project-storage authority prerequisite, and kept portability as the owner of package, cryptographic, intake, conflict, and restore workflow behavior.
+- Remaining: Complete the authority and specification-store provider tasks, return this slice to `Not Started`, complete both governance providers before Task 7, implement Tasks 2–7, and run the verification gate.
+- Failed checks: None; implementation has not started.
+- Spec updates: Changed task status from `Not Started` to `Blocked`, added task-level capability dependencies, made Task 2 and Task 5 explicit consumers of the shared specification store, and prohibited duplicate specification persistence.
 
 ### 2026-07-28 - Technical and verification design resolved
 

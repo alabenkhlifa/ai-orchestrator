@@ -8,6 +8,21 @@ Blocked
 
 Deliver one project feature across the `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done` board columns through explicit start, one branch-isolated configured coding-agent run, durable blocking-question resume, bounded retry and cancellation recovery, mandatory verification evidence, an automatic pre-authorized preview when configured, authorized approval or same-run feedback continuation, and in-product action and outcome notifications. Show `Blocked` and `Failed` as statuses without moving the feature to another column.
 
+## Cross-Specification Dependencies
+
+Requires:
+
+- `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 1`.
+- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 6`.
+- `capability:project-participation-boundary` — provider `specs/08-project-participation#Task 4` — required before `Task 1`.
+- `capability:project-participation-governance` — provider `specs/08-project-participation#Task 5` — required before `Task 6`.
+- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 4` — required before `Task 1`.
+- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 6`.
+
+Provides:
+
+- `capability:guided-specification-delivery` — ready after `Task 6`.
+
 ## Implementation Boundary
 
 Included:
@@ -47,14 +62,17 @@ Deferred after this slice:
 
 Prerequisite:
 
-- A separate focused project-participation specification must define and deliver current participant identity and authorization, the shared account-level notification foundation, and the versioned `ParticipationRevocation` claim and acknowledgement contract before this slice implements assignment, notification, run-control, review, project-content authorization, or revocation consumption.
+- The shared project-storage specification must deliver its authoritative hosted and device adapter boundary before Task 1 and its governance capability before Task 6.
+- The focused project-participation specification must deliver current participant identity and authorization, the shared account-level notification foundation, and the versioned `ParticipationRevocation` claim and acknowledgement contract through `capability:project-participation-boundary`, with its governance capability required before Task 6.
+- The focused project-specification storage specification must deliver stable specification identity, immutable complete revisions, current snapshots, and hosted and device-authoritative persistence through `capability:project-specification-store`.
+- The three operational provider tasks must be complete before Task 1 confirms their consumer contracts and active implementation begins; the three governance capabilities must be complete before Task 6.
 
 ## Tasks
 
 - [ ] Task 1 - Approve the feature-delivery product, technical, privacy, and verification contracts.
-  - Status: Blocked by the project-participation implementation prerequisite.
-  - Purpose: Confirm the approved feature-delivery contracts against the delivered current-participant boundary before implementation begins.
-  - Owned surfaces: Active-slice outcome and scope, external project-participation prerequisite, current-authorization consumer, shared account-level notification extension, versioned `ParticipationRevocation` claim and acknowledgement contract, participant action and notification rules, lifecycle and state agreement, orchestration and worker contracts, specification write-back and resume contract, evidence and preview contracts, in-product notification contract, privacy data contract, release gate, task ownership, task sequence, traceability, and canonical verification agreement.
+  - Status: Blocked by the three operational cross-specification capability prerequisites.
+  - Purpose: Confirm the approved feature-delivery contracts against the delivered storage-authority, current-participant, and shared specification-store boundaries before implementation begins.
+  - Owned surfaces: Active-slice outcome and scope, external project-participation and project-specification capability prerequisites, current-authorization consumer, shared account-level notification extension, versioned `ParticipationRevocation` claim and acknowledgement contract, stable specification and revision consumer contract, participant action and notification rules, lifecycle and state agreement, orchestration and worker contracts, specification write-back and resume contract, evidence and preview contracts, in-product notification contract, privacy data contract, release gate, task ownership, task sequence, traceability, and canonical verification agreement.
   - Owns: none (agreement gate)
   - Depends on: none
   - Proof: Requirements, design, data contracts, task ownership, task sequence, acceptance-criterion and entity traceability, and canonical verification commands have no unresolved active-slice blockers.
@@ -62,8 +80,8 @@ Prerequisite:
 - [ ] Task 2 - Deliver the feature board, guided specification, and readiness workflow.
   - Status: Blocked by Task 1.
   - Purpose: Make the board and start boundary durable and understandable before agent execution exists.
-  - Owned surfaces: `Feature`, `SpecificationRevision`, `ReadinessAssessment`, read-only current-participant authorization and project-display-name consumer, participant-email non-disclosure, project-scoped board and feature-detail LiveViews, five fixed lifecycle columns, creator and optional assignment controls, `Assign to me`, responsible-participant resolution, guided requirement structure, blocking and non-blocking finding presentation, non-blocking dismissal, readiness evaluation, gated pre-development lifecycle actions, configured execution-location, agent or model provider, preview-provider and data-transfer summary, disclosure-version comparison, first-start and changed-boundary confirmation, start availability for every current authorized participant, generic status presentation extended by later run tasks, stale and unauthorized participant denial, and supporting domain, persistence, fixtures, and responsive accessibility behavior.
-  - Owns: AC-01, AC-03, AC-04, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12, AC-13, AC-14, AC-29, AC-31, AC-36, entity:Feature, entity:SpecificationRevision, entity:ReadinessAssessment
+  - Owned surfaces: `Feature`, `ReadinessAssessment`, shared `ProjectSpecification` and `SpecificationRevision` capability consumer, read-only current-participant authorization and project-display-name consumer, participant-email non-disclosure, project-scoped board and feature-detail LiveViews, five fixed lifecycle columns, creator and optional assignment controls, `Assign to me`, responsible-participant resolution, guided requirement structure, blocking and non-blocking finding presentation, non-blocking dismissal, readiness evaluation, gated pre-development lifecycle actions, configured execution-location, agent or model provider, preview-provider and data-transfer summary, disclosure-version comparison, first-start and changed-boundary confirmation, start availability for every current authorized participant, generic status presentation extended by later run tasks, stale and unauthorized participant denial, and supporting domain, persistence, fixtures, and responsive accessibility behavior without a second specification store.
+  - Owns: AC-01, AC-03, AC-04, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12, AC-13, AC-14, AC-29, AC-31, AC-36, entity:Feature, entity:ReadinessAssessment
   - Depends on: Task 1
   - Proof: Domain, permission, privacy, and browser tests cover the five lifecycle columns, rejection of free drag-and-drop transitions, gated authorized movement, feature creation with creator and optional assignment, assignment by any current authorized project participant to any other current authorized participant, project-display-name presentation, participant-email non-disclosure, `Assign to me`, stale and unauthorized assignment, action, notification, review, and content-access denial, guided missing information, blocking and non-blocking classification, rejection of blocker dismissal, authorized suggestion dismissal, unavailable start while blocked, readiness changes, execution and provider boundary disclosure, initial confirmation, unchanged-boundary reuse, changed-boundary reconfirmation, revision binding, explicit start authorization, and duplicate-start rejection without any participation mutation.
 
@@ -92,7 +110,7 @@ Prerequisite:
   - Proof: Preview-adapter, notification-projector, integration, security, privacy, and browser tests cover automatic idempotent configured preview, exact verified-commit binding, unavailable preview, timeout, provider failure without review-readiness failure, safe ready link, expiry, supersession, cleanup commands and failures, provider secret non-persistence, non-production labeling, `Ready for review`, rejection of agent and participants other than the current responsible participant or owner, responsible-participant or owner approval to `Done`, responsible-participant or owner rejection with feedback to `In development`, same-run same-branch continuation as a new attempt, preserved prior evidence and review feedback, projector replay and restart, unique recipient keys, durable unread delivery without PubSub, idempotent mark-read, the blocked, ready-for-review, and terminal-failed recipient matrices, stale-recipient insertion and read denial, deduplication, minimized body, and authorized links to available evidence and preview.
 
 - [ ] Task 6 - Enforce the feature-delivery privacy and security contract.
-  - Status: Blocked by Task 1.
+  - Status: Blocked by Task 1, Tasks 2–5, and the three governance capabilities.
   - Purpose: Apply the approved purposes, access boundaries, lifecycles, redaction, processor controls, rights behavior, audit, and anonymous-analytics boundary across every introduced record and integration.
   - Owned surfaces: `DataProcessingRecord`, `DeploymentPrivacyProfile`, complete Slice 07 processing inventory; contract-necessity and security legitimate-interest purpose enforcement; no analytics, advertising, model-training reuse, unrelated product improvement, or secondary-use controls; necessity and project-scoped current-participant access enforcement for specifications, comments, revisions, readiness findings, runs, attempts, commands, execution manifests, leases, fence and sequence metadata, checkpoints, questions, activity, evidence, screenshots, previews, review decisions, notifications, worker and provider metadata, disclosure confirmations, credentials, logs, caches, indexes, backups, exports, support records, and derived records; content-free default and verified time-bounded audited support elevation; hosted relay minimization and 24-hour cleanup for device-authoritative projects; raw-provider-event non-persistence; 30-day temporary command, checkpoint, provider-thread, transient-log, superseded-artifact and security-log cleanup; 90-day notification cleanup; 35-day encrypted-backup expiry; project-deletion cascade and preview, artifact, cache, index and processor cleanup; external-cleanup reconciliation without restored access; verified access, correction, export or portability, erasure, restriction and objection; historical-attribution necessity review and anonymization; worker, model, preview, artifact, hosting, backup and support processor and transfer configuration; provider retention and training-use profile; secret and project-content redaction; and required privacy and security review.
   - Owns: AC-28, AC-37, AC-38, AC-39, entity:DataProcessingRecord, entity:DeploymentPrivacyProfile
@@ -129,7 +147,7 @@ Prerequisite:
 
 ## Blocked Decisions
 
-- No agreement decision remains unresolved. Implementation is blocked until the separate project-participation slice and its current-participant authorization contract are complete and verified.
+- No agreement decision remains unresolved. Task 1 is blocked until the storage-authority, participation-boundary, and specification-store capabilities are delivered by their named provider tasks; Task 6 additionally requires the three governance capabilities.
 
 ## Release Gate
 
@@ -139,6 +157,13 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-28 - Shared specification-store dependency extracted
+
+- Completed: Removed Slice 07 ownership of the shared `SpecificationRevision` persistence model, recorded the project-specification store as a task-level capability prerequisite, and retained Slice 07 ownership of feature workflow, guided editing, readiness, agent delivery, evidence, review, preview, notifications, and their consumer behavior.
+- Remaining: Complete the three operational provider tasks before Task 1, then complete the three governance provider tasks before Task 6.
+- Failed checks: None; implementation has not started.
+- Spec updates: Added canonical capability dependencies, removed `entity:SpecificationRevision` from Task 2 ownership, prohibited duplicate specification persistence, and kept `SpecificationRevision` as a consumed external boundary.
 
 ### 2026-07-23 - Initial product-loop draft
 
