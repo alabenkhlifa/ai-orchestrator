@@ -47,6 +47,24 @@ defmodule SddOrchestrator.Devices.DeviceStore do
               {:ok, DeviceProject.t()}
               | {:error, :not_found | :canonical_repository_mismatch}
 
+  @doc """
+  Atomically replaces one project's legacy repository identity after rechecking
+  the other identities compared by the worker.
+  """
+  @callback replace_repository_identity(
+              String.t(),
+              String.t(),
+              String.t(),
+              %{optional(String.t()) => String.t()}
+            ) ::
+              {:ok, DeviceProject.t()}
+              | {:error,
+                 :not_found
+                 | :identity_changed
+                 | :identity_race
+                 | :invalid_repository_identity
+                 | {:repository_already_linked, DeviceProject.t()}}
+
   @doc "Atomically creates one specification and its first complete revision."
   @callback create_specification(
               String.t(),

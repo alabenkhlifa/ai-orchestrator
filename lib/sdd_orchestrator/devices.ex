@@ -9,7 +9,15 @@ defmodule SddOrchestrator.Devices do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction, Pairing, WorkerDiscovery}
+
+  alias SddOrchestrator.Devices.{
+    DeviceProject,
+    DeviceTransaction,
+    Pairing,
+    PortableRepositoryIdentity,
+    WorkerDiscovery
+  }
+
   alias SddOrchestrator.Portability.ImportAttempt
 
   @doc "Returns the established accountless device workspace, creating it if absent."
@@ -68,6 +76,85 @@ defmodule SddOrchestrator.Devices do
     adapter().connect_repository(project_id, provider, repository_id)
   end
 
+  @doc """
+  Selects a repository for new onboarding through the worker identity boundary.
+
+  Every identity already authorized to this device workspace is compared before a
+  fresh portable identity is allocated. A match returns the existing project and
+  no new identity; otherwise the result contains only the new canonical
+  fingerprint. Repository paths and Git metadata never leave this function.
+  """
+  @spec select_repository(Path.t(), DeviceWorkspace.t()) ::
+          {:ok, %{fingerprint: String.t()}}
+          | {:error,
+             SddOrchestrator.Devices.RepositoryValidation.error()
+             | {:repository_already_linked, DeviceProject.t()}}
+  def select_repository(path, %DeviceWorkspace{id: workspace_id}) do
+    projects = list_projects()
+
+    with :ok <- ensure_repository_unlinked(path, projects, workspace_id),
+         {:ok, fingerprint} <- PortableRepositoryIdentity.generate(path) do
+      {:ok, %{fingerprint: fingerprint}}
+    end
+  end
+
+  @doc """
+  Reconnects a portable identity or atomically upgrades a matching legacy
+  identity after explicit source-side selection.
+
+  Legacy upgrade rechecks the exact set of other identities compared by the
+  worker before replacing the stored value. A concurrent project or identity
+  change returns `:identity_race` and leaves the project unchanged.
+  """
+  @spec locate_repository(Path.t(), DeviceProject.t(), DeviceWorkspace.t()) ::
+          {:ok, %{project: DeviceProject.t(), upgraded?: boolean()}}
+          | {:error,
+             :repository_mismatch
+             | :invalid_repository_identity
+             | :identity_changed
+             | :identity_race
+             | SddOrchestrator.Devices.RepositoryValidation.error()
+             | {:repository_already_linked, DeviceProject.t()}}
+  def locate_repository(path, %DeviceProject{} = project, %DeviceWorkspace{} = workspace) do
+    locate_repository_with_hook(path, project, workspace, fn _replacement_identity -> :ok end)
+  end
+
+  @doc false
+  def locate_repository_with_hook(
+        path,
+        %DeviceProject{} = project,
+        %DeviceWorkspace{id: workspace_id},
+        before_replace
+      )
+      when is_function(before_replace, 1) do
+    case PortableRepositoryIdentity.parse(project.repository_fingerprint) do
+      {:ok, _portable} ->
+        case PortableRepositoryIdentity.match(path, project.repository_fingerprint) do
+          {:ok, true} -> {:ok, %{project: project, upgraded?: false}}
+          {:ok, false} -> {:error, :repository_mismatch}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:error, :legacy_identifier} ->
+        upgrade_legacy_repository(path, project, workspace_id, before_replace)
+
+      {:error, :invalid_identifier} ->
+        {:error, :invalid_repository_identity}
+    end
+  end
+
+  @doc """
+  Reports whether a project's canonical identity is ready for exact
+  replacement-environment matching in a future portability package.
+  """
+  @spec repository_backup_readiness(DeviceProject.t()) :: :backup_ready | :upgrade_required
+  def repository_backup_readiness(%DeviceProject{repository_fingerprint: fingerprint}) do
+    case PortableRepositoryIdentity.parse(fingerprint) do
+      {:ok, _portable} -> :backup_ready
+      {:error, _legacy_or_invalid} -> :upgrade_required
+    end
+  end
+
   @doc "Atomically creates one device-authoritative specification aggregate."
   def create_specification(project_id, specification, revision) do
     adapter().create_specification(project_id, specification, revision)
@@ -121,5 +208,62 @@ defmodule SddOrchestrator.Devices do
 
   defp adapter do
     Application.fetch_env!(:sdd_orchestrator, __MODULE__)[:adapter]
+  end
+
+  defp upgrade_legacy_repository(path, project, workspace_id, before_replace) do
+    with {:ok, true} <-
+           PortableRepositoryIdentity.match_legacy(
+             path,
+             project.repository_fingerprint,
+             workspace_id
+           ),
+         other_projects = Enum.reject(list_projects(), &(&1.id == project.id)),
+         :ok <- ensure_repository_unlinked(path, other_projects, workspace_id),
+         comparison_snapshot =
+           Map.new(other_projects, &{&1.id, &1.repository_fingerprint}),
+         {:ok, replacement_identity} <- PortableRepositoryIdentity.generate(path),
+         :ok <- before_replace.(replacement_identity),
+         {:ok, upgraded} <-
+           adapter().replace_repository_identity(
+             project.id,
+             project.repository_fingerprint,
+             replacement_identity,
+             comparison_snapshot
+           ) do
+      {:ok, %{project: upgraded, upgraded?: true}}
+    else
+      {:ok, false} -> {:error, :repository_mismatch}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp ensure_repository_unlinked(path, projects, workspace_id) do
+    Enum.reduce_while(projects, :ok, fn project, :ok ->
+      case matches_repository?(path, project.repository_fingerprint, workspace_id) do
+        {:ok, true} ->
+          {:halt, {:error, {:repository_already_linked, project}}}
+
+        {:ok, false} ->
+          {:cont, :ok}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp matches_repository?(path, identity, workspace_id) do
+    case PortableRepositoryIdentity.parse(identity) do
+      {:ok, _portable} ->
+        PortableRepositoryIdentity.match(path, identity)
+
+      {:error, :legacy_identifier} ->
+        PortableRepositoryIdentity.match_legacy(path, identity, workspace_id)
+
+      # Pre-contract development records may contain non-canonical placeholders.
+      # They cannot authorize a match and are never treated as portable.
+      {:error, :invalid_identifier} ->
+        {:ok, false}
+    end
   end
 end

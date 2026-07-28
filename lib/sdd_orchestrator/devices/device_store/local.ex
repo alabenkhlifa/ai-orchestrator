@@ -18,7 +18,12 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   use GenServer
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, Workspace}
-  alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
+
+  alias SddOrchestrator.Devices.{
+    DeviceProject,
+    DeviceTransaction,
+    PortableRepositoryIdentity
+  }
 
   alias SddOrchestrator.Portability.{
     DeviceRestoreContribution,
@@ -70,6 +75,20 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   @impl SddOrchestrator.Devices.DeviceStore
   def connect_repository(project_id, provider, repository_id),
     do: GenServer.call(__MODULE__, {:connect_repository, project_id, provider, repository_id})
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def replace_repository_identity(
+        project_id,
+        expected_identity,
+        replacement_identity,
+        comparison_snapshot
+      ) do
+    GenServer.call(
+      __MODULE__,
+      {:replace_repository_identity, project_id, expected_identity, replacement_identity,
+       comparison_snapshot}
+    )
+  end
 
   @impl SddOrchestrator.Devices.DeviceStore
   def create_specification(project_id, specification, revision) do
@@ -182,11 +201,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     {:reply, reply, state}
   end
 
-  def handle_call(
-        {:connect_repository, project_id, provider, repository_id},
-        _from,
-        state
-      ) do
+  def handle_call({:connect_repository, project_id, provider, repository_id}, _from, state) do
     reply =
       case :dets.lookup(state.table, {:project, project_id}) do
         [{{:project, ^project_id}, stored}] ->
@@ -204,6 +219,24 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
         [] ->
           {:error, :not_found}
       end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call(
+        {:replace_repository_identity, project_id, expected_identity, replacement_identity,
+         comparison_snapshot},
+        _from,
+        state
+      ) do
+    reply =
+      do_replace_repository_identity(
+        state.table,
+        project_id,
+        expected_identity,
+        replacement_identity,
+        comparison_snapshot
+      )
 
     {:reply, reply, state}
   end
@@ -410,6 +443,67 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
            project_id: project_id,
            deleted_specifications: length(specification_keys)
          }}
+    end
+  end
+
+  defp do_replace_repository_identity(
+         table,
+         project_id,
+         expected_identity,
+         replacement_identity,
+         comparison_snapshot
+       ) do
+    projects = all_projects(table)
+
+    with {:ok, project} <- fetch_project(projects, project_id),
+         :ok <- identity_unchanged(project, expected_identity),
+         :ok <- validate_portable_identity(replacement_identity),
+         :ok <- comparison_unchanged(projects, project_id, comparison_snapshot),
+         :ok <- check_repository_unique_except(projects, project_id, replacement_identity) do
+      updated = %{project | repository_fingerprint: replacement_identity}
+      :ok = :dets.insert(table, {{:project, project_id}, updated})
+      :ok = :dets.sync(table)
+      {:ok, updated}
+    end
+  end
+
+  defp fetch_project(projects, project_id) do
+    case Enum.find(projects, &(&1.id == project_id)) do
+      nil -> {:error, :not_found}
+      project -> {:ok, project}
+    end
+  end
+
+  defp identity_unchanged(%DeviceProject{repository_fingerprint: expected}, expected), do: :ok
+  defp identity_unchanged(%DeviceProject{}, _expected), do: {:error, :identity_changed}
+
+  defp validate_portable_identity(identity) do
+    case PortableRepositoryIdentity.parse(identity) do
+      {:ok, _portable} -> :ok
+      {:error, _reason} -> {:error, :invalid_repository_identity}
+    end
+  end
+
+  defp comparison_unchanged(projects, project_id, expected_snapshot)
+       when is_map(expected_snapshot) do
+    current_snapshot =
+      projects
+      |> Enum.reject(&(&1.id == project_id))
+      |> Map.new(&{&1.id, &1.repository_fingerprint})
+
+    if current_snapshot == expected_snapshot, do: :ok, else: {:error, :identity_race}
+  end
+
+  defp comparison_unchanged(_projects, _project_id, _snapshot),
+    do: {:error, :identity_race}
+
+  defp check_repository_unique_except(projects, project_id, fingerprint) do
+    case Enum.find(
+           projects,
+           &(&1.id != project_id and &1.repository_fingerprint == fingerprint)
+         ) do
+      nil -> :ok
+      existing -> {:error, {:repository_already_linked, existing}}
     end
   end
 
