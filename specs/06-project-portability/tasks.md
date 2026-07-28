@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Blocked
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the portable local repository identity and legacy source-side upgrade contract. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, and 25 are complete. Task 21 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved, including the portable local repository identity and legacy source-side upgrade contract. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, and 25 are complete. Task 21 is the next implementation task and is blocked until the hosted local-repository worker-binding authority, persistence, and lifecycle contract is approved.
 
 ## Active Slice
 
@@ -207,6 +207,7 @@ Release boundary:
   - Owned surfaces: Local reconnection action, existing worker authorization and portable repository-validation reuse, packaged identifier handoff, exact canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no packaged path or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
   - Owns: AC-22
   - Depends on: Task 13, Task 25
+  - Status: Blocked until the hosted local-repository worker-binding authority, persistence, privacy lifecycle, and normal authorization handoff are approved.
   - Proof: Focused worker-contract tests cover unavailable, failed, and successful validation, exact portable match, canonical identity mismatch, malformed and legacy identifiers, source-workspace independence, absence of packaged paths and credentials, and fixture-level proof that repository content and configuration remain unchanged.
 
 - [ ] Task 15 - Build restore conflict recovery and completion interface.
@@ -296,9 +297,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- None. `capability:portable-local-repository-identity` is available from completed and proven `specs/02-local-project-onboarding#Task 9`.
+- Technical design and Task 21 implementation: decide whether a restored hosted local-repository project may create an explicit, revocable binding to an authorized device worker. The decision must assign the provider-neutral connection's authoritative persistence and ownership, approve the minimum personal-workspace-to-device-workspace link, and define uniqueness, access, retention, erasure and rights propagation, worker replacement and revocation behavior, and unavailable-device semantics. Reusing the GitHub-only `RepositoryConnection`, treating package control as worker authority, silently associating personal and device workspaces, or implementing only the device destination would contradict the current agreement.
 
 ## Progress Log
+
+### 2026-07-28 - Task 21 blocked: hosted local worker binding is unspecified
+
+- Completed: Task 21 preflight confirmed that portable identifier matching is implemented and usable by an authorized target worker, but the current persistence and authorization boundaries cannot complete the hosted path. `LocalWorker` credentials authorize one accountless `DeviceWorkspace`; hosted restored projects belong to a `PersonalWorkspace`; the existing hosted `RepositoryConnection` requires GitHub's numeric repository identity; and no approved record associates a hosted local-repository project with a device worker.
+- Remaining: Approve whether the hosted restore workflow may create an explicit, revocable hosted-to-device worker binding, then define its provider-neutral persistence, minimum data, ownership, uniqueness, access, lifecycle, replacement, revocation, and unavailable-device behavior before refining and resuming Task 21.
+- Failed checks: No implementation check failed. Application changes stopped before schema, authorization, or connection mutation because inventing the missing cross-boundary data contract would change approved personal-data handling.
+- Spec updates: Kept requirements approved, classified the slice and Task 21 as blocked at technical design and active-slice implementation, added one consolidated design question, and preserved completed tasks, acceptance criteria, and capability edges.
 
 ### 2026-07-28 - Task 25 complete: portable identity required before local backup
 
