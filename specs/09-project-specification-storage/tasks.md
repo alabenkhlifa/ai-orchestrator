@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, 4, 7, 8, and 5 are complete; both `capability:project-specification-store` and `capability:project-specification-governance` are ready. The full slice verification gate is next.
+All seven implementation tasks are complete, both `capability:project-specification-store` and `capability:project-specification-governance` are ready, and the full local verification gate passes. The slice remains short of `Verified` only because the deployment-specific controller, processor, region, transfer, notice, retention-enforcement, incident, and final accountable privacy or legal review evidence remains in the release gate below.
 
 ## Active Slice
 
@@ -128,24 +128,33 @@ Release gates:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Every active acceptance criterion and data entity has one clear primary task owner.
-- [ ] Hosted and device adapters pass the same create, append, current-read, snapshot, validation, concurrency, idempotency, and failure contract.
-- [ ] Stable specification and revision identities, immutable complete document sets, expected-head updates, and consistent current snapshots pass transaction and constraint tests.
-- [ ] Cross-project, cross-workspace, cross-device, unauthorized, and content-existence disclosure tests fail closed.
-- [ ] Device-authoritative specifications create no hosted authoritative or cache copy.
-- [ ] Restoration transaction participation preserves stable identities and leaves no partial state under conflict, replay, or injected failure.
-- [ ] Slice 06 and Slice 07 compatibility fixtures use the shared capability without a duplicate specification store.
-- [ ] Privacy inventory, lifecycle, deletion, rights, processor, transfer, redaction, no-analytics, 30-day log, and 35-day encrypted-backup checks pass.
-- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
-- [ ] Applicable production build and existing browser regression checks pass.
-- [ ] New decisions and invalidated proof are written back.
+- [x] Active-slice acceptance criteria pass.
+- [x] Every active acceptance criterion and data entity has one clear primary task owner.
+- [x] Hosted and device adapters pass the same create, append, current-read, snapshot, validation, concurrency, idempotency, and failure contract.
+- [x] Stable specification and revision identities, immutable complete document sets, expected-head updates, and consistent current snapshots pass transaction and constraint tests.
+- [x] Cross-project, cross-workspace, cross-device, unauthorized, and content-existence disclosure tests fail closed.
+- [x] Device-authoritative specifications create no hosted authoritative or cache copy.
+- [x] Restoration transaction participation preserves stable identities and leaves no partial state under conflict, replay, or injected failure.
+- [x] Slice 06 and Slice 07 compatibility fixtures use the shared capability without a duplicate specification store.
+- [x] Privacy inventory, lifecycle, deletion, rights, processor, transfer, redaction, no-analytics, 30-day log, and 35-day encrypted-backup checks pass.
+- [x] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
+- [x] Applicable production build and existing browser regression checks pass.
+- [x] New decisions and invalidated proof are written back.
 
 ## Blocked Decisions
 
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Slice implementation and local verification complete
+
+- Completed: Delivered the shared hosted and device-authoritative specification store with stable specification identity, immutable complete revisions, optimistic expected-head append, consistent allowlisted snapshots, destination-local restoration transaction contributions, cross-operation idempotency and concurrency enforcement, project deletion and rights propagation, privacy inventory and field purposes, fixed redacted security outcomes, consumer compatibility, and both published capabilities.
+- Verification: `mix check` passes with 557 tests (5 properties and 552 example tests) and one intentionally excluded live test. The explicit `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` commands pass. The specification validator suite passes 38 tests; the Slice 09 validator and global nine-specification graph pass. `npm --prefix assets ci` reports no vulnerability, the final desktop and mobile Chromium matrix passes 74 tests, `MIX_ENV=prod mix assets.deploy` passes, and `MIX_ENV=prod mix release --overwrite` creates the current production release.
+- Remaining: Complete the deployment privacy profile and final accountable privacy or legal review before public release. These release-stage items do not block the implemented capabilities or local verification.
+- Failed checks: The first browser-matrix run passed 73 of 74 tests; the unrelated Chromium hosted-access sign-out scenario remained on the safe signed-out-required state while its mobile-Chromium equivalent passed. The exact Chromium scenario passed immediately on isolated rerun, and the complete 74-test matrix then passed. The first non-interactive `mix release` invocation found an existing local release and stopped at its overwrite prompt; `mix release --overwrite` rebuilt the current branch successfully. No implementation or verification failure remains.
+- Spec updates: Checked every local verification item and recorded the separate release-stage blocker. The slice remains `In Progress` rather than `Verified` until its release gate is complete.
+- Readiness: Product requirements are approved; technical design is approved; implementation is complete; local verification is complete; both shared capabilities are ready; public release is blocked only at the deployment privacy and accountable-review gate.
 
 ### 2026-07-28 - Task 5 complete: lifecycle, privacy, and consumer compatibility
 
