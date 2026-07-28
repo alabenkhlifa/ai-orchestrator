@@ -61,8 +61,7 @@ Release boundary:
   - Depends on: none
   - Proof: Requirements, design, data contracts, task ownership, sequence, and canonical test commands have no unresolved active-slice blockers, and accountable privacy approval is recorded.
 
-- [ ] Task 2 - Implement the shared project-storage domain boundary.
-  - Status: In Progress.
+- [x] Task 2 - Implement the shared project-storage domain boundary.
   - Purpose: Introduce one common logical workspace schema across hosted and device persistence, represent one explicit authoritative mode, and validate ownership without changing existing hosted project identity or copying device project data.
   - Owned surfaces: `Workspace`, hosted-root backfill with stable existing IDs, device-local workspace schema contract, `StorageMode`, logical `ProjectStorageState`, `DeviceWorkspace`, `PersonalWorkspace`, per-destination workspace-kind and mode constraints, signed-in device-project ownership, availability contract, and adapter-specific persistence shape.
   - Owns: AC-05, AC-06, AC-15, entity:Workspace, entity:StorageMode, entity:ProjectStorageState, entity:DeviceWorkspace, entity:PersonalWorkspace, entity:HostedProjectStorage
@@ -118,12 +117,18 @@ Release boundary:
 
 ## Progress Log
 
-### 2026-07-28 - Cross-specification capability ownership recorded
+### 2026-07-28 - Task 2 completed
 
-- Completed: Named Slice 05 as the sole provider of `capability:project-storage-authority` after Task 4 and `capability:project-storage-governance` after Task 6 so downstream work depends only on the provider task it actually needs.
-- Remaining: Complete Tasks 2–6 and the verification gate; each capability remains unavailable while its provider task is incomplete.
-- Failed checks: None; this change records dependency ownership without changing the active product behavior.
-- Spec updates: Added the canonical cross-specification dependency section, assigned storage authority readiness to Task 4, and assigned storage governance readiness to Task 6.
+- Completed: Verified the common hosted `Workspace` root, one-to-one `PersonalWorkspace`, device-local `DeviceWorkspace` contract, authoritative `StorageMode` and `ProjectStorageState`, stable hosted-ID backfill, destination constraints, device ownership independent of sign-in, and rollback behavior.
+- Migration proof: On isolated test database `sdd_orchestrator_test_slice05_migration`, migrated through the legacy project-registration baseline, seeded stable account/workspace/project/connection identities, applied `20260727120000`, confirmed every stable ID and hosted mode, rolled the migration back and confirmed the legacy IDs and account relation, reapplied it, and migrated through the current head.
+- Passing proofs: `MIX_ENV=test MIX_TEST_PARTITION=_slice05_tests mix test test/sdd_orchestrator/project_storage/domain_boundary_test.exs test/sdd_orchestrator/project_storage_test.exs test/sdd_orchestrator/accounts_test.exs test/sdd_orchestrator/project_registration_test.exs test/sdd_orchestrator/privacy/rights_test.exs` (67); `mix format --check-formatted`; `MIX_ENV=test mix compile --warnings-as-errors`; `python3 .agents/scripts/validate_spec.py specs/05-project-storage-lifecycle`; and `python3 .agents/scripts/test_validate_spec.py` (14).
+- Environment: The prior Docker and Mix filesystem-lock blocker is resolved. A pre-existing repository PostgreSQL container is healthy; proof databases use Slice 05-specific test partitions. The Phoenix server for this worktree remains reserved on port `4005`.
+
+### 2026-07-28 - Parallel sequencing checkpoint
+
+- Sequencing: Foundation-first. This slice owns the shared `Accounts`, `Projects`, `ProjectStorage`, persistence, catalog, dashboard, and privacy implementation needed by project storage selection. Concurrent Slice 06 work is limited to specification refinement until this slice establishes and verifies those shared contracts.
+- Isolation: Slice 05 runs in `/Users/alabenkhlifa/IdeaProjects/sdd-orchestrator-slice-05` on `slice/05-project-storage-lifecycle` with local server port `4005`; the Slice 06 owner must use a separate worktree, branch, and port.
+- Conflict boundary: Slice 06 must not implement or modify shared storage, project creation, repository uniqueness, catalog collision, or privacy-lifecycle surfaces while Slice 05 owns them.
 
 ### 2026-07-27 - Task 2 implementation started
 
