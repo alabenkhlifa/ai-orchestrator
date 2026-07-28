@@ -16,17 +16,18 @@ A project owner can export a passphrase-encrypted, versioned backup package and 
 ## Primary Workflow
 
 1. The user selects one authorized project and requests a backup.
-2. The product shows that the backup includes the stable project identity and display name, the non-secret canonical repository identity, and every current specification's `requirements.md`, `design.md`, and `tasks.md` content; it also shows the excluded categories.
-3. The user sets and confirms a recovery passphrase after being told that SDD Orchestrator cannot retrieve, reset, or bypass it.
-4. The product creates a passphrase-encrypted, versioned, integrity-protected package containing the project's stable identity without storing the passphrase.
-5. The user selects a package for restoration, enters its recovery passphrase, and chooses an available project-data storage mode.
-6. The product decrypts the package transiently and validates format, version, integrity, size, content safety, compatibility, and destination authorization before mutation.
-7. The product checks the stable project identity, name, repository, and selected storage boundary for conflicts using only the selected destination and catalogs already accessible in the current restore session.
-8. If the same stable project identity already exists in that checked scope, restoration is rejected without changing either project; the product does not contact signed-out accounts or unavailable devices to attempt a global check.
-9. If only the display name conflicts, the user may enter a different valid, available display name or cancel; the product never renames automatically.
-10. If the canonical repository identity is already linked to a different project in the destination workspace, restoration is blocked without offering a different repository or changing either connection.
-11. Otherwise, the product restores the project atomically with the same stable identity and the packaged or explicitly chosen display name, without modifying a repository.
-12. Any required repository reconnection remains an explicit action under the normal provider or worker authorization flow.
+2. If a local project still uses a legacy workspace-scoped repository fingerprint, the product requires explicit source-side `Locate repository` validation and upgrade before backup can continue.
+3. The product shows that the backup includes the stable project identity and display name, the non-secret canonical repository identity, and every current specification's `requirements.md`, `design.md`, and `tasks.md` content; it also shows the excluded categories.
+4. The user sets and confirms a recovery passphrase after being told that SDD Orchestrator cannot retrieve, reset, or bypass it.
+5. The product creates a passphrase-encrypted, versioned, integrity-protected package containing the project's stable identity without storing the passphrase.
+6. The user selects a package for restoration, enters its recovery passphrase, and chooses an available project-data storage mode.
+7. The product decrypts the package transiently and validates format, version, integrity, size, content safety, compatibility, and destination authorization before mutation.
+8. The product checks the stable project identity, name, repository, and selected storage boundary for conflicts using only the selected destination and catalogs already accessible in the current restore session.
+9. If the same stable project identity already exists in that checked scope, restoration is rejected without changing either project; the product does not contact signed-out accounts or unavailable devices to attempt a global check.
+10. If only the display name conflicts, the user may enter a different valid, available display name or cancel; the product never renames automatically.
+11. If the canonical repository identity is already linked to a different project in the destination workspace, restoration is blocked without offering a different repository or changing either connection.
+12. Otherwise, the product restores the project atomically with the same stable identity and the packaged or explicitly chosen display name, without modifying a repository.
+13. Any required repository reconnection remains an explicit action under the normal provider or worker authorization flow; a local worker proves an exact match by recomputing the supplied portable canonical identifier without the source workspace identity.
 
 ## In Scope
 
@@ -34,6 +35,7 @@ A project owner can export a passphrase-encrypted, versioned backup package and 
 - An initial decrypted-payload allowlist containing only stable project identity and display name, non-secret canonical repository identity, and current specification identity and `requirements.md`, `design.md`, and `tasks.md` content.
 - Consumption of the shared project-specification current-snapshot and destination-restore interfaces without defining a second specification identity or document store.
 - User-set recovery passphrase, package encryption, passphrase-loss warning, and required passphrase entry during restoration.
+- Portable local repository-identity readiness, an actionable source-side upgrade handoff for legacy workspace-scoped fingerprints, and exact target-worker matching through `capability:portable-local-repository-identity`.
 - Restoration of that same project with its stable project identity preserved.
 - Package integrity, compatibility, size, content, and path-safety validation.
 - Secret and credential exclusion.
@@ -81,6 +83,9 @@ Cross-user exchange and create-copy behavior require a separate child specificat
   - the stable project ID and current display name;
   - the repository provider kind and the source onboarding contract's canonical stable repository identifier, such as GitHub's numeric repository ID or the local source's approved canonical identifier; and
   - for each current specification, its stable logical identifier, current display title, and current `requirements.md`, `design.md`, and `tasks.md` content.
+- A local repository section may contain only the versioned portable canonical identifier provided by `capability:portable-local-repository-identity`. Its non-secret validation salt is part of that opaque identifier, not a workspace identity or credential.
+- A local project with a legacy workspace-scoped fingerprint is not backup-ready for replacement-environment reconnection. Backup must stop before package generation with an actionable source-side `Locate repository` upgrade handoff; it must not package the legacy fingerprint as if it were portable.
+- Independent onboarding of the same local Git history in another workspace produces a different identifier. Portability preserves and deliberately transfers the existing identifier only for restoration of the same stable project; it must not create a global local-repository registry or equality signal.
 - Current specification data must come from `capability:project-specification-store`. Backup and restoration must not infer specifications from repository files, scan the filesystem, or create a second authoritative specification store.
 - Project storage mode, workspace or account identity, lifecycle state, onboarding and connection record IDs, connection state, installation ID, last-validation time, local path, repository owner or display name, remote or clone URL, visibility, and other mutable repository display or access metadata are not part of the initial decrypted payload.
 - Separate project or specification revision history, agent runs, run output, generated artifacts, comments, attachments, audit or security logs, analytics, and repository source are excluded from the initial package.
@@ -99,6 +104,7 @@ Cross-user exchange and create-copy behavior require a separate child specificat
 - A repository conflict must not offer silent relinking, unlink the existing project, accept a different repository, or weaken the workspace's canonical repository uniqueness constraint.
 - When both name and repository conflicts exist, the repository conflict blocks restoration regardless of any proposed display name.
 - Repository connections and authorization are not transferable; reconnection requires explicit user selection and normal provider or worker validation.
+- Local reconnection supplies the packaged portable canonical identifier to the authorized worker, which recomputes and matches it locally. A mismatch, malformed or legacy identifier, unavailable worker, or failed authorization leaves the project disconnected and must not replace the packaged canonical identity.
 - Restoring or reconnecting must not modify repository files, branches, remotes, settings, or Git configuration.
 - The selected storage mode must satisfy its normal device or hosted identity prerequisites before restoration commits.
 - Restoration commits atomically or leaves no partial project, package record, attachment, or repository connection.
@@ -142,10 +148,11 @@ Cross-user exchange and create-copy behavior require a separate child specificat
 - [AC-19] Given provenance or restored project data reaches project deletion or service termination, when the approved lifecycle runs, then persistent provenance contains only package schema version and restoration time, is deleted with the project, and creates no retained source-identity link.
 - [AC-20] Given operational-security logs are written for backup or restoration, when logging and expiry controls run, then each record contains only event type, time, outcome, and a non-secret correlation identifier, contains no package or project content or repository identifier, and expires within 30 days.
 - [AC-21] Given a compatible package, successful passphrase-based decryption, an authorized device destination, and no conflict, when restoration commits, then exactly one device-authoritative project and its current specifications are created atomically with the packaged stable identities and no hosted authoritative copy.
-- [AC-22] Given explicit local-repository reconnection succeeds through the normal worker validation flow, when repository state is inspected, then repository files, branches, remotes, settings, and Git configuration remain unchanged.
+- [AC-22] Given explicit local-repository reconnection is attempted through the normal worker validation flow, when the selected repository is evaluated against the packaged portable canonical identifier, then only an exact recomputed match connects; a mismatch, malformed or legacy identifier, unavailable worker, or failed authorization leaves the project disconnected, and repository files, branches, remotes, settings, and Git configuration remain unchanged.
 - [AC-23] Given service-held portability data is subject to verified access, correction, erasure, restriction, objection, or portability action, when the approved rights workflow runs, then applicable project, specification, attempt, provenance, derived, processor, and backup-expiry actions propagate without disclosing another project or identity.
 - [AC-24] Given portability data enters encrypted rolling backups, when lifecycle enforcement runs, then those copies expire within 35 days and cannot be restored outside the approved recovery and deletion-propagation process.
 - [AC-25] Given analytics, advertising, model training, unrelated product improvement, identity tracking, or coding-agent or model-provider access is attempted for portability data, when policy enforcement runs, then the use is denied and no linkable package, project, repository, device, workspace, network, or content identifier is emitted.
+- [AC-26] Given an authorized local project still uses a legacy workspace-scoped repository fingerprint, when backup is requested, then package generation remains blocked with an actionable source-side `Locate repository` upgrade handoff until exact worker validation atomically replaces it with the portable identifier; failure or mismatch changes neither the project nor repository.
 
 ## Open Questions
 

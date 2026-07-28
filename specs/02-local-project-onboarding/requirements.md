@@ -32,6 +32,7 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - Local worker discovery, installation guidance, pairing, revocation, and reconnect states needed for onboarding.
 - Local Git repository selection and validation.
 - Minimum repository identity and connection metadata exchange.
+- Versioned portable local repository identity generation, exact matching, and source-side upgrade from the legacy workspace-scoped fingerprint.
 - First-connection privacy disclosure, confirmation, and accountless data-loss warning.
 - Project creation using the shared naming and repository-uniqueness rules.
 - Direct post-creation handoff to the new project's dashboard.
@@ -69,6 +70,10 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - A selected path must be validated as a Git repository before project creation.
 - During onboarding, local filesystem paths, remote URLs, filenames, Git history, and source code must not leave the device.
 - Only the minimum approved connection and compatibility metadata may leave the device during onboarding. The exact fields and internal identifiers are a technical-design decision constrained by this boundary.
+- A new local repository connection receives a versioned, non-reversible canonical identifier whose validation material permits a worker to prove the same repository after an explicit same-project backup transfer without carrying a path, credential, source workspace identity, or raw Git object ID.
+- Independently onboarding the same repository in another workspace must create a different canonical identifier. Cross-workspace equality becomes visible only when an existing identifier is deliberately transferred through the same-project portability workflow.
+- Within one workspace, duplicate detection must compare the selected repository against that workspace's existing canonical identifiers through worker validation before allocating a new identifier.
+- A legacy workspace-scoped repository fingerprint is not portable. Before a local project using that format can be backed up for replacement-environment reconnection, the user must explicitly locate the source repository and pass exact worker validation; a successful match atomically upgrades only the connection identity, while a mismatch or unavailable source leaves the project unchanged and backup blocked.
 - Before approved onboarding metadata leaves the device for the first time, the product must explain in plain language what remains local, what is shared, and that accountless project history cannot be recovered without a previous export. The user must confirm before the connection continues.
 - The disclosure must remain available after confirmation. It must not require confirmation on every connection unless the disclosed data handling changes.
 - Linking must not modify repository files, branches, remotes, hooks, or Git configuration.
@@ -79,6 +84,7 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - Reinstalling or replacing the worker under the same operating-system user must leave existing projects visible and require explicit pairing of the replacement before filesystem access resumes.
 - When a repository is moved or renamed, the project must remain visible and provide a `Locate repository` action.
 - `Locate repository` may restore the existing connection only when the selected repository matches its canonical identity. A non-matching repository must be treated as a different repository and must not replace the existing connection.
+- Matching a portable canonical identifier must not require the source workspace identity. Matching or upgrading an identifier must not modify repository files, branches, remotes, hooks, settings, or Git configuration.
 - Authentication later may combine on-device and authorized hosted projects in one catalog, but must not upload, reassign, duplicate, or change the storage mode of on-device projects.
 - Every project in a combined catalog must show its storage mode and current device availability.
 - Different stable projects must remain separate catalog entries even when they link to the same repository. A shared repository alone must not merge or deduplicate them.
@@ -101,6 +107,9 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - Given the user does not confirm the first-connection disclosure, when onboarding stops, then no repository or device metadata is sent.
 - Given the user previously confirmed the disclosure and the disclosed data handling has not changed, when a later connection occurs, then confirmation is not required again and the disclosure remains accessible.
 - Given a valid local Git repository, when the user confirms the connection, then the worker returns only minimum approved connection and compatibility metadata while local paths, remote URLs, filenames, Git history, and source code remain on the device.
+- Given a repository is linked for the first time, when worker validation succeeds, then the connection receives a versioned non-reversible canonical identifier that contains no path, credential, workspace identity, or raw Git object ID.
+- Given the same repository is selected again in one workspace, when duplicate validation runs against that workspace's existing canonical identifiers, then the existing connection is found without allocating a second identity.
+- Given the same repository is independently onboarded in another workspace without an existing identifier being supplied, when creation succeeds, then it receives a different canonical identifier and no global repository-equality signal is emitted.
 - Given an unlinked local repository and an available project name, when creation succeeds, then one project and one repository connection are created atomically.
 - Given local project creation commits successfully, when onboarding completes, then the new project's dashboard opens and shows the linked repository, selected storage mode, and current connection status.
 - Given the same canonical local repository is already linked in the workspace, when creation is attempted again, then it is blocked without creating a duplicate.
@@ -109,6 +118,8 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - Given the worker is reinstalled or replaced under the same operating-system user, when the user returns, then existing projects remain visible and filesystem access resumes only after the replacement worker is explicitly paired.
 - Given a linked repository is moved or renamed, when the project is opened, then it remains visible with a `Locate repository` action.
 - Given `Locate repository` is used, when the selected repository matches the existing canonical identity, then the connection is restored; when it does not match, then the existing connection is preserved and the selection is treated as a different repository.
+- Given a project still uses a legacy workspace-scoped fingerprint, when the user explicitly locates the source repository and exact worker validation succeeds, then the connection is atomically upgraded to the portable identifier without changing project identity or repository state; when validation fails or the source is unavailable, the legacy connection remains unchanged and cross-device backup remains blocked.
+- Given a portable canonical identifier arrives through the same-project restoration workflow, when a paired target worker validates a selected repository against it, then an exact match can reconnect without the source workspace identity and a mismatch cannot replace the packaged identity.
 - Given an accountless device user later authenticates, when the combined catalog is shown, then on-device projects remain local and identify their storage and availability state.
 - Given distinct on-device and hosted projects link to the same repository, when the combined catalog is shown, then both remain separate entries with their own storage mode and device availability.
 - Given one stable project has been explicitly migrated or resynchronized, when the combined catalog is shown, then it appears once with its authoritative storage mode.

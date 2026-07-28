@@ -39,7 +39,7 @@ Required boundaries:
 - The package may carry only the non-secret encryption parameters required to derive a transient key and verify authenticated decryption.
 - Package-envelope metadata is limited to what schema versioning, encryption, integrity, size, and compatibility require.
 - The project section contains only stable project ID and current display name. Destination workspace, selected storage mode, lifecycle state, source connection record IDs, and other environment-specific state are established during restoration rather than copied.
-- The repository section contains only provider kind and the source onboarding contract's canonical stable identifier. For GitHub this is the provider's numeric repository ID; for a local source it is the approved canonical identifier. It contains no local path, remote or clone URL, owner or display name, visibility, installation, connection status, validation time, credential, or other mutable access metadata.
+- The repository section contains only provider kind and the source onboarding contract's canonical stable identifier. For GitHub this is the provider's numeric repository ID; for a local source it is the versioned portable identifier from `capability:portable-local-repository-identity`, including its non-secret validation salt inside the opaque identifier. It contains no local path, remote or clone URL, owner or display name, visibility, installation, connection status, validation time, credential, workspace identity, or other mutable access metadata.
 - The specifications section contains each current specification's stable logical identifier, current display title, and current `requirements.md`, `design.md`, and `tasks.md` content without a repository or filesystem path.
 - Separate project and specification revisions, runs and run output, generated artifacts, comments, attachments, audit and security logs, analytics, and repository source do not cross the package boundary.
 - A progress log already present inside current `tasks.md` content remains part of that current document; no separate historical record or prior document revision is added.
@@ -57,6 +57,9 @@ Required boundaries:
 - A canonical repository identity already linked to another destination project blocks restoration; the conflict flow cannot relink, unlink, substitute, or weaken repository uniqueness.
 - Project creation, restored current specifications, and an explicitly resolved display-name conflict commit atomically with the packaged stable project, specification, and repository identities through destination-local provider transactions.
 - Repository credentials never cross the package boundary; reconnection uses normal provider or worker flows.
+- A legacy workspace-scoped local fingerprint is not packaged as portable identity. Backup stops before generation and hands the user to explicit source-side `Locate repository` validation and atomic upgrade.
+- Local reconnection supplies the packaged portable identifier to the authorized target worker. The worker parses its validation salt, recomputes the root-commit digest locally, and connects only on an exact constant-time match; the source workspace identity is unnecessary.
+- Independent local onboarding generates a fresh identifier. The same identifier becomes cross-workspace linkable only where the user deliberately transfers it inside an encrypted same-project package; no global local-repository equality registry or query is added.
 - Reconnection does not modify repository content or configuration.
 - Package, temporary, log, backup, provenance, and restored project data remain personal or confidential project data unless proven otherwise and follow the approved lifecycle.
 - The service retains no completed package after successful delivery. A downloaded package remains under the user's control outside the service lifecycle.
@@ -78,6 +81,7 @@ Required boundaries:
 - Conflict interface: derive the duplicate-check scope from the selected destination and catalogs already accessible in the current restore session, reject same-identity and canonical-repository conflicts in that scope, allow a new user-entered display name only for a name-only conflict, apply the destination's normal name validation and case-insensitive uniqueness rules, and permit cancellation without mutation.
 - Restore commit interface: reject an existing stable identity or create the project and shared-store specification data atomically with the packaged identities in the chosen mode.
 - Repository reconnection interface: require normal authorization and validation independently from package contents.
+- Local identity readiness interface: accept only the versioned portable identifier for package generation and validation, return an actionable source-side upgrade requirement for a legacy identifier, and consume the Slice 02 capability without owning worker identity generation or migration.
 - Cleanup and rights interface: discard passphrases, keys, and decrypted content immediately; remove terminal encrypted temporary data and attempts immediately and stranded copies within 24 hours; retain no completed service package; expire logs within 30 days and encrypted backups within 35 days; delete provenance with the project; and propagate verified rights and deletion to derived records and processors.
 
 ## Decisions and Tradeoffs
@@ -123,6 +127,12 @@ Required boundaries:
 - Choice: Consume `capability:project-specification-store` for the current snapshot and destination-local restoration transaction.
 - Reason: Specification identity and persistence are shared domain foundations needed by both portability and guided delivery; backup must not become their accidental owner.
 - Consequence: Slice 06 remains blocked until the provider task is complete. Package behavior stays owned here, while specification schemas, revisions, storage adapters, authorization seams, and authoritative copies stay owned by Slice 09.
+
+### Portable Local Repository Identity Is A Required Provider
+
+- Choice: Consume `capability:portable-local-repository-identity` from Slice 02. Package only its versioned identifier, block local backup while the source project still holds a legacy workspace-scoped fingerprint, and reconnect by supplying the packaged identifier to normal authorized worker validation.
+- Reason: Slice 02 owns local worker identity generation, duplicate detection, and source-side migration. Reusing that contract lets a target worker prove the same repository without adding source workspace identity, path, credential, or raw Git object IDs to the package.
+- Consequence: Independent onboarding remains unlinkable because it generates a fresh salt, while an encrypted backup deliberately carries the existing same-project identifier. Slice 06 owns the backup-readiness handoff, package validation, and reconnection result, but cannot implement Task 21 until the provider capability is ready.
 
 ### No Accepted Secrets
 
@@ -201,6 +211,8 @@ Required boundaries:
 - A lost passphrase makes the backup permanently unrestorable. Require explicit confirmation and clear support boundaries before package creation.
 - Successful decryption can be mistaken for destination authorization. Require the normal device or hosted-identity prerequisite independently.
 - Duplicate identity or repository links can corrupt ownership. Preflight stable identity, name, and canonical repository constraints.
+- Treating a legacy workspace-scoped fingerprint as portable would create an unprovable reconnection claim. Block package generation until exact source-side validation upgrades the identifier.
+- A portable identifier can link the source and restored same-project records. Limit that link to the user-requested encrypted package and authorized project records, and prohibit analytics, global lookup, and unrelated reuse.
 - Visibility-bounded discovery can miss a project on an unavailable boundary. Keep later-visible records separate, expose the collision without mutation, and require a future explicit resolution contract.
 - An automatic or weakly validated conflict rename can hide a collision. Require explicit user input and the destination's normal name validation before the atomic commit.
 - A restore flow can become an unapproved migration or copy mechanism. Preserve the packaged identity, reject existing identity, and do not deactivate a source or allocate a copy identity.
@@ -211,5 +223,4 @@ Required boundaries:
 
 ## Open Questions
 
-- Local repository identity portability is unresolved. Slice 02 currently computes the canonical local fingerprint as an HMAC over root commits keyed by the source device-workspace salt. This slice excludes source workspace identity and other environment-specific connection state from the package, so a worker in a different authorized destination cannot reproduce the packaged fingerprint to prove an exact canonical match. Task 21 requires an approved identity mechanism that remains non-reversible, permits exact validation after restore, and defines the resulting cross-workspace linkability and legacy-fingerprint behavior without adding a source path, credential, or workspace identity to the package.
-- The container, key-derivation, authenticated-encryption, transient-handling, intake-limit, compatibility, atomic-restore, provenance, lifecycle, and verification mechanisms are resolved in Decisions and Tradeoffs above. Argon2id cost parameters and the concrete size, count, and length limits are configuration values with documented defaults, not open design questions.
+- None. The portable local repository identity, legacy source-side upgrade, container, key-derivation, authenticated-encryption, transient-handling, intake-limit, compatibility, atomic-restore, provenance, lifecycle, and verification mechanisms are resolved in Decisions and Tradeoffs above. Argon2id cost parameters and the concrete size, count, and length limits are configuration values with documented defaults, not open design questions.

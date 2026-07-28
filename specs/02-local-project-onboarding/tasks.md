@@ -4,9 +4,27 @@
 
 In Progress
 
+Tasks 1–7 remain complete on the original workspace-scoped repository-fingerprint contract. The approved portability correction adds Tasks 8 and 9; Task 8 is the next implementation task.
+
 ## Active Slice
 
 Deliver accountless on-device onboarding for one local Git repository through one paired macOS worker, ending on the new project's dashboard with its repository, storage mode, and connection status visible without source upload.
+
+## Cross-Specification Dependencies
+
+Requires:
+
+- None.
+
+Provides:
+
+- `capability:portable-local-repository-identity` — ready after `Task 9`.
+
+## Task Size Gate
+
+- Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof expected to run in about ten minutes.
+- Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
+- Completed task labels and proof history are preserved; the portability correction is split into a pure identity boundary and one source-side integration workflow.
 
 ## Implementation Boundary
 
@@ -15,6 +33,8 @@ Included:
 - Accountless device workspace required by the local path.
 - macOS worker discovery, graphical installation guidance, secure pairing, replacement pairing, and status.
 - Native folder selection, local Git repository validation, and moved-repository recovery.
+- Versioned portable local repository identity generation and exact matching without source workspace identity.
+- Workspace-bounded duplicate comparison and explicit source-side upgrade of legacy workspace-scoped fingerprints.
 - First-connection privacy disclosure, approved minimum metadata exchange, and atomic project registration.
 - Accountless data-loss warning and export-only project-history recovery boundary.
 - Direct handoff to the new project's dashboard with repository, storage, and connection state.
@@ -29,6 +49,7 @@ Excluded:
 - Source upload, browsing, editing, or execution from the control plane.
 - Shared-operating-system-user isolation.
 - Windows and Linux worker delivery and verification.
+- Global repository-identity lookup or correlation across independently onboarded workspaces.
 
 Deferred after this slice:
 
@@ -44,40 +65,75 @@ Release boundary:
 
 ## Tasks
 
-- [x] Establish the accountless device-workspace boundary.
+- [x] Task 1 - Establish the accountless device-workspace boundary.
+  - Size: Standard
   - Purpose: Persist local project ownership without requiring an account.
+  - Owned surfaces: `DeviceWorkspace`, `DeviceStore` behavior, durable development adapter, operating-system ownership boundary, hosted-persistence exclusion, and data-loss behavior.
+  - Depends on: none
   - Proof: Tests show stable access under the same OS boundary, isolation from hosted authorization, and a clear loss outcome that never presents repository reconnection as restoration of missing project history.
   - Delivered: `DeviceStore` behaviour, durable local DETS adapter (`DeviceStore.Local`), and the `Devices` context; ownership derives from device id and storage mode only. The repository-reconnection-is-not-restoration clause is completed under Task 4, where a connection exists. Native worker adapter and durable device store are release-gated.
 
-- [x] Implement worker discovery and installation guidance.
-  - Purpose: Give non-technical users an actionable path when no worker is available.
-  - Proof: macOS browser scenarios cover detected, missing, incompatible, and unavailable worker states plus graphical installation without terminal commands.
-  - Delivered: `Devices.WorkerDiscovery` (macOS 14/15, protocol 1, `last_seen_at` reachability) plus `Devices.worker_status/1` over `Pairing.active_workers/1` and `Pairing.mark_seen/1`, and `LocalOnboardingLive` rendering all four states — `:missing` (graphical download + pairing-code entry, no terminal command), `:incompatible` (update/reinstall + replacement pairing), `:unavailable` (start-and-retry, projects stay visible), and `:detected` (continue to native selection). `ConnectionStatus.device_connection_badge/1` shows connection state. The `:device_worker_stub` flag (on in dev/test, off in prod) drives a local worker stand-in through pairing and native folder selection so the graphical flow is exercisable without the signed native worker. Proof is LiveView tests over all four states asserting terminal-free install guidance; the coordinated Playwright browser scenarios land with Task 7.
-
-- [x] Implement secure workspace-bound pairing.
+- [x] Task 3 - Implement secure workspace-bound pairing.
+  - Size: Standard
   - Purpose: Authorize one worker for one workspace without transferable credentials.
+  - Owned surfaces: `PairingAttempt`, `LocalWorker`, attempt expiry and replay protection, credential issuance and digest persistence, workspace authorization, revocation, rotation, and replacement pairing.
+  - Depends on: Task 1
   - Proof: Security tests cover attempt expiry, confirmation, replay rejection, revocation, rotation, replacement-worker pairing, and cross-workspace denial.
   - Delivered: `PairingAttempt` and `LocalWorker` (hosted authorization metadata keyed by an opaque `device_workspace_id`) and the `Pairing` context — single-use attempt-bound codes, per-worker salted-digest credentials, rotation, revocation, and workspace-scoped authorization. Raw codes and credentials are never persisted. The native worker endpoint and outbound transport remain release-gated.
 
-- [x] Implement local repository selection and validation.
+- [x] Task 2 - Implement worker discovery and installation guidance.
+  - Size: Standard
+  - Purpose: Give non-technical users an actionable path when no worker is available.
+  - Owned surfaces: Worker compatibility and reachability policy, detected, missing, incompatible, and unavailable states, graphical installation guidance, retry, and development worker stand-in.
+  - Depends on: Task 3
+  - Proof: macOS browser scenarios cover detected, missing, incompatible, and unavailable worker states plus graphical installation without terminal commands.
+  - Delivered: `Devices.WorkerDiscovery` (macOS 14/15, protocol 1, `last_seen_at` reachability) plus `Devices.worker_status/1` over `Pairing.active_workers/1` and `Pairing.mark_seen/1`, and `LocalOnboardingLive` rendering all four states — `:missing` (graphical download + pairing-code entry, no terminal command), `:incompatible` (update/reinstall + replacement pairing), `:unavailable` (start-and-retry, projects stay visible), and `:detected` (continue to native selection). `ConnectionStatus.device_connection_badge/1` shows connection state. The `:device_worker_stub` flag (on in dev/test, off in prod) drives a local worker stand-in through pairing and native folder selection so the graphical flow is exercisable without the signed native worker. Proof is LiveView tests over all four states asserting terminal-free install guidance; the coordinated Playwright browser scenarios land with Task 7.
+
+- [x] Task 4 - Implement local repository selection and legacy validation.
+  - Size: Standard
   - Purpose: Validate one user-selected Git repository entirely on the worker.
+  - Owned surfaces: Native selection handoff, Git repository and root-commit validation, legacy workspace-scoped fingerprint generation and matching, moved, clone, worktree, and changed-remote stability, and source-local execution.
+  - Depends on: Task 2
   - Proof: Integration and UI tests cover native folder selection, valid, invalid, inaccessible, moved, non-matching, and unavailable repositories plus canonical-identity reconnection without source upload.
   - Delivered: `Devices.RepositoryValidation` validates a repository on the worker boundary and returns only a non-reversible canonical fingerprint (HMAC over sorted root-commit ids, per-workspace salt) — stable across moved paths, clones, worktrees, and changed remotes, distinguishing unrelated repositories, with no path or source exposure. The native OS folder dialog is a release-gated native-worker capability; the browser display of the selected repository and the worker-unavailable state land in Task 7; the reconnection-is-not-history-restoration distinction lands with Task 6.
 
-- [x] Define and enforce minimum outbound metadata.
+- [x] Task 5 - Define and enforce minimum outbound metadata.
+  - Size: Standard
   - Purpose: Establish connection and compatibility state without sending local paths, remote URLs, filenames, Git history, or source code during onboarding.
+  - Owned surfaces: `RepositoryConnectionContract`, exhaustive allowed fields, nested compatibility allowlist, prohibited and unexpected field rejection, first-outbound boundary, and minimum metadata proof.
+  - Depends on: Task 4
   - Proof: Contract and privacy tests reject prohibited fields and any outbound onboarding exchange before first-use confirmation, while allowing later unchanged connections without repeated confirmation.
   - Delivered: `Devices.RepositoryConnectionContract` defines the exhaustive allowed outbound fields (opaque connection id, workspace and worker ids, repository fingerprint, coarse compatibility, connection status) and fails closed on any prohibited, unexpected, or missing field at the top level and inside compatibility. The first-use disclosure and confirmation gate, and the confirm-once behavior, are delivered in Task 7.
 
-- [x] Create the project and local repository connection atomically.
+- [x] Task 6 - Create the project and local repository connection atomically.
+  - Size: Standard
   - Purpose: Apply shared naming and uniqueness rules without partial records.
+  - Owned surfaces: `Project`, `RepositoryConnection`, device registration transaction, case-insensitive naming, repository uniqueness, suffix allocation, idempotent failure behavior, and unchanged repository state.
+  - Depends on: Task 5
   - Proof: Tests cover concurrency, duplicate identity, suffix allocation, rollback, and unchanged repository state.
   - Delivered: `DeviceProject` plus device-store registration (`Devices.register_project/2`, `list_projects/0`, `get_project/1`, `find_by_fingerprint/1`) applying the shared workspace-scoped case-insensitive name key (reused from `Projects.Project.name_key/1`) with suffix allocation and one-project-per-repository (by fingerprint) uniqueness. Writes serialize through the store GenServer, so registration is atomic and a rejected registration writes nothing; device data never reaches Postgres and repository files are never touched. This also completes Task 1's deferred clause: after data loss the store is empty, so reconnecting a repository starts new history rather than restoring it.
 
-- [x] Build local onboarding and connection-state UX.
+- [x] Task 7 - Build local onboarding and connection-state UX.
+  - Size: Standard
   - Purpose: Complete the path without requiring terminal interaction beyond any approved installer step.
+  - Owned surfaces: Local onboarding LiveView, storage explanation, worker and selection handoffs, first-connection disclosure, atomic registration submission, dashboard routing, connection-state presentation, duplicate handoff, replacement pairing, `Locate repository`, responsive accessibility behavior, and project-portability recovery copy.
+  - Depends on: Task 6
   - Proof: Desktop and mobile scenarios cover graphical installation, pairing, native selection, first-connection disclosure and confirmation, accessible later disclosure, data-loss warning, success, direct new-project dashboard routing, visible repository, storage mode, connection status, replacement-worker pairing, `Locate repository` recovery, and project-portability handoff when an export exists.
   - Delivered: `LocalOnboardingLive` runs the whole accountless flow as internal steps — storage-mode explanation, worker discovery (Task 2), stub-driven pairing, native folder selection (`RepositoryValidation.validate/2`, name/location shown locally), and a first-connection privacy disclosure that states what stays local, what is shared, and the accountless data-loss limit with a project-portability recovery mention. Confirmation is required once (inferred from an empty device store) and afterwards the disclosure stays accessible behind a disclosure control without re-prompting. Confirming registers the project atomically through `Devices.register_project/2` and routes to `DeviceProjectDashboardLive` at `/local/projects/:id`, which shows the repository, the `On this device` storage mode, and a connection status derived live from `Devices.worker_status/1`. A duplicate repository is blocked (one project per repository) with a link to the existing project. `Locate repository` (a `locate` query parameter carrying the project id) reconnects only a canonical-identity match and treats a non-matching selection as a different repository. Replacement-worker pairing reuses the discovery pairing form. Primary actions are full-width on mobile and never wrap; negative states use error-red icons.
+
+- [ ] Task 8 - Implement the versioned portable repository-identity boundary.
+  - Size: Standard
+  - Purpose: Let an authorized worker generate and exactly match a non-reversible local repository identity without a source workspace key.
+  - Owned surfaces: `PortableRepositoryIdentity`, version tag and strict parser, random validation-salt generation, HMAC-SHA256 root-commit digest, constant-time matching, fresh independent identities, legacy-format recognition and original-workspace match, invalid and malformed identifier rejection, and path, credential, raw-object-ID, and workspace-identity exclusion.
+  - Depends on: Task 4
+  - Proof: Focused worker-boundary tests cover generation, round trip, exact and mismatched matches, independent salts, moved paths, clones, worktrees, changed remotes, malformed and legacy formats, constant-time comparison seam, forbidden-field absence, and unchanged Git fixtures.
+
+- [ ] Task 9 - Integrate portable identity creation, duplicate detection, and legacy upgrade.
+  - Size: Standard
+  - Purpose: Use the portable identity in normal onboarding and upgrade an existing legacy connection only after explicit source-side proof.
+  - Owned surfaces: `capability:portable-local-repository-identity`, new-connection identity allocation, workspace-authorized existing-identifier comparison before allocation, duplicate blocking, `RepositoryConnectionContract` versioned identity validation, `Locate repository` legacy-upgrade state, exact legacy proof, atomic device-store canonical-identity replacement and uniqueness recheck, failure and race rollback, actionable backup-readiness handoff, privacy disclosure update, and no global repository-equality query.
+  - Depends on: Task 7, Task 8
+  - Proof: Focused device-store, onboarding, privacy, and desktop and mobile LiveView tests cover new identity creation, same-workspace duplicate detection, independent-workspace unlinkability, exact portable Locate matching, successful legacy upgrade, mismatch, unavailable worker, uniqueness race, rollback, unchanged repository state, and backup-ready versus upgrade-required results.
 
 ## Verification Gate
 
@@ -92,6 +148,8 @@ Release boundary:
 - [ ] The coordinated first-release browser scenarios prove that both primary entry actions are available and complete.
 - [ ] GDPR data contract and privacy review for device metadata and credentials are complete.
 - [x] Build, formatting, lint, static checks, and logs review pass.
+- [ ] Portable identity generation, exact target matching, independent-workspace unlinkability, same-workspace duplicate detection, and malformed-identifier tests pass.
+- [ ] Legacy source-side upgrade, atomic rollback, backup-readiness handoff, and unchanged-repository proofs pass.
 
 ## Blocked Decisions
 
@@ -104,6 +162,13 @@ Release boundary:
 - Final privacy review and confirmation of retention durations for the device-metadata and pairing-credential data contract recorded in `design.md`.
 
 ## Progress Log
+
+### 2026-07-28 - Portable local repository identity approved
+
+- Completed: Replaced the non-portable future contract with a versioned local canonical identifier containing a random per-identity validation salt and a non-reversible root-commit digest. Independent onboarding creates different identifiers; exact equality becomes available only when an authorized workspace already holds an identifier or the user deliberately transfers it through same-project portability. Existing workspace-scoped fingerprints remain usable locally but require explicit exact source-side `Locate repository` validation and atomic upgrade before replacement-environment backup.
+- Remaining: Implement the pure identity boundary in Task 8 and the onboarding, duplicate-detection, legacy-upgrade, and backup-readiness integration in Task 9. The portability consumer remains blocked until `capability:portable-local-repository-identity` is ready after Task 9.
+- Failed checks: None; this is an approved specification correction discovered during Slice 06 Task 21 preflight.
+- Spec updates: Added the capability provider, task-size and dependency contracts, explicit task labels for the preserved completed work, Tasks 8 and 9, identity-linkability data handling, legacy behavior, and focused proof.
 
 ### 2026-07-23 - Extracted from project onboarding
 

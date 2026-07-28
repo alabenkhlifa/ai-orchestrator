@@ -4,7 +4,7 @@
 
 Blocked
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, and 20 are complete. Task 21 is the next implementation task and is blocked on the local canonical-identity portability decision recorded below.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the portable local repository identity and legacy source-side upgrade contract. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, and 20 are complete. Task 25 is the next implementation task and is blocked until `capability:portable-local-repository-identity` is ready.
 
 ## Active Slice
 
@@ -18,6 +18,7 @@ Requires:
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 17`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 2`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 22`.
+- `capability:portable-local-repository-identity` — provider `specs/02-local-project-onboarding#Task 9` — required before `Task 25`.
 
 Provides:
 
@@ -41,6 +42,7 @@ Included:
 - Integrity information and negative secret filtering.
 - Isolated restore validation, authority check, and temporary cleanup.
 - Atomic restoration into an available storage mode.
+- Portable local repository-identity readiness, a source-side legacy-upgrade handoff before package generation, and exact target-worker reconnection without source workspace identity.
 - User-entered display-name recovery for a name-only conflict and blocking canonical-repository conflicts.
 - Approved package, temporary-data, provenance, log, backup, processor, rights, no-reuse, security, compatibility, and responsive browser proof.
 
@@ -190,14 +192,23 @@ Release boundary:
   - Depends on: Task 13
   - Proof: Focused GitHub provider-contract tests cover missing, failed, and successful authorization, canonical identity mismatch, absence of stale credentials, and fixture-level proof that repository content and configuration remain unchanged.
 
+- [ ] Task 25 - Enforce portable local identity before package generation.
+  - Size: Standard
+  - Status: Blocked until `capability:portable-local-repository-identity` is ready.
+  - Purpose: Prevent a legacy workspace-scoped local fingerprint from being packaged as if a replacement worker could validate it.
+  - Owned surfaces: Portable local canonical-identifier recognition in snapshot and package validation, local backup readiness, legacy-identity rejection before encryption, actionable source-side `Locate repository` upgrade handoff in the backup interface, retry after upgrade, versioned-identifier allowlist proof, and no package, project, connection, or repository mutation on blocked backup.
+  - Owns: AC-26
+  - Depends on: Task 6
+  - Proof: Focused snapshot, validation, backup-service, LiveView, and desktop and mobile browser tests cover portable success, legacy blocking, upgrade handoff, retry after exact source upgrade, malformed identity rejection, no encrypted artifact on failure, and unchanged project and repository state.
+
 - [ ] Task 21 - Integrate explicit local-repository reconnection.
   - Size: Standard
-  - Status: Blocked on an approved portable local canonical-identity mechanism.
+  - Status: Blocked until `capability:portable-local-repository-identity` and Task 25 are complete.
   - Purpose: Reuse normal worker validation without treating package control as local repository authority.
-  - Owned surfaces: Local reconnection action, existing worker authorization and repository-validation reuse, canonical local repository identity binding, success and failure handoff, no packaged path or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
+  - Owned surfaces: Local reconnection action, existing worker authorization and portable repository-validation reuse, packaged identifier handoff, exact canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no packaged path or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
   - Owns: AC-22
-  - Depends on: Task 13
-  - Proof: Focused worker-contract tests cover unavailable, failed, and successful validation, canonical identity mismatch, absence of packaged paths and credentials, and fixture-level proof that repository content and configuration remain unchanged.
+  - Depends on: Task 13, Task 25
+  - Proof: Focused worker-contract tests cover unavailable, failed, and successful validation, exact portable match, canonical identity mismatch, malformed and legacy identifiers, source-workspace independence, absence of packaged paths and credentials, and fixture-level proof that repository content and configuration remain unchanged.
 
 - [ ] Task 15 - Build restore conflict recovery and completion interface.
   - Size: Standard
@@ -279,20 +290,28 @@ Release boundary:
 - [ ] Malformed, unsafe, unsupported, oversized, unknown-field, path, archive, and resource-limit tests pass.
 - [ ] Name-only conflicts permit an explicitly entered valid unique display name or cancellation, canonical-repository conflicts always block, and storage, atomicity, idempotency, concurrency, and rollback tests pass.
 - [ ] Repository reconnection requires normal authorization and leaves repository content and configuration unchanged.
+- [ ] Local backup accepts only the portable versioned canonical identifier, blocks legacy workspace-scoped fingerprints before encryption, and provides the source-side upgrade handoff without mutation.
 - [ ] The approved GDPR contract passes: no completed service package; immediate passphrase, key, decrypted-content, and terminal temporary-data disposal; stranded encrypted data and attempt cleanup within 24 hours; minimal project-bound provenance; 30-day security logs; 35-day encrypted backups; verified rights and processor propagation; and no analytics, advertising, model training, identity tracking, or unrelated reuse.
 - [ ] Required LiveView and desktop and mobile browser scenarios pass without exposing cross-user exchange or create-copy behavior.
 - [ ] Approved canonical build, formatting, lint, static, security, production, and failure-log checks pass.
 
 ## Blocked Decisions
 
-- Technical design and data handling: Slice 02's implemented local repository fingerprint is HMAC-keyed by the source device-workspace salt, but this slice excludes source workspace identity and environment-specific connection state from the package. A different authorized destination therefore cannot reproduce the packaged fingerprint through normal worker validation. Before Task 21, approve a non-reversible canonical-identity mechanism that supports exact post-restore validation and defines cross-workspace linkability plus legacy-fingerprint handling. This blocks technical-design readiness and active-slice implementation; it does not invalidate Tasks 1–20 or change the release-only deployment evidence.
+- Implementation dependency, not an unresolved agreement decision: Tasks 25 and 21 require `capability:portable-local-repository-identity` from `specs/02-local-project-onboarding#Task 9`. Requirements and technical design are approved; active-slice implementation resumes after the provider task and its focused proof are complete.
 
 ## Progress Log
+
+### 2026-07-28 - Portable local repository identity contract approved
+
+- Completed: Approved a versioned local canonical identifier containing a random per-identity validation salt and a non-reversible root-commit digest. Independent onboarding generates different identifiers; exact equality becomes available only where an authorized workspace already holds the identifier or the user deliberately transfers it in an encrypted same-project package. A target worker can recompute a supplied identifier without source workspace identity. Legacy workspace-scoped fingerprints require explicit exact source-side `Locate repository` validation and atomic upgrade before backup.
+- Remaining: Slice 02 Tasks 8 and 9 must provide `capability:portable-local-repository-identity`; then implement Slice 06 Task 25's backup-readiness handoff and Task 21's exact local reconnection before continuing Task 15.
+- Failed checks: None. The approved decision resolves the technical-design blocker; only the provider implementation dependency remains.
+- Spec updates: Added the provider/consumer capability edge, AC-26, Task 25, the expanded Task 21 contract, package and worker boundaries, privacy/linkability treatment, legacy behavior, and focused proof; cleared `Blocked Decisions`.
 
 ### 2026-07-28 - Task 21 blocked: local canonical identity is not portable
 
 - Completed: Task 21 preflight traced the packaged local repository identity to Slice 02's worker validation and confirmed that its HMAC key is the source device-workspace salt. The package correctly excludes that workspace identity, local paths, and connection metadata, so a target worker cannot reproduce the exact packaged fingerprint after restoration.
-- Remaining: Approve and specify a non-reversible portable local canonical-identity mechanism, including cross-workspace linkability and legacy-fingerprint behavior, through `update-spec`; then resume Task 21.
+- Remaining: Resolved by the approved portable identity contract above. Slice 02 Tasks 8 and 9 now provide the required implementation dependency before Slice 06 Tasks 25 and 21 resume.
 - Failed checks: No implementation check failed. The approved contracts are internally incomplete at the local reconnection seam, so application changes stopped before mutation.
 - Spec updates: Marked the slice and Task 21 blocked, recorded the technical-design question, and preserved all completed task and capability state.
 
