@@ -191,16 +191,50 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
       review: "Approved development data contract (design.md)."
     },
     %DataProcessingRecord{
-      activity: :project_onboarding_attempt,
-      purpose: "Hold short-lived onboarding workflow state until a project is created.",
+      activity: :workspace,
+      purpose:
+        "Own projects and repository connections through one common logical hosted workspace root.",
       lawful_basis: :contract,
-      personal_data: ["selected repository metadata", "storage mode", "device-setup receipt"],
-      access: "Authenticated user and authorized operations roles.",
-      retention: "Deleted 24 hours after abandonment or consumption.",
+      personal_data: ["workspace id", "workspace kind (hosted)"],
+      access: "Authenticated user and authorized operations roles; never coding agents.",
+      retention: "While the hosted account is active; removed by account erasure.",
+      rights: "Access, erasure, portability via operator workflow.",
+      processors: ["Hosting database"],
+      transfers: "Per deployment privacy profile.",
+      review: "Approved storage-selection data contract (Slice 05 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :hosted_project_storage,
+      purpose: "Establish the hosted storage root for a project the user saved to their account.",
+      lawful_basis: :contract,
+      personal_data: ["project id", "internal storage root key", "storage state"],
+      access: "Authenticated user and authorized operations roles; never coding agents.",
+      retention: "While the hosted project exists; removed by erasure or service termination.",
       rights: "Access, erasure via operator workflow.",
       processors: ["Hosting database"],
       transfers: "Per deployment privacy profile.",
-      review: "Approved development data contract (design.md)."
+      review: "Approved storage-selection data contract (Slice 05 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :project_onboarding_attempt,
+      purpose: "Hold short-lived onboarding workflow state until a project is created.",
+      lawful_basis: :contract,
+      personal_data: [
+        "origin and target workspace references",
+        "source-approved repository metadata (GitHub numeric id, or local fingerprint and display name)",
+        "storage mode",
+        "status and idempotency key",
+        "one-time device-readiness and hosted-return proof digests",
+        "browser-flow binding",
+        "issue, expiry, consumption, and acknowledgement timestamps"
+      ],
+      access: "Authenticated user and authorized operations roles.",
+      retention:
+        "Unusable on consumption or expiry and deleted within 24 hours; raw device-readiness and hosted-return proofs are discarded immediately after verification and only their digests persist.",
+      rights: "Access, erasure via operator workflow.",
+      processors: ["Hosting database"],
+      transfers: "Per deployment privacy profile.",
+      review: "Approved storage-selection data contract (Slice 05 design.md)."
     },
     %DataProcessingRecord{
       activity: :operational_security_log,

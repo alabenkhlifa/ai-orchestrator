@@ -89,7 +89,7 @@ Release boundary:
   - Depends on: Task 4
   - Proof: Query, desktop and mobile LiveView, and browser scenarios cover common workspace scoping, both modes, mixed catalogs, non-owning device-project composition while signed in, unavailable device data, hosted authorization, sign-out with device access preserved, shared-repository entries, separate same-ID authoritative records with identity-conflict state and no resolution action, no cross-boundary collision link or analytics, cross-workspace denial, and post-creation dashboard presentation.
 
-- [ ] Task 6 - Enforce the active-slice privacy and security contract.
+- [x] Task 6 - Enforce the active-slice privacy and security contract.
   - Purpose: Govern every introduced record, log, processor, and lifecycle without adding product analytics.
   - Owned surfaces: Active data inventory, access controls, retention and deletion enforcement, rights behavior, processor and transfer configuration, log redaction, secret scanning, no-analytics proof, and `capability:project-storage-governance` readiness write-back.
   - Owns: AC-12, AC-13, AC-17
@@ -116,6 +116,13 @@ Release boundary:
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Task 6 complete: active-slice privacy and security contract enforced
+
+- Data inventory (AC-12): extended `ProcessingInventory` with the common `:workspace` root and `:hosted_project_storage` records, and rewrote `:project_onboarding_attempt` to reflect the slice-05 shape — origin and target workspace references, source-approved repository metadata (GitHub numeric id, or local fingerprint and display name), storage mode, status and idempotency key, one-time device-readiness and hosted-return proof digests, browser-flow binding, and lifecycle timestamps. Every record keeps a purpose, lawful basis, access, retention, deletion, rights, processor, transfer, and review; none has an analytics purpose.
+- Boundary enforcement (AC-17): `storage_boundary_test` proves the actual stored records exclude every prohibited device or source field — a recorded readiness receipt persists only its minimized binding (digest, nonce, attempt and device-workspace ids, issue/expiry) with no raw proof or device label, and a local repository crosses into the hosted attempt only as its non-reversible fingerprint and display name (no path, remote URL, filename, Git history, or source). The retention pruner already deletes terminal onboarding attempts (and their embedded proof digests) within 24 hours; operational-security logs are retained 30 days and encrypted backups 35 days per the approved contract and deployment profile.
+- No analytics / secrets (AC-13): the analytics-absence data-store scan, the inventory's `analytics? == false`, the no-external-request presentation browser proof, log-redaction and content-security-policy security tests, and `mix sobelow --config` all pass; the storage-selection surface and catalog composition emit and retain no product-analytics event, identifier, or storage-choice metric.
+- Passing proofs: full privacy suite (`test/sdd_orchestrator/privacy/`, 30) including the new slice-05 inventory completeness and boundary assertions; security suite (5); full `MIX_ENV=test mix test` (515 passed, 1 excluded live test); `mix format --check-formatted`; `mix credo --strict`; `mix dialyzer`; `mix deps.audit`; and `mix sobelow --config`.
 
 ### 2026-07-28 - Task 5 complete: combined catalog composition and non-mutating collision presentation
 

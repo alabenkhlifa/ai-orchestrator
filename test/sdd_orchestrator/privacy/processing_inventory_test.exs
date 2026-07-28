@@ -13,7 +13,8 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
     github_identity application_session github_credential github_authorization_attempt
     hosted_identity external_identity magic_link_attempt passwordless_email_delivery
     hosted_session passwordless_abuse_control
-    personal_workspace project_and_repository_connection project_onboarding_attempt
+    personal_workspace workspace hosted_project_storage
+    project_and_repository_connection project_onboarding_attempt
     operational_security_log
   )a
 
@@ -48,6 +49,25 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
                "model training"
              ])
     end
+  end
+
+  test "the storage-selection attempt retains only minimized proof digests and source-approved metadata (Slice 05 AC-12, AC-17)" do
+    attempt =
+      Enum.find(ProcessingInventory.records(), &(&1.activity == :project_onboarding_attempt))
+
+    data = attempt.personal_data |> Enum.join(" ") |> String.downcase()
+
+    # Only proof digests persist; the hosted boundary carries no raw proof, device
+    # label, path, or credential.
+    assert data =~ "digest"
+    assert data =~ "fingerprint"
+    refute data =~ "raw"
+    refute data =~ "device label"
+    refute data =~ "path"
+    refute data =~ "token"
+
+    # Terminal attempts and their proof bindings are deleted within 24 hours.
+    assert String.downcase(attempt.retention) =~ "24 hours"
   end
 
   test "treats hashed and stable authentication identifiers as personal data" do
