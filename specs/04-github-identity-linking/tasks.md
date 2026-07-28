@@ -61,7 +61,7 @@ Deferred after this slice:
   - Purpose: Preserve the passwordless identity and every hosted project exactly once.
   - Proof: Persistence and fault-injection tests prove confirmation binding, idempotency, rollback, stable identities, complete data movement, GitHub sign-in to the surviving workspace, and no partial workspace state.
 
-- [ ] Revoke absorbed-workspace worker credentials after commit.
+- [x] Revoke absorbed-workspace worker credentials after commit.
   - Purpose: Prevent silent transfer of machine trust.
   - Proof: Tests show successful merge revokes old credentials without changing workers or files, while failed merge preserves them.
 
@@ -155,4 +155,11 @@ Deferred after this slice:
 - Completed: Task 6. Added `IdentityLinking.commit_merge/1`: under row locks on the attempt and both accounts it re-checks proof+confirmation and re-runs the preflight, then in one transaction moves every project and repository connection to the surviving workspace (stable project ids, project-scoped hosted storage preserved), re-points the GitHub identity, credential, and application sessions to the surviving account so a later GitHub sign-in resolves to the surviving workspace, and records GitHub as an `ExternalIdentity` sign-in method on the surviving hosted identity. It is idempotent (a committed attempt is a no-op returning the committed attempt), returns `{:error, :not_eligible}` without both fresh proofs and confirmation, and `{:error, :conflict}` on a preflight or constraint collision — rolling back with no partial state.
 - Engineering mechanism: migration `20260728140000` makes the `repository_connections (project_id, workspace_id) → projects (id, workspace_id)` composite FK `DEFERRABLE INITIALLY DEFERRED` so a project and its connection move together and validate at commit; the integrity guarantee is unchanged for every non-merge write. The `projects (workspace_id, storage_mode) → workspaces (id, kind)` FK stays immediate and is satisfied because both workspaces are `hosted`. `commit_eligible?/1` was split into `proven_and_confirmed?` + preflight so the commit distinguishes `:not_eligible` from `:conflict`.
 - Proof: `mix test test/sdd_orchestrator/identity_linking/merge_commit_test.exs` — 5 passed; full `mix test test/sdd_orchestrator/identity_linking/` — 60 passed (5 properties, 55 tests), exit 0. Covers atomic movement, stable identities, GitHub-sign-in/credential/session re-pointing, sign-in-method attachment, idempotency (no duplicate attach), confirmation binding (unconfirmed refused, nothing moved), and conflict rollback with no partial state. `mix compile --warnings-as-errors` clean.
+- Failed checks: None.
+
+### 2026-07-28 - Task 7: absorbed-workspace worker-credential revocation
+
+- Completed: Task 7. The merge commit now revokes every active `LocalWorker` paired to the absorbed workspace inside the same transaction (state `revoked`, `revoked_at` stamped), so machine trust is never silently transferred; the worker rows and their credential material remain intact so the workers and local files are untouched and explicit re-pairing to the surviving workspace issues fresh credentials. A rollback leaves the prior pairing active.
+- Interpretation: a worker "belongs to" a workspace when `local_worker.device_workspace_id` equals that workspace id; revocation keys on the absorbed workspace id. This is the natural, forward-compatible mechanism against the Slice 02 worker model, in which the id field is an opaque workspace reference.
+- Proof: `mix test test/sdd_orchestrator/identity_linking/worker_revocation_test.exs` — 3 passed, exit 0. Covers success revokes-without-deleting, the surviving workspace's own worker is untouched, and a failed merge preserves the pairing. `mix compile --warnings-as-errors` clean.
 - Failed checks: None.

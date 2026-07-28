@@ -25,6 +25,7 @@ defmodule SddOrchestrator.IdentityLinking do
     PersonalWorkspace
   }
 
+  alias SddOrchestrator.Devices.LocalWorker
   alias SddOrchestrator.IdentityLinking.{EmailMatch, IdentityMergeAttempt, Preflight}
   alias SddOrchestrator.Projects.{Project, RepositoryConnection}
   alias SddOrchestrator.Repo
@@ -427,6 +428,7 @@ defmodule SddOrchestrator.IdentityLinking do
     surviving_ws = workspace_id_for_account(attempt.surviving_account_id)
 
     move_projects(absorbed_ws, surviving_ws, now)
+    revoke_absorbed_workers(absorbed_ws, now)
     repoint_github_account(attempt.absorbed_account_id, attempt.surviving_account_id, now)
     attach_github_sign_in(attempt, now)
 
@@ -449,6 +451,19 @@ defmodule SddOrchestrator.IdentityLinking do
     Repo.update_all(
       from(c in RepositoryConnection, where: c.workspace_id == ^absorbed_ws),
       set: [workspace_id: surviving_ws, updated_at: now]
+    )
+  end
+
+  # Revoke every active worker paired to the absorbed workspace inside the same
+  # commit: machine trust is scoped to one workspace and is never transferred. The
+  # worker rows and local files are untouched, so explicit re-pairing to the
+  # surviving workspace issues fresh credentials. A rollback leaves them active.
+  defp revoke_absorbed_workers(absorbed_ws, now) do
+    Repo.update_all(
+      from(w in LocalWorker,
+        where: w.device_workspace_id == ^absorbed_ws and w.state == "active"
+      ),
+      set: [state: "revoked", revoked_at: now, updated_at: now]
     )
   end
 
