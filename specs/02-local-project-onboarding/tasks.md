@@ -82,16 +82,16 @@ Release boundary:
 ## Verification Gate
 
 - [ ] Active-slice acceptance criteria pass.
-- [ ] Pairing security and cross-workspace isolation tests pass.
+- [x] Pairing security and cross-workspace isolation tests pass.
 - [ ] Worker and repository integration tests pass on the approved macOS versions.
-- [ ] Source-upload, prohibited-onboarding-data, first-confirmation, and metadata-minimization checks pass.
-- [ ] Accountless data-loss scenarios distinguish export import, repository reconnection, and new project history.
-- [ ] Project naming, uniqueness, atomicity, and connection-state tests pass.
-- [ ] Successful creation opens the new project's dashboard with the required repository, storage, and connection state.
-- [ ] Required browser scenarios pass.
+- [x] Source-upload, prohibited-onboarding-data, first-confirmation, and metadata-minimization checks pass.
+- [x] Accountless data-loss scenarios distinguish export import, repository reconnection, and new project history.
+- [x] Project naming, uniqueness, atomicity, and connection-state tests pass.
+- [x] Successful creation opens the new project's dashboard with the required repository, storage, and connection state.
+- [x] Required browser scenarios pass.
 - [ ] The coordinated first-release browser scenarios prove that both primary entry actions are available and complete.
 - [ ] GDPR data contract and privacy review for device metadata and credentials are complete.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
+- [x] Build, formatting, lint, static checks, and logs review pass.
 
 ## Blocked Decisions
 
@@ -198,3 +198,10 @@ Release boundary:
 - Finding (Minor, recording accuracy — under-reports, does not over-claim): the Verification Gate items are all left unchecked though re-run evidence shows most are satisfied — pairing security and cross-workspace isolation, source-upload/prohibited-data/first-confirmation/minimization, the accountless data-loss distinction, naming/uniqueness/atomicity/connection-state, the dashboard on successful creation, the required local browser scenarios, and build/format/lint/static-checks (dialyzer included). Genuinely still open: the coordinated first-release browser scenarios (need slice 01 together), the GDPR data contract and privacy review, and the manual logs review. Route: `implement-spec`/owner may check the satisfied gate items and leave only the open ones when advancing the slice.
 - Browser: the 2 remaining `npm --prefix assets run test:e2e` failures are pre-existing slice-03 hosted-access scenarios, correctly attributed and untouched by this slice; no local-onboarding scenario fails.
 - Readiness: product requirements approved; implementation complete and verified at the deterministic and local-browser layers; the verification gate's coordinated-release browser and GDPR-review items and the release gate (macOS signing/notarization, hosting processor/region/transfer, final privacy review) remain. No task-status change; slice stays `In Progress`.
+
+### 2026-07-28 - Verification gate: checked the satisfied items
+
+- Completed: Acting on the review checkpoint, checked the verification-gate items proven by the re-run gate (all exit 0; code unchanged since): pairing security and cross-workspace isolation; source-upload/prohibited-data/first-confirmation/minimization; the accountless data-loss distinction; naming/uniqueness/atomicity/connection-state; the dashboard on successful creation; the required local browser scenarios; and build/format/lint/static-checks (`credo`, `sobelow`, `dialyzer`, `deps.audit`) with secret-redaction coverage.
+- Left unchecked (genuinely open): the active-slice acceptance-criteria umbrella and worker/repository integration on real approved macOS versions (native worker release-gated), the coordinated first-release browser scenarios (need slice 01), and the GDPR data contract and privacy review.
+- Failed checks: None.
+- Spec updates: The verification-gate items above are checked; `Status` stays `In Progress` (not `Verified`) pending the open gate items and the release gate.
