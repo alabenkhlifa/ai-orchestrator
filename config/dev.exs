@@ -70,7 +70,9 @@ config :sdd_orchestrator, SddOrchestrator.Vault,
 
 # Load local secrets from a git-ignored `.env` (KEY=value lines) so `mix phx.server`
 # picks up the GitHub App credentials without exporting them on every command. Only
-# runs in dev; values set here feed the env reads below.
+# runs in dev; values set here feed the env reads below. An explicitly exported
+# variable wins over the file so a caller (e.g. the Playwright e2e server, which
+# sets APP_ORIGIN and PORT for its own origin) is never clobbered by `.env`.
 env_file = Path.expand("../.env", __DIR__)
 
 if File.exists?(env_file) do
@@ -79,8 +81,10 @@ if File.exists?(env_file) do
       trimmed != "",
       not String.starts_with?(trimmed, "#"),
       [key, value] <- [String.split(trimmed, "=", parts: 2)],
-      value != nil do
-    System.put_env(String.trim(key), String.trim(value))
+      value != nil,
+      key = String.trim(key),
+      System.get_env(key) == nil do
+    System.put_env(key, String.trim(value))
   end
 end
 
