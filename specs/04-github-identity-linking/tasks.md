@@ -57,7 +57,7 @@ Deferred after this slice:
   - Proof: Security and browser tests cover successful proof, invalid, expired, mismatched, replayed, cancelled, and unconfirmed attempts; only a freshly proven and explicitly confirmed attempt may reach commit.
   - Ownership note: the security/domain gate and its ExUnit proofs are owned here; the linking UI and its browser scenarios for the two-proof and confirmation flow are owned by Task 9 (disclosure/UX), which exercises this same domain gate end to end.
 
-- [ ] Implement atomic conflict-free identity and project consolidation.
+- [x] Implement atomic conflict-free identity and project consolidation.
   - Purpose: Preserve the passwordless identity and every hosted project exactly once.
   - Proof: Persistence and fault-injection tests prove confirmation binding, idempotency, rollback, stable identities, complete data movement, GitHub sign-in to the surviving workspace, and no partial workspace state.
 
@@ -148,4 +148,11 @@ Deferred after this slice:
 - Engineering mechanism: the GitHub proof is the fresh authentication recorded at attempt creation; both proofs and the confirmation bind to one attempt id, matching the design's attempt-bound two-proof commit pattern.
 - Ownership: the two-proof/confirmation UI and its Playwright browser scenarios are delivered by Task 9 (disclosure/UX) against this gate; recorded in the task's ownership note.
 - Proof: `mix test test/sdd_orchestrator/identity_linking/proof_confirmation_test.exs` — 13 passed, exit 0. Covers successful proof, invalid, malformed, expired, mismatched-challenge, replayed, cancelled, unconfirmed, conflict-refusal, expiry, and the email-match-alone case. `mix compile --warnings-as-errors` clean.
+- Failed checks: None.
+
+### 2026-07-28 - Task 6: atomic conflict-free identity and project consolidation
+
+- Completed: Task 6. Added `IdentityLinking.commit_merge/1`: under row locks on the attempt and both accounts it re-checks proof+confirmation and re-runs the preflight, then in one transaction moves every project and repository connection to the surviving workspace (stable project ids, project-scoped hosted storage preserved), re-points the GitHub identity, credential, and application sessions to the surviving account so a later GitHub sign-in resolves to the surviving workspace, and records GitHub as an `ExternalIdentity` sign-in method on the surviving hosted identity. It is idempotent (a committed attempt is a no-op returning the committed attempt), returns `{:error, :not_eligible}` without both fresh proofs and confirmation, and `{:error, :conflict}` on a preflight or constraint collision — rolling back with no partial state.
+- Engineering mechanism: migration `20260728140000` makes the `repository_connections (project_id, workspace_id) → projects (id, workspace_id)` composite FK `DEFERRABLE INITIALLY DEFERRED` so a project and its connection move together and validate at commit; the integrity guarantee is unchanged for every non-merge write. The `projects (workspace_id, storage_mode) → workspaces (id, kind)` FK stays immediate and is satisfied because both workspaces are `hosted`. `commit_eligible?/1` was split into `proven_and_confirmed?` + preflight so the commit distinguishes `:not_eligible` from `:conflict`.
+- Proof: `mix test test/sdd_orchestrator/identity_linking/merge_commit_test.exs` — 5 passed; full `mix test test/sdd_orchestrator/identity_linking/` — 60 passed (5 properties, 55 tests), exit 0. Covers atomic movement, stable identities, GitHub-sign-in/credential/session re-pointing, sign-in-method attachment, idempotency (no duplicate attach), confirmation binding (unconfirmed refused, nothing moved), and conflict rollback with no partial state. `mix compile --warnings-as-errors` clean.
 - Failed checks: None.

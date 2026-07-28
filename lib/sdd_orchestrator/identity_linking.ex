@@ -15,7 +15,16 @@ defmodule SddOrchestrator.IdentityLinking do
   """
   import Ecto.Query
 
-  alias SddOrchestrator.Accounts.{Account, ExternalIdentity, HostedIdentity, PersonalWorkspace}
+  alias SddOrchestrator.Accounts.{
+    Account,
+    ApplicationSession,
+    ExternalIdentity,
+    GitHubCredential,
+    GitHubIdentity,
+    HostedIdentity,
+    PersonalWorkspace
+  }
+
   alias SddOrchestrator.IdentityLinking.{EmailMatch, IdentityMergeAttempt, Preflight}
   alias SddOrchestrator.Projects.{Project, RepositoryConnection}
   alias SddOrchestrator.Repo
@@ -298,8 +307,11 @@ defmodule SddOrchestrator.IdentityLinking do
   """
   @spec commit_eligible?(IdentityMergeAttempt.t()) :: boolean()
   def commit_eligible?(%IdentityMergeAttempt{} = attempt) do
-    proofs_complete?(attempt) and not is_nil(attempt.confirmed_at) and
-      Preflight.clear?(preflight(attempt))
+    proven_and_confirmed?(attempt) and Preflight.clear?(preflight(attempt))
+  end
+
+  defp proven_and_confirmed?(%IdentityMergeAttempt{} = attempt) do
+    proofs_complete?(attempt) and not is_nil(attempt.confirmed_at)
   end
 
   defp proofs_complete?(%IdentityMergeAttempt{} = attempt) do
@@ -357,6 +369,138 @@ defmodule SddOrchestrator.IdentityLinking do
   end
 
   defp valid_token_shape?(_raw_token), do: false
+
+  ## Atomic merge commit
+
+  @doc """
+  Commits a confirmed, conflict-free merge atomically.
+
+  Under row locks on the attempt and both accounts it re-checks eligibility and
+  re-runs the preflight, then in one transaction moves every hosted project and
+  repository connection into the surviving workspace (stable project ids), attaches
+  the GitHub identity, credential, and sessions to the surviving account, and
+  records GitHub as a sign-in method on the surviving hosted identity. Any conflict
+  or fault rolls everything back, leaving both original boundaries unchanged.
+
+  Idempotent: a retry of an already-committed attempt is a no-op that returns the
+  committed attempt. Returns `{:error, :not_eligible}` without both fresh proofs
+  and confirmation, and `{:error, :conflict}` on a preflight or constraint
+  collision.
+  """
+  @spec commit_merge(IdentityMergeAttempt.t()) ::
+          {:ok, IdentityMergeAttempt.t()} | {:error, :not_found | :not_eligible | :conflict}
+  def commit_merge(%IdentityMergeAttempt{id: id}) do
+    Repo.transaction(fn -> do_commit(id) end)
+    |> case do
+      {:ok, attempt} -> {:ok, attempt}
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    # A concurrent conflicting insert trips a workspace uniqueness constraint; the
+    # transaction is already rolled back, so no partial state remains.
+    Ecto.ConstraintError -> {:error, :conflict}
+  end
+
+  defp do_commit(id) do
+    case lock_attempt(id) do
+      nil ->
+        Repo.rollback(:not_found)
+
+      %IdentityMergeAttempt{committed_at: committed} = attempt when not is_nil(committed) ->
+        # Already merged: idempotent no-op.
+        attempt
+
+      %IdentityMergeAttempt{} = attempt ->
+        lock_accounts([attempt.absorbed_account_id, attempt.surviving_account_id])
+
+        cond do
+          not proven_and_confirmed?(attempt) -> Repo.rollback(:not_eligible)
+          Preflight.conflicted?(preflight(attempt)) -> Repo.rollback(:conflict)
+          true -> consolidate(attempt)
+        end
+    end
+  end
+
+  defp consolidate(%IdentityMergeAttempt{} = attempt) do
+    now = now()
+    absorbed_ws = workspace_id_for_account(attempt.absorbed_account_id)
+    surviving_ws = workspace_id_for_account(attempt.surviving_account_id)
+
+    move_projects(absorbed_ws, surviving_ws, now)
+    repoint_github_account(attempt.absorbed_account_id, attempt.surviving_account_id, now)
+    attach_github_sign_in(attempt, now)
+
+    {:ok, committed} =
+      attempt
+      |> IdentityMergeAttempt.status_changeset(%{status: "committed", committed_at: now})
+      |> Repo.update()
+
+    committed
+  end
+
+  # Move every project and repository connection to the surviving workspace,
+  # preserving stable project ids and their (project-scoped) hosted storage.
+  defp move_projects(absorbed_ws, surviving_ws, now) do
+    Repo.update_all(
+      from(p in Project, where: p.workspace_id == ^absorbed_ws),
+      set: [workspace_id: surviving_ws, updated_at: now]
+    )
+
+    Repo.update_all(
+      from(c in RepositoryConnection, where: c.workspace_id == ^absorbed_ws),
+      set: [workspace_id: surviving_ws, updated_at: now]
+    )
+  end
+
+  # Re-point the GitHub identity, credential, and sessions so a later GitHub
+  # sign-in resolves to the surviving account and workspace.
+  defp repoint_github_account(absorbed_account_id, surviving_account_id, now) do
+    Repo.update_all(
+      from(g in GitHubIdentity, where: g.account_id == ^absorbed_account_id),
+      set: [account_id: surviving_account_id, updated_at: now]
+    )
+
+    Repo.update_all(
+      from(c in GitHubCredential, where: c.account_id == ^absorbed_account_id),
+      set: [account_id: surviving_account_id, updated_at: now]
+    )
+
+    Repo.update_all(
+      from(s in ApplicationSession, where: s.account_id == ^absorbed_account_id),
+      set: [account_id: surviving_account_id, updated_at: now]
+    )
+  end
+
+  # Record GitHub as a sign-in method on the surviving hosted identity so it can
+  # authenticate the surviving identity after the merge.
+  defp attach_github_sign_in(%IdentityMergeAttempt{} = attempt, now) do
+    case Repo.get_by(GitHubIdentity, account_id: attempt.surviving_account_id) do
+      %GitHubIdentity{} = github ->
+        %ExternalIdentity{}
+        |> ExternalIdentity.changeset(%{
+          provider: "github",
+          subject_key: Integer.to_string(github.github_user_id),
+          display_identifier: github.login,
+          verified_at: now,
+          hosted_identity_id: attempt.candidate_hosted_identity_id
+        })
+        |> Repo.insert!()
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp lock_attempt(id) do
+    Repo.one(from a in IdentityMergeAttempt, where: a.id == ^id, lock: "FOR UPDATE")
+  end
+
+  # Lock in a deterministic order to avoid deadlock between concurrent merges.
+  defp lock_accounts(account_ids) do
+    ordered = account_ids |> Enum.uniq() |> Enum.sort()
+
+    Repo.all(from a in Account, where: a.id in ^ordered, order_by: a.id, lock: "FOR UPDATE")
+  end
 
   ## Preflight
 
