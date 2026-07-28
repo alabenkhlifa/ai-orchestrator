@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, and 12 are complete. Task 19 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, and 19 are complete. Task 13 is the next implementation task.
 
 ## Active Slice
 
@@ -166,7 +166,7 @@ Release boundary:
   - Depends on: Task 11
   - Proof: Focused hosted transaction, constraint, concurrency, replay, retry, and fault-injection tests prove exactly one restored project and current specification set, identity preservation, minimal provenance, atomic rollback, and no partial or duplicate state.
 
-- [ ] Task 19 - Implement the device-authoritative atomic restoration adapter.
+- [x] Task 19 - Implement the device-authoritative atomic restoration adapter.
   - Size: Standard
   - Purpose: Create the packaged project and current specifications exactly once on an authorized device without a hosted authoritative copy.
   - Owned surfaces: Device storage prerequisites, `SpecificationStore.prepare_restore` device contribution, worker-owned local transaction, stable project, repository, and specification identities, approved display name, device identity and canonical-repository constraints, minimal local provenance, acknowledgement, rollback, idempotency, retry, and no hosted authoritative or duplicate specification persistence.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 19 complete: device-authoritative atomic restoration
+
+- Completed: Extended the device project value with its owning device workspace and provider-neutral canonical repository identity; added device-local minimal provenance access; and implemented `DeviceRestore` through one worker-owned `DeviceTransaction` containing project, provenance, and shared specification-store contributions. The serialized DETS adapter validates authority and contribution shape, gives repository conflict precedence, checks global device specification identities, constructs every object before one persistence call, returns exact replays, recovers a simulated lost acknowledgement, survives worker-store restart, and leaves hosted project, provenance, and specification tables empty. The shared deterministic specification-revision derivation now lives in one restore-package boundary used by both adapters.
+- Remaining: Preserve the unconnected restored-repository boundary in Task 13.
+- Failed checks: The first device regression run showed that direct device registration historically establishes its workspace implicitly; the additive repository fields initially assumed a workspace already existed. Registration now preserves that contract by fetching or creating the workspace inside the serialized store operation. Strict Credo also requested alias ordering. Final proof passes: 100 focused device restore, hosted restore, snapshot, conflict, device-store, worker, and specification-transaction tests; the device restore suite passed ten repeated concurrency runs; `git diff --check`; `mix format --check-formatted`; `mix compile --warnings-as-errors`; `mix credo --strict`; `mix deps.audit`; `mix sobelow --config`; the Slice 06 validator; and the global dependency graph.
+- Spec updates: Marked Task 19 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 12 complete: hosted atomic restoration
 

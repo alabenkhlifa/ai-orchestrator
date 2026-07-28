@@ -19,7 +19,13 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, Workspace}
   alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
-  alias SddOrchestrator.Portability.ImportAttempt
+
+  alias SddOrchestrator.Portability.{
+    DeviceRestoreContribution,
+    ImportAttempt,
+    PackageProvenance
+  }
+
   alias SddOrchestrator.Projects.Project
 
   alias SddOrchestrator.Specifications.{
@@ -108,6 +114,10 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   def delete_import_attempt(id), do: GenServer.call(__MODULE__, {:delete_import_attempt, id})
 
   @impl SddOrchestrator.Devices.DeviceStore
+  def get_package_provenance(project_id),
+    do: GenServer.call(__MODULE__, {:get_package_provenance, project_id})
+
+  @impl SddOrchestrator.Devices.DeviceStore
   def commit_transaction(%DeviceTransaction{} = transaction) do
     GenServer.call(__MODULE__, {:commit_transaction, transaction})
   end
@@ -147,7 +157,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   def handle_call({:get_project, id}, _from, state) do
     reply =
       case :dets.lookup(state.table, {:project, id}) do
-        [{{:project, ^id}, project}] -> {:ok, project}
+        [{{:project, ^id}, project}] -> {:ok, normalize_project(project, state.table)}
         [] -> {:error, :not_found}
       end
 
@@ -243,6 +253,22 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     {:reply, :ok, state}
   end
 
+  def handle_call({:get_package_provenance, project_id}, _from, state) do
+    reply =
+      case :dets.lookup(state.table, {:package_provenance, project_id}) do
+        [
+          {{:package_provenance, ^project_id},
+           %PackageProvenance{project_id: ^project_id} = provenance}
+        ] ->
+          {:ok, provenance}
+
+        [] ->
+          {:error, :not_found}
+      end
+
+    {:reply, reply, state}
+  end
+
   def handle_call({:commit_transaction, transaction}, _from, state) do
     {:reply, do_commit_transaction(state.table, transaction), state}
   end
@@ -279,7 +305,9 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       _other, acc -> acc
     end
 
-    :dets.foldl(fun, [], table) |> Enum.sort_by(& &1.name)
+    :dets.foldl(fun, [], table)
+    |> Enum.map(&normalize_project(&1, table))
+    |> Enum.sort_by(& &1.name)
   end
 
   defp do_register(table, attrs, opts) do
@@ -288,6 +316,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     status = get(attrs, :status) || "connected"
     idempotency_key = get(attrs, :idempotency_key)
     projects = all_projects(table)
+    {:ok, workspace} = fetch_or_create_workspace(table)
 
     # Idempotent commit and lost-acknowledgement reconciliation: a registration
     # carrying an already-committed attempt key resolves to the same project
@@ -305,8 +334,11 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
                resolve_name(projects, valid_name, Keyword.get(opts, :allocate_suffix?, false)) do
           project = %DeviceProject{
             id: Ecto.UUID.generate(),
+            workspace_id: workspace.id,
             name: final_name,
             name_key: Project.name_key(final_name),
+            repository_provider: "local",
+            repository_id: fingerprint,
             repository_fingerprint: fingerprint,
             status: status,
             storage_mode: "device",
@@ -380,7 +412,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   defp validate_fingerprint(_fingerprint), do: {:error, :fingerprint_required}
 
   defp check_repository_unique(projects, fingerprint) do
-    case Enum.find(projects, &(&1.repository_fingerprint == fingerprint)) do
+    case Enum.find(projects, &(canonical_repository_identity(&1) == {"local", fingerprint})) do
       nil -> :ok
       existing -> {:error, {:repository_already_linked, existing}}
     end
@@ -407,7 +439,55 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
+  defp normalize_project(%DeviceProject{} = project, table) do
+    {:ok, workspace} = fetch_workspace(table)
+    values = Map.from_struct(project)
+
+    struct(
+      DeviceProject,
+      Map.merge(values, %{
+        workspace_id: Map.get(values, :workspace_id) || workspace.id,
+        repository_provider: Map.get(values, :repository_provider) || "local",
+        repository_id: Map.get(values, :repository_id) || Map.get(values, :repository_fingerprint)
+      })
+    )
+  end
+
+  defp fetch_or_create_workspace(table) do
+    case fetch_workspace(table) do
+      {:ok, workspace} -> {:ok, workspace}
+      {:error, :not_found} -> create_workspace(table)
+    end
+  end
+
+  defp canonical_repository_identity(project) do
+    {
+      Map.get(project, :repository_provider) || "local",
+      Map.get(project, :repository_id) || Map.get(project, :repository_fingerprint)
+    }
+  end
+
   # ---- specifications ----
+
+  defp do_commit_transaction(
+         table,
+         %DeviceTransaction{
+           project_id: project_id,
+           contributions:
+             %{
+               project_restore: %DeviceRestoreContribution{} = project_contribution,
+               specification_restore: %DeviceContribution{} = specification_contribution
+             } = contributions
+         }
+       )
+       when map_size(contributions) == 2 do
+    commit_device_project_restore(
+      table,
+      project_id,
+      project_contribution,
+      specification_contribution
+    )
+  end
 
   defp do_commit_transaction(
          table,
@@ -429,6 +509,209 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   defp do_commit_transaction(_table, %DeviceTransaction{}),
     do: {:error, :unsupported_transaction}
+
+  defp commit_device_project_restore(
+         table,
+         project_id,
+         %DeviceRestoreContribution{} = project_contribution,
+         %DeviceContribution{} = specification_contribution
+       ) do
+    case :dets.lookup(table, {:project, project_id}) do
+      [] ->
+        insert_device_project_restore(
+          table,
+          project_id,
+          project_contribution,
+          specification_contribution
+        )
+
+      [{{:project, ^project_id}, existing_project}] ->
+        reconcile_device_project_restore(
+          table,
+          normalize_project(existing_project, table),
+          project_contribution,
+          specification_contribution
+        )
+    end
+  end
+
+  defp insert_device_project_restore(
+         table,
+         project_id,
+         %DeviceRestoreContribution{
+           project: project,
+           provenance: provenance,
+           fault: project_fault
+         },
+         %DeviceContribution{entries: entries, fault: specification_fault}
+       ) do
+    projects = all_projects(table)
+
+    with :ok <- validate_project_contribution(table, project_id, project, provenance),
+         :ok <- ensure_device_project_conflicts_available(projects, project),
+         :ok <- ensure_provenance_available(table, project_id),
+         :ok <- ensure_device_restore_identities_available(table, entries),
+         :ok <- restore_fault(project_fault, specification_fault),
+         currents <- build_device_restore_entries(project_id, entries, project.inserted_at),
+         :ok <-
+           persist_device_restore(table, project, provenance, currents) do
+      {:ok,
+       %{
+         project_restore: %{project: project, provenance: provenance, replay?: false},
+         specification_restore: Enum.map(currents, & &1.current)
+       }}
+    end
+  end
+
+  defp reconcile_device_project_restore(
+         table,
+         existing_project,
+         %DeviceRestoreContribution{
+           project: expected_project,
+           provenance: expected_provenance
+         },
+         %DeviceContribution{entries: entries}
+       ) do
+    with true <- restored_project_matches?(existing_project, expected_project),
+         {:ok, provenance} <- fetch_package_provenance(table, existing_project.id),
+         true <-
+           provenance.payload_schema_version == expected_provenance.payload_schema_version,
+         existing_specifications <-
+           current_specifications_from_table(table, existing_project.id),
+         true <- restored_device_entries_match?(existing_specifications, entries) do
+      {:ok,
+       %{
+         project_restore: %{
+           project: existing_project,
+           provenance: provenance,
+           replay?: true
+         },
+         specification_restore: existing_specifications
+       }}
+    else
+      _reason -> {:error, :identity_conflict}
+    end
+  end
+
+  defp validate_project_contribution(
+         table,
+         project_id,
+         %DeviceProject{} = project,
+         %PackageProvenance{} = provenance
+       ) do
+    with {:ok, workspace} <- fetch_workspace(table),
+         {:ok, valid_name} <- validate_name(project.name),
+         true <- project.id == project_id,
+         true <- project.workspace_id == workspace.id,
+         true <- project.storage_mode == "device",
+         true <- project.status == "disconnected",
+         true <- project.name == valid_name,
+         true <- project.name_key == Project.name_key(valid_name),
+         true <- project.repository_provider in ["github", "local"],
+         true <- is_binary(project.repository_id) and project.repository_id != "",
+         true <- provenance.project_id == project_id,
+         true <- provenance.payload_schema_version > 0,
+         true <- not is_nil(provenance.restored_at) do
+      :ok
+    else
+      _reason -> {:error, :invalid_restore}
+    end
+  end
+
+  defp validate_project_contribution(_table, _project_id, _project, _provenance),
+    do: {:error, :invalid_restore}
+
+  defp ensure_device_project_conflicts_available(projects, project) do
+    cond do
+      Enum.any?(
+        projects,
+        &(canonical_repository_identity(&1) ==
+              {project.repository_provider, project.repository_id})
+      ) ->
+        {:error, :repository_conflict}
+
+      Enum.any?(projects, &(&1.name_key == project.name_key)) ->
+        {:error, :name_conflict}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp ensure_provenance_available(table, project_id) do
+    case :dets.lookup(table, {:package_provenance, project_id}) do
+      [] -> :ok
+      _existing -> {:error, :identity_conflict}
+    end
+  end
+
+  defp restore_fault(project_fault, specification_fault) do
+    if project_fault in [:after_project, :after_provenance] or
+         specification_fault == :after_specification,
+       do: {:error, :injected_failure},
+       else: :ok
+  end
+
+  defp build_device_restore_entries(project_id, entries, inserted_at) do
+    Enum.map(entries, fn entry ->
+      aggregate = restored_device_aggregate(project_id, entry, inserted_at)
+
+      %{
+        key: specification_key(project_id, entry.id),
+        aggregate: aggregate,
+        current: %{
+          specification: aggregate.specification,
+          revision: Map.fetch!(aggregate.revisions, entry.revision_id)
+        }
+      }
+    end)
+  end
+
+  defp persist_device_restore(table, project, provenance, currents) do
+    objects = [
+      {{:project, project.id}, project},
+      {{:package_provenance, project.id}, provenance}
+      | Enum.map(currents, &{&1.key, &1.aggregate})
+    ]
+
+    :ok = :dets.insert(table, objects)
+    :ok = :dets.sync(table)
+  end
+
+  defp restored_project_matches?(existing, expected) do
+    Map.take(existing, [
+      :id,
+      :workspace_id,
+      :name,
+      :name_key,
+      :repository_provider,
+      :repository_id,
+      :repository_fingerprint,
+      :status,
+      :storage_mode
+    ]) ==
+      Map.take(expected, [
+        :id,
+        :workspace_id,
+        :name,
+        :name_key,
+        :repository_provider,
+        :repository_id,
+        :repository_fingerprint,
+        :status,
+        :storage_mode
+      ])
+  end
+
+  defp fetch_package_provenance(table, project_id) do
+    case :dets.lookup(table, {:package_provenance, project_id}) do
+      [{{:package_provenance, ^project_id}, %PackageProvenance{} = provenance}] ->
+        {:ok, provenance}
+
+      [] ->
+        {:error, :not_found}
+    end
+  end
 
   defp restore_device_entries(
          table,
@@ -479,20 +762,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   defp insert_device_restore_entries(table, project_id, entries, fault) do
     now = now()
-
-    currents =
-      Enum.map(entries, fn entry ->
-        aggregate = restored_device_aggregate(project_id, entry, now)
-
-        %{
-          key: specification_key(project_id, entry.id),
-          aggregate: aggregate,
-          current: %{
-            specification: aggregate.specification,
-            revision: Map.fetch!(aggregate.revisions, entry.revision_id)
-          }
-        }
-      end)
+    currents = build_device_restore_entries(project_id, entries, now)
 
     if fault == :after_specification and currents != [] do
       {:error, :injected_failure}

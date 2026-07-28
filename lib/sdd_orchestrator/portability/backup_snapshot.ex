@@ -33,8 +33,9 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
          {:ok, %{storage_mode: "device"} = project} <- Devices.get_project(project_id),
          {:ok, specifications} <- SpecificationStore.current_snapshot(authority, project.id) do
       repository = %{
-        "provider" => "local",
-        "repository_id" => project.repository_fingerprint
+        "provider" => Map.get(project, :repository_provider) || "local",
+        "repository_id" =>
+          Map.get(project, :repository_id) || Map.get(project, :repository_fingerprint)
       }
 
       package(project.id, project.name, repository, specifications.specifications)

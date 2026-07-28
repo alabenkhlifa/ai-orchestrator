@@ -11,7 +11,7 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
-  alias SddOrchestrator.Portability.ImportAttempt
+  alias SddOrchestrator.Portability.{ImportAttempt, PackageProvenance}
   alias SddOrchestrator.SpecificationStore
 
   alias SddOrchestrator.Specifications.{
@@ -78,6 +78,10 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   @doc "Deletes one device-local import attempt and encrypted upload."
   @callback delete_import_attempt(String.t()) :: :ok
+
+  @doc "Fetches the minimal device-local restore provenance for one project."
+  @callback get_package_provenance(String.t()) ::
+              {:ok, PackageProvenance.t()} | {:error, :not_found}
 
   @doc "Commits the supported contributions in one worker-owned device transaction."
   @callback commit_transaction(DeviceTransaction.t()) ::

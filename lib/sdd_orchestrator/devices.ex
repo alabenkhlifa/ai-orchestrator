@@ -105,6 +105,9 @@ defmodule SddOrchestrator.Devices do
   @doc "Deletes one device-local import attempt and encrypted upload."
   def delete_import_attempt(id), do: adapter().delete_import_attempt(id)
 
+  @doc "Fetches one project-bound device-local package provenance."
+  def get_package_provenance(project_id), do: adapter().get_package_provenance(project_id)
+
   @doc "Commits a caller-owned transaction through the device worker boundary."
   @spec commit_transaction(DeviceTransaction.t()) :: {:ok, map()} | {:error, term()}
   def commit_transaction(%DeviceTransaction{} = transaction) do

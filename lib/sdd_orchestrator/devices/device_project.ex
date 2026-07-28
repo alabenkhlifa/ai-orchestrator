@@ -12,11 +12,22 @@ defmodule SddOrchestrator.Devices.DeviceProject do
   acknowledgement resolves to the already-created project instead of a duplicate.
   """
 
-  @enforce_keys [:id, :name, :name_key, :repository_fingerprint, :status]
-  defstruct [
+  @enforce_keys [
     :id,
+    :workspace_id,
     :name,
     :name_key,
+    :repository_provider,
+    :repository_id,
+    :status
+  ]
+  defstruct [
+    :id,
+    :workspace_id,
+    :name,
+    :name_key,
+    :repository_provider,
+    :repository_id,
     :repository_fingerprint,
     :status,
     :inserted_at,
