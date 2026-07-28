@@ -216,6 +216,23 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
             </span>
           </div>
         </form>
+
+        <div class="mt-6 rounded-lg border border-line bg-surface p-4">
+          <p class="text-[13px] font-semibold text-ink">Back up this project</p>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Download an encrypted package containing this project's identity, repository identity,
+            and current specifications.
+          </p>
+          <.button
+            variant="secondary"
+            size="sm"
+            navigate={~p"/projects/#{@project.id}/backup"}
+            data-backup-project
+            class="mt-3 w-full sm:w-auto"
+          >
+            <.lucide name="download" class="size-4" /> Create backup
+          </.button>
+        </div>
       </div>
     </.app_shell>
     """

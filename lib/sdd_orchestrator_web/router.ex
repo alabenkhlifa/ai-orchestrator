@@ -92,6 +92,7 @@ defmodule SddOrchestratorWeb.Router do
     live_session :public, on_mount: [{SddOrchestratorWeb.UserAuth, :mount_current_account}] do
       live "/onboarding/local", LocalOnboardingLive
       live "/local/projects/:id", DeviceProjectDashboardLive
+      live "/local/projects/:id/backup", ProjectBackupLive, :device
     end
 
     # The shared storage-selection step for the accountless local flow. It also
@@ -116,6 +117,7 @@ defmodule SddOrchestratorWeb.Router do
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
       live "/projects", ProjectsLive
       live "/projects/:id", ProjectDashboardLive
+      live "/projects/:id/backup", ProjectBackupLive, :hosted
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
       live "/onboarding/storage/:attempt_id", StorageSelectionLive
       live "/onboarding/device-setup/:attempt_id", DeviceSetupLive

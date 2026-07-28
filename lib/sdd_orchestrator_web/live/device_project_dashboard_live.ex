@@ -133,16 +133,21 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
           </.button>
         </div>
 
-        <div
-          class="mt-4 flex items-start gap-2 text-[13px] leading-relaxed text-ink-muted"
-          data-portability
-        >
-          <.lucide name="info" class="size-4 flex-none mt-0.5" />
-          <span>
-            This project lives only on this device. To be able to recover it if this Mac's data is
-            lost, export it later through project portability — recovery is only possible from a
-            previous export.
-          </span>
+        <div class="mt-4 rounded-lg border border-line bg-surface p-4" data-portability>
+          <p class="text-[13px] font-semibold text-ink">Back up this project</p>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            This project lives only on this device. Recovery after device data loss is possible
+            only from a backup you downloaded earlier through project portability.
+          </p>
+          <.button
+            variant="secondary"
+            size="sm"
+            navigate={~p"/local/projects/#{@project.id}/backup"}
+            data-backup-project
+            class="mt-3 w-full sm:w-auto"
+          >
+            <.lucide name="download" class="size-4" /> Create backup
+          </.button>
         </div>
       </div>
     </.app_shell>

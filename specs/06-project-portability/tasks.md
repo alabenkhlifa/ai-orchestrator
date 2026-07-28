@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, and 3 are complete. Task 6 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, and 6 are complete. Task 4 is the next implementation task.
 
 ## Active Slice
 
@@ -110,7 +110,7 @@ Release boundary:
   - Depends on: Task 9
   - Proof: Focused correct, missing, and incorrect passphrase tests, authenticated-envelope and ciphertext mutation tests, unique salt and nonce checks, transient-secret persistence and log scans, and golden encrypted-package round trips pass.
 
-- [ ] Task 6 - Build the backup creation and download interface.
+- [x] Task 6 - Build the backup creation and download interface.
   - Size: Standard
   - Purpose: Let an authorized user understand the package boundary, acknowledge passphrase loss, and receive one encrypted backup.
   - Owned surfaces: Backup action and LiveView, three included content categories, explicit excluded categories, passphrase creation and confirmation, unrecoverable-loss acknowledgement, encrypted download delivery, actionable generation failure, cancellation, responsive accessibility behavior, and absence of sharing or create-copy claims.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 6 complete: backup creation and encrypted download
+
+- Completed: Added authorized hosted and device backup routes from each project dashboard; presented the three included logical content categories and all required excluded categories; required matching recovery-passphrase creation plus explicit unrecoverable-loss acknowledgement; generated the current authorized package; emitted encrypted bytes directly to a browser-owned download without retaining the package or passphrase in LiveView assigns; returned focused actionable validation and generation failures; and provided cancel, keyboard, responsive, accessibility, and no-sharing-or-create-copy behavior.
+- Remaining: Implement encrypted restore intake, destination authorization, terminal cleanup, and its isolated attempt lifecycle in Task 4.
+- Failed checks: The first browser run found a stale reused development worker and the second exposed an onboarding disclosure timing race in test setup; the browser helper now pairs the configured stand-in through the existing LiveView boundary and waits for disclosure confirmation. Strict Credo requested replacing a one-clause `with` with `case`; corrected. Final proof passes: 24 focused LiveView and dashboard tests, the Task 6 Playwright scenario in desktop Chromium and mobile Chromium, `git diff --check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 6 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 3 complete: passphrase derivation and authenticated encryption
 

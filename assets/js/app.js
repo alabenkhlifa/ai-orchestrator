@@ -43,6 +43,26 @@ document.addEventListener("click", (e) => {
   document.documentElement.setAttribute("data-theme-source", "user")
 })
 
+// Project backups are delivered directly from the LiveView event payload to a
+// browser-owned Blob. The encrypted bytes are never written into the rendered
+// page or retained in LiveView assigns after delivery.
+window.addEventListener("phx:backup-download", ({detail}) => {
+  const bytes = Uint8Array.from(atob(detail.contents), character => character.charCodeAt(0))
+  const url = URL.createObjectURL(new Blob([bytes], {type: detail.mime_type}))
+  const link = document.createElement("a")
+  link.href = url
+  link.download = detail.filename
+  link.hidden = true
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+})
+
+window.addEventListener("phx:backup-form-error", () => {
+  requestAnimationFrame(() => document.getElementById("backup-form-error")?.focus())
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
