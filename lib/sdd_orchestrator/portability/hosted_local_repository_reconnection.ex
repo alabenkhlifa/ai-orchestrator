@@ -13,7 +13,8 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryReconnection do
 
   alias SddOrchestrator.Portability.{
     HostedLocalRepositoryBindings,
-    RepositoryReconnection
+    RepositoryReconnection,
+    SecurityLog
   }
 
   alias SddOrchestrator.Portability.RepositoryReconnection.Request
@@ -69,14 +70,27 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryReconnection do
       )
 
   def connect(
-        %PersonalWorkspace{} = personal_workspace,
-        %DeviceWorkspace{} = device_workspace,
-        %Request{method: :local_worker_validation} = request,
+        personal_workspace,
+        device_workspace,
+        request,
         worker_credential,
         worker_matcher,
         opts
-      )
-      when is_binary(worker_credential) and is_function(worker_matcher, 1) do
+      ) do
+    personal_workspace
+    |> do_connect(device_workspace, request, worker_credential, worker_matcher, opts)
+    |> SecurityLog.audit(:repository_reconnection)
+  end
+
+  defp do_connect(
+         %PersonalWorkspace{} = personal_workspace,
+         %DeviceWorkspace{} = device_workspace,
+         %Request{method: :local_worker_validation} = request,
+         worker_credential,
+         worker_matcher,
+         opts
+       )
+       when is_binary(worker_credential) and is_function(worker_matcher, 1) do
     with {:ok, ^request} <-
            RepositoryReconnection.required(personal_workspace, request.project_id),
          {:ok, validation} <-
@@ -115,15 +129,15 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryReconnection do
     end
   end
 
-  def connect(
-        _personal_workspace,
-        _device_workspace,
-        _request,
-        _worker_credential,
-        _worker_matcher,
-        _opts
-      ),
-      do: {:error, :invalid_request}
+  defp do_connect(
+         _personal_workspace,
+         _device_workspace,
+         _request,
+         _worker_credential,
+         _worker_matcher,
+         _opts
+       ),
+       do: {:error, :invalid_request}
 
   @doc "Returns a minimized owner-scoped connection state without worker or device data."
   @spec connection_state(PersonalWorkspace.t(), String.t(), keyword()) ::
@@ -159,10 +173,14 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryReconnection do
   @spec disconnect(PersonalWorkspace.t(), String.t()) ::
           {:ok, :disconnected} | {:error, :not_found}
   def disconnect(%PersonalWorkspace{} = personal_workspace, project_id) do
-    HostedLocalRepositoryBindings.disconnect(personal_workspace, project_id)
+    personal_workspace
+    |> HostedLocalRepositoryBindings.disconnect(project_id)
+    |> SecurityLog.audit(:repository_disconnection)
   end
 
-  def disconnect(_personal_workspace, _project_id), do: {:error, :not_found}
+  def disconnect(_personal_workspace, _project_id) do
+    SecurityLog.audit({:error, :not_found}, :repository_disconnection)
+  end
 
   defp connected_result(request) do
     %{

@@ -21,7 +21,8 @@ defmodule SddOrchestrator.Portability.HostedRestore do
     PackageValidator,
     ProjectPackage,
     RestoreDecision,
-    RestorePackage
+    RestorePackage,
+    SecurityLog
   }
 
   alias SddOrchestrator.Projects
@@ -62,30 +63,35 @@ defmodule SddOrchestrator.Portability.HostedRestore do
         %RestoreDecision{} = decision,
         opts
       ) do
-    with %PersonalWorkspace{} <- Repo.get(PersonalWorkspace, authority.id),
-         :ok <- PackageValidator.validate(package),
-         {:ok, idempotency_key} <-
-           SpecificationRestore.validate_idempotency_key(Keyword.get(opts, :idempotency_key)),
-         {:ok, specification_values} <- RestorePackage.specification_values(package),
-         :ok <- RestorePackage.decision_matches(decision, package),
-         {:ok, multi} <-
-           restore_multi(
-             authority,
-             package,
-             decision,
-             specification_values,
-             idempotency_key,
-             opts
-           ) do
-      commit_restore(authority, package, decision, specification_values, multi)
-    else
-      nil -> {:error, :not_found}
-      {:error, _reason} = error -> error
-      _other -> {:error, :invalid_restore}
-    end
+    result =
+      with %PersonalWorkspace{} <- Repo.get(PersonalWorkspace, authority.id),
+           :ok <- PackageValidator.validate(package),
+           {:ok, idempotency_key} <-
+             SpecificationRestore.validate_idempotency_key(Keyword.get(opts, :idempotency_key)),
+           {:ok, specification_values} <- RestorePackage.specification_values(package),
+           :ok <- RestorePackage.decision_matches(decision, package),
+           {:ok, multi} <-
+             restore_multi(
+               authority,
+               package,
+               decision,
+               specification_values,
+               idempotency_key,
+               opts
+             ) do
+        commit_restore(authority, package, decision, specification_values, multi)
+      else
+        nil -> {:error, :not_found}
+        {:error, _reason} = error -> error
+        _other -> {:error, :invalid_restore}
+      end
+
+    SecurityLog.audit(result, :restore_commit)
   end
 
-  def restore(_authority, _package, _decision, _opts), do: {:error, :invalid_restore}
+  def restore(_authority, _package, _decision, _opts) do
+    SecurityLog.audit({:error, :invalid_restore}, :restore_commit)
+  end
 
   defp restore_multi(
          authority,

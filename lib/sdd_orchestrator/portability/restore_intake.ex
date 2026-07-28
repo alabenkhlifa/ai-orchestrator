@@ -9,7 +9,7 @@ defmodule SddOrchestrator.Portability.RestoreIntake do
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Portability.{ImportAttempt, PackageValidator}
+  alias SddOrchestrator.Portability.{ImportAttempt, PackageValidator, SecurityLog}
   alias SddOrchestrator.Repo
   alias SddOrchestrator.Vault
 
@@ -18,14 +18,18 @@ defmodule SddOrchestrator.Portability.RestoreIntake do
 
   @spec start(PersonalWorkspace.t() | DeviceWorkspace.t(), String.t(), binary()) ::
           {:ok, ImportAttempt.t()} | {:error, atom() | Ecto.Changeset.t()}
-  def start(authority, destination, encrypted_package)
+  def start(authority, destination, encrypted_package) do
+    authority
+    |> do_start(destination, encrypted_package)
+    |> SecurityLog.audit(:restore_intake)
+  end
 
-  def start(
-        %PersonalWorkspace{id: workspace_id},
-        "hosted",
-        encrypted_package
-      )
-      when is_binary(encrypted_package) and encrypted_package != "" do
+  defp do_start(
+         %PersonalWorkspace{id: workspace_id},
+         "hosted",
+         encrypted_package
+       )
+       when is_binary(encrypted_package) and encrypted_package != "" do
     %ImportAttempt{}
     |> ImportAttempt.hosted_changeset(%{
       workspace_id: workspace_id,
@@ -37,12 +41,12 @@ defmodule SddOrchestrator.Portability.RestoreIntake do
     |> Repo.insert()
   end
 
-  def start(
-        %DeviceWorkspace{id: device_workspace_id},
-        "device",
-        encrypted_package
-      )
-      when is_binary(encrypted_package) and encrypted_package != "" do
+  defp do_start(
+         %DeviceWorkspace{id: device_workspace_id},
+         "device",
+         encrypted_package
+       )
+       when is_binary(encrypted_package) and encrypted_package != "" do
     with {:ok, %DeviceWorkspace{id: ^device_workspace_id}} <- Devices.get_workspace(),
          {:ok, attempt} <- device_attempt(device_workspace_id, encrypted_package),
          {:ok, sealed_package} <- Vault.encrypt(encrypted_package),
@@ -54,7 +58,7 @@ defmodule SddOrchestrator.Portability.RestoreIntake do
     end
   end
 
-  def start(_authority, _destination, _encrypted_package),
+  defp do_start(_authority, _destination, _encrypted_package),
     do: {:error, :unauthorized_destination}
 
   @doc "Returns one attempt only through its owning destination authority."
@@ -98,30 +102,45 @@ defmodule SddOrchestrator.Portability.RestoreIntake do
           String.t()
         ) :: {:ok, ImportAttempt.t(), struct()} | {:error, :invalid_package_or_passphrase}
   def begin_validation(authority, attempt_id, passphrase) do
-    with {:ok, attempt} <- get(authority, attempt_id),
-         {:ok, package} <-
-           PackageValidator.decrypt_and_validate(attempt.encrypted_package, passphrase),
-         {:ok, validating} <- mark_validating(authority, attempt) do
-      {:ok, validating, package}
-    else
-      {:error, reason} ->
-        _ = delete(authority, attempt_id)
-        if reason == :invalid_package_or_passphrase, do: @opaque_error, else: {:error, reason}
+    result =
+      with {:ok, attempt} <- get(authority, attempt_id),
+           {:ok, package} <-
+             PackageValidator.decrypt_and_validate(attempt.encrypted_package, passphrase),
+           {:ok, validating} <- mark_validating(authority, attempt) do
+        {:ok, validating, package}
+      else
+        {:error, reason} ->
+          _ = delete(authority, attempt_id)
+          if reason == :invalid_package_or_passphrase, do: @opaque_error, else: {:error, reason}
 
-      _reason ->
-        _ = delete(authority, attempt_id)
-        @opaque_error
-    end
+        _reason ->
+          _ = delete(authority, attempt_id)
+          @opaque_error
+      end
+
+    SecurityLog.audit(result, :restore_validation)
   end
 
   @doc "Cancels one authorized attempt and immediately deletes its encrypted upload."
-  def cancel(authority, attempt_id), do: delete(authority, attempt_id)
+  def cancel(authority, attempt_id) do
+    authority
+    |> delete(attempt_id)
+    |> SecurityLog.audit(:restore_cancellation)
+  end
 
   @doc "Deletes one failed attempt and its encrypted upload."
-  def fail(authority, attempt_id), do: delete(authority, attempt_id)
+  def fail(authority, attempt_id) do
+    authority
+    |> delete(attempt_id)
+    |> SecurityLog.audit(:restore_failure_cleanup)
+  end
 
   @doc "Deletes one successfully consumed attempt and its encrypted upload."
-  def complete(authority, attempt_id), do: delete(authority, attempt_id)
+  def complete(authority, attempt_id) do
+    authority
+    |> delete(attempt_id)
+    |> SecurityLog.audit(:restore_completion_cleanup)
+  end
 
   defp mark_validating(%PersonalWorkspace{}, %ImportAttempt{} = attempt) do
     attempt |> ImportAttempt.validation_changeset() |> Repo.update()

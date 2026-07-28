@@ -12,7 +12,7 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
-  alias SddOrchestrator.Portability.{BackupSnapshot, PackageEncryption}
+  alias SddOrchestrator.Portability.{BackupSnapshot, PackageEncryption, SecurityLog}
   alias SddOrchestrator.Projects
 
   @download_mime "application/octet-stream"
@@ -61,22 +61,28 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
   end
 
   defp create_backup(socket, passphrase) do
-    with {:ok, package} <-
-           BackupSnapshot.build(socket.assigns.authority, socket.assigns.project.id),
-         {:ok, encrypted} <- PackageEncryption.encrypt(package, passphrase) do
-      download = %{
-        contents: Base.encode64(encrypted),
-        filename: "sdd-project-#{socket.assigns.project.id}.sddbackup",
-        mime_type: @download_mime
-      }
+    result =
+      case BackupSnapshot.build(socket.assigns.authority, socket.assigns.project.id) do
+        {:ok, package} -> PackageEncryption.encrypt(package, passphrase)
+        {:error, _reason} = error -> error
+      end
+      |> SecurityLog.audit(:backup_generation)
 
-      {:noreply,
-       socket
-       |> assign(:errors, %{})
-       |> assign(:generation_error, nil)
-       |> assign(:download_ready?, true)
-       |> push_event("backup-download", download)}
-    else
+    case result do
+      {:ok, encrypted} ->
+        download = %{
+          contents: Base.encode64(encrypted),
+          filename: "sdd-project-#{socket.assigns.project.id}.sddbackup",
+          mime_type: @download_mime
+        }
+
+        {:noreply,
+         socket
+         |> assign(:errors, %{})
+         |> assign(:generation_error, nil)
+         |> assign(:download_ready?, true)
+         |> push_event("backup-download", download)}
+
       {:error, :repository_identity_upgrade_required} ->
         {:noreply,
          socket

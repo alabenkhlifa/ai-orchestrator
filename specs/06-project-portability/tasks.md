@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, and 22 are complete. Task 18 is in progress.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, 22, and 18 are complete. Task 23 is in progress.
 
 ## Active Slice
 
@@ -266,13 +266,14 @@ Release boundary:
   - Proof: Focused rights, authorization, cross-project isolation, attempt, hosted local-worker binding, provenance, restored-specification, derived-record, processor, and backup-propagation tests prove complete handling without disclosing another project or identity.
   - Delivered: Extended the verified operator boundary with minimized account-level import-attempt metadata, project-authorized hosted and device portability exports, exact hosted binding and provenance output, hosted revision history and device current restored specifications, hosted and device project-name correction, shared specification revision correction, and project erasure through the existing lifecycle cascade. Erasure returns explicit primary-store, derived-record, processor, and 35-day recovery-only backup handoffs; restriction and objection return an explicit verified-operator assessment requirement with the same propagation scope instead of claiming an automatic legal decision.
 
-- [ ] Task 18 - Enforce minimized operational-security logging.
+- [x] Task 18 - Enforce minimized operational-security logging.
   - Size: Standard
   - Purpose: Record only the minimum security event needed to operate backup and restoration safely.
   - Owned surfaces: Fixed structured security-log event type, time, outcome, and non-secret correlation identifier, package, project-content, repository-identifier, hosted binding, worker, device-workspace, filename, path, passphrase, and decrypted-field redaction, 30-day log-expiry configuration, audit minimization, and log, diagnostic, and error-path scans.
   - Owns: AC-20
   - Depends on: Task 16, Task 27
   - Proof: Focused structured-log schema, redaction, failure-path, correlation, 30-day expiry, audit-minimization, diagnostic, and secret-exposure checks pass.
+  - Delivered: Added one fixed portability security-event boundary with only event type, UTC occurrence time, coarse outcome, and a generated non-secret correlation identifier. Backup generation, restore intake and validation, terminal cleanup, hosted and device restore commits, and GitHub, device-local, and hosted-local reconnection and disconnection paths emit through that boundary without inspecting or serializing package data, project content, repository identities, bindings, workers, workspaces, filenames, paths, passphrases, decrypted fields, or error details. The deployment privacy profile is the single source for the 30-day operational-log expiry.
 
 - [ ] Task 23 - Enforce encrypted-backup expiry.
   - Size: Standard
@@ -322,6 +323,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 18 complete: minimized portability security logging
+
+- Completed: Added a fixed four-field JSON security event containing only event type, UTC occurrence time, coarse outcome, and a fresh non-secret UUID correlation identifier. Integrated it across backup generation, restore intake and validation, terminal cleanup, hosted and device restore commits, and GitHub, device-local, and hosted-local repository reconnection and disconnection. Result classification depends only on public return shapes and reason atoms; untrusted input and failure details are never inspected or interpolated. The 30-day operational-log expiry remains sourced from `DeploymentPrivacyProfile`.
+- Proof: The focused logging suite passed 6 tests, and the combined backup, intake, restore, and reconnection regression set passed 62 tests. The proof covers the exact field set, event allowlist, fresh valid correlations, coarse outcomes, redaction under sensitive invalid input, all integrated failure paths, and the 30-day profile. `mix check` passed 729 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Enforce the 35-day recovery-only encrypted-backup deployment contract in Task 23, then prohibit secondary use and agent access in Task 24. The final slice gate must resolve the current Dialyzer warnings before verification.
+- Failed checks: The first focused logging run could not capture successful info-level events because the test environment sets Logger to warning; the test now scopes Logger to info and restores the prior level. Strict Credo then identified a redundant final `with` clause in backup generation, which was replaced with an explicit result case. `mix dialyzer` still reports the same 14 warnings in earlier Slice 06 restore and reconnection code, with no Task 18-specific warning; the final slice gate remains open.
+- Spec updates: Marked Task 18 complete, recorded the minimized structured event and integrations, and made Task 23 the next executable task without changing requirements, design, ownership, dependencies, or capability edges.
 
 ### 2026-07-28 - Task 22 complete: verified portability rights propagation
 

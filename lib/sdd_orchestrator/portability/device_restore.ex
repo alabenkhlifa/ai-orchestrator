@@ -18,7 +18,8 @@ defmodule SddOrchestrator.Portability.DeviceRestore do
     PackageValidator,
     ProjectPackage,
     RestoreDecision,
-    RestorePackage
+    RestorePackage,
+    SecurityLog
   }
 
   alias SddOrchestrator.Projects.Project
@@ -51,46 +52,51 @@ defmodule SddOrchestrator.Portability.DeviceRestore do
         %RestoreDecision{} = decision,
         opts
       ) do
-    with {:ok, %DeviceWorkspace{id: authority_id}} <- Devices.get_workspace(),
-         true <- authority_id == authority.id,
-         true <- Devices.worker_status(authority.id) == :detected,
-         :ok <- PackageValidator.validate(package),
-         {:ok, idempotency_key} <-
-           SpecificationRestore.validate_idempotency_key(Keyword.get(opts, :idempotency_key)),
-         {:ok, specification_values} <- RestorePackage.specification_values(package),
-         :ok <- RestorePackage.decision_matches(decision, package),
-         {:ok, project} <- device_project(authority, decision, opts),
-         {:ok, provenance} <- provenance(package, project, opts),
-         {:ok, transaction} <- DeviceTransaction.new(project.id),
-         {:ok, transaction} <-
-           DeviceTransaction.put(
-             transaction,
-             :project_restore,
-             %DeviceRestoreContribution{
+    result =
+      with {:ok, %DeviceWorkspace{id: authority_id}} <- Devices.get_workspace(),
+           true <- authority_id == authority.id,
+           true <- Devices.worker_status(authority.id) == :detected,
+           :ok <- PackageValidator.validate(package),
+           {:ok, idempotency_key} <-
+             SpecificationRestore.validate_idempotency_key(Keyword.get(opts, :idempotency_key)),
+           {:ok, specification_values} <- RestorePackage.specification_values(package),
+           :ok <- RestorePackage.decision_matches(decision, package),
+           {:ok, project} <- device_project(authority, decision, opts),
+           {:ok, provenance} <- provenance(package, project, opts),
+           {:ok, transaction} <- DeviceTransaction.new(project.id),
+           {:ok, transaction} <-
+             DeviceTransaction.put(
+               transaction,
+               :project_restore,
+               %DeviceRestoreContribution{
+                 idempotency_key: idempotency_key,
+                 project: project,
+                 provenance: provenance,
+                 fault: project_fault(Keyword.get(opts, :fault))
+               }
+             ),
+           {:ok, transaction} <-
+             SpecificationStore.prepare_restore(
+               authority,
+               transaction,
+               specification_values,
                idempotency_key: idempotency_key,
-               project: project,
-               provenance: provenance,
-               fault: project_fault(Keyword.get(opts, :fault))
-             }
-           ),
-         {:ok, transaction} <-
-           SpecificationStore.prepare_restore(
-             authority,
-             transaction,
-             specification_values,
-             idempotency_key: idempotency_key,
-             fault: specification_fault(Keyword.get(opts, :fault))
-           ),
-         {:ok, changes} <- Devices.commit_transaction(transaction) do
-      restore_result(changes, Keyword.get(opts, :fault))
-    else
-      false -> {:error, :destination_unavailable}
-      {:error, _reason} = error -> error
-      _reason -> {:error, :invalid_restore}
-    end
+               fault: specification_fault(Keyword.get(opts, :fault))
+             ),
+           {:ok, changes} <- Devices.commit_transaction(transaction) do
+        restore_result(changes, Keyword.get(opts, :fault))
+      else
+        false -> {:error, :destination_unavailable}
+        {:error, _reason} = error -> error
+        _reason -> {:error, :invalid_restore}
+      end
+
+    SecurityLog.audit(result, :restore_commit)
   end
 
-  def restore(_authority, _package, _decision, _opts), do: {:error, :invalid_restore}
+  def restore(_authority, _package, _decision, _opts) do
+    SecurityLog.audit({:error, :invalid_restore}, :restore_commit)
+  end
 
   defp device_project(authority, decision, opts) do
     changeset = Project.rename_changeset(%Project{}, %{name: decision.display_name})

@@ -14,7 +14,7 @@ defmodule SddOrchestrator.Portability.GitHubReconnection do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.GitHubIntegration
 
-  alias SddOrchestrator.Portability.RepositoryReconnection
+  alias SddOrchestrator.Portability.{RepositoryReconnection, SecurityLog}
   alias SddOrchestrator.Portability.RepositoryReconnection.Request
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.RepositoryConnection
@@ -37,11 +37,17 @@ defmodule SddOrchestrator.Portability.GitHubReconnection do
              | :not_found
              | :provider_unavailable
              | Ecto.Changeset.t()}
-  def connect(
-        %Account{state: :active} = account,
-        authority,
-        %Request{method: :github_authorization} = request
-      ) do
+  def connect(account, authority, request) do
+    account
+    |> do_connect(authority, request)
+    |> SecurityLog.audit(:repository_reconnection)
+  end
+
+  defp do_connect(
+         %Account{state: :active} = account,
+         authority,
+         %Request{method: :github_authorization} = request
+       ) do
     with :ok <- authorize_destination(account, authority),
          :not_connected <- existing_connection(authority, request),
          {:ok, ^request} <- RepositoryReconnection.required(authority, request.project_id),
@@ -74,7 +80,7 @@ defmodule SddOrchestrator.Portability.GitHubReconnection do
     end
   end
 
-  def connect(_account, _authority, _request), do: {:error, :invalid_request}
+  defp do_connect(_account, _authority, _request), do: {:error, :invalid_request}
 
   defp authorize_destination(
          %Account{id: account_id},

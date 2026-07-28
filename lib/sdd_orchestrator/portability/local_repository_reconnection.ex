@@ -11,7 +11,7 @@ defmodule SddOrchestrator.Portability.LocalRepositoryReconnection do
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.LocalRepositoryValidation
-  alias SddOrchestrator.Portability.RepositoryReconnection
+  alias SddOrchestrator.Portability.{RepositoryReconnection, SecurityLog}
   alias SddOrchestrator.Portability.RepositoryReconnection.Request
 
   @type success :: %{
@@ -50,14 +50,20 @@ defmodule SddOrchestrator.Portability.LocalRepositoryReconnection do
         ) :: {:ok, success()} | {:error, error()}
   def connect(authority, request, worker_credential, worker_matcher, opts \\ [])
 
-  def connect(
-        %DeviceWorkspace{} = authority,
-        %Request{method: :local_worker_validation} = request,
-        worker_credential,
-        worker_matcher,
-        opts
-      )
-      when is_binary(worker_credential) and is_function(worker_matcher, 1) do
+  def connect(authority, request, worker_credential, worker_matcher, opts) do
+    authority
+    |> do_connect(request, worker_credential, worker_matcher, opts)
+    |> SecurityLog.audit(:repository_reconnection)
+  end
+
+  defp do_connect(
+         %DeviceWorkspace{} = authority,
+         %Request{method: :local_worker_validation} = request,
+         worker_credential,
+         worker_matcher,
+         opts
+       )
+       when is_binary(worker_credential) and is_function(worker_matcher, 1) do
     with :ok <- authorize_destination(authority),
          :not_connected <- existing_connection(request),
          {:ok, ^request} <- RepositoryReconnection.required(authority, request.project_id),
@@ -94,7 +100,7 @@ defmodule SddOrchestrator.Portability.LocalRepositoryReconnection do
     end
   end
 
-  def connect(_authority, _request, _worker_credential, _worker_matcher, _opts),
+  defp do_connect(_authority, _request, _worker_credential, _worker_matcher, _opts),
     do: {:error, :invalid_request}
 
   defp authorize_destination(%DeviceWorkspace{id: authority_id}) do
