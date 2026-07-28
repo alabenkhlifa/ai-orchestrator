@@ -117,6 +117,7 @@ For instruction and skill changes, run the checks that currently apply:
 - Skills: validate every changed canonical skill under `.agents/skills/` with the validator provided by the active skill-authoring environment.
 - Spec validator: `python3 .agents/scripts/test_validate_spec.py`
 - Specifications: `python3 .agents/scripts/validate_spec.py specs/<feature>`
+- Cross-specification graph: `python3 .agents/scripts/validate_spec.py --all specs`
 
 Slice 01 is the first approved executable slice. Its application-bootstrap task must establish these canonical commands:
 
