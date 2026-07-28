@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8 and 2 are complete. Task 9 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, and 9 are complete. Task 3 is the next implementation task.
 
 ## Active Slice
 
@@ -94,7 +94,7 @@ Release boundary:
   - Depends on: Task 8
   - Proof: Focused capability-contract, golden decrypted-payload, authorization, field-map, excluded-field, and concurrent-update tests cover every approved and forbidden field, every current specification document, and stable-identity values without duplicate persistence.
 
-- [ ] Task 9 - Enforce the payload allowlist and secret-exclusion boundary.
+- [x] Task 9 - Enforce the payload allowlist and secret-exclusion boundary.
   - Size: Standard
   - Purpose: Fail closed when a mapped payload includes any unapproved or secret-bearing field.
   - Owned surfaces: Allowlist enforcement, forbidden-field and excluded-category detection, repository-source absence, credential and secret filtering, association traversal denial, negative package inspection, and regression fixtures for newly added source fields.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 9 complete: payload allowlist and secret exclusion
+
+- Completed: Added a fail-closed `PayloadPolicy` with exact project, repository, and specification field maps, explicit source-schema drift proof, no association traversal, and high-confidence private-key, GitHub, model-provider, AWS, bearer, token, password, passphrase, client-secret, and API-key signature rejection before encryption. Inert command- and path-looking document prose remains data and is never executed.
+- Remaining: Implement Argon2id derivation and authenticated package encryption in Task 3.
+- Failed checks: Strict Credo initially identified a redundant final `with` clause; it was simplified. Final proof passes: the combined snapshot and payload-policy suites (8 tests), `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 9 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 2 complete: authorized allowlisted project snapshot
 

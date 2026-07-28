@@ -9,7 +9,7 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Portability.{PackageSection, ProjectPackage}
+  alias SddOrchestrator.Portability.{PackageSection, PayloadPolicy, ProjectPackage}
   alias SddOrchestrator.Projects
   alias SddOrchestrator.SpecificationStore
 
@@ -73,8 +73,11 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
              :specifications,
              @section_version,
              Enum.map(specifications, &specification_value/1)
-           ) do
-      ProjectPackage.new(project_section, repository_section, specification_section)
+           ),
+         {:ok, package} <-
+           ProjectPackage.new(project_section, repository_section, specification_section),
+         :ok <- PayloadPolicy.validate(package) do
+      {:ok, package}
     end
   end
 
