@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, and 14 are complete. Task 5 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, and 5 are complete. Task 11 is the next implementation task.
 
 ## Active Slice
 
@@ -142,7 +142,7 @@ Release boundary:
   - Depends on: Task 10
   - Proof: Focused LiveView plus desktop and mobile browser scenarios cover every destination mode, required passphrase, destination authorization, validation progress, compatible package, incorrect passphrase, unsupported and unsafe package, cancellation, keyboard and focus behavior, and no persistent project mutation.
 
-- [ ] Task 5 - Implement visibility-bounded stable-identity preflight.
+- [x] Task 5 - Implement visibility-bounded stable-identity preflight.
   - Size: Standard
   - Purpose: Detect the packaged project identity only within boundaries already accessible to the restore session.
   - Owned surfaces: Packaged stable-identity validation, selected-destination and current-accessible-catalog scope derivation, duplicate query contract, same-identity rejection, no global registry or unavailable-boundary query, no identity-presence telemetry, and later-visible collision handoff to the combined-catalog contract without record mutation.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 5 complete: visibility-bounded stable-identity preflight
+
+- Completed: Added a read-only `RestorePreflight` boundary that validates the packaged stable project ID, always checks the selected authorized destination, checks only additional hosted or device authorities already held by the current restore session, rechecks device availability without contacting a worker, skips unavailable non-selected device catalogs, blocks an unavailable selected device destination, deduplicates authority checks, and returns a structured same-identity conflict without overwrite, merge, update, rename, telemetry, synchronization, or authority selection. Confirmed the existing combined-catalog handoff keeps later-visible same-ID entries separate and conflict-marked.
+- Remaining: Implement display-name and canonical-repository conflict decisions in Task 11.
+- Failed checks: None. Final proof passes: 12 focused preflight and combined-catalog tests, `git diff --check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 5 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 14 complete: restore intake and package validation interface
 
