@@ -82,13 +82,34 @@ defmodule SddOrchestrator.Portability.PackageEncryption do
                opts,
                :max_decompressed_bytes,
                configured(:max_decompressed_bytes)
+             ),
+             Keyword.get(
+               opts,
+               :max_expansion_ratio,
+               configured(:max_expansion_ratio)
              )
            ),
          {:ok, project_package} <- PackageCodec.decode_payload(payload),
          :ok <- PayloadPolicy.validate(project_package) do
       {:ok, project_package}
     else
-      _reason -> @opaque_error
+      {:error, reason}
+      when reason in [
+             :decompressed_size_exceeded,
+             :expansion_ratio_exceeded,
+             :invalid_compressed_payload,
+             :invalid_json,
+             :duplicate_json_key,
+             :prohibited_payload_content,
+             :invalid_payload,
+             :invalid_section,
+             :forbidden_payload_field,
+             :secret_detected
+           ] ->
+        {:error, :unsafe_package}
+
+      _reason ->
+        @opaque_error
     end
   rescue
     _error -> @opaque_error
@@ -182,7 +203,7 @@ defmodule SddOrchestrator.Portability.PackageEncryption do
          } = envelope
        )
        when is_integer(body_length) and body_length >= @tag_bytes and
-              map_size(envelope) == 13 do
+              is_map(envelope) do
     with {:ok, parameters} <-
            parameters(
              time_cost: time_cost,

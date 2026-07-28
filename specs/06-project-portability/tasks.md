@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, and 4 are complete. Task 10 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, and 10 are complete. Task 14 is the next implementation task.
 
 ## Active Slice
 
@@ -126,7 +126,7 @@ Release boundary:
   - Depends on: Task 3
   - Proof: Focused intake state, encrypted-at-rest, destination-authorization, cancellation, failure, cleanup, and fault-injection tests prove immediate terminal deletion, opaque passphrase failure, and no decrypted-content exposure or persistent project data.
 
-- [ ] Task 10 - Implement package compatibility and safety validation.
+- [x] Task 10 - Implement package compatibility and safety validation.
   - Size: Standard
   - Purpose: Reject unsupported, malformed, oversized, or unsafe decrypted content before conflict checks or persistence.
   - Owned surfaces: Format and payload-version compatibility, supported-major unknown-field handling, strict duplicate-key and non-finite-number rejection, encrypted and decompressed size ceilings, expansion-ratio limit, specification count and document-size limits, field-length limits, content and attachment denial, single-file path-safety invariant, resource limits, and actionable validation result.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 10 complete: package compatibility and safety validation
+
+- Completed: Added strict duplicate-preserving JSON decoding, non-finite-number rejection, supported-major additive-field normalization, explicit prohibited attachment, filesystem, repository-source, credential, and executable-key rejection, encrypted and decompressed size ceilings, compression expansion-ratio enforcement, bounded Argon2 parameter validation before derivation, specification-count, document-size, field-length, provider, stable-identity, and duplicate-specification checks, and structured malformed, unsupported, oversized, unsafe, or opaque passphrase results. Restore intake now runs this validator before exposing a transient package to later preflight work.
+- Remaining: Build the restore intake and validation interface for hosted and device destinations in Task 14.
+- Failed checks: Strict Credo identified seven initial complexity and nesting opportunities in the validator and strict decoder; validation was split into focused shape, limit, recursive conversion, and list helpers. One test exposed a missing required encryption field being classified as unsupported rather than malformed; the version branch was narrowed. Final proof passes: the combined codec, encryption, intake, and validator suites (28 tests, including 1 property), `git diff --check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 10 complete and recorded the approved configuration-tunable resource ceilings; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 4 complete: encrypted restore intake and terminal cleanup
 

@@ -17,6 +17,14 @@ defmodule SddOrchestrator.Portability.PackageCodec do
   @section_version 1
   @compression "deflate"
   @max_header_bytes 16_384
+  @forbidden_payload_keys ~w(
+    archive archives attachment attachments clone_url content_type credential credentials
+    executable file files local_path mime_type path paths remote_url repository_source
+    source symlink
+  )
+  @project_content_keys ~w(id name)
+  @repository_content_keys ~w(provider repository_id)
+  @specification_content_keys ~w(design id requirements tasks title)
 
   @type envelope :: %{
           required(String.t()) => String.t() | non_neg_integer()
@@ -81,11 +89,34 @@ defmodule SddOrchestrator.Portability.PackageCodec do
   def decompress(compressed, max_decompressed_bytes)
       when is_binary(compressed) and is_integer(max_decompressed_bytes) and
              max_decompressed_bytes > 0 do
+    decompress(compressed, max_decompressed_bytes, :infinity)
+  end
+
+  def decompress(_compressed, _max_decompressed_bytes), do: {:error, :invalid_limit}
+
+  @spec decompress(binary(), pos_integer(), pos_integer() | :infinity) ::
+          {:ok, binary()} | {:error, atom()}
+  def decompress(compressed, max_decompressed_bytes, max_expansion_ratio)
+      when is_binary(compressed) and is_integer(max_decompressed_bytes) and
+             max_decompressed_bytes > 0 and
+             (max_expansion_ratio == :infinity or
+                (is_integer(max_expansion_ratio) and max_expansion_ratio > 0)) do
+    effective_limit =
+      expansion_limit(compressed, max_decompressed_bytes, max_expansion_ratio)
+
     zstream = :zlib.open()
 
     try do
       :ok = :zlib.inflateInit(zstream)
-      inflate_bounded(zstream, compressed, max_decompressed_bytes, [], 0)
+
+      case inflate_bounded(zstream, compressed, effective_limit, [], 0) do
+        {:error, :decompressed_size_exceeded}
+        when effective_limit < max_decompressed_bytes ->
+          {:error, :expansion_ratio_exceeded}
+
+        result ->
+          result
+      end
     rescue
       _error -> {:error, :invalid_compressed_payload}
     catch
@@ -96,7 +127,8 @@ defmodule SddOrchestrator.Portability.PackageCodec do
     end
   end
 
-  def decompress(_compressed, _max_decompressed_bytes), do: {:error, :invalid_limit}
+  def decompress(_compressed, _max_decompressed_bytes, _max_expansion_ratio),
+    do: {:error, :invalid_limit}
 
   @spec frame(envelope(), binary()) :: {:ok, binary()} | {:error, atom()}
   def frame(envelope, body) when is_map(envelope) and is_binary(body) do
@@ -192,13 +224,18 @@ defmodule SddOrchestrator.Portability.PackageCodec do
   defp validate_default_envelope(_envelope, _actual_body_length),
     do: {:error, :unsupported_envelope}
 
-  defp fetch_payload_sections(%{
-         "payload_schema_version" => payload_schema_version,
-         "sections" => sections
-       })
+  defp fetch_payload_sections(
+         %{
+           "payload_schema_version" => payload_schema_version,
+           "sections" => sections
+         } = payload
+       )
        when payload_schema_version == @payload_schema_version and
-              is_list(sections) and length(sections) == 3,
-       do: {:ok, sections}
+              is_list(sections) and length(sections) == 3 do
+    with :ok <- reject_prohibited_keys(payload) do
+      {:ok, sections}
+    end
+  end
 
   defp fetch_payload_sections(_decoded), do: {:error, :invalid_payload}
 
@@ -206,20 +243,111 @@ defmodule SddOrchestrator.Portability.PackageCodec do
          %{"content" => content, "name" => expected_name, "version" => @section_version},
          expected_name_atom
        ) do
-    if expected_name == Atom.to_string(expected_name_atom) do
-      PackageSection.new(expected_name_atom, @section_version, content)
+    with true <- expected_name == Atom.to_string(expected_name_atom),
+         {:ok, normalized} <- normalize_content(expected_name_atom, content) do
+      PackageSection.new(expected_name_atom, @section_version, normalized)
     else
-      {:error, :invalid_section}
+      _reason -> {:error, :invalid_section}
     end
   end
 
   defp decode_section(_section, _expected_name), do: {:error, :invalid_section}
 
   defp decode_json(json) do
-    case Jason.decode(json) do
-      {:ok, value} -> {:ok, value}
+    case Jason.decode(json, objects: :ordered_objects) do
+      {:ok, value} -> strict_json_value(value)
       {:error, _reason} -> {:error, :invalid_json}
     end
+  end
+
+  defp strict_json_value(%OrderedObject{values: pairs}) do
+    keys = Enum.map(pairs, &elem(&1, 0))
+
+    if length(keys) == MapSet.size(MapSet.new(keys)) do
+      strict_json_pairs(pairs)
+    else
+      {:error, :duplicate_json_key}
+    end
+  end
+
+  defp strict_json_value(values) when is_list(values) do
+    case strict_json_list(values) do
+      {:ok, result} -> {:ok, Enum.reverse(result)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp strict_json_value(value)
+       when is_binary(value) or is_boolean(value) or is_integer(value) or is_float(value) or
+              is_nil(value),
+       do: {:ok, value}
+
+  defp strict_json_value(_value), do: {:error, :invalid_json}
+
+  defp strict_json_pairs(pairs) do
+    Enum.reduce_while(pairs, {:ok, %{}}, fn {key, value}, {:ok, result} ->
+      case strict_json_value(value) do
+        {:ok, normalized} -> {:cont, {:ok, Map.put(result, key, normalized)}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp strict_json_list(values) do
+    Enum.reduce_while(values, {:ok, []}, fn value, {:ok, result} ->
+      case strict_json_value(value) do
+        {:ok, normalized} -> {:cont, {:ok, [normalized | result]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp normalize_content(:project, content) when is_map(content),
+    do: {:ok, Map.take(content, @project_content_keys)}
+
+  defp normalize_content(:repository, content) when is_map(content),
+    do: {:ok, Map.take(content, @repository_content_keys)}
+
+  defp normalize_content(:specifications, specifications) when is_list(specifications) do
+    Enum.reduce_while(specifications, {:ok, []}, fn
+      specification, {:ok, normalized} when is_map(specification) ->
+        {:cont, {:ok, [Map.take(specification, @specification_content_keys) | normalized]}}
+
+      _invalid, _result ->
+        {:halt, {:error, :invalid_section}}
+    end)
+    |> case do
+      {:ok, normalized} -> {:ok, Enum.reverse(normalized)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp normalize_content(_name, _content), do: {:error, :invalid_section}
+
+  defp reject_prohibited_keys(value) when is_map(value) do
+    if Enum.any?(Map.keys(value), &(&1 in @forbidden_payload_keys)) do
+      {:error, :prohibited_payload_content}
+    else
+      value |> Map.values() |> reject_children()
+    end
+  end
+
+  defp reject_prohibited_keys(value) when is_list(value), do: reject_children(value)
+  defp reject_prohibited_keys(_value), do: :ok
+
+  defp reject_children(children) do
+    Enum.reduce_while(children, :ok, fn child, :ok ->
+      case reject_prohibited_keys(child) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp expansion_limit(_compressed, max_bytes, :infinity), do: max_bytes
+
+  defp expansion_limit(compressed, max_bytes, ratio) do
+    min(max_bytes, max(byte_size(compressed), 1) * ratio)
   end
 
   defp canonical_object(value) do

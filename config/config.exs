@@ -93,7 +93,23 @@ config :sdd_orchestrator, :package_encryption,
   time_cost: 3,
   memory_kib: 65_536,
   parallelism: 1,
-  max_decompressed_bytes: 16 * 1_024 * 1_024
+  max_decompressed_bytes: 16 * 1_024 * 1_024,
+  max_expansion_ratio: 100
+
+config :sdd_orchestrator, :portability_limits,
+  max_encrypted_package_bytes: 32 * 1_024 * 1_024,
+  max_decompressed_bytes: 16 * 1_024 * 1_024,
+  max_expansion_ratio: 100,
+  max_specifications: 100,
+  max_document_bytes: 256 * 1_024,
+  max_project_name_bytes: 200,
+  max_provider_bytes: 32,
+  max_repository_id_bytes: 512,
+  max_specification_id_bytes: 128,
+  max_specification_title_bytes: 200,
+  max_kdf_time_cost: 10,
+  max_kdf_memory_kib: 262_144,
+  max_kdf_parallelism: 4
 
 config :swoosh, :api_client, false
 

@@ -9,7 +9,7 @@ defmodule SddOrchestrator.Portability.RestoreIntake do
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Portability.{ImportAttempt, PackageEncryption}
+  alias SddOrchestrator.Portability.{ImportAttempt, PackageValidator}
   alias SddOrchestrator.Repo
   alias SddOrchestrator.Vault
 
@@ -99,10 +99,15 @@ defmodule SddOrchestrator.Portability.RestoreIntake do
         ) :: {:ok, ImportAttempt.t(), struct()} | {:error, :invalid_package_or_passphrase}
   def begin_validation(authority, attempt_id, passphrase) do
     with {:ok, attempt} <- get(authority, attempt_id),
-         {:ok, package} <- PackageEncryption.decrypt(attempt.encrypted_package, passphrase),
+         {:ok, package} <-
+           PackageValidator.decrypt_and_validate(attempt.encrypted_package, passphrase),
          {:ok, validating} <- mark_validating(authority, attempt) do
       {:ok, validating, package}
     else
+      {:error, reason} ->
+        _ = delete(authority, attempt_id)
+        if reason == :invalid_package_or_passphrase, do: @opaque_error, else: {:error, reason}
+
       _reason ->
         _ = delete(authority, attempt_id)
         @opaque_error
