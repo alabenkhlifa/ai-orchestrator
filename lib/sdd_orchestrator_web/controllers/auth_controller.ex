@@ -15,6 +15,9 @@ defmodule SddOrchestratorWeb.AuthController do
   use SddOrchestratorWeb, :controller
 
   alias SddOrchestrator.Accounts
+  alias SddOrchestrator.GitHubIntegration
+  alias SddOrchestrator.IdentityLinking
+  alias SddOrchestrator.IdentityLinking.IdentityMergeAttempt
   alias SddOrchestratorWeb.UserAuth
 
   @oauth_nonce_key :github_oauth_nonce
@@ -42,10 +45,16 @@ defmodule SddOrchestratorWeb.AuthController do
     nonce = get_session(conn, @oauth_nonce_key)
 
     case Accounts.complete_github_callback(state, code, nonce) do
-      {:ok, %{session_token: token, return_to: return_to}} ->
-        conn
-        |> UserAuth.put_session_token(token)
-        |> redirect(to: return_to || ~p"/projects")
+      {:ok, %{account: account, session_token: token, return_to: return_to}} ->
+        conn = UserAuth.put_session_token(conn, token)
+
+        case detect_link_candidate(account) do
+          {:ok, %IdentityMergeAttempt{} = attempt} ->
+            redirect(conn, to: ~p"/identity/link/#{attempt.id}")
+
+          :none ->
+            redirect(conn, to: return_to || ~p"/projects")
+        end
 
       {:error, _reason} ->
         conn
@@ -65,5 +74,20 @@ defmodule SddOrchestratorWeb.AuthController do
     |> UserAuth.sign_out()
     |> put_flash(:info, "You have been signed out.")
     |> redirect(to: ~p"/")
+  end
+
+  # After a fresh GitHub sign-in, offer identity linking only when the verified
+  # primary email uniquely matches an existing passwordless account. Any provider
+  # failure, missing/ineligible email, or non-unique match resolves to `:none` so
+  # sign-in proceeds normally and account-neutrally.
+  defp detect_link_candidate(account) do
+    with {:ok, token} <- Accounts.valid_access_token(account.id),
+         {:ok, email} when is_binary(email) <- GitHubIntegration.verified_primary_email(token),
+         {:ok, %IdentityMergeAttempt{} = attempt} <-
+           IdentityLinking.start_merge_attempt(account, email) do
+      {:ok, attempt}
+    else
+      _ -> :none
+    end
   end
 end

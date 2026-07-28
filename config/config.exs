@@ -95,7 +95,10 @@ config :sdd_orchestrator, :github,
   api_base_url: "https://api.github.com",
   # Onboarding relies on repository metadata only. No repository write
   # permission is approved for this slice; onboarding calls no write endpoint.
-  approved_repository_permissions: %{"metadata" => "read"}
+  approved_repository_permissions: %{"metadata" => "read"},
+  # Identity linking reads only the verified-primary email attribute
+  # (`user:email` / `read:user`). No repository write permission is requested.
+  approved_email_permission: %{"email" => "read"}
 
 # Accountless on-device data is served through a DeviceStore adapter and never
 # stored in the hosted database. Development and tests use the local adapter; the

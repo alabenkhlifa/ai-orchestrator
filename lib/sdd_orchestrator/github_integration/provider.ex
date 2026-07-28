@@ -8,10 +8,17 @@ defmodule SddOrchestrator.GitHubIntegration.Provider do
   ordinary CI never depends on a live GitHub account.
 
   This slice defines the OAuth/identity surface (authorization code exchange,
-  user identity, token refresh) and the GitHub App repository-discovery surface
-  (accessible installations, per-installation repositories, and pending
-  installation requests). All list callbacks return the complete, already
-  paginated result; deduplication across installations is the caller's concern.
+  user identity, token refresh), the verified-primary email surface used by
+  automatic identity-link candidate detection, and the GitHub App
+  repository-discovery surface (accessible installations, per-installation
+  repositories, and pending installation requests). All list callbacks return
+  the complete, already paginated result; deduplication across installations is
+  the caller's concern.
+
+  The verified-primary email callback resolves at most one address inside the
+  adapter and never returns any other address, so secondary GitHub emails stay
+  transient and are never handed to a caller for retention (identity-linking
+  business rule: secondary addresses are non-matchable and non-retainable).
 
   Provider errors are normalized to a small set of tagged atoms so callers stay
   independent of HTTP details:
@@ -73,6 +80,23 @@ defmodule SddOrchestrator.GitHubIntegration.Provider do
 
   @doc "Resolves the authenticated user for an access token."
   @callback get_user(access_token :: String.t()) :: {:ok, user()} | {:error, term()}
+
+  @doc """
+  Resolves the single GitHub email marked both primary and verified.
+
+  The adapter reduces the provider's email list internally and returns only the
+  eligible address:
+
+    * `{:ok, email}` — exactly one address is both primary and verified.
+    * `{:ok, :none}` — no such address: missing primary, an unverified primary,
+      more than one primary (defensive), a verified-secondary-only account, or
+      no readable email permission. This outcome carries no address, so callers
+      cannot disclose or retain a non-eligible email.
+    * `{:error, reason}` — the provider read failed (auth, transport, or
+      unexpected status).
+  """
+  @callback get_verified_primary_email(access_token :: String.t()) ::
+              {:ok, String.t()} | {:ok, :none} | {:error, term()}
 
   @doc "Refreshes an access token using a refresh token."
   @callback refresh_token(refresh_token :: String.t()) :: {:ok, token()} | {:error, term()}

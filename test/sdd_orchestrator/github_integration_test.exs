@@ -23,6 +23,57 @@ defmodule SddOrchestrator.GitHubIntegrationTest do
     end
   end
 
+  describe "approved_email_permission/0" do
+    test "is email read-only with no repository write permission" do
+      permission = GitHubIntegration.approved_email_permission()
+
+      assert permission == %{"email" => "read"}
+      refute Map.has_key?(permission, "contents")
+      refute Enum.any?(Map.values(permission), &(&1 == "write"))
+    end
+  end
+
+  describe "verified_primary_email/1" do
+    test "returns the single verified primary address" do
+      assert {:ok, "octocat@example.com"} =
+               GitHubIntegration.verified_primary_email(token("octocat"))
+    end
+
+    test "returns only the primary and never a secondary address (non-retention)" do
+      assert {:ok, email} = GitHubIntegration.verified_primary_email(token("octocat"))
+
+      # A single verified-primary string is surfaced; no list/map of addresses
+      # through which a secondary could be retained or disclosed.
+      assert is_binary(email)
+      assert email == "octocat@example.com"
+    end
+
+    test "skips account-neutrally when no primary is returned" do
+      assert {:ok, :none} = GitHubIntegration.verified_primary_email(token("email-none-1"))
+    end
+
+    test "skips when the primary is unverified" do
+      assert {:ok, :none} = GitHubIntegration.verified_primary_email(token("email-unverified-1"))
+    end
+
+    test "skips when more than one address is primary" do
+      assert {:ok, :none} = GitHubIntegration.verified_primary_email(token("email-multi-1"))
+    end
+
+    test "skips when only a verified secondary exists" do
+      assert {:ok, :none} = GitHubIntegration.verified_primary_email(token("email-secondary-1"))
+    end
+
+    test "skips when the email permission is unavailable" do
+      assert {:ok, :none} = GitHubIntegration.verified_primary_email(token("email-noperm-1"))
+    end
+
+    test "normalizes a provider read failure to :provider_failure" do
+      assert {:error, :provider_failure} =
+               GitHubIntegration.verified_primary_email(token("email-fail-1"))
+    end
+  end
+
   describe "check_repository_access/2" do
     test "grants access when the user has an accessible installation" do
       assert {:ok, :granted, installations} =

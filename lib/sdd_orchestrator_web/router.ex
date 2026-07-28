@@ -78,6 +78,10 @@ defmodule SddOrchestratorWeb.Router do
     get "/hosted/access/verify", HostedAccessController, :verify
     delete "/hosted/session", HostedSessionController, :delete_current
 
+    # Passwordless proof link for identity linking; account-neutral, no session
+    # required so the proof is recorded even if opened outside the GitHub session.
+    get "/identity/link/verify", IdentityLinkController, :verify
+
     # Unauthenticated entry chooser; a valid session is sent to the catalog.
     live_session :redirect_if_authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :redirect_if_authenticated}] do
@@ -105,6 +109,9 @@ defmodule SddOrchestratorWeb.Router do
       live "/onboarding/storage/:attempt_id", StorageSelectionLive
       live "/onboarding/device-setup/:attempt_id", DeviceSetupLive
       live "/onboarding/confirm/:attempt_id", ProjectConfirmationLive
+
+      # GitHub-to-passwordless identity-linking confirmation flow.
+      live "/identity/link/:id", IdentityLinkLive
     end
   end
 

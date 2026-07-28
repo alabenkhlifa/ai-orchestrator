@@ -78,6 +78,68 @@ defmodule SddOrchestrator.GitHubIntegration.ReqProviderTest do
     assert {:error, :unauthorized} = ReqProvider.get_user("bad")
   end
 
+  describe "get_verified_primary_email/1" do
+    test "returns the single primary-and-verified address and drops secondaries" do
+      Req.Test.stub(@stub, fn conn ->
+        assert Plug.Conn.get_req_header(conn, "x-github-api-version") == ["2026-03-10"]
+
+        Req.Test.json(conn, [
+          %{"email" => "primary@example.com", "primary" => true, "verified" => true},
+          %{"email" => "secondary@example.com", "primary" => false, "verified" => true},
+          %{"email" => "unverified@example.com", "primary" => false, "verified" => false}
+        ])
+      end)
+
+      assert {:ok, "primary@example.com"} = ReqProvider.get_verified_primary_email("gho_abc")
+    end
+
+    test "returns :none when the primary is unverified" do
+      Req.Test.stub(@stub, fn conn ->
+        Req.Test.json(conn, [
+          %{"email" => "primary@example.com", "primary" => true, "verified" => false}
+        ])
+      end)
+
+      assert {:ok, :none} = ReqProvider.get_verified_primary_email("gho_abc")
+    end
+
+    test "returns :none when there is no primary (verified secondary only)" do
+      Req.Test.stub(@stub, fn conn ->
+        Req.Test.json(conn, [
+          %{"email" => "secondary@example.com", "primary" => false, "verified" => true}
+        ])
+      end)
+
+      assert {:ok, :none} = ReqProvider.get_verified_primary_email("gho_abc")
+    end
+
+    test "fails closed to :none when more than one address is primary" do
+      Req.Test.stub(@stub, fn conn ->
+        Req.Test.json(conn, [
+          %{"email" => "a@example.com", "primary" => true, "verified" => true},
+          %{"email" => "b@example.com", "primary" => true, "verified" => true}
+        ])
+      end)
+
+      assert {:ok, :none} = ReqProvider.get_verified_primary_email("gho_abc")
+    end
+
+    test "maps a 403 (no email permission) to :none without disclosing an address" do
+      Req.Test.stub(@stub, fn conn -> Plug.Conn.send_resp(conn, 403, "forbidden") end)
+      assert {:ok, :none} = ReqProvider.get_verified_primary_email("gho_abc")
+    end
+
+    test "maps a 404 to :none" do
+      Req.Test.stub(@stub, fn conn -> Plug.Conn.send_resp(conn, 404, "not found") end)
+      assert {:ok, :none} = ReqProvider.get_verified_primary_email("gho_abc")
+    end
+
+    test "maps a 401 to an error" do
+      Req.Test.stub(@stub, fn conn -> Plug.Conn.send_resp(conn, 401, "unauthorized") end)
+      assert {:error, :unauthorized} = ReqProvider.get_verified_primary_email("bad")
+    end
+  end
+
   describe "list_user_installations/1" do
     test "follows Link pagination and normalizes installations" do
       Req.Test.stub(@stub, fn conn ->

@@ -64,6 +64,38 @@ defmodule SddOrchestrator.GitHubIntegration.ReqProvider do
   end
 
   @impl true
+  def get_verified_primary_email(access_token) do
+    case api_get("/user/emails?per_page=#{@per_page}", access_token) do
+      {:ok, %{status: 200, body: body}} when is_list(body) ->
+        {:ok, eligible_primary_email(body)}
+
+      # No email permission or no email resource: no eligible primary, and no
+      # address is disclosed. Treated as "none", not a failure.
+      {:ok, %{status: status}} when status in [403, 404] ->
+        {:ok, :none}
+
+      {:ok, %{status: 401}} ->
+        {:error, :unauthorized}
+
+      {:ok, %{status: status}} ->
+        {:error, {:http, status}}
+
+      {:error, reason} ->
+        {:error, {:transport, reason}}
+    end
+  end
+
+  # Reduce the transient email list to the single primary-and-verified address.
+  # More than one primary is malformed input and fails closed. Secondary and
+  # ineligible addresses are dropped here and never returned to the caller.
+  defp eligible_primary_email(entries) do
+    case Enum.filter(entries, &(&1["primary"] == true and &1["verified"] == true)) do
+      [%{"email" => email}] when is_binary(email) -> email
+      _none_or_many -> :none
+    end
+  end
+
+  @impl true
   def refresh_token(refresh_token) do
     cfg = GitHubIntegration.config()
 
