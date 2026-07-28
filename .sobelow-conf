@@ -2,10 +2,14 @@
 #
 # exit: "low"   -> the scan exits non-zero on any Low+ confidence finding, so the
 #                  security gate fails the build on regressions.
-# ignore: []    -> no ignored checks. The Content-Security-Policy deferral is
-#                  resolved: the security-review task sets a strict CSP with a
+# ignore: []    -> no globally ignored checks. The Content-Security-Policy deferral
+#                  is resolved: the security-review task sets a strict CSP with a
 #                  per-request nonce for the device-local pre-paint theme script
 #                  (see SddOrchestratorWeb.Router.put_content_security_policy/2).
+# skip: true    -> honor narrow, documented inline `# sobelow_skip` annotations for
+#                  reviewed false positives, in preference to broad global ignores.
+#                  Current use: DeviceStore.Local.init/1 `File.mkdir_p!` on a
+#                  trusted config path (never web input).
 [
   exit: "low",
   format: "txt",
@@ -14,7 +18,7 @@
   out: nil,
   private: false,
   router: nil,
-  skip: false,
+  skip: true,
   threshold: :low,
   verbose: false,
   version: false

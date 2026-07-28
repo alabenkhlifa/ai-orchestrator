@@ -49,6 +49,10 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     do: GenServer.call(__MODULE__, {:find_by_fingerprint, fingerprint})
 
   @impl GenServer
+  # The store path is trusted application configuration — a fixed dev/config value
+  # or a test-supplied temporary path — never web or user input, so `File.mkdir_p!`
+  # here is not a directory-traversal vector. Documented false positive.
+  # sobelow_skip ["Traversal.FileModule"]
   def init(opts) do
     path = Keyword.fetch!(opts, :path)
     table = Keyword.get(opts, :table, __MODULE__)
