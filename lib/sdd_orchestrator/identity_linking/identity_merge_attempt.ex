@@ -38,6 +38,9 @@ defmodule SddOrchestrator.IdentityLinking.IdentityMergeAttempt do
     field :github_proven_at, :utc_datetime
     field :passwordless_proven_at, :utc_datetime
     field :passwordless_challenge_id, :binary_id
+    field :passwordless_proof_digest, :binary, redact: true
+    field :passwordless_proof_salt, :binary, redact: true
+    field :passwordless_proof_expires_at, :utc_datetime
     field :confirmed_at, :utc_datetime
     field :committed_at, :utc_datetime
     field :expires_at, :utc_datetime
@@ -95,6 +98,52 @@ defmodule SddOrchestrator.IdentityLinking.IdentityMergeAttempt do
     |> validate_no_self_merge()
   end
 
+  @doc """
+  Stores a fresh passwordless-proof challenge (salted digest, salt, expiry) and
+  its public reference id, and refreshes the attempt expiry so the flow stays
+  live while the user proves the candidate email.
+  """
+  def request_proof_changeset(attempt, attrs) do
+    attempt
+    |> cast(attrs, [
+      :passwordless_challenge_id,
+      :passwordless_proof_digest,
+      :passwordless_proof_salt,
+      :passwordless_proof_expires_at,
+      :expires_at
+    ])
+    |> validate_required([
+      :passwordless_challenge_id,
+      :passwordless_proof_digest,
+      :passwordless_proof_salt,
+      :passwordless_proof_expires_at,
+      :expires_at
+    ])
+  end
+
+  @doc """
+  Records a successful passwordless proof and clears the single-use challenge so
+  it cannot be replayed. Moves the attempt to `awaiting_confirmation`.
+  """
+  def record_proof_changeset(attempt) do
+    change(attempt,
+      passwordless_proven_at: truncated_now(),
+      passwordless_proof_digest: nil,
+      passwordless_proof_salt: nil,
+      status: "awaiting_confirmation"
+    )
+  end
+
+  @doc "Records the explicit user confirmation. The last gate before commit."
+  def confirm_changeset(attempt) do
+    change(attempt, confirmed_at: truncated_now())
+  end
+
+  @doc "Marks an attempt conflicted (a preflight collision blocks the merge)."
+  def conflict_changeset(attempt) do
+    change(attempt, status: "conflict")
+  end
+
   @doc "Marks an attempt aborted (idempotent, non-mutating for identities)."
   def abort_changeset(attempt) do
     change(attempt, status: "aborted")
@@ -115,6 +164,8 @@ defmodule SddOrchestrator.IdentityLinking.IdentityMergeAttempt do
 
   @doc "The known lifecycle states."
   def statuses, do: @statuses
+
+  defp truncated_now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   # A merge always joins two distinct accounts; the same account on both sides is
   # a programming error, not a valid merge.

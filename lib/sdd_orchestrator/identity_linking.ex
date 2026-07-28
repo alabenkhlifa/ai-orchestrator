@@ -22,6 +22,8 @@ defmodule SddOrchestrator.IdentityLinking do
 
   # A candidate is transient: minutes, not hours, so an unproven match never lingers.
   @attempt_ttl_seconds 15 * 60
+  # The passwordless proof challenge lives the same short window.
+  @proof_ttl_seconds 15 * 60
 
   @type candidate_bundle :: %{
           hosted_identity: HostedIdentity.t(),
@@ -196,6 +198,165 @@ defmodule SddOrchestrator.IdentityLinking do
   def abort_merge_attempt(%IdentityMergeAttempt{} = attempt) do
     {:ok, _} = attempt |> IdentityMergeAttempt.abort_changeset() |> Repo.update()
   end
+
+  ## Fresh two-method proof and explicit confirmation
+
+  @doc """
+  Issues a fresh passwordless proof challenge for the candidate email, bound to
+  the attempt.
+
+  Returns `{:ok, %{challenge_id, raw_token, delivery_email}}` for the delivery
+  boundary to email; only the salted digest is persisted and the attempt expiry is
+  refreshed so the flow stays live. The raw token is never stored or returned to
+  the initiator's screen.
+  """
+  @spec request_passwordless_proof(IdentityMergeAttempt.t()) ::
+          {:ok, %{challenge_id: binary(), raw_token: String.t(), delivery_email: String.t()}}
+          | {:error, :candidate_unavailable}
+  def request_passwordless_proof(%IdentityMergeAttempt{} = attempt) do
+    case candidate_email(attempt) do
+      nil ->
+        {:error, :candidate_unavailable}
+
+      email ->
+        raw_token = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+        salt = :crypto.strong_rand_bytes(32)
+        challenge_id = Ecto.UUID.generate()
+        proof_expires_at = seconds_from_now(@proof_ttl_seconds)
+
+        {:ok, _updated} =
+          attempt
+          |> IdentityMergeAttempt.request_proof_changeset(%{
+            passwordless_challenge_id: challenge_id,
+            passwordless_proof_digest: :crypto.hash(:sha256, salt <> raw_token),
+            passwordless_proof_salt: salt,
+            passwordless_proof_expires_at: proof_expires_at,
+            expires_at: proof_expires_at
+          })
+          |> Repo.update()
+
+        {:ok, %{challenge_id: challenge_id, raw_token: raw_token, delivery_email: email}}
+    end
+  end
+
+  @doc """
+  Verifies a passwordless proof token for a challenge and records the fresh proof.
+
+  Every invalid, expired, mismatched, replayed, or cancelled attempt returns the
+  same safe `{:error, :invalid_or_expired}`. The challenge is single-use: a
+  successful proof clears the stored digest so it cannot be replayed.
+  """
+  @spec submit_passwordless_proof(term(), term()) ::
+          {:ok, IdentityMergeAttempt.t()} | {:error, :invalid_or_expired}
+  def submit_passwordless_proof(challenge_id, raw_token) when is_binary(raw_token) do
+    Repo.transaction(fn ->
+      with %IdentityMergeAttempt{} = attempt <- lock_by_challenge(challenge_id),
+           :ok <- validate_proof(attempt, raw_token),
+           {:ok, proven} <- Repo.update(IdentityMergeAttempt.record_proof_changeset(attempt)) do
+        proven
+      else
+        _failure -> Repo.rollback(:invalid_or_expired)
+      end
+    end)
+    |> case do
+      {:ok, attempt} -> {:ok, attempt}
+      {:error, _reason} -> {:error, :invalid_or_expired}
+    end
+  rescue
+    _error -> {:error, :invalid_or_expired}
+  end
+
+  def submit_passwordless_proof(_challenge_id, _raw_token), do: {:error, :invalid_or_expired}
+
+  @doc """
+  Records explicit user confirmation, the final gate before commit.
+
+  Requires both fresh proofs and a clear re-run preflight. Returns `{:error,
+  :not_ready}` when a proof is missing or stale and `{:error, :conflict}` (marking
+  the attempt conflicted) when the combined project set collides.
+  """
+  @spec confirm_merge(IdentityMergeAttempt.t()) ::
+          {:ok, IdentityMergeAttempt.t()} | {:error, :not_ready | :conflict}
+  def confirm_merge(%IdentityMergeAttempt{} = attempt) do
+    cond do
+      not proofs_complete?(attempt) ->
+        {:error, :not_ready}
+
+      Preflight.conflicted?(preflight(attempt)) ->
+        {:ok, _} = attempt |> IdentityMergeAttempt.conflict_changeset() |> Repo.update()
+        {:error, :conflict}
+
+      true ->
+        attempt |> IdentityMergeAttempt.confirm_changeset() |> Repo.update()
+    end
+  end
+
+  @doc """
+  True only for an attempt that has both fresh proofs, explicit confirmation, and
+  a clear preflight, and is neither expired, aborted, nor already committed. An
+  email match alone can never satisfy this.
+  """
+  @spec commit_eligible?(IdentityMergeAttempt.t()) :: boolean()
+  def commit_eligible?(%IdentityMergeAttempt{} = attempt) do
+    proofs_complete?(attempt) and not is_nil(attempt.confirmed_at) and
+      Preflight.clear?(preflight(attempt))
+  end
+
+  defp proofs_complete?(%IdentityMergeAttempt{} = attempt) do
+    is_nil(attempt.committed_at) and attempt.status != "aborted" and
+      not is_nil(attempt.github_proven_at) and not is_nil(attempt.passwordless_proven_at) and
+      DateTime.compare(attempt.expires_at, now()) == :gt
+  end
+
+  defp candidate_email(%IdentityMergeAttempt{} = attempt) do
+    case Repo.get_by(ExternalIdentity,
+           hosted_identity_id: attempt.candidate_hosted_identity_id,
+           provider: "email"
+         ) do
+      %ExternalIdentity{display_identifier: email} -> email
+      nil -> nil
+    end
+  end
+
+  defp lock_by_challenge(challenge_id) do
+    case Ecto.UUID.cast(challenge_id) do
+      {:ok, id} ->
+        Repo.one(
+          from a in IdentityMergeAttempt,
+            where: a.passwordless_challenge_id == ^id,
+            lock: "FOR UPDATE"
+        )
+
+      :error ->
+        nil
+    end
+  end
+
+  defp validate_proof(%IdentityMergeAttempt{} = attempt, raw_token) do
+    valid? =
+      is_nil(attempt.committed_at) and attempt.status != "aborted" and
+        is_nil(attempt.passwordless_proven_at) and
+        not is_nil(attempt.passwordless_proof_digest) and
+        not is_nil(attempt.passwordless_proof_salt) and
+        not is_nil(attempt.passwordless_proof_expires_at) and
+        DateTime.compare(attempt.passwordless_proof_expires_at, now()) == :gt and
+        valid_token_shape?(raw_token) and
+        :crypto.hash_equals(
+          :crypto.hash(:sha256, attempt.passwordless_proof_salt <> raw_token),
+          attempt.passwordless_proof_digest
+        )
+
+    if valid?, do: :ok, else: :error
+  end
+
+  defp valid_token_shape?(raw_token) when is_binary(raw_token) do
+    case Base.url_decode64(raw_token, padding: false) do
+      {:ok, decoded} -> byte_size(decoded) == 32
+      :error -> false
+    end
+  end
+
+  defp valid_token_shape?(_raw_token), do: false
 
   ## Preflight
 

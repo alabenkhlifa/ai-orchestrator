@@ -52,9 +52,10 @@ Deferred after this slice:
   - Purpose: Detect one valid candidate without account disclosure and identify every project-name or repository conflict before mutation.
   - Proof: Tests cover zero, one, multiple, retry, concurrency, name conflict, repository conflict, candidate secrecy, and unchanged state after abort.
 
-- [ ] Implement fresh two-method proof and explicit initial-link confirmation.
+- [x] Implement fresh two-method proof and explicit initial-link confirmation.
   - Purpose: Prevent an email match from authorizing an irreversible account merge.
   - Proof: Security and browser tests cover successful proof, invalid, expired, mismatched, replayed, cancelled, and unconfirmed attempts; only a freshly proven and explicitly confirmed attempt may reach commit.
+  - Ownership note: the security/domain gate and its ExUnit proofs are owned here; the linking UI and its browser scenarios for the two-proof and confirmation flow are owned by Task 9 (disclosure/UX), which exercises this same domain gate end to end.
 
 - [ ] Implement atomic conflict-free identity and project consolidation.
   - Purpose: Preserve the passwordless identity and every hosted project exactly once.
@@ -139,4 +140,12 @@ Deferred after this slice:
 - Security: candidate detection never exposes the matched account (no email/name/project on the record; Inspect redacts), ambiguity fails closed with no disclosure, and preflight and abort mutate no identity, workspace, project, or connection.
 - Engineering mechanism: `IdentityMergeAttempt` is defined once as the whole slice's transient orchestration record (proof/confirmation/commit columns present, nullable); Task 4 only writes the detection and reuse paths, Tasks 5-6 write the proof and commit paths.
 - Proof: `mix test test/sdd_orchestrator/identity_linking/` — 42 passed (5 properties, 37 tests), exit 0. Covers zero/one/multiple(ambiguous), ineligible, self-exclusion, candidate secrecy, idempotent reuse, concurrent convergence, account-neutral non-matches, name conflict, repository conflict, clear preflight, and non-mutation on preflight+abort. `mix compile --warnings-as-errors` clean; migration applied to the test DB.
+- Failed checks: None.
+
+### 2026-07-28 - Task 5: fresh two-method proof and explicit confirmation gate
+
+- Completed: Task 5 (security/domain gate). Added a self-contained passwordless proof bound to one `IdentityMergeAttempt`: `request_passwordless_proof/1` issues a single-use salted-digest challenge for the candidate email (raw token returned only to the delivery boundary, never persisted or shown to the initiator; attempt expiry refreshed), `submit_passwordless_proof/2` verifies it under a row lock with a constant-time digest check, clears the challenge so it cannot be replayed, and records `passwordless_proven_at`. Added `confirm_merge/1` (requires both fresh proofs and a clear re-run preflight; marks the attempt conflicted and refuses on a collision) and `commit_eligible?/1`, which is true only for an attempt with both proofs, explicit confirmation, a clear preflight, and no expiry/abort/commit — an email match alone can never satisfy it. Added the proof-token columns via migration `20260728130000`.
+- Engineering mechanism: the GitHub proof is the fresh authentication recorded at attempt creation; both proofs and the confirmation bind to one attempt id, matching the design's attempt-bound two-proof commit pattern.
+- Ownership: the two-proof/confirmation UI and its Playwright browser scenarios are delivered by Task 9 (disclosure/UX) against this gate; recorded in the task's ownership note.
+- Proof: `mix test test/sdd_orchestrator/identity_linking/proof_confirmation_test.exs` — 13 passed, exit 0. Covers successful proof, invalid, malformed, expired, mismatched-challenge, replayed, cancelled, unconfirmed, conflict-refusal, expiry, and the email-match-alone case. `mix compile --warnings-as-errors` clean.
 - Failed checks: None.
