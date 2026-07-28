@@ -16,7 +16,7 @@ Requires:
 
 - `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 2`.
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 17`.
-- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 4` — required before `Task 2`.
+- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 2`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 22`.
 
 Provides:
@@ -285,9 +285,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- No agreement decision remains unresolved. Task 8 is immediately executable. Task 2 is blocked until `capability:project-storage-authority` is delivered by `specs/05-project-storage-lifecycle#Task 4` and `capability:project-specification-store` by `specs/09-project-specification-storage#Task 4`; Task 17 additionally requires `capability:project-storage-governance`, and Task 22 requires `capability:project-specification-governance`.
+- No agreement decision remains unresolved. Task 8 is immediately executable. Task 2 is blocked until `capability:project-specification-store` is delivered by `specs/09-project-specification-storage#Task 8`; the project-storage authority and governance capabilities are available, while Task 22 additionally requires `capability:project-specification-governance`.
 
 ## Progress Log
+
+### 2026-07-28 - Specification-store provider task refined
+
+- Completed: Updated the `capability:project-specification-store` edge to its refined provider `specs/09-project-specification-storage#Task 8`; the capability contract and Slice 06 consumer boundary are unchanged.
+- Remaining: Implement ready Task 8; complete the specification-store provider before Task 2 and specification-store governance before Task 22; finish the remaining dependency-ordered tasks and verification gate.
+- Failed checks: None in this specification; its individual validator and the global capability graph pass.
+- Spec updates: Changed only the provider task reference and current blocker wording; task sizing, ownership, acceptance criteria, design, and approved behavior remain unchanged.
 
 ### 2026-07-28 - Task-size and execution sequence refined
 

@@ -18,7 +18,7 @@ Requires:
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 39`.
 - `capability:project-participation-boundary` — provider `specs/08-project-participation#Task 4` — required before `Task 1`.
 - `capability:project-participation-governance` — provider `specs/08-project-participation#Task 5` — required before `Task 40`.
-- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 4` — required before `Task 1`.
+- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 1`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 40`.
 
 Provides:
@@ -529,6 +529,13 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-28 - Specification-store provider task refined
+
+- Completed: Updated the `capability:project-specification-store` edge to its refined provider `specs/09-project-specification-storage#Task 8`; the capability contract and Slice 07 consumer boundary are unchanged.
+- Remaining: Implement ready Task 7; complete the three operational provider capabilities before Task 1 and the three governance providers before their named consumer tasks; finish the remaining dependency-ordered tasks and verification gate.
+- Failed checks: None in this specification; its individual validator and the global capability graph pass.
+- Spec updates: Changed only the provider task reference; task sizing, ownership, acceptance criteria, design, and approved behavior remain unchanged.
 
 ### 2026-07-28 - Task-size and execution sequence refined
 

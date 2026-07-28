@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Not Started
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Task 2 remains blocked until Slice 05 delivers the shared project-storage authority capability; the later privacy task separately waits for project-storage governance.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities, so Task 2 is ready to begin.
 
 ## Active Slice
 
@@ -19,8 +19,14 @@ Requires:
 
 Provides:
 
-- `capability:project-specification-store` — ready after `Task 4`.
+- `capability:project-specification-store` — ready after `Task 8`.
 - `capability:project-specification-governance` — ready after `Task 5`.
+
+## Task Size Gate
+
+- Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof expected to run in about ten minutes.
+- Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
+- Existing task labels are preserved; newly split tasks use the next unused labels and are listed by dependency order rather than numeric order.
 
 ## Implementation Boundary
 
@@ -57,36 +63,64 @@ Release gates:
 ## Tasks
 
 - [x] Task 1 — Approve the shared specification-storage product, technical, privacy, and verification contracts.
+  - Size: Standard
   - Depends on: none
   - Purpose: Establish one capability owner and executable contract before backup or delivery implements specification persistence.
   - Owned surfaces: Outcome and scope, stable identity, revision and snapshot semantics, authorization extension seam, hosted and device authority, restoration transaction seam, privacy lifecycle, cross-specification capability, task ownership, task sequence, traceability, and canonical verification agreement.
   - Owns: none (agreement gate)
   - Proof: Requirements, design, data boundaries, interfaces, capability dependencies, task ownership, sequence, traceability, and verification commands have no unresolved agreement decision.
 
-- [ ] Task 2 — Implement the shared domain and hosted specification store.
+- [ ] Task 2 — Implement hosted specification creation and current retrieval.
+  - Size: Standard
   - Depends on: Task 1
-  - Purpose: Establish stable specification identity and immutable revision behavior in the hosted project boundary.
-  - Owned surfaces: `ProjectSpecification`, `SpecificationRevision`, hosted migrations and schemas, complete document-set validation, stable digest, project-owner authorization seam, create transaction, expected-head append transaction, current retrieval, uniqueness and foreign-key constraints, configured limits, fixtures, and hosted failure behavior.
-  - Owns: AC-01, AC-02, AC-04, AC-07, entity:ProjectSpecification, entity:SpecificationRevision
-  - Proof: Migration, changeset, authorization, transaction, constraint, concurrency, stale-head, hostile-text, limit, rollback, and domain tests prove atomic creation, immutable complete revisions, current-head integrity, project isolation, and non-execution.
+  - Purpose: Establish the hosted stable specification identity and atomic first complete revision.
+  - Owned surfaces: `ProjectSpecification`, `SpecificationRevision`, hosted migrations and schemas, complete document-set validation, stable digest, project-owner authorization seam, create transaction, current retrieval, uniqueness and foreign-key constraints, configured limits, fixtures, and hosted failure behavior.
+  - Owns: AC-01, AC-04, AC-07, entity:ProjectSpecification, entity:SpecificationRevision
+  - Proof: Focused migration, changeset, authorization, create, current-read, constraint, hostile-text, limit, isolation, rollback, and non-execution tests prove one atomic hosted specification foundation.
+
+- [ ] Task 6 — Implement hosted optimistic revision append.
+  - Size: Standard
+  - Depends on: Task 2
+  - Purpose: Advance one hosted specification from an expected current revision without permitting stale or mutable history.
+  - Owned surfaces: Expected-current-revision validation, immutable complete revision insert, atomic current-reference advance, stable digest comparison, stale-head rejection, concurrent append serialization, committed retry, fixtures, and rollback.
+  - Owns: AC-02
+  - Proof: Focused append, immutability, expected-head, stale-writer, concurrency, duplicate-retry, current-reference, constraint, and rollback tests pass.
 
 - [ ] Task 3 — Implement the device-authoritative adapter and shared store contract.
-  - Depends on: Task 2
+  - Size: Standard
+  - Depends on: Task 2, Task 6
   - Purpose: Provide equivalent specification behavior without creating a hosted device-project copy.
   - Owned surfaces: `SpecificationStore` behavior, hosted adapter conformance, worker-owned device adapter contract, development device-store persistence, destination ownership checks, device transactions, protocol value shapes, adapter fixtures, no-hosted-copy enforcement, and parity tests.
   - Owns: AC-05
   - Proof: Shared adapter-contract, device persistence, isolation, transaction, restart, concurrency, and negative hosted-copy tests prove equivalent create, append, current-read, validation, and failure behavior in both destinations.
 
-- [ ] Task 4 — Implement consistent snapshots and restoration transaction participation.
-  - Depends on: Task 2, Task 3
-  - Purpose: Give portability and guided delivery one deterministic current view and one atomic destination integration seam.
-  - Owned surfaces: `SpecificationSnapshot`, deterministic current-project ordering, consistent hosted and device snapshot reads, strict allowlisted snapshot shape, `prepare_restore` hosted `Ecto.Multi` contribution, device transaction contribution, stable identity preservation, conflict validation, caller idempotency, rollback, fault injection, fixtures, consumer contract tests, and `capability:project-specification-store` readiness write-back.
-  - Owns: AC-03, AC-06, AC-08, entity:SpecificationSnapshot
-  - Proof: Snapshot consistency, allowlist, ordering, concurrent append, hosted and device restore-contract, conflict, replay, idempotency, injected-failure, and rollback tests prove one current view and no partial destination state.
+- [ ] Task 4 — Implement consistent current-project snapshots.
+  - Size: Standard
+  - Depends on: Task 3
+  - Purpose: Give authorized consumers one deterministic current view from either authoritative destination.
+  - Owned surfaces: `SpecificationSnapshot`, deterministic current-project ordering, consistent hosted and device snapshot reads, strict allowlisted snapshot shape, snapshot limits, concurrent-append observation boundary, fixtures, and consumer snapshot contract tests.
+  - Owns: AC-03, entity:SpecificationSnapshot
+  - Proof: Focused hosted and device snapshot consistency, allowlist, ordering, limit, authorization, concurrent-append, and deterministic fixture tests pass.
+
+- [ ] Task 7 — Implement restoration transaction participation.
+  - Size: Standard
+  - Depends on: Task 4
+  - Purpose: Contribute validated specification state atomically to a caller-owned hosted or device project-creation transaction.
+  - Owned surfaces: `SpecificationStore.prepare_restore/4`, hosted `Ecto.Multi` contribution, device transaction contribution, stable specification and revision identity preservation, conflict validation, caller idempotency key, rollback, fault injection, and Slice 06 consumer contract fixtures.
+  - Owns: AC-06
+  - Proof: Focused hosted and device restore-contract, conflict, replay, idempotency, injected-failure, identity-preservation, and rollback tests prove no partial or duplicate specification state.
+
+- [ ] Task 8 — Enforce cross-operation concurrency and idempotency.
+  - Size: Standard
+  - Depends on: Task 6, Task 7
+  - Purpose: Preserve stable identities and current-head correctness when create, append, snapshot, and restore operations race or retry.
+  - Owned surfaces: Cross-operation uniqueness and transaction invariants, concurrent create and append outcomes, snapshot commit boundary, restore replay, committed retry, stale-write rejection, deterministic race fixtures, and `capability:project-specification-store` readiness write-back.
+  - Owns: AC-08
+  - Proof: Focused create, append, snapshot, and restore race, replay, retry, stale-head, uniqueness, snapshot-consistency, and no-partial-state tests pass before capability readiness is recorded.
 
 - [ ] Task 5 — Enforce lifecycle, privacy, and cross-specification compatibility.
-  - Depends on: Task 2, Task 3, Task 4
-  - Status: Blocked until `capability:project-storage-governance` is available and its earlier task dependencies pass.
+  - Size: Standard
+  - Depends on: Task 2, Task 3, Task 4, Task 6, Task 7, Task 8
   - Purpose: Make the capability safe and stable for Slice 06 and Slice 07 consumption.
   - Owned surfaces: Processing inventory, field-purpose map, access and rights integration, project-deletion cascade, device locality, hosted processor boundary, cache and index minimization, structured security logging, 30-day log expiry, 35-day encrypted-backup expiry, no analytics or secondary use, content-redaction scans, Slice 06 snapshot and restore contract fixtures, Slice 07 revision and authorization-extension contract fixtures, `capability:project-specification-governance` readiness write-back, and required privacy and security review.
   - Owns: AC-09, AC-10
@@ -109,9 +143,16 @@ Release gates:
 
 ## Blocked Decisions
 
-- No agreement decision remains unresolved. Task 2 is blocked until `capability:project-storage-authority` is delivered by `specs/05-project-storage-lifecycle#Task 4`; Task 5 additionally requires `capability:project-storage-governance` from `specs/05-project-storage-lifecycle#Task 6`.
+- None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Provider readiness and task size reconciled
+
+- Completed: Confirmed the Slice 05 authority and governance capabilities are ready, applied the Task Size Gate, preserved Tasks 1–5, split hosted append, restore participation, and cross-operation concurrency into Tasks 6–8, and moved the specification-store readiness boundary to Task 8.
+- Remaining: Implement Tasks 2, 6, 3, 4, 7, 8, and 5 in dependency order, publish both capabilities at their named task boundaries, validate the Slice 06 and Slice 07 consumer contracts, and run the verification gate.
+- Failed checks: The first global graph check rejected missing Slice 05 capability readiness write-backs; those write-backs are now explicit and the graph passes.
+- Spec updates: Moved the slice from `Blocked` to `Not Started`, removed stale provider blockers, added standard size declarations with no exception, split independently provable state transitions, and changed the `capability:project-specification-store` provider from Task 4 to Task 8 without changing approved behavior.
 
 ### 2026-07-28 - Shared specification-storage foundation approved
 
