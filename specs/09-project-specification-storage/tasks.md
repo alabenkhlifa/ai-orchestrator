@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities, so Task 2 is ready to begin.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Task 2 is complete, and Task 6 is the next executable task.
 
 ## Active Slice
 
@@ -70,7 +70,7 @@ Release gates:
   - Owns: none (agreement gate)
   - Proof: Requirements, design, data boundaries, interfaces, capability dependencies, task ownership, sequence, traceability, and verification commands have no unresolved agreement decision.
 
-- [ ] Task 2 — Implement hosted specification creation and current retrieval.
+- [x] Task 2 — Implement hosted specification creation and current retrieval.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Establish the hosted stable specification identity and atomic first complete revision.
@@ -146,6 +146,13 @@ Release gates:
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Task 2 complete: hosted specification creation and current retrieval
+
+- Completed: Added the hosted `ProjectSpecification` and immutable `SpecificationRevision` schemas and migration, configured document and aggregate limits, complete-document validation and stable SHA-256 digesting, fail-closed owner authorization, the shared `SpecificationStore` facade, one `Ecto.Multi` for first-revision creation and current-pointer assignment, current retrieval, and focused fixtures. The stored revision accepts hostile-looking text only as inert content and rejects extra path fields, incomplete sets, oversize data, cross-workspace access, and email actor references.
+- Remaining: Implement hosted optimistic append in Task 6, then the device adapter, consistent snapshots, restoration participation, concurrency readiness, governance, and the slice verification gate.
+- Failed checks: The first focused run exposed an unhandled primary-key constraint and a fixture repository collision; both were corrected. Final proof passes: `MIX_ENV=test mix test test/sdd_orchestrator/specifications/hosted_store_test.exs` (8 tests), migration rollback and reapply, `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 2 complete; requirements, design, ownership, dependencies, and capability readiness are unchanged.
 
 ### 2026-07-28 - Provider readiness and task size reconciled
 
