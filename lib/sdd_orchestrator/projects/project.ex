@@ -20,6 +20,7 @@ defmodule SddOrchestrator.Projects.Project do
 
   import Ecto.Changeset
 
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ProjectStorage.HostedProjectStorage
   alias SddOrchestrator.ProjectStorage.StorageMode
@@ -46,6 +47,7 @@ defmodule SddOrchestrator.Projects.Project do
 
     has_one :repository_connection, RepositoryConnection
     has_one :hosted_storage, HostedProjectStorage
+    has_one :hosted_local_repository_binding, HostedLocalRepositoryBinding
 
     timestamps()
   end

@@ -45,6 +45,10 @@ defmodule SddOrchestrator.Devices.LocalWorker do
     field :last_seen_at, :utc_datetime
     field :revoked_at, :utc_datetime
 
+    has_many :hosted_local_repository_bindings,
+             SddOrchestrator.Portability.HostedLocalRepositoryBinding,
+             foreign_key: :worker_id
+
     timestamps()
   end
 

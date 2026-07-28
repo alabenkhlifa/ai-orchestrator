@@ -216,6 +216,21 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
       review: "Approved storage-selection data contract (Slice 05 design.md)."
     },
     %DataProcessingRecord{
+      activity: :hosted_local_repository_binding,
+      purpose: "Route the user's explicit local repository connection for one hosted project.",
+      lawful_basis: :contract,
+      personal_data: ["project id", "worker id", "last successful validation time"],
+      access:
+        "Owning personal workspace, explicitly selected authorized worker for local operations, and approved operations personnel when necessary.",
+      retention:
+        "Only while explicitly connected; deleted on disconnect, worker revocation, replacement, project erasure, or service termination, with encrypted backup copies expired within 35 days.",
+      rights:
+        "Access, correction, erasure, restriction, objection, and portability via the verified operator workflow.",
+      processors: ["Hosting database", "Authorized device worker"],
+      transfers: "Per deployment privacy profile; no device project data is copied to hosting.",
+      review: "Approved project-portability binding data contract (Slice 06 design.md)."
+    },
+    %DataProcessingRecord{
       activity: :project_onboarding_attempt,
       purpose: "Hold short-lived onboarding workflow state until a project is created.",
       lawful_basis: :contract,

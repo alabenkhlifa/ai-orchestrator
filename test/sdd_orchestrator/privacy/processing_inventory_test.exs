@@ -14,6 +14,7 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
     hosted_identity external_identity magic_link_attempt passwordless_email_delivery
     hosted_session passwordless_abuse_control
     personal_workspace workspace hosted_project_storage
+    hosted_local_repository_binding
     project_and_repository_connection project_onboarding_attempt
     project_specification_storage
     operational_security_log
@@ -90,5 +91,44 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
     assert authentication_data =~ "digest"
     assert authentication_data =~ "hmac"
     refute authentication_data =~ "anonymous identifier"
+  end
+
+  test "the hosted local repository binding is minimized and lifecycle-bound" do
+    binding =
+      Enum.find(
+        ProcessingInventory.records(),
+        &(&1.activity == :hosted_local_repository_binding)
+      )
+
+    assert binding.personal_data == [
+             "project id",
+             "worker id",
+             "last successful validation time"
+           ]
+
+    lifecycle = String.downcase(binding.retention)
+    assert lifecycle =~ "disconnect"
+    assert lifecycle =~ "worker revocation"
+    assert lifecycle =~ "replacement"
+    assert lifecycle =~ "project erasure"
+    assert lifecycle =~ "service termination"
+    assert lifecycle =~ "35 days"
+
+    contract =
+      [
+        binding.purpose,
+        binding.access,
+        binding.retention,
+        binding.rights,
+        binding.transfers
+      ]
+      |> Enum.join(" ")
+      |> String.downcase()
+
+    refute contract =~ "repository path"
+    refute contract =~ "credential"
+    refute contract =~ "device label"
+    refute contract =~ "compatibility"
+    refute contract =~ "repository identifier"
   end
 end

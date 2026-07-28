@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, and 25 are complete. Task 26 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, and 26 are complete. Task 21 is the next implementation task.
 
 ## Active Slice
 
@@ -203,13 +203,14 @@ Release boundary:
   - Proof: Focused snapshot, validation, backup-service, LiveView, and desktop and mobile browser tests cover portable success, legacy blocking, upgrade handoff, retry after exact source upgrade, malformed identity rejection, no encrypted artifact on failure, and unchanged project and repository state.
   - Delivered: `BackupSnapshot` and `PackageValidator` accept only the strict Slice 02 versioned portable identifier for local repositories. Legacy device projects stop before encryption with an explicit source-side `Locate repository` action, malformed identities fail closed without a backup form, exact source upgrade updates both device canonical-identity fields atomically, and a subsequent retry exports the portable identifier. The device dashboard exposes backup only when ready; blocked attempts create no package or persistent mutation.
 
-- [ ] Task 26 - Establish the hosted local-worker binding foundation.
+- [x] Task 26 - Establish the hosted local-worker binding foundation.
   - Size: Standard
   - Purpose: Represent one approved hosted-project-to-worker link without reusing GitHub connection fields or making device project data hosted-authoritative.
   - Owned surfaces: `HostedLocalRepositoryBinding`, hosted migration and schema, project and worker references, one-binding-per-project constraint, exact project-provider validation, minimum project ID, worker ID, and last-validation-time fields, personal-workspace project access, selected device-workspace worker authorization, idempotent same-binding result, atomic replacement contract, explicit disconnect, worker-revocation deletion, project-erasure cascade, service-termination handling, temporary-unavailability derivation, processing-inventory registration, and credential, path, duplicate workspace, duplicate repository-identity, device-label, and compatibility-field exclusion.
   - Owns: entity:HostedLocalRepositoryBinding
   - Depends on: Task 13, Task 25
   - Proof: Focused migration, constraint, authorization, field-minimization, access, idempotency, replacement, disconnect, worker-revocation, project-erasure, service-termination, unavailable-state, inventory, and forbidden-field tests prove one revocable hosted binding without device project data or repository mutation.
+  - Delivered: Added the three-field project-keyed `HostedLocalRepositoryBinding`, scoped dual-workspace persistence boundary, portable local-project and exact-identifier checks, active reachable worker authorization, idempotent retention, atomic replacement, scoped disconnect, derived temporary-unavailability state, project and worker deletion cascades, database-enforced deletion on worker revocation, service-termination cleanup, project and worker associations, and the approved processing-inventory record without paths, credentials, duplicate workspace or repository identities, device labels, compatibility fields, or device project data.
 
 - [ ] Task 21 - Integrate explicit device local-repository reconnection.
   - Size: Standard
@@ -317,6 +318,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 26 complete: hosted local-worker binding foundation
+
+- Completed: Added the minimal hosted project-to-worker binding with only project ID, worker ID, and last successful validation time; scoped creation and reads to the owning `PersonalWorkspace`; required the selected `DeviceWorkspace`, an active compatible reachable worker, a hosted local project, a portable project-held identity, and an exact validation result; kept same-worker retries idempotent and replacement transactional; derived temporary unavailability without mutation; and enforced disconnect, worker-revocation, project-erasure, account-erasure cascade, and service-termination deletion.
+- Proof: The migration rolled back and reapplied successfully. The focused binding, processing-inventory, pairing, identity-merge worker-revocation, and rights set passed 38 tests. `mix check` passed 690 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Implement the shared exact local-worker validation boundary and device-authoritative reconnection in Task 21, then consume it with this binding foundation in hosted reconnection Task 27.
+- Failed checks: The first compilation found default-argument declarations split across function clauses, and the first strict Credo run found one alias-order issue; both were corrected before the final proof.
+- Spec updates: Marked Task 26 complete, recorded its delivered mechanism, and made Task 21 the next executable task without changing requirements, design, ownership, dependencies, or capability edges.
 
 ### 2026-07-28 - Hosted local-worker binding contract approved
 
