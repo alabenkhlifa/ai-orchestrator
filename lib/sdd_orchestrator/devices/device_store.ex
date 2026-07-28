@@ -11,6 +11,7 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
+  alias SddOrchestrator.Portability.ImportAttempt
   alias SddOrchestrator.SpecificationStore
 
   alias SddOrchestrator.Specifications.{
@@ -66,6 +67,17 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   @doc "Returns all current device-authoritative specifications for one project."
   @callback current_specifications(String.t()) :: [SpecificationStore.current()]
+
+  @doc "Stores one vault-sealed device-local import attempt."
+  @callback put_import_attempt(ImportAttempt.t()) ::
+              {:ok, ImportAttempt.t()} | {:error, term()}
+
+  @doc "Fetches one vault-sealed device-local import attempt."
+  @callback get_import_attempt(String.t()) ::
+              {:ok, ImportAttempt.t()} | {:error, :not_found}
+
+  @doc "Deletes one device-local import attempt and encrypted upload."
+  @callback delete_import_attempt(String.t()) :: :ok
 
   @doc "Commits the supported contributions in one worker-owned device transaction."
   @callback commit_transaction(DeviceTransaction.t()) ::

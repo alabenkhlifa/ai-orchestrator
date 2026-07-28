@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, and 6 are complete. Task 4 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, and 4 are complete. Task 10 is the next implementation task.
 
 ## Active Slice
 
@@ -118,7 +118,7 @@ Release boundary:
   - Depends on: Task 3
   - Proof: Focused LiveView plus desktop and mobile browser scenarios cover scope copy, matching and mismatched passphrases, required loss acknowledgement, successful encrypted download, generation failure, cancellation, keyboard and focus behavior, and prohibited sharing or copy language.
 
-- [ ] Task 4 - Implement encrypted restore intake and terminal cleanup.
+- [x] Task 4 - Implement encrypted restore intake and terminal cleanup.
   - Size: Standard
   - Purpose: Isolate one restore request, establish destination authority, and remove transient state on every terminal path.
   - Owned surfaces: `ImportAttempt`, encrypted upload-at-rest, restore state transitions, required passphrase handoff to the Task 3 decryption boundary, selected destination binding, destination-authorization verification, cancellation and failure state, opaque errors, immediate terminal upload and attempt cleanup, and absence of persistent project mutation.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 4 complete: encrypted restore intake and terminal cleanup
+
+- Completed: Added the transient `ImportAttempt` boundary with explicit hosted or device destination ownership, 24-hour expiry, uploaded and validating states, Cloak field encryption for hosted uploads, an additional local-vault seal for device-store uploads, separately verified destination authorization, opaque passphrase and package failure, transient decryption handoff, and idempotent immediate deletion on failure, cancellation, and completion. Accountless device intake remains in the device store and creates no hosted attempt or project record.
+- Remaining: Implement strict package compatibility, safety, and bounded-resource validation in Task 10.
+- Failed checks: Strict Credo requested replacing a one-clause device-cleanup `with` with `case`; corrected. Final proof passes: the combined restore-intake and encryption suites (12 tests), `git diff --check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 4 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 6 complete: backup creation and encrypted download
 

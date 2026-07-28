@@ -10,6 +10,7 @@ defmodule SddOrchestrator.Devices do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction, Pairing, WorkerDiscovery}
+  alias SddOrchestrator.Portability.ImportAttempt
 
   @doc "Returns the established accountless device workspace, creating it if absent."
   @spec establish_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, term()}
@@ -94,6 +95,15 @@ defmodule SddOrchestrator.Devices do
 
   @doc "Returns all current device-authoritative specifications for one project."
   def current_specifications(project_id), do: adapter().current_specifications(project_id)
+
+  @doc "Stores one vault-sealed device-local import attempt."
+  def put_import_attempt(%ImportAttempt{} = attempt), do: adapter().put_import_attempt(attempt)
+
+  @doc "Fetches one vault-sealed device-local import attempt."
+  def get_import_attempt(id), do: adapter().get_import_attempt(id)
+
+  @doc "Deletes one device-local import attempt and encrypted upload."
+  def delete_import_attempt(id), do: adapter().delete_import_attempt(id)
 
   @doc "Commits a caller-owned transaction through the device worker boundary."
   @spec commit_transaction(DeviceTransaction.t()) :: {:ok, map()} | {:error, term()}

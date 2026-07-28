@@ -19,6 +19,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, Workspace}
   alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
+  alias SddOrchestrator.Portability.ImportAttempt
   alias SddOrchestrator.Projects.Project
 
   alias SddOrchestrator.Specifications.{
@@ -94,6 +95,17 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   def current_specifications(project_id) do
     GenServer.call(__MODULE__, {:current_specifications, project_id})
   end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def put_import_attempt(%ImportAttempt{} = attempt) do
+    GenServer.call(__MODULE__, {:put_import_attempt, attempt})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def get_import_attempt(id), do: GenServer.call(__MODULE__, {:get_import_attempt, id})
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def delete_import_attempt(id), do: GenServer.call(__MODULE__, {:delete_import_attempt, id})
 
   @impl SddOrchestrator.Devices.DeviceStore
   def commit_transaction(%DeviceTransaction{} = transaction) do
@@ -207,6 +219,28 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   def handle_call({:current_specifications, project_id}, _from, state) do
     {:reply, current_specifications_from_table(state.table, project_id), state}
+  end
+
+  def handle_call({:put_import_attempt, %ImportAttempt{} = attempt}, _from, state) do
+    :ok = :dets.insert(state.table, {{:import_attempt, attempt.id}, attempt})
+    :ok = :dets.sync(state.table)
+    {:reply, {:ok, attempt}, state}
+  end
+
+  def handle_call({:get_import_attempt, id}, _from, state) do
+    reply =
+      case :dets.lookup(state.table, {:import_attempt, id}) do
+        [{{:import_attempt, ^id}, %ImportAttempt{} = attempt}] -> {:ok, attempt}
+        [] -> {:error, :not_found}
+      end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:delete_import_attempt, id}, _from, state) do
+    :ok = :dets.delete(state.table, {:import_attempt, id})
+    :ok = :dets.sync(state.table)
+    {:reply, :ok, state}
   end
 
   def handle_call({:commit_transaction, transaction}, _from, state) do
