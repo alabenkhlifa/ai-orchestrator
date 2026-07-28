@@ -82,7 +82,7 @@ Release boundary:
   - Depends on: Task 2, Task 3
   - Proof: Hosted and device transaction, constraint, concurrency, retry, replay, lost-acknowledgement, and fault-injection tests prove one destination contains the project, connection, matching owner and mode, and adapter state or no partial destination state; committed retries return the same project, device reconciliation consumes the transient attempt without duplication, failed preparation is aborted or reconciled, and repository content remains unchanged.
 
-- [ ] Task 5 - Show authoritative storage mode and availability after creation.
+- [x] Task 5 - Show authoritative storage mode and availability after creation.
   - Purpose: Make on-device and hosted projects understandable without catalog composition changing ownership or storage.
   - Owned surfaces: Post-creation dashboard storage state, mixed-mode project catalog entries, device and connection availability, sign-in or sign-out catalog composition, current-session stable-ID collision detection, separate authoritative-record entries, non-mutating identity-conflict presentation, and absence of cross-boundary collision persistence or analytics.
   - Owns: AC-09, AC-10, AC-11
@@ -116,6 +116,13 @@ Release boundary:
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Task 5 complete: combined catalog composition and non-mutating collision presentation
+
+- AC-09 (post-creation dashboards) was already satisfied by the existing on-device and hosted dashboards, which both show the linked repository, the authoritative storage mode (`data-storage-mode`), and the current connection or device-availability state.
+- AC-10/AC-11: added `SddOrchestrator.Catalog.combined/3`, which composes the signed-in personal workspace's hosted projects (with connection status) and the on-device projects available through the device workspace (with worker availability) into one read-only view. Each authorized record appears once with its storage mode and availability; `mark_identity_conflicts/1` keeps records that share a stable project id separate and flags both as an identity conflict using only the current session's records, persisting no cross-boundary link and choosing no authority. Composition is strictly non-mutating (no ownership, storage-mode, identity, upload, or synchronization change) and emits no analytics. A device project stays owned by `DeviceWorkspace` while shown in the signed-in catalog and routes to its on-device dashboard. When no device boundary is present the composition safely contributes no device projects rather than failing the catalog. `ProjectsLive` renders the composed entries with per-mode labels, availability badges, and a non-actionable identity-conflict indicator.
+- Passing proofs: `catalog_test` (4: mixed composition, non-mutation, same-id conflict flagging with records kept separate, distinct-id no-conflict); `mixed_catalog_live_test` (1: the signed-in catalog composes both sources, each with its mode, the device row routing to the on-device dashboard and not duplicated into hosted persistence); existing `projects_live_test`, `project_dashboard_live_test`, and `device_project_dashboard_live_test` stay green; full `MIX_ENV=test mix test` (512 passed, 1 excluded live test); `mix format --check-formatted`; `mix credo --strict`; `mix dialyzer`; `mix compile --warnings-as-errors`.
+- Follow-on (slice-level browser gate): a signed-in mixed-catalog browser scenario requires the magic-link sign-in flow and, for the identity-conflict case, a `specs/06-project-portability/` restore that produces a shared stable id; both are covered deterministically here and land in the slice e2e gate.
 
 ### 2026-07-28 - Task 4 complete: attempt-integrated atomic registration for both destinations
 

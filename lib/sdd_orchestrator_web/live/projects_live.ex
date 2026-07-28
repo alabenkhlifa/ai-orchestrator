@@ -20,8 +20,8 @@ defmodule SddOrchestratorWeb.ProjectsLive do
   import SddOrchestratorWeb.ConnectionStatus
 
   alias SddOrchestrator.Accounts
+  alias SddOrchestrator.Catalog
   alias SddOrchestrator.Projects
-  alias SddOrchestrator.Projects.Connections
 
   @impl true
   def mount(_params, _session, socket) do
@@ -51,12 +51,19 @@ defmodule SddOrchestratorWeb.ProjectsLive do
 
   defp load_catalog(socket, opts) do
     account = socket.assigns.current_account
-    entries = Connections.catalog(account, socket.assigns.workspace, opts)
+    entries = Catalog.combined(account, socket.assigns.workspace, opts)
 
     socket
     |> assign(:entries, entries)
-    |> assign(:any_needs_attention?, Enum.any?(entries, &(&1.status != :connected)))
+    |> assign(:any_needs_attention?, Enum.any?(entries, &needs_attention?/1))
   end
+
+  # Only hosted connections revalidate through `Check again`; a device project's
+  # availability follows the local worker, not this control.
+  defp needs_attention?(%{storage_mode: "hosted", availability: availability}),
+    do: availability != :connected
+
+  defp needs_attention?(_entry), do: false
 
   # Non-mutating handoff into onboarding: reuse or open an onboarding attempt and
   # route to the repository-access check. No project or connection is created.
@@ -100,27 +107,54 @@ defmodule SddOrchestratorWeb.ProjectsLive do
       </div>
 
       <ul id="project-catalog" class="mt-6 flex flex-col gap-2.5">
-        <li :for={entry <- @entries} id={"project-#{entry.project.id}"}>
+        <li :for={entry <- @entries} id={"project-#{entry.id}"} data-storage-mode={entry.storage_mode}>
           <.link
-            navigate={~p"/projects/#{entry.project.id}"}
+            navigate={entry.route}
             class="flex items-center gap-3 rounded-lg border border-line bg-surface p-4 hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             <span class="flex-none w-9 h-9 rounded-lg bg-raised text-ink-muted flex items-center justify-center">
-              <.lucide name="folder-git-2" class="size-[18px]" />
+              <.lucide name={mode_icon(entry.storage_mode)} class="size-[18px]" />
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-semibold text-ink">{entry.project.name}</span>
-              <span :if={entry.connection} class="block truncate text-[13px] text-ink-muted">
-                {entry.connection.full_name}
+              <span class="block truncate text-sm font-semibold text-ink">{entry.name}</span>
+              <span class="block truncate text-[13px] text-ink-muted">
+                {mode_label(entry.storage_mode)}{if entry.repository_label,
+                  do: " · " <> entry.repository_label}
+              </span>
+              <span
+                :if={entry.identity_conflict?}
+                data-identity-conflict
+                class="mt-1 flex items-center gap-1 text-[12px] font-semibold text-err-fg"
+              >
+                <.lucide name="triangle-alert" class="size-3.5" />
+                Identity conflict — this project also exists in another storage location.
               </span>
             </span>
-            <.connection_badge status={entry.status} class="flex-none" />
+            <.connection_badge
+              :if={entry.storage_mode == "hosted"}
+              status={entry.availability}
+              class="flex-none"
+            />
+            <.device_connection_badge
+              :if={entry.storage_mode == "device"}
+              status={device_status(entry.availability)}
+              class="flex-none"
+            />
           </.link>
         </li>
       </ul>
     </.app_shell>
     """
   end
+
+  defp mode_icon("device"), do: "hard-drive"
+  defp mode_icon(_hosted), do: "cloud"
+
+  defp mode_label("device"), do: "On this device"
+  defp mode_label(_hosted), do: "In my SDD Orchestrator account"
+
+  defp device_status(:available), do: "connected"
+  defp device_status(_unavailable), do: "unavailable"
 
   defp initials(%{login: login}) when is_binary(login) do
     login |> String.replace(~r/[^A-Za-z0-9]/, "") |> String.slice(0, 2) |> String.upcase()
