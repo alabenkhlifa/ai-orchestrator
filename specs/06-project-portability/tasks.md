@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, 22, 18, and 23 are complete. Task 24 is in progress.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, 22, 18, 23, and 24 are complete. Task 7 is in progress.
 
 ## Active Slice
 
@@ -284,13 +284,14 @@ Release boundary:
   - Proof: Focused deployment-profile, expiry-boundary, recovery authorization, deletion-propagation, processor-configuration, and release-gate checks prove the 35-day ceiling without claiming deployment evidence that is not locally available.
   - Delivered: Added one structured encrypted-backup lifecycle contract and deployment-evidence check. It requires encryption, expiry at or below 35 days, recovery-only restoration, mandatory deletion propagation, and non-blank processor, agreement, region, transfer, retention-enforcement, recovery-authorization, and privacy-review evidence. Verified rights handoffs now consume the same fixed lifecycle contract. Missing or invalid deployment evidence blocks only the explicit public-release readiness check; implementation and local verification remain independently testable.
 
-- [ ] Task 24 - Prohibit portability secondary use and agent access.
+- [x] Task 24 - Prohibit portability secondary use and agent access.
   - Size: Standard
   - Purpose: Prevent package and restoration data from becoming analytics, training, identity-tracking, or agent input.
   - Owned surfaces: No analytics, advertising, model training, identity tracking, or unrelated improvement, no coding-agent or model-provider access, hosted local-worker binding exclusion from secondary use, genuinely anonymous aggregate boundary, and negative telemetry, cache, index, export, diagnostic, and content-routing scans.
   - Owns: AC-25
   - Depends on: Task 18, Task 23
   - Proof: Focused negative secondary-use, agent-access, model-provider, telemetry, analytics-identifier, cache, index, export, diagnostic, and content-routing checks pass.
+  - Delivered: Added a fail-closed portability data-use policy that permits only explicit backup, restore, repository-routing, security, lifecycle, and verified-rights purposes and recipients. Analytics, advertising, model training, identity tracking, unrelated product improvement, coding agents, and model providers are rejected for every package and restoration data class. The processing inventory now records the encrypted package, import attempt, and transient restore operation alongside provenance, binding, and minimal security records. Source-dependency and database scans prove there is no portability analytics, telemetry, cache, agent, model-provider, content-index, or analytics-table route; any future analytics proposal remains prohibited until it can meet an aggregate and genuinely anonymous boundary without stable or pseudonymous identifiers.
 
 - [ ] Task 7 - Complete the backup privacy and security review.
   - Size: Standard
@@ -324,6 +325,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 24 complete: portability secondary use prohibited
+
+- Completed: Added `PortabilityDataUsePolicy` as a fail-closed purpose and recipient matrix for project packages, import attempts, transient restore operations, provenance, hosted local-worker bindings, and operational-security logs. Only explicit service delivery, selected-destination validation and commit, authorized local routing, minimum operations, lifecycle cleanup, and verified-rights handling are allowed. Analytics, advertising, identity tracking, model training, unrelated improvement, coding agents, and model providers are rejected. Registered project-package, import-attempt, and restore-operation processing records with their exact access, processor, transfer, retention, and rights boundaries. The future analytics boundary remains prohibited and names every identifier category that would prevent genuinely anonymous aggregation.
+- Proof: The focused data-use, processing-inventory, analytics-absence, rights, security-log, payload-policy, and backup-lifecycle set passed 36 tests. It covers every allowed and prohibited matrix edge, coding-agent and model-provider rejection, no active analytics, the future anonymous-aggregate minimum, inventory completeness, source dependency scans, no ciphertext index, and no analytics-like portability table. `mix check` passed 742 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Complete the consolidated privacy and security review in Task 7, resolve the current Dialyzer warnings, publish `capability:project-portability`, and run the full slice verification gate.
+- Failed checks: None in the focused or repository gate. `mix dialyzer` still reports the same 14 warnings in earlier Slice 06 restore and reconnection code, with no Task 24-specific warning; the final slice gate remains open.
+- Spec updates: Marked Task 24 complete, recorded the fail-closed use boundary and negative routing evidence, and made Task 7 executable without changing requirements, design, ownership, dependencies, or capability edges.
 
 ### 2026-07-28 - Task 23 complete: encrypted-backup expiry enforcement
 

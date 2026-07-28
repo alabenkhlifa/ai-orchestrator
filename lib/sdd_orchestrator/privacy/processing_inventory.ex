@@ -251,6 +251,80 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
       review: "Approved project-portability provenance data contract (Slice 06 design.md)."
     },
     %DataProcessingRecord{
+      activity: :project_package,
+      purpose:
+        "Generate, deliver, validate, and restore the user-requested encrypted project backup.",
+      lawful_basis: :contract,
+      personal_data: [
+        "stable project id and display name",
+        "provider and canonical repository identity",
+        "current specification identities, titles, and document sets",
+        "encrypted package and non-secret envelope parameters"
+      ],
+      access:
+        "Authorized user and selected destination boundary for the active operation; never coding agents, model providers, analytics, diagnostics, caches, or indexes.",
+      retention:
+        "No completed service copy; passphrase, derived key, and decrypted content are discarded immediately, and the downloaded package remains under user control.",
+      rights:
+        "Active service copies are removed immediately; external user-held copies remain under the user's control.",
+      processors: [
+        "Application runtime for hosted operations",
+        "Device worker under the operating-system boundary for device operations"
+      ],
+      transfers:
+        "Hosted processing follows the deployment privacy profile; device generation has no hosted transfer.",
+      review: "Approved project-portability package data contract (Slice 06 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :import_attempt,
+      purpose:
+        "Hold one encrypted package while the authorized destination validates and commits a restore.",
+      lawful_basis: :contract,
+      personal_data: [
+        "destination authority reference",
+        "encrypted package",
+        "coarse lifecycle status",
+        "expiry and lifecycle timestamps"
+      ],
+      access:
+        "Authorized user and selected destination boundary; approved operations only for lifecycle enforcement; never coding agents or model providers.",
+      retention:
+        "Deleted immediately on success, cancellation, or failure; stranded attempts expire within 24 hours.",
+      rights:
+        "Verified access exposes minimized lifecycle metadata without ciphertext; erasure deletes the attempt and propagates to processors.",
+      processors: [
+        "Hosting database for hosted attempts",
+        "Device worker under the operating-system boundary for device attempts"
+      ],
+      transfers:
+        "Hosted processing follows the deployment privacy profile; device attempts have no hosted transfer.",
+      review: "Approved project-portability intake data contract (Slice 06 design.md)."
+    },
+    %DataProcessingRecord{
+      activity: :restore_operation,
+      purpose:
+        "Decrypt, validate, preflight, and atomically commit one user-requested restoration.",
+      lawful_basis: :contract,
+      personal_data: [
+        "transient recovery passphrase and derived key",
+        "transient decrypted project, repository, and specification content",
+        "selected destination authority"
+      ],
+      access:
+        "Selected authorized destination in the active call only; never logs, diagnostics, analytics, caches, indexes, coding agents, or model providers.",
+      retention:
+        "Passphrase, derived key, and decrypted content are discarded immediately when the active call ends.",
+      rights:
+        "No durable operation copy remains; committed records use the verified project rights workflow.",
+      processors: [
+        "Application runtime for hosted restores",
+        "Device worker under the operating-system boundary for device restores"
+      ],
+      transfers:
+        "Hosted processing follows the deployment privacy profile; device restoration has no hosted transfer.",
+      review: "Approved project-portability restore-operation data contract (Slice 06 design.md)."
+    },
+    %DataProcessingRecord{
       activity: :project_onboarding_attempt,
       purpose: "Hold short-lived onboarding workflow state until a project is created.",
       lawful_basis: :contract,
@@ -304,7 +378,7 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
       activity: :operational_security_log,
       purpose: "Diagnose failures and protect the service (security and reliability).",
       lawful_basis: :legitimate_interests,
-      personal_data: ["internal correlation id", "outcome class", "timestamp"],
+      personal_data: ["event type", "timestamp", "outcome class", "internal correlation id"],
       access: "Authorized operations roles; excludes credentials, names, URLs, and bodies.",
       retention: "Deleted after 30 days.",
       rights: "Access, restriction, objection via operator workflow.",
