@@ -13,6 +13,20 @@ defmodule SddOrchestrator.GitHubIntegration.FakeProvider do
     * any other code — a stable id derived from the code, login equal to the code.
     * a token minted from code `"no-user"` — user resolution fails.
 
+  Verified-primary email outcomes are keyed off the same login:
+
+    * `"email-none*"` — GitHub returns no primary → `{:ok, :none}`.
+    * `"email-unverified*"` — a primary that is not verified → `{:ok, :none}`.
+    * `"email-multi*"` — more than one primary (malformed) → `{:ok, :none}`.
+    * `"email-secondary*"` — only a verified secondary, no primary → `{:ok, :none}`.
+    * `"email-noperm*"` — no readable email permission → `{:ok, :none}`.
+    * `"email-fail*"` — the provider read fails → `{:error, :provider_error}`.
+    * `"gmail-dotted"`, `"gmail-tagged"`, `"gmail-cased"` — fixed Gmail addresses
+      that exercise the approved dot, `+tag`, and case rules end to end.
+    * any other login — the verified primary `"<login>@example.com"`; matching
+      tests set up a passwordless identity at the same address. Only this single
+      address is ever returned; the fake never hands back a secondary.
+
   Repository-access scenarios are keyed off a prefix of the login carried in the
   access token (`"fake-access:" <> login`):
 
@@ -63,6 +77,27 @@ defmodule SddOrchestrator.GitHubIntegration.FakeProvider do
   end
 
   def get_user(_), do: {:error, :unauthorized}
+
+  @impl true
+  def get_verified_primary_email(@token_prefix <> login), do: primary_email(login)
+  def get_verified_primary_email(_), do: {:error, :unauthorized}
+
+  defp primary_email("no-user"), do: {:error, :unauthorized}
+
+  defp primary_email(login) do
+    cond do
+      String.starts_with?(login, "email-fail") -> {:error, :provider_error}
+      String.starts_with?(login, "email-none") -> {:ok, :none}
+      String.starts_with?(login, "email-unverified") -> {:ok, :none}
+      String.starts_with?(login, "email-multi") -> {:ok, :none}
+      String.starts_with?(login, "email-secondary") -> {:ok, :none}
+      String.starts_with?(login, "email-noperm") -> {:ok, :none}
+      login == "gmail-dotted" -> {:ok, "f.i.r.s.t@gmail.com"}
+      login == "gmail-tagged" -> {:ok, "first+work@gmail.com"}
+      login == "gmail-cased" -> {:ok, "First.Last@gmail.com"}
+      true -> {:ok, "#{login}@example.com"}
+    end
+  end
 
   @impl true
   def refresh_token(@refresh_prefix <> code) do

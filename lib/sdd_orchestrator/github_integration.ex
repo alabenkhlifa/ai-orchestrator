@@ -91,6 +91,40 @@ defmodule SddOrchestrator.GitHubIntegration do
   @spec refresh_token(String.t()) :: {:ok, Provider.token()} | {:error, term()}
   def refresh_token(refresh_token), do: provider().refresh_token(refresh_token)
 
+  ## Verified-primary email (automatic identity-link candidate detection)
+
+  @doc """
+  The minimum read-only GitHub user permission approved for reading the verified
+  primary email during automatic identity-link candidate detection.
+
+  Linking reads only the authoritative verified-primary attribute
+  (`user:email` / `read:user`); no repository write permission is requested.
+  """
+  @spec approved_email_permission() :: %{String.t() => String.t()}
+  def approved_email_permission do
+    config()[:approved_email_permission] || %{"email" => "read"}
+  end
+
+  @doc """
+  Resolves the single verified primary GitHub email for an access token.
+
+  Returns `{:ok, email}` only when exactly one address is both primary and
+  verified; `{:ok, :none}` for every account-neutral skip (missing, unverified,
+  more than one primary, verified-secondary-only, or no email permission); and
+  `{:error, :provider_failure}` when the provider read fails. Secondary
+  addresses are resolved away inside the adapter and never surfaced here, so a
+  caller can neither retain nor disclose them.
+  """
+  @spec verified_primary_email(String.t()) ::
+          {:ok, String.t()} | {:ok, :none} | {:error, :provider_failure}
+  def verified_primary_email(access_token) when is_binary(access_token) do
+    case provider().get_verified_primary_email(access_token) do
+      {:ok, email} when is_binary(email) -> {:ok, email}
+      {:ok, :none} -> {:ok, :none}
+      {:error, _reason} -> {:error, :provider_failure}
+    end
+  end
+
   ## Repository-access discovery
 
   @typedoc "Normalized repository-access errors surfaced to the picker."

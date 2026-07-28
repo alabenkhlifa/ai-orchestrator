@@ -40,7 +40,7 @@ Deferred after this slice:
   - Purpose: Resolve launch allowlist, retention, recovery, transaction, and verification blockers.
   - Proof: Requirements, design, data contracts, and canonical test commands have no unresolved slice blockers.
 
-- [ ] Implement minimum-permission verified-primary GitHub email retrieval.
+- [x] Implement minimum-permission verified-primary GitHub email retrieval.
   - Purpose: Produce one authoritative automatic-match candidate without retaining secondary addresses.
   - Proof: Integration and data-lifecycle tests cover primary, unverified, missing, multiple, secondary, permission, and provider-failure cases.
 
@@ -117,3 +117,10 @@ Deferred after this slice:
 - Failed checks: None. Environment ready: Elixir 1.20.2/OTP 29, Postgres 17 healthy on 5433.
 - Spec updates: Status `Not Started` to `In Progress`; checked Task 1.
 - Release gate: Unchanged — final legal confirmation of lawful basis and exact retention plus the privacy review, and governed provider-registry additions beyond the Gmail launch entry, remain release-gate items and do not block implementation or local verification.
+
+### 2026-07-28 - Task 2: verified-primary email retrieval
+
+- Completed: Task 2. Added a `get_verified_primary_email/1` provider callback that resolves at most one primary-and-verified address inside the adapter, with the real `ReqProvider` reading `GET /user/emails` (filters primary && verified, fails closed to `:none` on missing, unverified, or more-than-one primary; 403/404 → `:none`; 401 → error) and the deterministic `FakeProvider` modelling every case. Added `GitHubIntegration.verified_primary_email/1`, which passes through `{:ok, email}` / `{:ok, :none}` and normalizes provider read failures to `{:error, :provider_failure}`. Recorded the approved minimum email permission (`approved_email_permission: %{"email" => "read"}`).
+- Non-retention: secondary addresses are reduced away inside the adapter and never returned, so no caller can retain or disclose them; proven at the adapter (raw list → only the primary) and context (single-binary return, never a secondary) levels.
+- Proof: `mix test test/sdd_orchestrator/github_integration_test.exs test/sdd_orchestrator/github_integration/req_provider_test.exs` — 38 passed, exit 0. Covers primary, unverified, missing, multiple, secondary, permission, and provider-failure. `mix compile --warnings-as-errors` clean.
+- Failed checks: None.
