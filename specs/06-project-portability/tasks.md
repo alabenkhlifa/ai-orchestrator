@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved, including the portable local repository identity and legacy source-side upgrade contract. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, and 25 are complete. Task 21 is the next implementation task and is blocked until the hosted local-repository worker-binding authority, persistence, and lifecycle contract is approved.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, and 25 are complete. Task 26 is the next implementation task.
 
 ## Active Slice
 
@@ -18,6 +18,7 @@ Requires:
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 17`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 2`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 22`.
+- `capability:workspace-bound-local-worker-authorization` — provider `specs/02-local-project-onboarding#Task 3` — required before `Task 26`.
 - `capability:portable-local-repository-identity` — provider `specs/02-local-project-onboarding#Task 9` — required before `Task 25`.
 
 Provides:
@@ -28,7 +29,7 @@ Provides:
 
 - Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof expected to run in about ten minutes.
 - Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
-- Existing task labels are preserved; newly split tasks use the next unused labels and are listed by dependency order rather than numeric order.
+- Existing task labels are preserved; newly split tasks use the next unused labels and are listed by dependency order rather than numeric order. The hosted local-worker foundation and hosted reconnection adapter are Tasks 26 and 27, while Task 21 is narrowed to the device adapter and shared exact worker-validation boundary.
 
 ## Implementation Boundary
 
@@ -43,6 +44,7 @@ Included:
 - Isolated restore validation, authority check, and temporary cleanup.
 - Atomic restoration into an available storage mode.
 - Portable local repository-identity readiness, a source-side legacy-upgrade handoff before package generation, and exact target-worker reconnection without source workspace identity.
+- An explicit minimal and revocable hosted-project-to-device-worker binding after separate personal-workspace and device-workspace authorization and exact validation.
 - User-entered display-name recovery for a name-only conflict and blocking canonical-repository conflicts.
 - Approved package, temporary-data, provenance, log, backup, processor, rights, no-reuse, security, compatibility, and responsive browser proof.
 
@@ -50,7 +52,7 @@ Excluded:
 
 - Cross-user sharing, package exchange, ownership transfer, and creating a copy with a new identity.
 - Updating, merging, replacing, or restoring over an existing project.
-- Repository source, credentials, sessions, worker or agent data, collaboration memberships, and arbitrary executable artifacts.
+- Repository source, credentials, sessions, worker device data beyond the approved opaque binding, agent data, collaboration memberships, and arbitrary executable artifacts.
 - Project or specification revision history, runs and run output, generated artifacts, comments, attachments, audit or security logs, analytics, mutable repository display or access metadata, workspace identity, source storage mode, and source lifecycle state.
 - Direct storage migration, source deactivation, and automatic repository reconnection.
 - Global project-identity registry, background identity-presence reporting, signed-out account lookup, unavailable-device lookup, and later-visible collision resolution.
@@ -201,21 +203,36 @@ Release boundary:
   - Proof: Focused snapshot, validation, backup-service, LiveView, and desktop and mobile browser tests cover portable success, legacy blocking, upgrade handoff, retry after exact source upgrade, malformed identity rejection, no encrypted artifact on failure, and unchanged project and repository state.
   - Delivered: `BackupSnapshot` and `PackageValidator` accept only the strict Slice 02 versioned portable identifier for local repositories. Legacy device projects stop before encryption with an explicit source-side `Locate repository` action, malformed identities fail closed without a backup form, exact source upgrade updates both device canonical-identity fields atomically, and a subsequent retry exports the portable identifier. The device dashboard exposes backup only when ready; blocked attempts create no package or persistent mutation.
 
-- [ ] Task 21 - Integrate explicit local-repository reconnection.
+- [ ] Task 26 - Establish the hosted local-worker binding foundation.
   - Size: Standard
-  - Purpose: Reuse normal worker validation without treating package control as local repository authority.
-  - Owned surfaces: Local reconnection action, existing worker authorization and portable repository-validation reuse, packaged identifier handoff, exact canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no packaged path or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
+  - Purpose: Represent one approved hosted-project-to-worker link without reusing GitHub connection fields or making device project data hosted-authoritative.
+  - Owned surfaces: `HostedLocalRepositoryBinding`, hosted migration and schema, project and worker references, one-binding-per-project constraint, exact project-provider validation, minimum project ID, worker ID, and last-validation-time fields, personal-workspace project access, selected device-workspace worker authorization, idempotent same-binding result, atomic replacement contract, explicit disconnect, worker-revocation deletion, project-erasure cascade, service-termination handling, temporary-unavailability derivation, processing-inventory registration, and credential, path, duplicate workspace, duplicate repository-identity, device-label, and compatibility-field exclusion.
+  - Owns: entity:HostedLocalRepositoryBinding
+  - Depends on: Task 13, Task 25
+  - Proof: Focused migration, constraint, authorization, field-minimization, access, idempotency, replacement, disconnect, worker-revocation, project-erasure, service-termination, unavailable-state, inventory, and forbidden-field tests prove one revocable hosted binding without device project data or repository mutation.
+
+- [ ] Task 21 - Integrate explicit device local-repository reconnection.
+  - Size: Standard
+  - Purpose: Reuse normal worker validation for a device-authoritative restored project without treating package control as local repository authority.
+  - Owned surfaces: Shared exact local-worker validation boundary, device reconnection action, existing device-workspace worker authorization and portable repository-validation reuse, project-held identifier handoff, exact device-store canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no hosted binding, packaged path, or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
   - Owns: AC-22
   - Depends on: Task 13, Task 25
-  - Status: Blocked until the hosted local-repository worker-binding authority, persistence, privacy lifecycle, and normal authorization handoff are approved.
-  - Proof: Focused worker-contract tests cover unavailable, failed, and successful validation, exact portable match, canonical identity mismatch, malformed and legacy identifiers, source-workspace independence, absence of packaged paths and credentials, and fixture-level proof that repository content and configuration remain unchanged.
+  - Proof: Focused shared worker-contract and device-store tests cover unavailable, failed, and successful validation, exact portable match, canonical identity mismatch, malformed and legacy identifiers, source-workspace independence, absence of hosted records, packaged paths, and credentials, and fixture-level proof that repository content and configuration remain unchanged.
+
+- [ ] Task 27 - Integrate explicit hosted local-repository reconnection.
+  - Size: Standard
+  - Purpose: Connect a restored hosted local-repository project only through separate project and device authority plus exact worker proof.
+  - Owned surfaces: Hosted local reconnection action, owning `PersonalWorkspace` authorization, explicit current `DeviceWorkspace` selection, active paired-worker authorization, Task 21 exact worker-validation consumer, project-held portable identifier handoff, `HostedLocalRepositoryBinding` insertion, idempotent retry, exact atomic worker replacement, explicit disconnect, connected, temporarily unavailable, revoked, malformed, legacy, mismatch, failed-authorization, and unavailable results, no implicit account-device association, no packaged connection, path, credential, or source workspace acceptance, and repository content and configuration non-mutation.
+  - Owns: AC-27
+  - Depends on: Task 21, Task 26
+  - Proof: Focused hosted reconnection, dual-authority, active-worker, binding, idempotency, replacement, disconnect, revocation, unavailability, malformed, legacy, mismatch, cross-workspace denial, forbidden-field, and unchanged-Git-fixture tests prove the exact minimal binding and preserve the previous binding on every failed replacement.
 
 - [ ] Task 15 - Build restore conflict recovery and completion interface.
   - Size: Standard
   - Purpose: Present identity and repository hard blocks, name-only recovery, cancellation, and successful completion clearly.
   - Owned surfaces: Same-identity blocking state, name-only conflict form and inline validation, canonical-repository blocking state and precedence, cancellation, successful restored-project result, unconnected-repository explanation and explicit reconnection action, responsive accessibility behavior, and absence of cross-user sharing or create-copy claims.
   - Owns: AC-18
-  - Depends on: Task 14, Task 20, Task 21
+  - Depends on: Task 14, Task 20, Task 21, Task 27
   - Proof: Focused LiveView plus desktop and mobile browser scenarios cover same-identity rejection, valid and invalid replacement names, repeat conflict, repository conflict with no bypass, cancellation, completion, reconnection boundary copy, keyboard and focus behavior, and prohibited sharing or copy claims.
 
 - [ ] Task 16 - Enforce transient package and attempt cleanup.
@@ -237,19 +254,19 @@ Release boundary:
 
 - [ ] Task 22 - Propagate verified portability rights.
   - Size: Standard
-  - Status: Blocked until `capability:project-specification-governance` and Task 17 are complete.
+  - Status: Blocked until `capability:project-specification-governance`, Task 17, and Task 27 are complete.
   - Purpose: Apply verified rights actions across the project, its restored specifications, attempts, provenance, derived records, processors, and backup expiry.
-  - Owned surfaces: `capability:project-specification-governance` consumer, `Privacy.Rights` integration, verified access, correction, erasure, restriction, objection, and portability behavior, project and specification authorization, `ImportAttempt` and `PackageProvenance` coverage, derived-record and processor propagation, backup-expiry handoff, and cross-project non-disclosure.
+  - Owned surfaces: `capability:project-specification-governance` consumer, `Privacy.Rights` integration, verified access, correction, erasure, restriction, objection, and portability behavior, project and specification authorization, `ImportAttempt`, `HostedLocalRepositoryBinding`, and `PackageProvenance` coverage, derived-record and processor propagation, backup-expiry handoff, and cross-project non-disclosure.
   - Owns: AC-23
-  - Depends on: Task 17
-  - Proof: Focused rights, authorization, cross-project isolation, attempt, provenance, restored-specification, derived-record, processor, and backup-propagation tests prove complete handling without disclosing another project or identity.
+  - Depends on: Task 17, Task 27
+  - Proof: Focused rights, authorization, cross-project isolation, attempt, hosted local-worker binding, provenance, restored-specification, derived-record, processor, and backup-propagation tests prove complete handling without disclosing another project or identity.
 
 - [ ] Task 18 - Enforce minimized operational-security logging.
   - Size: Standard
   - Purpose: Record only the minimum security event needed to operate backup and restoration safely.
-  - Owned surfaces: Fixed structured security-log event type, time, outcome, and non-secret correlation identifier, package, project-content, repository-identifier, filename, path, passphrase, and decrypted-field redaction, 30-day log-expiry configuration, audit minimization, and log, diagnostic, and error-path scans.
+  - Owned surfaces: Fixed structured security-log event type, time, outcome, and non-secret correlation identifier, package, project-content, repository-identifier, hosted binding, worker, device-workspace, filename, path, passphrase, and decrypted-field redaction, 30-day log-expiry configuration, audit minimization, and log, diagnostic, and error-path scans.
   - Owns: AC-20
-  - Depends on: Task 16
+  - Depends on: Task 16, Task 27
   - Proof: Focused structured-log schema, redaction, failure-path, correlation, 30-day expiry, audit-minimization, diagnostic, and secret-exposure checks pass.
 
 - [ ] Task 23 - Enforce encrypted-backup expiry.
@@ -263,7 +280,7 @@ Release boundary:
 - [ ] Task 24 - Prohibit portability secondary use and agent access.
   - Size: Standard
   - Purpose: Prevent package and restoration data from becoming analytics, training, identity-tracking, or agent input.
-  - Owned surfaces: No analytics, advertising, model training, identity tracking, or unrelated improvement, no coding-agent or model-provider access, genuinely anonymous aggregate boundary, and negative telemetry, cache, index, export, diagnostic, and content-routing scans.
+  - Owned surfaces: No analytics, advertising, model training, identity tracking, or unrelated improvement, no coding-agent or model-provider access, hosted local-worker binding exclusion from secondary use, genuinely anonymous aggregate boundary, and negative telemetry, cache, index, export, diagnostic, and content-routing scans.
   - Owns: AC-25
   - Depends on: Task 18, Task 23
   - Proof: Focused negative secondary-use, agent-access, model-provider, telemetry, analytics-identifier, cache, index, export, diagnostic, and content-routing checks pass.
@@ -272,7 +289,7 @@ Release boundary:
   - Size: Standard
   - Status: Blocked until both governance capabilities and all preceding implementation tasks are complete.
   - Purpose: Confirm the complete portability data flow follows the approved privacy and security contract before publishing the capability.
-  - Owned surfaces: Active processing inventory, approved service and security purposes and lawful bases, authorized-user and operations access controls, processor and transfer configuration, audit minimization, consolidated privacy and security review, release-gate classification, and `capability:project-portability` readiness write-back.
+  - Owned surfaces: Active processing inventory including `HostedLocalRepositoryBinding`, approved service and security purposes and lawful bases, authorized-user, explicitly bound worker, and operations access controls, processor and transfer configuration, audit minimization, consolidated privacy and security review, release-gate classification, and `capability:project-portability` readiness write-back.
   - Owns: AC-12
   - Depends on: Task 6, Task 15, Task 22, Task 24
   - Proof: Focused data-inventory, purpose and basis, necessity, access, processor, transfer, audit-minimization, cross-task lifecycle, required privacy, and security reviews pass before capability readiness is recorded.
@@ -289,7 +306,7 @@ Release boundary:
 - [ ] Secret-exclusion, passphrase and derived-key non-persistence, allowlist, authenticated encryption, integrity, tampering, and forbidden-field tests pass.
 - [ ] Malformed, unsafe, unsupported, oversized, unknown-field, path, archive, and resource-limit tests pass.
 - [ ] Name-only conflicts permit an explicitly entered valid unique display name or cancellation, canonical-repository conflicts always block, and storage, atomicity, idempotency, concurrency, and rollback tests pass.
-- [ ] Repository reconnection requires normal authorization and leaves repository content and configuration unchanged.
+- [ ] Repository reconnection requires normal authorization and leaves repository content and configuration unchanged; device projects create no hosted binding, while hosted local-repository projects require separate personal-workspace and device-workspace authority and persist only the approved revocable binding after exact worker validation.
 - [x] Local backup accepts only the portable versioned canonical identifier, blocks legacy workspace-scoped fingerprints before encryption, and provides the source-side upgrade handoff without mutation.
 - [ ] The approved GDPR contract passes: no completed service package; immediate passphrase, key, decrypted-content, and terminal temporary-data disposal; stranded encrypted data and attempt cleanup within 24 hours; minimal project-bound provenance; 30-day security logs; 35-day encrypted backups; verified rights and processor propagation; and no analytics, advertising, model training, identity tracking, or unrelated reuse.
 - [ ] Required LiveView and desktop and mobile browser scenarios pass without exposing cross-user exchange or create-copy behavior.
@@ -297,9 +314,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- Technical design and Task 21 implementation: decide whether a restored hosted local-repository project may create an explicit, revocable binding to an authorized device worker. The decision must assign the provider-neutral connection's authoritative persistence and ownership, approve the minimum personal-workspace-to-device-workspace link, and define uniqueness, access, retention, erasure and rights propagation, worker replacement and revocation behavior, and unavailable-device semantics. Reusing the GitHub-only `RepositoryConnection`, treating package control as worker authority, silently associating personal and device workspaces, or implementing only the device destination would contradict the current agreement.
+- None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Hosted local-worker binding contract approved
+
+- Completed: Approved one explicit, minimal, revocable hosted-project-to-device-worker binding after separate personal-workspace and device-workspace authorization and exact portable-identifier validation. The hosted record contains only project ID, worker ID, and last successful validation time; derives ownership, device workspace, and canonical repository identity from existing records; is unique by project; and is removed by disconnect, worker revocation, project erasure, or service termination. Temporary unavailability is derived without mutation, and replacement commits only after exact revalidation.
+- Remaining: Implement the binding foundation in Task 26, the shared validation and device adapter in Task 21, and the hosted adapter in Task 27 before continuing the completion interface in Task 15.
+- Failed checks: None. The approved decision resolves the technical-design and active-slice implementation blocker without changing the same-project restoration outcome or package payload.
+- Spec updates: Returned the slice to `In Progress`; added `HostedLocalRepositoryBinding`, AC-27, the workspace-bound worker-authorization capability edge, the binding privacy and rights lifecycle, and standard Tasks 26 and 27; narrowed Task 21 to the device adapter and shared exact-validation boundary; removed the resolved design question and blocker.
 
 ### 2026-07-28 - Task 21 blocked: hosted local worker binding is unspecified
 

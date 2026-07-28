@@ -18,6 +18,7 @@ Requires:
 
 Provides:
 
+- `capability:workspace-bound-local-worker-authorization` — ready after `Task 3`.
 - `capability:portable-local-repository-identity` — ready after `Task 9`.
 
 ## Task Size Gate
@@ -81,11 +82,11 @@ Release boundary:
 - [x] Task 3 - Implement secure workspace-bound pairing.
   - Size: Standard
   - Purpose: Authorize one worker for one workspace without transferable credentials.
-  - Owned surfaces: `PairingAttempt`, `LocalWorker`, attempt expiry and replay protection, credential issuance and digest persistence, workspace authorization, revocation, rotation, and replacement pairing.
+  - Owned surfaces: `capability:workspace-bound-local-worker-authorization`, `PairingAttempt`, `LocalWorker`, attempt expiry and replay protection, credential issuance and digest persistence, workspace authorization, revocation, rotation, and replacement pairing.
   - Owns: AC-04, AC-19, AC-31, entity:LocalWorker, entity:PairingAttempt
   - Depends on: Task 1
   - Proof: Security tests cover attempt expiry, confirmation, replay rejection, revocation, rotation, replacement-worker pairing, and cross-workspace denial.
-  - Delivered: `PairingAttempt` and `LocalWorker` (hosted authorization metadata keyed by an opaque `device_workspace_id`) and the `Pairing` context — single-use attempt-bound codes, per-worker salted-digest credentials, rotation, revocation, and workspace-scoped authorization. Raw codes and credentials are never persisted. The native worker endpoint and outbound transport remain release-gated.
+  - Delivered: `PairingAttempt` and `LocalWorker` (hosted authorization metadata keyed by an opaque `device_workspace_id`) and the `Pairing` context — single-use attempt-bound codes, per-worker salted-digest credentials, rotation, revocation, and workspace-scoped authorization. Raw codes and credentials are never persisted. `capability:workspace-bound-local-worker-authorization` is ready. The native worker endpoint and outbound transport remain release-gated.
 
 - [x] Task 2 - Implement worker discovery and installation guidance.
   - Size: Standard
@@ -246,10 +247,10 @@ Release boundary:
 
 ### 2026-07-27 - Task 3 complete: secure workspace-bound pairing
 
-- Completed: Added `PairingAttempt`, `LocalWorker`, the `Pairing` context, and the `local_workers`/`pairing_attempts` migration, plus the `Pairing Authorization Persistence` decision in `design.md`. Implemented ahead of Task 2 because worker discovery reports on paired workers and needs the worker/pairing domain first (legacy tasks, reconstructed dependency).
+- Completed: Added `PairingAttempt`, `LocalWorker`, the `Pairing` context, and the `local_workers`/`pairing_attempts` migration, plus the `Pairing Authorization Persistence` decision in `design.md`. Implemented ahead of Task 2 because worker discovery reports on paired workers and needs the worker/pairing domain first (legacy tasks, reconstructed dependency). The completed task and proof make `capability:workspace-bound-local-worker-authorization` ready for explicit consumers.
 - Proof: `mix test test/sdd_orchestrator/devices/pairing_test.exs` passed (10 tests: confirmation, replay rejection, expiry, invalid-code rejection, cross-workspace denial, revocation, rotation, replacement-worker pairing, and digest-only persistence); full suite 308 passed, 1 excluded (`:live`); `mix format --check-formatted` and `mix compile --warnings-as-errors` exit 0.
 - Failed checks: None.
-- Spec updates: Task 3 checked. The native worker endpoint, outbound transport, and packaging remain release-gated.
+- Spec updates: Task 3 checked and `capability:workspace-bound-local-worker-authorization` recorded ready. The native worker endpoint, outbound transport, and packaging remain release-gated.
 
 ### 2026-07-27 - Task 4 complete: local repository validation and canonical fingerprint
 
