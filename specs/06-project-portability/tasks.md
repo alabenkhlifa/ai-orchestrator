@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, and 19 are complete. Task 13 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, and 13 are complete. Tasks 20 and 21 are the next implementation tasks.
 
 ## Active Slice
 
@@ -174,7 +174,7 @@ Release boundary:
   - Depends on: Task 12
   - Proof: Focused device transaction, persistence, restart, constraint, concurrency, replay, lost-acknowledgement, retry, and fault-injection tests prove exactly one device-authoritative project and current specification set, identity preservation, rollback, no partial state, and no hosted authoritative copy.
 
-- [ ] Task 13 - Preserve the unconnected restored-repository boundary.
+- [x] Task 13 - Preserve the unconnected restored-repository boundary.
   - Size: Standard
   - Purpose: Keep every restored canonical repository identity disconnected until a separate normal authorization flow succeeds.
   - Owned surfaces: Hosted and device unconnected restored-repository state, absence of packaged credentials and connection records, no automatic reconnection, explicit reconnection action contract, and safe missing-authorization result.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 13 complete: unconnected restored-repository boundary
+
+- Completed: Added a read-only `RepositoryReconnection` handoff that is available only for project-bound restored provenance and returns one minimized explicit request for either normal GitHub authorization or normal local-worker validation. Hosted restoration creates no `RepositoryConnection`; device restoration persists a disconnected status; package control never becomes repository authority; and the handoff accepts no credential or path, contacts no provider or worker, performs no automatic reconnection, and mutates no project or connection state.
+- Remaining: Integrate the explicit GitHub and local-repository reconnection actions in Tasks 20 and 21.
+- Failed checks: None. Final proof passes: 27 focused reconnection-boundary, hosted and device restore, and package-policy tests, `git diff --check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 13 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 19 complete: device-authoritative atomic restoration
 
