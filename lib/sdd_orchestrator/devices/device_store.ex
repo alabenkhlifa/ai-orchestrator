@@ -102,6 +102,9 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Deletes one device-local import attempt and encrypted upload."
   @callback delete_import_attempt(String.t()) :: :ok
 
+  @doc "Deletes stranded device-local import attempts at the 24-hour boundary."
+  @callback prune_import_attempts(DateTime.t()) :: {:ok, non_neg_integer()}
+
   @doc "Fetches the minimal device-local restore provenance for one project."
   @callback get_package_provenance(String.t()) ::
               {:ok, PackageProvenance.t()} | {:error, :not_found}

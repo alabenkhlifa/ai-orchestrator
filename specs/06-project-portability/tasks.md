@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, and 15 are complete. Task 16 is in progress.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, and 16 are complete. Task 17 is in progress.
 
 ## Active Slice
 
@@ -239,17 +239,18 @@ Release boundary:
   - Proof: Focused LiveView plus desktop and mobile browser scenarios cover same-identity rejection, valid and invalid replacement names, repeat conflict, repository conflict with no bypass, cancellation, completion, reconnection boundary copy, keyboard and focus behavior, and prohibited sharing or copy claims.
   - Delivered: Extended the restore LiveView from validation into an explicit second-step conflict check and atomic restore, with transient passphrase re-entry; same-identity and repository hard blocks; repository-conflict precedence; name-only recovery with inline blank and repeat validation; terminal cancellation cleanup; stable-identity completion; and destination-specific GitHub or local-worker reconnection actions. Added focus events, narrow-mobile full-width controls, accessible status and alert states, and copy that excludes sharing, create-copy, alternate-repository, and relink claims.
 
-- [ ] Task 16 - Enforce transient package and attempt cleanup.
+- [x] Task 16 - Enforce transient package and attempt cleanup.
   - Size: Standard
   - Purpose: Remove service-held package material after its active operation and recover stranded encrypted state.
   - Owned surfaces: No completed service-package retention, immediate passphrase, derived-key, and decrypted-content disposal verification, immediate terminal encrypted-generation and restore-upload cleanup, 24-hour stranded encrypted-temporary and `ImportAttempt` retention rule, idempotent `Privacy.Retention.prune_all/1` integration, supervised `RetentionPruner` execution, cleanup reconciliation, and no temporary data in backups, caches, or indexes.
   - Owns: AC-16
   - Depends on: Task 4
   - Proof: Focused terminal, stranded, time-boundary, idempotency, advisory-lock, restart, reconciliation, and negative persistence tests prove immediate disposal and the 24-hour cleanup ceiling without deleting active attempts.
+  - Delivered: Extended the shared retention pass with exact 24-hour hosted and device `ImportAttempt` rules, including expiry fallback, idempotent deletion counts, an unavailable-device no-op that reconciles on the next pass, and device-store atomic scan, delete, and sync behavior. Preserved immediate terminal intake deletion, the supervised hourly pruner, and its PostgreSQL advisory lock; confirmed the attempt schema contains only encrypted temporary payload and lifecycle fields and no secret, decrypted-content, filename, path, or package-hash field.
 
 - [ ] Task 17 - Enforce the project-bound provenance lifecycle.
   - Size: Standard
-  - Status: Blocked until `capability:project-storage-governance` and Task 16 are complete.
+  - Status: In Progress.
   - Purpose: Minimize persistent restoration provenance and tie it to the restored project's deletion lifecycle.
   - Owned surfaces: `capability:project-storage-governance` consumer, minimal schema-version and restoration-time `PackageProvenance`, project-bound provenance access, project-deletion cascade, service-termination handling, derived-record deletion propagation, and no package hash, filename, source account, workspace, device, exporter, network, or source-mode field.
   - Owns: AC-19
@@ -321,6 +322,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 16 complete: transient package and attempt cleanup
+
+- Completed: Added the portability retention rules to the existing idempotent `Privacy.Retention.prune_all/1` pass and supervised advisory-locked `RetentionPruner`. Hosted and available device-local encrypted attempts are removed at the earlier of their expiry or exact 24-hour creation boundary; recent uploaded and validating attempts remain active. The device store deletes and syncs matching records atomically, an unavailable store leaves its encrypted data untouched, and a later pass reconciles it after the store returns. Existing success, cancellation, and failure paths continue to delete attempts immediately, and no completed service package or secret-bearing attempt field was introduced.
+- Proof: The focused portability-retention suite passed 5 tests covering hosted and device time boundaries, active-attempt preservation, idempotency, unavailable-store reconciliation, advisory-lock exclusion, supervisor restart, terminal cleanup, and negative persistence. The broader retention, intake, backup, restore validation, and restore completion set passed 42 tests. `mix check` passed 714 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Enforce the minimal project-bound provenance lifecycle in Task 17, then propagate verified portability rights in Task 22. The final slice gate must resolve the current Dialyzer warnings before verification.
+- Failed checks: The first proof run used the wrong expected return for PostgreSQL's blocking advisory-lock function and killed the scheduled pruner while it could own a sandbox checkout; the proof now asserts PostgreSQL's actual `void` lock result and tests supervisor restart between prune operations. `mix dialyzer` still reports the same 14 warnings in earlier Slice 06 restore and reconnection modules, with no Task 16 warning; the final slice gate remains open.
+- Spec updates: Marked Task 16 complete, recorded the 24-hour hosted and device cleanup mechanism, unblocked Task 17 because its governance capability and Task 16 dependency are complete, and made Task 17 the next executable task without changing requirements, design, ownership, or capability edges.
 
 ### 2026-07-28 - Task 15 complete: restore conflict recovery and completion
 

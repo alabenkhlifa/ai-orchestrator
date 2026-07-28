@@ -137,6 +137,11 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   def delete_import_attempt(id), do: GenServer.call(__MODULE__, {:delete_import_attempt, id})
 
   @impl SddOrchestrator.Devices.DeviceStore
+  def prune_import_attempts(%DateTime{} = now) do
+    GenServer.call(__MODULE__, {:prune_import_attempts, DateTime.truncate(now, :second)})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
   def get_package_provenance(project_id),
     do: GenServer.call(__MODULE__, {:get_package_provenance, project_id})
 
@@ -314,6 +319,27 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     :ok = :dets.delete(state.table, {:import_attempt, id})
     :ok = :dets.sync(state.table)
     {:reply, :ok, state}
+  end
+
+  def handle_call({:prune_import_attempts, now}, _from, state) do
+    cutoff = DateTime.add(now, -(24 * 60 * 60), :second)
+
+    expired_ids =
+      :dets.foldl(
+        fn
+          {{:import_attempt, id}, %ImportAttempt{} = attempt}, ids ->
+            if import_attempt_expired?(attempt, cutoff, now), do: [id | ids], else: ids
+
+          _other, ids ->
+            ids
+        end,
+        [],
+        state.table
+      )
+
+    Enum.each(expired_ids, &:dets.delete(state.table, {:import_attempt, &1}))
+    :ok = :dets.sync(state.table)
+    {:reply, {:ok, length(expired_ids)}, state}
   end
 
   def handle_call({:get_package_provenance, project_id}, _from, state) do
@@ -595,6 +621,15 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       Map.get(project, :repository_id) || Map.get(project, :repository_fingerprint)
     }
   end
+
+  defp import_attempt_expired?(%ImportAttempt{} = attempt, cutoff, now) do
+    on_or_before?(attempt.inserted_at, cutoff) or on_or_before?(attempt.expires_at, now)
+  end
+
+  defp on_or_before?(%DateTime{} = value, %DateTime{} = boundary),
+    do: DateTime.compare(value, boundary) in [:lt, :eq]
+
+  defp on_or_before?(_value, _boundary), do: false
 
   # ---- specifications ----
 

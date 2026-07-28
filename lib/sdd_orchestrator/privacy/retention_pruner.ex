@@ -19,6 +19,9 @@ defmodule SddOrchestrator.Privacy.RetentionPruner do
   @advisory_lock_key 748_213_905
   @default_interval :timer.hours(1)
 
+  @doc false
+  def advisory_lock_key, do: @advisory_lock_key
+
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -43,12 +46,12 @@ defmodule SddOrchestrator.Privacy.RetentionPruner do
   Acquires the advisory lock, prunes, and releases it. Returns the per-category
   delete counts, or `:locked` when another instance holds the lock.
   """
-  @spec prune_with_lock() :: %{atom() => non_neg_integer()} | :locked
-  def prune_with_lock do
+  @spec prune_with_lock(DateTime.t()) :: %{atom() => non_neg_integer()} | :locked
+  def prune_with_lock(now \\ DateTime.utc_now()) do
     case Repo.query("SELECT pg_try_advisory_lock($1)", [@advisory_lock_key]) do
       {:ok, %{rows: [[true]]}} ->
         try do
-          Retention.prune_all()
+          Retention.prune_all(now)
         after
           Repo.query("SELECT pg_advisory_unlock($1)", [@advisory_lock_key])
         end

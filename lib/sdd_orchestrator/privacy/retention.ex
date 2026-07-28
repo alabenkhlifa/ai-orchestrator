@@ -15,6 +15,8 @@ defmodule SddOrchestrator.Privacy.Retention do
       and deleted after the configured post-expiry grace period.
     * Hosted sessions — deleted after their configured post-expiry grace period;
       explicit revocation deletes them immediately in the session context.
+    * Restore import attempts — encrypted hosted and available device-local
+      attempts are deleted no later than 24 hours after creation.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -26,7 +28,9 @@ defmodule SddOrchestrator.Privacy.Retention do
 
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
+  alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
+  alias SddOrchestrator.Portability.ImportAttempt
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.Repo
 
@@ -41,6 +45,8 @@ defmodule SddOrchestrator.Privacy.Retention do
       authorization_attempts: prune_authorization_attempts(now),
       magic_link_attempts: prune_magic_link_attempts(now),
       onboarding_attempts: prune_onboarding_attempts(now),
+      hosted_import_attempts: prune_hosted_import_attempts(now),
+      device_import_attempts: prune_device_import_attempts(now),
       sessions: prune_sessions(now),
       hosted_sessions: prune_hosted_sessions(now),
       merge_records: IdentityLinking.prune_merge_records(now)
@@ -87,6 +93,27 @@ defmodule SddOrchestrator.Privacy.Retention do
       )
 
     count
+  end
+
+  defp prune_hosted_import_attempts(now) do
+    cutoff = DateTime.add(now, -@day, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from attempt in ImportAttempt,
+          where: attempt.inserted_at <= ^cutoff or attempt.expires_at <= ^now
+      )
+
+    count
+  end
+
+  defp prune_device_import_attempts(now) do
+    case Devices.prune_import_attempts(now) do
+      {:ok, count} when is_integer(count) and count >= 0 -> count
+      _unavailable_or_invalid -> 0
+    end
+  catch
+    :exit, _unavailable_store -> 0
   end
 
   defp prune_sessions(now) do

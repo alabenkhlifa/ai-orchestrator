@@ -197,6 +197,9 @@ defmodule SddOrchestrator.Devices do
   @doc "Deletes one device-local import attempt and encrypted upload."
   def delete_import_attempt(id), do: adapter().delete_import_attempt(id)
 
+  @doc "Deletes stranded device-local import attempts at the 24-hour boundary."
+  def prune_import_attempts(%DateTime{} = now), do: adapter().prune_import_attempts(now)
+
   @doc "Fetches one project-bound device-local package provenance."
   def get_package_provenance(project_id), do: adapter().get_package_provenance(project_id)
 
