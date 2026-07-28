@@ -28,4 +28,28 @@ defmodule SddOrchestrator.SpecificationStore do
   end
 
   def get_current(_authority, _project_id, _specification_id), do: {:error, :not_found}
+
+  @spec append_revision(
+          PersonalWorkspace.t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          map()
+        ) ::
+          {:ok, current()} | {:error, atom() | Ecto.Changeset.t()}
+  def append_revision(
+        %PersonalWorkspace{} = authority,
+        project_id,
+        specification_id,
+        expected_revision_id,
+        attrs
+      ) do
+    Hosted.append_revision(
+      authority,
+      project_id,
+      specification_id,
+      expected_revision_id,
+      attrs
+    )
+  end
 end

@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Task 2 is complete, and Task 6 is the next executable task.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2 and 6 are complete, and Task 3 is the next executable task.
 
 ## Active Slice
 
@@ -78,7 +78,7 @@ Release gates:
   - Owns: AC-01, AC-04, AC-07, entity:ProjectSpecification, entity:SpecificationRevision
   - Proof: Focused migration, changeset, authorization, create, current-read, constraint, hostile-text, limit, isolation, rollback, and non-execution tests prove one atomic hosted specification foundation.
 
-- [ ] Task 6 — Implement hosted optimistic revision append.
+- [x] Task 6 — Implement hosted optimistic revision append.
   - Size: Standard
   - Depends on: Task 2
   - Purpose: Advance one hosted specification from an expected current revision without permitting stale or mutable history.
@@ -146,6 +146,13 @@ Release gates:
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Task 6 complete: hosted optimistic revision append
+
+- Completed: Added `SpecificationStore.append_revision/5` and the hosted locked transaction that requires the expected current revision, inserts one immutable complete revision, atomically advances the current pointer and optional title, preserves the earlier revision, rejects stale or conflicting revision identities, and returns the committed revision on an identical retry.
+- Remaining: Implement the device-authoritative adapter and shared contract in Task 3, then snapshots, restoration participation, cross-operation readiness, governance, and verification.
+- Failed checks: Strict Credo initially rejected one alias ordering in the focused test; it was corrected. Final proof passes: `MIX_ENV=test mix test test/sdd_orchestrator/specifications/hosted_append_test.exs` (6 tests), the combined hosted suite (14 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 6 complete; requirements, design, ownership, dependencies, and capability readiness are unchanged.
 
 ### 2026-07-28 - Task 2 complete: hosted specification creation and current retrieval
 

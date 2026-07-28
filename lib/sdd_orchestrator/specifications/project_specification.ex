@@ -39,8 +39,17 @@ defmodule SddOrchestrator.Specifications.ProjectSpecification do
 
   @spec current_revision_changeset(t(), SpecificationRevision.t()) :: Ecto.Changeset.t()
   def current_revision_changeset(specification, %SpecificationRevision{} = revision) do
+    advance_changeset(specification, revision, %{})
+  end
+
+  @spec advance_changeset(t(), SpecificationRevision.t(), map()) :: Ecto.Changeset.t()
+  def advance_changeset(specification, %SpecificationRevision{} = revision, attrs) do
     specification
-    |> change(current_revision_id: revision.id)
+    |> cast(attrs, [:title])
+    |> trim_title()
+    |> validate_required([:title])
+    |> validate_length(:title, max: SpecificationLimits.get(:max_title_bytes), count: :bytes)
+    |> put_change(:current_revision_id, revision.id)
     |> foreign_key_constraint(:current_revision_id)
   end
 

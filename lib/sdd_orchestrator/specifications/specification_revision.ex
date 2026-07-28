@@ -66,6 +66,7 @@ defmodule SddOrchestrator.Specifications.SpecificationRevision do
     end)
     |> foreign_key_constraint(:specification_id)
     |> foreign_key_constraint(:project_id)
+    |> unique_constraint(:id, name: :specification_revisions_pkey)
     |> unique_constraint(:sequence,
       name: :specification_revisions_specification_id_sequence_index
     )
