@@ -66,6 +66,9 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   def get_project(id), do: GenServer.call(__MODULE__, {:get_project, id})
 
   @impl SddOrchestrator.Devices.DeviceStore
+  def rename_project(id, name), do: GenServer.call(__MODULE__, {:rename_project, id, name})
+
+  @impl SddOrchestrator.Devices.DeviceStore
   def delete_project(id), do: GenServer.call(__MODULE__, {:delete_project, id})
 
   @impl SddOrchestrator.Devices.DeviceStore
@@ -190,6 +193,10 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       end
 
     {:reply, reply, state}
+  end
+
+  def handle_call({:rename_project, id, name}, _from, state) do
+    {:reply, do_rename_project(state.table, id, name), state}
   end
 
   def handle_call({:delete_project, id}, _from, state) do
@@ -477,6 +484,41 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
            deleted_provenance: deleted_provenance?,
            deleted_specifications: length(specification_keys)
          }}
+    end
+  end
+
+  defp do_rename_project(table, project_id, name) do
+    case :dets.lookup(table, {:project, project_id}) do
+      [] ->
+        {:error, :not_found}
+
+      [{{:project, ^project_id}, stored}] ->
+        project = normalize_project(stored, table)
+
+        changeset =
+          Project.rename_changeset(
+            %Project{name: project.name, name_key: project.name_key},
+            %{name: name}
+          )
+
+        with {:ok, renamed} <- Ecto.Changeset.apply_action(changeset, :update),
+             :ok <- ensure_device_name_available(table, project_id, renamed.name_key, changeset) do
+          updated = %{project | name: renamed.name, name_key: renamed.name_key}
+          :ok = :dets.insert(table, {{:project, project_id}, updated})
+          :ok = :dets.sync(table)
+          {:ok, updated}
+        end
+    end
+  end
+
+  defp ensure_device_name_available(table, project_id, name_key, changeset) do
+    if Enum.any?(
+         all_projects(table),
+         &(&1.id != project_id and &1.name_key == name_key)
+       ) do
+      {:error, Ecto.Changeset.add_error(changeset, :name, "has already been taken")}
+    else
+      :ok
     end
   end
 

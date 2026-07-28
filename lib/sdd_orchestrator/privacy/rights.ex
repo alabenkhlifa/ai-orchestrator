@@ -13,6 +13,10 @@ defmodule SddOrchestrator.Privacy.Rights do
       profile, projects, repository connections, hosted storage, and onboarding
       attempts while explicitly deleting passwordless attempts keyed to the
       account's verified email.
+    * Portability project operations — authorized access and portability export,
+      project-name and specification correction through their normal write
+      boundaries, project erasure, and explicit restriction or objection
+      assessment with processor and encrypted-backup lifecycle handoff.
     * `export_passwordless_attempts/1` and `erase_passwordless_attempts/1` —
       access and erasure for a verified requester whose email has attempts but no
       account yet.
@@ -30,6 +34,7 @@ defmodule SddOrchestrator.Privacy.Rights do
   alias SddOrchestrator.Accounts.{
     Account,
     ApplicationSession,
+    DeviceWorkspace,
     ExternalIdentity,
     GitHubIdentity,
     HostedIdentity,
@@ -39,14 +44,27 @@ defmodule SddOrchestrator.Privacy.Rights do
     Workspace
   }
 
+  alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking.WorkspaceMergeRecord
+
+  alias SddOrchestrator.Portability.{
+    HostedLocalRepositoryBinding,
+    ImportAttempt,
+    PackageProvenance,
+    PackageProvenances
+  }
+
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
   alias SddOrchestrator.Specifications.{
     ProjectSpecification,
+    SpecificationLifecycle,
     SpecificationRevision
   }
+
+  alias SddOrchestrator.SpecificationStore
 
   @doc """
   Assembles a credential-free export of everything the deployment holds for an
@@ -65,6 +83,7 @@ defmodule SddOrchestrator.Privacy.Rights do
            github_identity: export_identity(account_id),
            hosted_identity: export_hosted_identity(account_id),
            magic_link_attempts: export_account_magic_link_attempts(account_id),
+           import_attempts: export_import_attempts(account_id),
            projects: export_projects(account_id),
            sessions: export_sessions(account_id),
            hosted_sessions: export_hosted_sessions(account_id)
@@ -77,7 +96,8 @@ defmodule SddOrchestrator.Privacy.Rights do
   from them. Returns
   `{:error, :not_found}` for an unknown account.
   """
-  @spec erase_account(String.t()) :: {:ok, %{account_id: String.t()}} | {:error, :not_found}
+  @spec erase_account(String.t()) ::
+          {:ok, %{account_id: String.t(), propagation: map()}} | {:error, :not_found}
   def erase_account(account_id) when is_binary(account_id) do
     case Repo.get(Account, account_id) do
       nil ->
@@ -94,11 +114,174 @@ defmodule SddOrchestrator.Privacy.Rights do
         |> Multi.delete(:account, account)
         |> Repo.transaction()
         |> case do
-          {:ok, _changes} -> {:ok, %{account_id: account.id}}
-          {:error, _step, _reason, _changes} -> {:error, :not_found}
+          {:ok, _changes} ->
+            {:ok,
+             %{
+               account_id: account.id,
+               propagation: deletion_propagation(:hosted)
+             }}
+
+          {:error, _step, _reason, _changes} ->
+            {:error, :not_found}
         end
     end
   end
+
+  @doc "Exports one restored project through its current authoritative boundary."
+  @spec export_portability_project(PersonalWorkspace.t() | DeviceWorkspace.t(), String.t()) ::
+          {:ok, map()} | {:error, :not_found}
+  def export_portability_project(%PersonalWorkspace{} = authority, project_id) do
+    with {:ok, %PackageProvenance{}} <- PackageProvenances.get(authority, project_id),
+         %Project{} = project <- Projects.get_project(authority, project_id) do
+      project =
+        Repo.preload(project, [
+          :repository_connection,
+          :hosted_local_repository_binding
+        ])
+
+      {:ok,
+       project
+       |> export_project()
+       |> Map.put(:propagation, access_propagation(:hosted))}
+    else
+      _not_authorized_or_restored -> {:error, :not_found}
+    end
+  end
+
+  def export_portability_project(%DeviceWorkspace{id: authority_id} = authority, project_id) do
+    with {:ok, %PackageProvenance{} = provenance} <-
+           PackageProvenances.get(authority, project_id),
+         {:ok, %{workspace_id: ^authority_id, storage_mode: "device"} = project} <-
+           Devices.get_project(project_id),
+         {:ok, snapshot} <- SpecificationStore.current_snapshot(authority, project_id) do
+      {:ok,
+       %{
+         id: project.id,
+         name: project.name,
+         storage_mode: project.storage_mode,
+         repository_identity: %{
+           provider: project.repository_provider,
+           repository_id: project.repository_id
+         },
+         repository: nil,
+         hosted_local_repository_binding: nil,
+         provenance: export_provenance(provenance),
+         specifications: Enum.map(snapshot.specifications, &export_current_specification/1),
+         propagation: access_propagation(:device)
+       }}
+    else
+      _not_authorized_or_restored -> {:error, :not_found}
+    end
+  end
+
+  def export_portability_project(_authority, _project_id), do: {:error, :not_found}
+
+  @doc "Corrects a restored project name through its authoritative project boundary."
+  @spec correct_portability_project_name(
+          PersonalWorkspace.t() | DeviceWorkspace.t(),
+          String.t(),
+          String.t()
+        ) :: {:ok, map()} | {:error, :not_found | Ecto.Changeset.t()}
+  def correct_portability_project_name(%PersonalWorkspace{} = authority, project_id, name) do
+    with {:ok, %PackageProvenance{}} <- PackageProvenances.get(authority, project_id),
+         %Project{} = project <- Projects.get_project(authority, project_id) do
+      Projects.rename_project(project, name)
+    else
+      _not_authorized_or_restored -> {:error, :not_found}
+    end
+  end
+
+  def correct_portability_project_name(
+        %DeviceWorkspace{id: authority_id} = authority,
+        project_id,
+        name
+      ) do
+    with {:ok, %PackageProvenance{}} <- PackageProvenances.get(authority, project_id),
+         {:ok, %{workspace_id: ^authority_id, storage_mode: "device"}} <-
+           Devices.get_project(project_id) do
+      Devices.rename_project(project_id, name)
+    else
+      _not_authorized_or_restored -> {:error, :not_found}
+    end
+  end
+
+  def correct_portability_project_name(_authority, _project_id, _name),
+    do: {:error, :not_found}
+
+  @doc "Appends a correction to one restored specification through the shared store."
+  def correct_portability_specification(
+        authority,
+        project_id,
+        specification_id,
+        expected_revision_id,
+        attrs
+      ) do
+    case PackageProvenances.get(authority, project_id) do
+      {:ok, %PackageProvenance{}} ->
+        SpecificationStore.append_revision(
+          authority,
+          project_id,
+          specification_id,
+          expected_revision_id,
+          attrs
+        )
+
+      _not_authorized_or_restored ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc "Erases one restored project and returns the required processor and backup handoff."
+  @spec erase_portability_project(PersonalWorkspace.t() | DeviceWorkspace.t(), String.t()) ::
+          {:ok, map()} | {:error, :not_found}
+  def erase_portability_project(authority, project_id) do
+    with {:ok, %PackageProvenance{}} <- PackageProvenances.get(authority, project_id),
+         {:ok, result} <- SpecificationLifecycle.delete_project(authority, project_id) do
+      boundary = if match?(%PersonalWorkspace{}, authority), do: :hosted, else: :device
+
+      {:ok,
+       result
+       |> Map.put(:action, :erasure)
+       |> Map.put(:propagation, deletion_propagation(boundary))}
+    else
+      _not_authorized_or_restored -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Returns the verified operator disposition for restriction or objection.
+
+  These requests require a case-specific operator decision; the function does
+  not claim automatic legal resolution. It identifies every portability store,
+  processor, derived record, and encrypted-backup handoff that the decision must
+  propagate to.
+  """
+  @spec assess_portability_request(
+          PersonalWorkspace.t() | DeviceWorkspace.t(),
+          String.t(),
+          :restriction | :objection
+        ) :: {:ok, map()} | {:error, :not_found}
+  def assess_portability_request(authority, project_id, action)
+      when action in [:restriction, :objection] do
+    case PackageProvenances.get(authority, project_id) do
+      {:ok, %PackageProvenance{}} ->
+        boundary = if match?(%PersonalWorkspace{}, authority), do: :hosted, else: :device
+
+        {:ok,
+         %{
+           action: action,
+           project_id: project_id,
+           disposition: :verified_operator_assessment_required,
+           propagation: review_propagation(boundary)
+         }}
+
+      _not_authorized_or_restored ->
+        {:error, :not_found}
+    end
+  end
+
+  def assess_portability_request(_authority, _project_id, _action),
+    do: {:error, :not_found}
 
   @doc """
   Exports credential-free passwordless attempt lifecycle data for a normalized
@@ -206,6 +389,24 @@ defmodule SddOrchestrator.Privacy.Rights do
     |> export_magic_link_attempts()
   end
 
+  defp export_import_attempts(account_id) do
+    from(attempt in ImportAttempt,
+      join: workspace in PersonalWorkspace,
+      on: workspace.id == attempt.workspace_id,
+      where: workspace.account_id == ^account_id,
+      order_by: [asc: attempt.inserted_at],
+      select: %{
+        id: attempt.id,
+        destination: attempt.destination,
+        status: attempt.status,
+        expires_at: attempt.expires_at,
+        inserted_at: attempt.inserted_at,
+        updated_at: attempt.updated_at
+      }
+    )
+    |> Repo.all()
+  end
+
   defp export_magic_link_attempts(email_keys) do
     from(attempt in MagicLinkAttempt,
       where: attempt.email_key in ^email_keys,
@@ -285,7 +486,7 @@ defmodule SddOrchestrator.Privacy.Rights do
         from(p in Project,
           where: p.workspace_id == ^workspace_id,
           order_by: [asc: p.name],
-          preload: [:repository_connection]
+          preload: [:repository_connection, :hosted_local_repository_binding]
         )
         |> Repo.all()
         |> Enum.map(&export_project/1)
@@ -297,8 +498,48 @@ defmodule SddOrchestrator.Privacy.Rights do
       id: project.id,
       name: project.name,
       storage_mode: project.storage_mode,
+      repository_identity: %{
+        provider: project.repository_provider,
+        repository_id: project.canonical_repository_id
+      },
       repository: export_connection(project.repository_connection),
+      hosted_local_repository_binding:
+        export_hosted_local_binding(project.hosted_local_repository_binding),
+      provenance: export_provenance(Repo.get(PackageProvenance, project.id)),
       specifications: export_specifications(project.id)
+    }
+  end
+
+  defp export_hosted_local_binding(nil), do: nil
+
+  defp export_hosted_local_binding(%HostedLocalRepositoryBinding{} = binding) do
+    %{
+      project_id: binding.project_id,
+      worker_id: binding.worker_id,
+      last_validated_at: binding.last_validated_at
+    }
+  end
+
+  defp export_provenance(nil), do: nil
+
+  defp export_provenance(%PackageProvenance{} = provenance) do
+    %{
+      payload_schema_version: provenance.payload_schema_version,
+      restored_at: provenance.restored_at
+    }
+  end
+
+  defp export_current_specification(specification) do
+    %{
+      id: specification.id,
+      title: specification.title,
+      current_revision_id: specification.revision_id,
+      current_revision: %{
+        id: specification.revision_id,
+        requirements_document: specification.requirements,
+        design_document: specification.design,
+        tasks_document: specification.tasks
+      }
     }
   end
 
@@ -367,5 +608,72 @@ defmodule SddOrchestrator.Privacy.Rights do
         revoked_at: session.revoked_at
       }
     end)
+  end
+
+  defp access_propagation(boundary) do
+    %{
+      primary_boundary: boundary,
+      processors: processors(boundary),
+      derived_records: derived_records(boundary),
+      encrypted_backups: backup_handoff(:access)
+    }
+  end
+
+  defp deletion_propagation(boundary) do
+    %{
+      primary_boundary: boundary,
+      primary_store: :deleted,
+      processors: Enum.map(processors(boundary), &Map.put(&1, :action, :delete)),
+      derived_records: Enum.map(derived_records(boundary), &%{record: &1, action: :delete}),
+      encrypted_backups: backup_handoff(:erasure)
+    }
+  end
+
+  defp review_propagation(boundary) do
+    %{
+      primary_boundary: boundary,
+      primary_store: :pending_verified_operator_decision,
+      processors: Enum.map(processors(boundary), &Map.put(&1, :action, :apply_operator_decision)),
+      derived_records:
+        Enum.map(
+          derived_records(boundary),
+          &%{
+            record: &1,
+            action: :apply_operator_decision
+          }
+        ),
+      encrypted_backups: backup_handoff(:apply_operator_decision)
+    }
+  end
+
+  defp processors(:hosted) do
+    [
+      %{processor: :hosting_database},
+      %{processor: :authorized_device_worker, conditional: :hosted_local_binding}
+    ]
+  end
+
+  defp processors(:device), do: [%{processor: :device_worker}]
+
+  defp derived_records(:hosted) do
+    [
+      :current_project,
+      :restored_specifications,
+      :package_provenance,
+      :hosted_local_repository_binding
+    ]
+  end
+
+  defp derived_records(:device) do
+    [:current_project, :restored_specifications, :package_provenance]
+  end
+
+  defp backup_handoff(action) do
+    %{
+      action: action,
+      deletion_propagation: :required,
+      maximum_expiry_days: 35,
+      restore_scope: :approved_recovery_only
+    }
   end
 end

@@ -34,6 +34,10 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Fetches one device project by id."
   @callback get_project(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
 
+  @doc "Corrects one device project display name without changing its stable identities."
+  @callback rename_project(String.t(), String.t()) ::
+              {:ok, DeviceProject.t()} | {:error, :not_found | Ecto.Changeset.t()}
+
   @doc "Deletes one device project and every device-authoritative specification aggregate."
   @callback delete_project(String.t()) ::
               {:ok,

@@ -61,6 +61,10 @@ defmodule SddOrchestrator.Devices do
   @spec get_project(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
   def get_project(id), do: adapter().get_project(id)
 
+  @doc "Corrects one device project display name without changing its stable identities."
+  def rename_project(id, name) when is_binary(id) and is_binary(name),
+    do: adapter().rename_project(id, name)
+
   @doc "Deletes a device project and all worker-owned project data."
   @spec delete_project(String.t()) ::
           {:ok,

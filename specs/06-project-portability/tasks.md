@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, and 17 are complete. Task 22 is in progress.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, and 22 are complete. Task 18 is in progress.
 
 ## Active Slice
 
@@ -257,14 +257,14 @@ Release boundary:
   - Proof: Focused provenance-field, access, hosted and device project-erasure, service-termination, cascade, and derived-record tests prove minimal retention without a source-identity link.
   - Delivered: Added one project-authorized provenance boundary for hosted and device storage; hosted reads join through the owning personal workspace, while device reads require the current device workspace and exact device project. Hosted database cascades and account erasure remove provenance with the project; device project deletion now removes and syncs provenance with specification aggregates; hosted service termination is idempotent. Registered the exact three-field record and its dual storage lifecycle without any source-identity field.
 
-- [ ] Task 22 - Propagate verified portability rights.
+- [x] Task 22 - Propagate verified portability rights.
   - Size: Standard
-  - Status: In Progress.
   - Purpose: Apply verified rights actions across the project, its restored specifications, attempts, provenance, derived records, processors, and backup expiry.
   - Owned surfaces: `capability:project-specification-governance` consumer, `Privacy.Rights` integration, verified access, correction, erasure, restriction, objection, and portability behavior, project and specification authorization, `ImportAttempt`, `HostedLocalRepositoryBinding`, and `PackageProvenance` coverage, derived-record and processor propagation, backup-expiry handoff, and cross-project non-disclosure.
   - Owns: AC-23
   - Depends on: Task 17, Task 27
   - Proof: Focused rights, authorization, cross-project isolation, attempt, hosted local-worker binding, provenance, restored-specification, derived-record, processor, and backup-propagation tests prove complete handling without disclosing another project or identity.
+  - Delivered: Extended the verified operator boundary with minimized account-level import-attempt metadata, project-authorized hosted and device portability exports, exact hosted binding and provenance output, hosted revision history and device current restored specifications, hosted and device project-name correction, shared specification revision correction, and project erasure through the existing lifecycle cascade. Erasure returns explicit primary-store, derived-record, processor, and 35-day recovery-only backup handoffs; restriction and objection return an explicit verified-operator assessment requirement with the same propagation scope instead of claiming an automatic legal decision.
 
 - [ ] Task 18 - Enforce minimized operational-security logging.
   - Size: Standard
@@ -322,6 +322,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 22 complete: verified portability rights propagation
+
+- Completed: Extended `Privacy.Rights` so account access exports only minimized `ImportAttempt` lifecycle metadata and never ciphertext; hosted project exports include stable project and repository identity, full specification revision history, minimal provenance, and the minimal local-worker binding; device exports stay device-authoritative and include the restored current specification set without a hosted copy. Project-name correction now uses the normal hosted changeset or a serialized device-store rename with the same validation and uniqueness rule, while specification correction appends through the shared specification store. Project erasure uses the existing authorized project lifecycle so provenance, specifications, hosted binding, storage, and project records are removed together. Account erasure also removes unbound attempts. Every erasure returns explicit primary, derived, processor, and 35-day recovery-only backup handoffs. Restriction and objection are authorized and scoped, then explicitly require verified operator assessment and propagation rather than falsely claiming automated adjudication.
+- Proof: The focused portability-rights suite passed 5 tests, and the combined account rights, specification governance, provenance lifecycle, hosted binding, and portability rights set passed 35 tests. It covers hosted and device access and portability, encrypted-attempt exclusion, binding and provenance minimization, specification history/current-state coverage, hosted and device correction, cross-project denial, project and account erasure, derived records, processors, backup expiry, restriction, objection, and no hosted device-project copy. `mix check` passed 723 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Add the fixed minimized operational-security event boundary and 30-day expiry evidence in Task 18, then enforce the encrypted-backup deployment contract in Task 23. The final slice gate must resolve the current Dialyzer warnings before verification.
+- Failed checks: The first `mix check` found two single-clause `with` expressions and one alias-order issue in the rights integration; they were replaced with direct `case` expressions and canonical alias ordering before the passing rerun. `mix dialyzer` still reports the same 14 warnings in earlier Slice 06 restore and reconnection modules, with no Task 22 warning; the final slice gate remains open.
+- Spec updates: Marked Task 22 complete, recorded the verified operator and propagation mechanisms, and made Task 18 the next executable task without changing requirements, design, ownership, dependencies, or capability edges.
 
 ### 2026-07-28 - Task 17 complete: project-bound provenance lifecycle
 
