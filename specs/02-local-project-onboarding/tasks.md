@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 1–7 remain complete on the original workspace-scoped repository-fingerprint contract. The approved portability correction adds Tasks 8 and 9; Task 8 is the next implementation task.
+Tasks 1–9 are complete. The local implementation and slice-scoped verification pass; coordinated first-release browser proof and the final privacy review remain open at the release boundary.
 
 ## Active Slice
 
@@ -152,9 +152,9 @@ Release boundary:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
+- [x] Active-slice acceptance criteria pass.
 - [x] Pairing security and cross-workspace isolation tests pass.
-- [ ] Worker and repository integration tests pass on the approved macOS versions.
+- [x] Worker and repository integration tests pass on the approved macOS versions.
 - [x] Source-upload, prohibited-onboarding-data, first-confirmation, and metadata-minimization checks pass.
 - [x] Accountless data-loss scenarios distinguish export import, repository reconnection, and new project history.
 - [x] Project naming, uniqueness, atomicity, and connection-state tests pass.
@@ -177,6 +177,14 @@ Release boundary:
 - Final privacy review and confirmation of retention durations for the device-metadata and pairing-credential data contract recorded in `design.md`.
 
 ## Progress Log
+
+### 2026-07-28 - Slice 02 implementation complete and local verification passed
+
+- Completed: Finished every implementation task and reran the slice proof against the committed portable-identity integration. The full desktop and mobile browser matrix passed against an isolated database and device store, production assets compiled and digested, and the production release assembled successfully.
+- Proof: `mix check` passed with 575 tests (including 5 properties) and 1 excluded `:live` test; `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` passed; `npm --prefix assets ci` reported no vulnerabilities; `E2E_BASE_URL=http://localhost:4002 npm --prefix assets run test:e2e` passed 74 desktop and mobile scenarios; `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release --overwrite` passed; the specification-validator suite passed 38 tests, and both the Slice 02 and global cross-specification validators passed.
+- Remaining: The coordinated first-release browser proof must still complete both primary onboarding paths from the shared entry surface, and the final GDPR privacy review must be completed. Real worker signing, notarization, update-channel verification, and any hosted processor, region, and transfer decisions remain release-gate work.
+- Failed checks: The first two browser runs each passed 72 of 74 scenarios because shared development state retained first a paired-but-unavailable worker and then an already-linked repository. No application assertion failed in a clean state; the isolated database and device-store rerun passed all 74 scenarios.
+- Spec updates: Marked the active-slice acceptance criteria and approved-macOS worker/repository integration proof complete. Kept the slice `In Progress` because the coordinated release browser proof and final privacy review remain unchecked.
 
 ### 2026-07-28 - Task 9 complete: portable identity integration and legacy upgrade
 
