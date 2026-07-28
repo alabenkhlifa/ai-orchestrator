@@ -68,8 +68,7 @@ Release boundary:
   - Depends on: Task 1
   - Proof: Migration, local-schema contract, constraint, and domain tests cover stable hosted backfill IDs, valid mode and workspace-kind pairs in each destination, hosted detail rows, absence of hosted device project and connection data, device ownership regardless of sign-in, non-owning personal-workspace composition, workspace isolation, invalid state, and rollback.
 
-- [ ] Task 3 - Implement the shared storage-selection and resumable prerequisite handoff.
-  - Status: In Progress.
+- [x] Task 3 - Implement the shared storage-selection and resumable prerequisite handoff.
   - Purpose: Let users understand and explicitly choose where project work is saved while preserving repository state across prerequisite setup.
   - Owned surfaces: Storage-selection LiveView and components, both approved options and cross-device-only hosted copy, availability states, origin and target workspace state, browser-flow and return binding, device-setup and hosted-sign-in return actions, `ProjectOnboardingAttempt`, bound and minimized `DeviceStorageReceipt`, and source-adapter handoff contract.
   - Owns: AC-01, AC-02, AC-03, AC-14, AC-16, entity:ProjectOnboardingAttempt, entity:DeviceStorageReceipt
@@ -117,6 +116,12 @@ Release boundary:
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Task 3 complete: local flow routed through the shared step and browser-proven
+
+- Local-flow integration (fulfills `specs/02` requirement 19, the anticipated storage-mode integration): after repository selection the accountless local onboarding flow creates a device-origin onboarding attempt with the selected repository's fingerprint and name, records the detected worker's readiness as a bound receipt so on-device storage is available, and hands off to the shared storage-selection step. Choosing on-device returns to the local review/create step (resumed from the attempt) and registers the on-device project as before; hosted-from-accountless creation remains owned by the atomic-registration task. The `local_onboarding_flow_test` end-to-end proof was updated to drive selection → shared storage step → review → create and passes.
+- Browser proof (`assets/e2e/storage-selection.spec.js`): drives the accountless flow to the shared storage step and asserts the approved source-neutral copy, both modes visible, hosted unavailable with a non-selecting sign-in action, on-device ready through the worker receipt, no silent default, a blocked continue, and no axe accessibility violations. It passes on both the desktop `chromium` and `mobile-chromium` Playwright projects against the real Phoenix server.
+- Full proof status: Task 3's service, LiveView, and browser tests now cover both repository-source adapters (GitHub numeric-identity handoff and local fingerprint handoff) with the accountless browser path proven end to end; the authenticated GitHub browser path remains `specs/01`'s owned integration. Task 3 is complete. The remaining slice-level gate items — `MIX_ENV=prod mix assets.deploy`, `MIX_ENV=prod mix release`, and the full `npm --prefix assets run test:e2e` across every spec — are run at slice verification after Tasks 4–6.
 
 ### 2026-07-28 - Task 3 static, type, security, and unit gate green; browser proof classified
 
