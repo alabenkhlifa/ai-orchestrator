@@ -51,8 +51,21 @@ async function openDeviceProject(page) {
   await expect(detectedWorker).toBeVisible({ timeout: 15000 });
   await page.locator("[data-continue]").click();
   await expect(page.locator("[data-select-folder]")).toBeVisible();
+  const duplicate = page.locator("[data-duplicate]");
+  const selectedRepository = page.locator("[data-selected-repository]");
   await page.locator("[data-select-folder]").click();
-  await expect(page.locator("[data-selected-repository]")).toBeVisible();
+  await Promise.race([
+    selectedRepository.waitFor({ state: "visible" }),
+    duplicate.waitFor({ state: "visible" }),
+  ]);
+
+  if (await duplicate.isVisible().catch(() => false)) {
+    await duplicate.getByRole("link", { name: /^Open / }).click();
+    await expect(page).toHaveURL(/\/local\/projects\/[^/]+$/);
+    await expect(page.locator('[data-screen="device-project-dashboard"]')).toBeVisible();
+    return;
+  }
+
   await page.locator("[data-continue-storage]").click();
 
   await expect(page).toHaveURL(/\/onboarding\/local\/storage\//);
@@ -65,16 +78,15 @@ async function openDeviceProject(page) {
   await continueStorage.click();
 
   await expect(page.locator("[data-step=review]")).toBeVisible();
+  await page.locator("#project-name").fill("Portability browser proof");
   const disclosure = page.locator("[data-confirm-disclosure]");
   if (await disclosure.count()) {
     await disclosure.click();
     await expect(page.locator("[data-create]")).toBeEnabled();
   }
 
-  await page.locator("#project-name").fill("Portability browser proof");
   await page.locator("[data-create]").click();
 
-  const duplicate = page.locator("[data-duplicate]");
   await Promise.race([
     page.waitForURL(/\/local\/projects\/[^/]+$/),
     duplicate.waitFor({ state: "visible" }),
@@ -96,9 +108,11 @@ test.describe("project backup", () => {
     await openDeviceProject(page);
     const dashboardURL = page.url();
 
+    await expect(page.locator("[data-backup-readiness=backup_ready]")).toBeVisible();
     await page.locator("[data-backup-project]").click();
     await expect(page).toHaveURL(/\/local\/projects\/[^/]+\/backup$/);
     await expect(page.locator('[data-screen="project-backup"]')).toBeVisible();
+    await expect(page.locator("[data-backup-readiness=ready]")).toBeVisible();
 
     const included = page.locator("[data-included-categories]");
     await expect(included).toContainText("Project identity and display name");

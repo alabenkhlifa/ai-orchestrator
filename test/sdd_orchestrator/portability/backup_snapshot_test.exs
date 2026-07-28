@@ -128,10 +128,12 @@ defmodule SddOrchestrator.Portability.BackupSnapshotTest do
   end
 
   test "maps a device project without creating a hosted authoritative copy", context do
+    portable_identity = portable_identity()
+
     {:ok, project} =
       Devices.register_project(%{
         name: "Device backup",
-        repository_fingerprint: "local-fingerprint",
+        repository_fingerprint: portable_identity,
         status: "connected",
         idempotency_key: Ecto.UUID.generate()
       })
@@ -145,11 +147,42 @@ defmodule SddOrchestrator.Portability.BackupSnapshotTest do
 
     assert package.repository.content == %{
              "provider" => "local",
-             "repository_id" => "local-fingerprint"
+             "repository_id" => portable_identity
            }
 
     assert Repo.aggregate(ProjectSpecification, :count) == 0
     assert Repo.aggregate(SpecificationRevision, :count) == 0
+  end
+
+  test "blocks legacy and malformed local identities before package creation", context do
+    legacy_identity = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+    for {name, identity, expected_error} <- [
+          {"Legacy backup", legacy_identity, :repository_identity_upgrade_required},
+          {"Malformed backup", "not-a-canonical-identity", :invalid_repository_identity}
+        ] do
+      {:ok, project} =
+        Devices.register_project(%{
+          name: name,
+          repository_fingerprint: identity,
+          status: "connected",
+          idempotency_key: Ecto.UUID.generate()
+        })
+
+      before = Devices.get_project(project.id)
+
+      assert {:error, ^expected_error} =
+               BackupSnapshot.build(context.device_workspace, project.id)
+
+      assert Devices.get_project(project.id) == before
+    end
+
+    assert Repo.aggregate(ProjectSpecification, :count) == 0
+    assert Repo.aggregate(SpecificationRevision, :count) == 0
+  end
+
+  defp portable_identity do
+    SddOrchestrator.ProjectsFixtures.local_repository_metadata().fingerprint
   end
 
   defp store_path do

@@ -9,6 +9,7 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
   alias SddOrchestrator.Portability.{PackageSection, PayloadPolicy, ProjectPackage}
   alias SddOrchestrator.Projects
   alias SddOrchestrator.SpecificationStore
@@ -31,16 +32,16 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
   def build(%DeviceWorkspace{id: authority_id} = authority, project_id) do
     with {:ok, %DeviceWorkspace{id: ^authority_id}} <- Devices.get_workspace(),
          {:ok, %{storage_mode: "device"} = project} <- Devices.get_project(project_id),
+         {:ok, repository} <- device_repository(project),
          {:ok, specifications} <- SpecificationStore.current_snapshot(authority, project.id) do
-      repository = %{
-        "provider" => Map.get(project, :repository_provider) || "local",
-        "repository_id" =>
-          Map.get(project, :repository_id) || Map.get(project, :repository_fingerprint)
-      }
-
       package(project.id, project.name, repository, specifications.specifications)
     else
-      _reason -> {:error, :not_found}
+      {:error, reason}
+      when reason in [:repository_identity_upgrade_required, :invalid_repository_identity] ->
+        {:error, reason}
+
+      _reason ->
+        {:error, :not_found}
     end
   end
 
@@ -51,14 +52,37 @@ defmodule SddOrchestrator.Portability.BackupSnapshot do
          canonical_repository_id: repository_id
        })
        when is_binary(provider) and is_binary(repository_id) do
-    {:ok,
-     %{
-       "provider" => provider,
-       "repository_id" => repository_id
-     }}
+    canonical_repository(provider, repository_id)
   end
 
   defp hosted_repository(_connection), do: {:error, :repository_identity_missing}
+
+  defp device_repository(project) do
+    provider = Map.get(project, :repository_provider) || "local"
+    repository_id = Map.get(project, :repository_id) || Map.get(project, :repository_fingerprint)
+    canonical_repository(provider, repository_id)
+  end
+
+  defp canonical_repository("local", repository_id) do
+    case PortableRepositoryIdentity.parse(repository_id) do
+      {:ok, _portable} ->
+        {:ok, %{"provider" => "local", "repository_id" => repository_id}}
+
+      {:error, :legacy_identifier} ->
+        {:error, :repository_identity_upgrade_required}
+
+      {:error, :invalid_identifier} ->
+        {:error, :invalid_repository_identity}
+    end
+  end
+
+  defp canonical_repository(provider, repository_id)
+       when is_binary(provider) and is_binary(repository_id) do
+    {:ok, %{"provider" => provider, "repository_id" => repository_id}}
+  end
+
+  defp canonical_repository(_provider, _repository_id),
+    do: {:error, :repository_identity_missing}
 
   defp package(project_id, name, repository, specifications) do
     with {:ok, project_section} <-

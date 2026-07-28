@@ -69,7 +69,7 @@ defmodule SddOrchestratorWeb.ProjectRestoreLiveTest do
     {:ok, source} =
       Devices.register_project(%{
         name: "Device source",
-        repository_fingerprint: "fp-device-restore",
+        repository_fingerprint: ProjectsFixtures.local_repository_metadata().fingerprint,
         status: "connected"
       })
 

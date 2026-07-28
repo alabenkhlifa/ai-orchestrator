@@ -57,7 +57,7 @@ defmodule SddOrchestrator.Portability.RestorePreflightTest do
     {:ok, project} =
       Devices.register_project(%{
         name: "Existing device",
-        repository_fingerprint: "fp-preflight-device",
+        repository_fingerprint: portable_identity(),
         status: "connected"
       })
 
@@ -80,7 +80,7 @@ defmodule SddOrchestrator.Portability.RestorePreflightTest do
     {:ok, project} =
       Devices.register_project(%{
         name: "Visible device",
-        repository_fingerprint: "fp-preflight-visible",
+        repository_fingerprint: portable_identity(),
         status: "connected"
       })
 
@@ -118,7 +118,7 @@ defmodule SddOrchestrator.Portability.RestorePreflightTest do
     {:ok, device_project} =
       Devices.register_project(%{
         name: "Unavailable device",
-        repository_fingerprint: "fp-preflight-unavailable",
+        repository_fingerprint: portable_identity(),
         status: "connected"
       })
 
@@ -174,7 +174,7 @@ defmodule SddOrchestrator.Portability.RestorePreflightTest do
       repository: %PackageSection{
         name: :repository,
         version: 1,
-        content: %{"provider" => "local", "repository_id" => "fp-package"}
+        content: %{"provider" => "local", "repository_id" => portable_identity()}
       },
       specifications: %PackageSection{
         name: :specifications,
@@ -196,6 +196,8 @@ defmodule SddOrchestrator.Portability.RestorePreflightTest do
 
     {:ok, _worker} = Pairing.mark_seen(worker)
   end
+
+  defp portable_identity, do: ProjectsFixtures.local_repository_metadata().fingerprint
 
   defp catalog_entry(id, storage_mode) do
     %{

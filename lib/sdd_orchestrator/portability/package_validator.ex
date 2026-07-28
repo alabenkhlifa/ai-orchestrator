@@ -6,6 +6,8 @@ defmodule SddOrchestrator.Portability.PackageValidator do
   extracted, and no package value is executed or interpreted as a command.
   """
 
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
+
   alias SddOrchestrator.Portability.{
     PackageCodec,
     PackageEncryption,
@@ -222,7 +224,8 @@ defmodule SddOrchestrator.Portability.PackageValidator do
        }) do
     with true <- provider in ["github", "local"],
          :ok <- bounded_string(provider, :max_provider_bytes),
-         :ok <- bounded_string(repository_id, :max_repository_id_bytes) do
+         :ok <- bounded_string(repository_id, :max_repository_id_bytes),
+         :ok <- validate_repository_identity(provider, repository_id) do
       :ok
     else
       _reason -> {:error, :invalid_repository}
@@ -230,6 +233,15 @@ defmodule SddOrchestrator.Portability.PackageValidator do
   end
 
   defp validate_repository(_repository), do: {:error, :invalid_repository}
+
+  defp validate_repository_identity("github", _repository_id), do: :ok
+
+  defp validate_repository_identity("local", repository_id) do
+    case PortableRepositoryIdentity.parse(repository_id) do
+      {:ok, _portable} -> :ok
+      {:error, _legacy_or_invalid} -> {:error, :invalid_repository_identity}
+    end
+  end
 
   defp validate_specifications(%PackageSection{
          version: @supported_major,

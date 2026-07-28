@@ -17,6 +17,7 @@ defmodule SddOrchestrator.Portability.DeviceRestoreTest do
   }
 
   alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.SpecificationFixtures
   alias SddOrchestrator.Specifications.{ProjectSpecification, SpecificationRevision}
   alias SddOrchestrator.SpecificationStore
@@ -78,7 +79,8 @@ defmodule SddOrchestrator.Portability.DeviceRestoreTest do
 
   test "keeps a restored local identity disconnected while retaining its canonical fingerprint",
        %{authority: authority} do
-    package = package(Ecto.UUID.generate(), "Local restore", "local", "fp-local-restore", [])
+    repository_id = portable_identity()
+    package = package(Ecto.UUID.generate(), "Local restore", "local", repository_id, [])
 
     assert {:ok, %{project: project}} =
              DeviceRestore.restore(authority, package, decision(package, :device),
@@ -86,8 +88,8 @@ defmodule SddOrchestrator.Portability.DeviceRestoreTest do
              )
 
     assert project.repository_provider == "local"
-    assert project.repository_id == "fp-local-restore"
-    assert project.repository_fingerprint == "fp-local-restore"
+    assert project.repository_id == repository_id
+    assert project.repository_fingerprint == repository_id
     assert project.status == "disconnected"
   end
 
@@ -171,15 +173,17 @@ defmodule SddOrchestrator.Portability.DeviceRestoreTest do
 
   test "device name and repository checks arbitrate stale preflight with repository precedence",
        %{authority: authority} do
+    existing_identity = portable_identity()
+
     {:ok, existing} =
       Devices.register_project(%{
         name: "Existing device",
-        repository_fingerprint: "fp-existing-device",
+        repository_fingerprint: existing_identity,
         status: "connected"
       })
 
     name_package =
-      package(Ecto.UUID.generate(), "existing DEVICE", "local", "fp-other-device", [])
+      package(Ecto.UUID.generate(), "existing DEVICE", "local", portable_identity(), [])
 
     assert {:error, :name_conflict} =
              DeviceRestore.restore(authority, name_package, decision(name_package, :device),
@@ -187,7 +191,7 @@ defmodule SddOrchestrator.Portability.DeviceRestoreTest do
              )
 
     repository_package =
-      package(Ecto.UUID.generate(), "EXISTING DEVICE", "local", "fp-existing-device", [])
+      package(Ecto.UUID.generate(), "EXISTING DEVICE", "local", existing_identity, [])
 
     assert {:error, :repository_conflict} =
              DeviceRestore.restore(
@@ -368,6 +372,8 @@ defmodule SddOrchestrator.Portability.DeviceRestoreTest do
   defp repository_id(:after_project), do: "8810"
   defp repository_id(:after_provenance), do: "8811"
   defp repository_id(:after_specification), do: "8812"
+
+  defp portable_identity, do: ProjectsFixtures.local_repository_metadata().fingerprint
 
   defp store_path do
     dir = Path.join(System.tmp_dir!(), "sdd_device_restore_#{System.unique_integer([:positive])}")

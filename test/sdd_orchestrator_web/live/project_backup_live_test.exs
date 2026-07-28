@@ -11,7 +11,7 @@ defmodule SddOrchestratorWeb.ProjectBackupLiveTest do
 
   alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Devices.DeviceStore.Local
+  alias SddOrchestrator.Devices.{DeviceStore.Local, RepositoryValidation}
   alias SddOrchestrator.Portability.PackageEncryption
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.SpecificationFixtures
@@ -195,10 +195,12 @@ defmodule SddOrchestratorWeb.ProjectBackupLiveTest do
     test "creates an encrypted device-authoritative package without requiring an account", %{
       conn: conn
     } do
+      portable_identity = ProjectsFixtures.local_repository_metadata().fingerprint
+
       {:ok, project} =
         Devices.register_project(%{
           name: "Local ledger",
-          repository_fingerprint: "fp-local-ledger",
+          repository_fingerprint: portable_identity,
           status: "connected"
         })
 
@@ -234,8 +236,70 @@ defmodule SddOrchestratorWeb.ProjectBackupLiveTest do
 
       assert package.repository.content == %{
                "provider" => "local",
-               "repository_id" => "fp-local-ledger"
+               "repository_id" => portable_identity
              }
+    end
+
+    test "blocks a legacy identity with an exact source-side upgrade handoff", %{conn: conn} do
+      repository = init_repo!()
+      {:ok, workspace} = Devices.establish_workspace()
+
+      {:ok, %{fingerprint: legacy_identity}} =
+        RepositoryValidation.validate(repository, workspace.id)
+
+      {:ok, project} =
+        Devices.register_project(%{
+          name: "Legacy local backup",
+          repository_fingerprint: legacy_identity,
+          status: "connected"
+        })
+
+      project_before = Devices.get_project(project.id)
+      repository_before = repository_snapshot(repository)
+      {:ok, view, html} = live(conn, ~p"/local/projects/#{project.id}/backup")
+
+      assert html =~ "Upgrade the local repository identity before backup."
+      assert has_element?(view, "[data-backup-readiness=upgrade_required]")
+
+      assert has_element?(
+               view,
+               "[data-upgrade-repository-identity][href='/onboarding/local?locate=#{project.id}']"
+             )
+
+      refute has_element?(view, "#project-backup-form")
+      refute_push_event(view, "backup-download", %{})
+      assert Devices.get_project(project.id) == project_before
+      assert repository_snapshot(repository) == repository_before
+
+      assert {:ok, %{project: upgraded, upgraded?: true}} =
+               Devices.locate_repository(repository, project, workspace)
+
+      assert upgraded.id == project.id
+      assert upgraded.repository_id == upgraded.repository_fingerprint
+
+      {:ok, retry_view, _html} = live(conn, ~p"/local/projects/#{project.id}/backup")
+      assert has_element?(retry_view, "[data-backup-readiness=ready]")
+      assert has_element?(retry_view, "#project-backup-form")
+      assert repository_snapshot(repository) == repository_before
+    end
+
+    test "rejects a malformed local identity without exposing a backup form", %{conn: conn} do
+      {:ok, project} =
+        Devices.register_project(%{
+          name: "Malformed local backup",
+          repository_fingerprint: "not-a-repository-identity",
+          status: "connected"
+        })
+
+      before = Devices.get_project(project.id)
+      {:ok, view, html} = live(conn, ~p"/local/projects/#{project.id}/backup")
+
+      assert html =~ "This local repository identity cannot be backed up."
+      assert has_element?(view, "[data-backup-readiness=invalid]")
+      assert has_element?(view, "[data-repository-identity-invalid]")
+      refute has_element?(view, "#project-backup-form")
+      refute_push_event(view, "backup-download", %{})
+      assert Devices.get_project(project.id) == before
     end
 
     test "routes a missing device project back to local onboarding", %{conn: conn} do
@@ -252,5 +316,38 @@ defmodule SddOrchestratorWeb.ProjectBackupLiveTest do
   defp store_path do
     dir = Path.join(System.tmp_dir!(), "sdd_backup_live_#{System.unique_integer([:positive])}")
     Path.join(dir, "store.dets")
+  end
+
+  defp init_repo! do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "project_backup_live_repo_#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    git!(dir, ["init", "-q"])
+    git!(dir, ["config", "user.email", "backup@example.test"])
+    git!(dir, ["config", "user.name", "Backup Test"])
+    File.write!(Path.join(dir, "README.md"), "backup")
+    git!(dir, ["add", "README.md"])
+    git!(dir, ["commit", "-q", "-m", "root"])
+    dir
+  end
+
+  defp repository_snapshot(path) do
+    %{
+      head: git!(path, ["rev-parse", "HEAD"]),
+      branches: git!(path, ["branch", "--format=%(refname)"]),
+      remotes: git!(path, ["remote", "-v"]),
+      status: git!(path, ["status", "--porcelain=v1"]),
+      config: git!(path, ["config", "--local", "--list"])
+    }
+  end
+
+  defp git!(path, args) do
+    {output, 0} = System.cmd("git", ["-C", path | args], stderr_to_stdout: true)
+    String.trim(output)
   end
 end

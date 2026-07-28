@@ -73,7 +73,8 @@ defmodule SddOrchestrator.Portability.RepositoryReconnectionTest do
   test "a restored local identity uses the normal worker-validation handoff", %{
     hosted_authority: authority
   } do
-    package = package("local", "fp-hosted-local")
+    repository_id = portable_identity()
+    package = package("local", repository_id)
 
     assert {:ok, %{project: project}} =
              HostedRestore.restore(authority, package, decision(package, :hosted),
@@ -83,7 +84,7 @@ defmodule SddOrchestrator.Portability.RepositoryReconnectionTest do
     assert {:ok,
             %Request{
               repository_provider: "local",
-              repository_id: "fp-hosted-local",
+              repository_id: ^repository_id,
               method: :local_worker_validation
             }} = RepositoryReconnection.required(authority, project.id)
 
@@ -108,7 +109,8 @@ defmodule SddOrchestrator.Portability.RepositoryReconnectionTest do
               method: :github_authorization
             }} = RepositoryReconnection.required(authority, github_project.id)
 
-    local_package = package("local", "fp-device-local")
+    repository_id = portable_identity()
+    local_package = package("local", repository_id)
 
     assert {:ok, %{project: local_project}} =
              DeviceRestore.restore(authority, local_package, decision(local_package, :device),
@@ -120,7 +122,7 @@ defmodule SddOrchestrator.Portability.RepositoryReconnectionTest do
     assert {:ok,
             %Request{
               repository_provider: "local",
-              repository_id: "fp-device-local",
+              repository_id: ^repository_id,
               method: :local_worker_validation
             }} = RepositoryReconnection.required(authority, local_project.id)
 
@@ -210,6 +212,8 @@ defmodule SddOrchestrator.Portability.RepositoryReconnectionTest do
 
     {:ok, _worker} = Pairing.mark_seen(worker)
   end
+
+  defp portable_identity, do: ProjectsFixtures.local_repository_metadata().fingerprint
 
   defp store_path do
     dir =

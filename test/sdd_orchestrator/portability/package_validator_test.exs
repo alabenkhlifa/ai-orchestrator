@@ -10,7 +10,7 @@ defmodule SddOrchestrator.Portability.PackageValidatorTest do
     ProjectPackage
   }
 
-  alias SddOrchestrator.Repo
+  alias SddOrchestrator.{ProjectsFixtures, Repo}
 
   test "accepts a compatible encrypted package without creating project state" do
     package = valid_package()
@@ -185,6 +185,34 @@ defmodule SddOrchestrator.Portability.PackageValidatorTest do
       )
 
     assert {:error, :unsafe_package} = PackageValidator.validate(unsupported_provider)
+  end
+
+  test "accepts only the versioned portable identity for local repositories" do
+    portable_identity = ProjectsFixtures.local_repository_metadata().fingerprint
+
+    portable =
+      valid_package()
+      |> put_in([Access.key!(:repository), Access.key!(:content)], %{
+        "provider" => "local",
+        "repository_id" => portable_identity
+      })
+
+    assert :ok = PackageValidator.validate(portable)
+
+    for rejected_identity <- [
+          Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false),
+          "local-repo:v1:not-canonical",
+          "not-a-repository-identity"
+        ] do
+      rejected =
+        put_in(
+          portable,
+          [Access.key!(:repository), Access.key!(:content), "repository_id"],
+          rejected_identity
+        )
+
+      assert {:error, :unsafe_package} = PackageValidator.validate(rejected)
+    end
   end
 
   property "arbitrary untrusted bytes never crash encrypted-container validation" do

@@ -52,7 +52,7 @@ defmodule SddOrchestrator.Portability.RestoreIntakeTest do
     {:ok, project} =
       Devices.register_project(%{
         name: "Device source",
-        repository_fingerprint: "fp-device-source",
+        repository_fingerprint: ProjectsFixtures.local_repository_metadata().fingerprint,
         status: "connected"
       })
 

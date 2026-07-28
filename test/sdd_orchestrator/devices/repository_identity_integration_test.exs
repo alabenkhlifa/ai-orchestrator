@@ -131,6 +131,7 @@ defmodule SddOrchestrator.Devices.RepositoryIdentityIntegrationTest do
     assert upgraded.status == project.status
     refute upgraded.repository_fingerprint == legacy
     assert {:ok, _portable} = PortableRepositoryIdentity.parse(upgraded.repository_fingerprint)
+    assert upgraded.repository_id == upgraded.repository_fingerprint
     assert Devices.repository_backup_readiness(upgraded) == :backup_ready
     assert {:ok, ^upgraded} = Devices.get_project(project.id)
     assert repository_snapshot(repository) == before

@@ -173,10 +173,12 @@ defmodule SddOrchestrator.Portability.RestoreConflictsTest do
   test "uses the device destination's case-insensitive name and local repository identity", %{
     device_authority: authority
   } do
+    repository_id = ProjectsFixtures.local_repository_metadata().fingerprint
+
     {:ok, _project} =
       Devices.register_project(%{
         name: "Device roadmap",
-        repository_fingerprint: "fp-device-conflict",
+        repository_fingerprint: repository_id,
         status: "connected"
       })
 
@@ -184,10 +186,10 @@ defmodule SddOrchestrator.Portability.RestoreConflictsTest do
             %{
               type: :repository,
               provider: "local",
-              repository_id: "fp-device-conflict"
+              repository_id: ^repository_id
             }} =
              RestoreConflicts.evaluate(
-               package(Ecto.UUID.generate(), "device ROADMAP", "local", "fp-device-conflict"),
+               package(Ecto.UUID.generate(), "device ROADMAP", "local", repository_id),
                authority
              )
 

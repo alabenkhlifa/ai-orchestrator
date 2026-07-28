@@ -83,7 +83,8 @@ defmodule SddOrchestrator.Portability.HostedRestoreTest do
 
   test "restores a local canonical repository identity into hosted storage without a connection",
        %{authority: authority} do
-    package = package(Ecto.UUID.generate(), "Local source", "local", "fp-local-source", [])
+    repository_id = ProjectsFixtures.local_repository_metadata().fingerprint
+    package = package(Ecto.UUID.generate(), "Local source", "local", repository_id, [])
 
     assert {:ok, %{project: project}} =
              HostedRestore.restore(authority, package, decision(package),
@@ -91,7 +92,7 @@ defmodule SddOrchestrator.Portability.HostedRestoreTest do
              )
 
     assert project.repository_provider == "local"
-    assert project.canonical_repository_id == "fp-local-source"
+    assert project.canonical_repository_id == repository_id
     assert is_nil(project.repository_connection)
     assert Repo.aggregate(Project, :count) == 1
   end

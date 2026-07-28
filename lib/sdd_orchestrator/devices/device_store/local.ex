@@ -460,7 +460,12 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
          :ok <- validate_portable_identity(replacement_identity),
          :ok <- comparison_unchanged(projects, project_id, comparison_snapshot),
          :ok <- check_repository_unique_except(projects, project_id, replacement_identity) do
-      updated = %{project | repository_fingerprint: replacement_identity}
+      updated = %{
+        project
+        | repository_id: replacement_identity,
+          repository_fingerprint: replacement_identity
+      }
+
       :ok = :dets.insert(table, {{:project, project_id}, updated})
       :ok = :dets.sync(table)
       {:ok, updated}

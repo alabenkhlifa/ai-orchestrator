@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the portable local repository identity and legacy source-side upgrade contract. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, and 20 are complete. Task 25 is the next implementation task and is blocked until `capability:portable-local-repository-identity` is ready.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the portable local repository identity and legacy source-side upgrade contract. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, and 25 are complete. Task 21 is the next implementation task.
 
 ## Active Slice
 
@@ -192,18 +192,17 @@ Release boundary:
   - Depends on: Task 13
   - Proof: Focused GitHub provider-contract tests cover missing, failed, and successful authorization, canonical identity mismatch, absence of stale credentials, and fixture-level proof that repository content and configuration remain unchanged.
 
-- [ ] Task 25 - Enforce portable local identity before package generation.
+- [x] Task 25 - Enforce portable local identity before package generation.
   - Size: Standard
-  - Status: Blocked until `capability:portable-local-repository-identity` is ready.
   - Purpose: Prevent a legacy workspace-scoped local fingerprint from being packaged as if a replacement worker could validate it.
   - Owned surfaces: Portable local canonical-identifier recognition in snapshot and package validation, local backup readiness, legacy-identity rejection before encryption, actionable source-side `Locate repository` upgrade handoff in the backup interface, retry after upgrade, versioned-identifier allowlist proof, and no package, project, connection, or repository mutation on blocked backup.
   - Owns: AC-26
   - Depends on: Task 6
   - Proof: Focused snapshot, validation, backup-service, LiveView, and desktop and mobile browser tests cover portable success, legacy blocking, upgrade handoff, retry after exact source upgrade, malformed identity rejection, no encrypted artifact on failure, and unchanged project and repository state.
+  - Delivered: `BackupSnapshot` and `PackageValidator` accept only the strict Slice 02 versioned portable identifier for local repositories. Legacy device projects stop before encryption with an explicit source-side `Locate repository` action, malformed identities fail closed without a backup form, exact source upgrade updates both device canonical-identity fields atomically, and a subsequent retry exports the portable identifier. The device dashboard exposes backup only when ready; blocked attempts create no package or persistent mutation.
 
 - [ ] Task 21 - Integrate explicit local-repository reconnection.
   - Size: Standard
-  - Status: Blocked until `capability:portable-local-repository-identity` and Task 25 are complete.
   - Purpose: Reuse normal worker validation without treating package control as local repository authority.
   - Owned surfaces: Local reconnection action, existing worker authorization and portable repository-validation reuse, packaged identifier handoff, exact canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no packaged path or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
   - Owns: AC-22
@@ -290,16 +289,32 @@ Release boundary:
 - [ ] Malformed, unsafe, unsupported, oversized, unknown-field, path, archive, and resource-limit tests pass.
 - [ ] Name-only conflicts permit an explicitly entered valid unique display name or cancellation, canonical-repository conflicts always block, and storage, atomicity, idempotency, concurrency, and rollback tests pass.
 - [ ] Repository reconnection requires normal authorization and leaves repository content and configuration unchanged.
-- [ ] Local backup accepts only the portable versioned canonical identifier, blocks legacy workspace-scoped fingerprints before encryption, and provides the source-side upgrade handoff without mutation.
+- [x] Local backup accepts only the portable versioned canonical identifier, blocks legacy workspace-scoped fingerprints before encryption, and provides the source-side upgrade handoff without mutation.
 - [ ] The approved GDPR contract passes: no completed service package; immediate passphrase, key, decrypted-content, and terminal temporary-data disposal; stranded encrypted data and attempt cleanup within 24 hours; minimal project-bound provenance; 30-day security logs; 35-day encrypted backups; verified rights and processor propagation; and no analytics, advertising, model training, identity tracking, or unrelated reuse.
 - [ ] Required LiveView and desktop and mobile browser scenarios pass without exposing cross-user exchange or create-copy behavior.
 - [ ] Approved canonical build, formatting, lint, static, security, production, and failure-log checks pass.
 
 ## Blocked Decisions
 
-- Implementation dependency, not an unresolved agreement decision: Tasks 25 and 21 require `capability:portable-local-repository-identity` from `specs/02-local-project-onboarding#Task 9`. Requirements and technical design are approved; active-slice implementation resumes after the provider task and its focused proof are complete.
+- None. `capability:portable-local-repository-identity` is available from completed and proven `specs/02-local-project-onboarding#Task 9`.
 
 ## Progress Log
+
+### 2026-07-28 - Task 25 complete: portable identity required before local backup
+
+- Completed: Enforced the strict versioned portable identifier in device and hosted-local backup snapshots and in untrusted package validation; blocked legacy identities before encryption with a source-side `Locate repository` handoff; rejected malformed identities; preserved portable success; synchronized both device canonical-identity fields during legacy upgrade; and proved retry after exact upgrade without project, connection, package, or Git repository mutation.
+- Proof: The focused snapshot, validator, provider-integration, and backup LiveView set passed 33 tests including 1 property; the broader portability, local onboarding, dashboard, backup, and restore set passed 125 tests including 1 property; `mix check` passed 677 tests including 6 properties with 1 excluded `:live` test; `mix format --check-formatted`, compilation with warnings as errors, Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed. The isolated Playwright Task 25 scenario passed in desktop and mobile Chromium.
+- Remaining: Implement exact target-worker local reconnection in Task 21. Before the final slice verification gate can pass, resolve five Dialyzer warnings in earlier Slice 06 Task 5, 11, 12, and 19 restore/preflight modules.
+- Failed checks: The first broader run passed 112 of 119 tests because seven older valid-local fixtures still used pre-contract placeholder fingerprints; they now use portable identities and the rerun passed 125 of 125. The first isolated browser runs exposed two stale setup assumptions: project name was filled after the enabled-state assertion, and duplicate detection now happens at repository selection; the helper was corrected and both desktop and mobile reruns passed. `mix dialyzer` remains failing on five warnings outside Task 25's owned files and is not recorded as passed.
+- Spec updates: Marked Task 25 and its verification item complete, recorded the delivered mechanism, and made Task 21 the next executable task.
+
+### 2026-07-28 - Portable local repository identity capability integrated
+
+- Completed: Merged the completed Slice 02 provider into the Slice 06 branch and reconciled the shared device context, durable device store, repository dashboard, and provider specification without dropping Slice 06 restoration or reconnection behavior. Task 25 is now in progress.
+- Proof: The combined provider and portability integration set passed 64 tests; `mix compile --warnings-as-errors`, `git diff --check`, the Slice 02 and Slice 06 validators, and the global capability graph passed.
+- Remaining: Enforce portable-only local backup generation and the source-side legacy-upgrade handoff in Task 25, then implement exact local reconnection in Task 21.
+- Failed checks: The branch merge reported six expected textual conflicts where both slices extended the same device and provider-specification surfaces; they were reconciled semantically, and no focused proof failed.
+- Spec updates: Moved the slice from `Blocked` to `In Progress`, marked Task 25 in progress, and cleared the completed implementation dependency from `Blocked Decisions`.
 
 ### 2026-07-28 - Portable local repository identity contract approved
 

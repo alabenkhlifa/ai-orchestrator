@@ -11,6 +11,7 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
   alias SddOrchestrator.Portability.{BackupSnapshot, PackageEncryption}
   alias SddOrchestrator.Projects
 
@@ -20,12 +21,16 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
   def mount(%{"id" => project_id}, _session, socket) do
     case load_project(socket, project_id) do
       {:ok, authority, project, back_path} ->
+        backup_readiness = backup_readiness(project)
+
         {:ok,
          socket
          |> assign(:page_title, "Back up #{project.name}")
          |> assign(:authority, authority)
          |> assign(:project, project)
          |> assign(:back_path, back_path)
+         |> assign(:backup_readiness, backup_readiness)
+         |> assign(:upgrade_path, upgrade_path(socket.assigns.live_action, project))
          |> assign(:errors, %{})
          |> assign(:generation_error, nil)
          |> assign(:download_ready?, false)}
@@ -72,6 +77,24 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
        |> assign(:download_ready?, true)
        |> push_event("backup-download", download)}
     else
+      {:error, :repository_identity_upgrade_required} ->
+        {:noreply,
+         socket
+         |> assign(:errors, %{})
+         |> assign(:generation_error, nil)
+         |> assign(:backup_readiness, :upgrade_required)
+         |> assign(:download_ready?, false)
+         |> push_event("backup-form-error", %{})}
+
+      {:error, :invalid_repository_identity} ->
+        {:noreply,
+         socket
+         |> assign(:errors, %{})
+         |> assign(:generation_error, nil)
+         |> assign(:backup_readiness, :invalid)
+         |> assign(:download_ready?, false)
+         |> push_event("backup-form-error", %{})}
+
       _reason ->
         {:noreply,
          socket
@@ -142,6 +165,30 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
     end
   end
 
+  defp backup_readiness(project) do
+    if Map.get(project, :repository_provider) == "local" do
+      project
+      |> local_repository_identity()
+      |> PortableRepositoryIdentity.parse()
+      |> case do
+        {:ok, _portable} -> :ready
+        {:error, :legacy_identifier} -> :upgrade_required
+        {:error, :invalid_identifier} -> :invalid
+      end
+    else
+      :ready
+    end
+  end
+
+  defp local_repository_identity(project) do
+    Map.get(project, :canonical_repository_id) ||
+      Map.get(project, :repository_id) ||
+      Map.get(project, :repository_fingerprint)
+  end
+
+  defp upgrade_path(:device, project), do: ~p"/onboarding/local?#{[locate: project.id]}"
+  defp upgrade_path(_live_action, _project), do: nil
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -153,7 +200,7 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
         </.button>
       </:actions>
 
-      <div data-screen="project-backup">
+      <div data-screen="project-backup" data-backup-readiness={@backup_readiness}>
         <h1 class="text-xl font-bold text-ink">Back up {@project.name}</h1>
         <p class="mt-1.5 text-sm leading-relaxed text-ink-muted text-pretty">
           Create one encrypted backup of this project. You will need its recovery passphrase every
@@ -192,6 +239,47 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
         </section>
 
         <div
+          :if={@backup_readiness == :upgrade_required}
+          class="mt-5"
+          role="alert"
+          data-repository-identity-upgrade-required
+        >
+          <.notice variant="warn" icon="triangle-alert">
+            <p class="font-semibold">Upgrade the local repository identity before backup.</p>
+            <p class="mt-1">
+              This project still uses an identity tied to its original device workspace. Locate
+              the source repository and complete exact worker validation before creating a
+              replacement-environment backup.
+            </p>
+            <.button
+              :if={@upgrade_path}
+              variant="secondary"
+              size="sm"
+              navigate={@upgrade_path}
+              data-upgrade-repository-identity
+              class="mt-3 w-full sm:w-auto"
+            >
+              <.lucide name="search" class="size-4" /> Locate the source repository
+            </.button>
+          </.notice>
+        </div>
+
+        <div
+          :if={@backup_readiness == :invalid}
+          class="mt-5"
+          role="alert"
+          data-repository-identity-invalid
+        >
+          <.notice variant="err" icon="triangle-alert">
+            <p class="font-semibold">This local repository identity cannot be backed up.</p>
+            <p class="mt-1">
+              Return to the project and reconnect its repository through the normal worker flow.
+              No backup package was created.
+            </p>
+          </.notice>
+        </div>
+
+        <div
           :if={map_size(@errors) > 0 || @generation_error}
           id="backup-form-error"
           role="alert"
@@ -213,7 +301,12 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
           separate safe places.
         </.notice>
 
-        <form id="project-backup-form" phx-submit="create_backup" class="mt-6">
+        <form
+          :if={@backup_readiness == :ready}
+          id="project-backup-form"
+          phx-submit="create_backup"
+          class="mt-6"
+        >
           <div class="grid gap-4 sm:grid-cols-2">
             <.text_field
               id="backup-passphrase"
