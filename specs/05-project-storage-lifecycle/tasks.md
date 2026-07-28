@@ -118,6 +118,14 @@ Release boundary:
 
 ## Progress Log
 
+### 2026-07-28 - Task 3 accountless storage surface and hosted sign-in return (AC-02, AC-14)
+
+- Engineering mechanism: Generalized the single shared `StorageSelectionLive` to serve both origins through its `live_action` scope — `:hosted` (authenticated GitHub) keeps the existing behavior, and `:device` mounts the accountless local flow through `Devices.establish_workspace/0` and the device-scoped attempt lookup. Added the accountless route `/onboarding/local/storage/:attempt_id` in a new `:local_storage` live session whose on-mounts resolve both the current account and the current hosted access, added the missing `log-in` icon, and made the render availability-driven for both modes with per-mode setup actions.
+- AC-02: Hosted storage now renders visible-but-unavailable with a non-selecting `Sign in` action for a device-origin attempt, while device renders unavailable with its own setup action; both stay visible and neither is silently selected.
+- AC-14: `Sign in` hands off to passwordless sign-in bound to a one-time return to this same step; a completed sign-in returns with a hosted session and the accountless mount records the proven hosted workspace as the attempt's prerequisite, refreshing hosted availability without selecting it or creating a project. An unsuccessful sign-in returns without a session, so hosted stays unavailable and no hosted identity is disclosed.
+- Passing proofs: `MIX_ENV=test mix test test/sdd_orchestrator_web/live/local_storage_selection_live_test.exs` (9) plus the existing hosted-scope `storage_selection_live_test` (11); full `MIX_ENV=test mix test` (501 passed, 1 excluded live browser test); `MIX_ENV=test mix compile --warnings-as-errors`; `mix format --check-formatted`; and `git diff --check`.
+- Remaining for Task 3: the source-adapter handoff contract surfaced as a first-class module and its `both repository-source adapters` service/LiveView coverage; the browser (Playwright + axe) scenarios; and, as source-owned integration, wiring the accountless local flow to route into this shared step (the `continue` device target is a placeholder pending the atomic-registration task).
+
 ### 2026-07-28 - Task 3 bound and minimized device-readiness receipt
 
 - Engineering mechanism: Redesigned `DeviceStorageReceipt` to persist only a non-reversible binding — a SHA-256 `digest` of the worker's raw one-time proof plus its nonce, the bound onboarding attempt id, the bound device workspace id, and issue and expiry times. The raw proof is discarded after digesting, and the previously stored raw token and device label no longer enter hosted persistence. `valid_for?/2` additionally binds a device-origin receipt to the attempt's device workspace.

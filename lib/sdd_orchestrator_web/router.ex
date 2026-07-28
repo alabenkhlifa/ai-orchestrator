@@ -94,6 +94,17 @@ defmodule SddOrchestratorWeb.Router do
       live "/local/projects/:id", DeviceProjectDashboardLive
     end
 
+    # The shared storage-selection step for the accountless local flow. It also
+    # resolves the current hosted access so a completed sign-in return refreshes
+    # hosted availability, while an unsuccessful sign-in exposes no hosted identity.
+    live_session :local_storage,
+      on_mount: [
+        {SddOrchestratorWeb.UserAuth, :mount_current_account},
+        {SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}
+      ] do
+      live "/onboarding/local/storage/:attempt_id", StorageSelectionLive, :device
+    end
+
     live_session :hosted_access_public,
       on_mount: [{SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}] do
       live "/hosted/access", HostedAccessLive
