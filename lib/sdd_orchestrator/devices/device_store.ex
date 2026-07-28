@@ -42,6 +42,11 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Finds a device project by its canonical repository fingerprint, for reconnection."
   @callback find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
 
+  @doc "Marks one exact canonical repository identity connected after normal authorization."
+  @callback connect_repository(String.t(), String.t(), String.t()) ::
+              {:ok, DeviceProject.t()}
+              | {:error, :not_found | :canonical_repository_mismatch}
+
   @doc "Atomically creates one specification and its first complete revision."
   @callback create_specification(
               String.t(),

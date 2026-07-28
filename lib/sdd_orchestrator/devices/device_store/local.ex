@@ -68,6 +68,10 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     do: GenServer.call(__MODULE__, {:find_by_fingerprint, fingerprint})
 
   @impl SddOrchestrator.Devices.DeviceStore
+  def connect_repository(project_id, provider, repository_id),
+    do: GenServer.call(__MODULE__, {:connect_repository, project_id, provider, repository_id})
+
+  @impl SddOrchestrator.Devices.DeviceStore
   def create_specification(project_id, specification, revision) do
     GenServer.call(__MODULE__, {:create_specification, project_id, specification, revision})
   end
@@ -173,6 +177,32 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       case Enum.find(all_projects(state.table), &(&1.repository_fingerprint == fingerprint)) do
         nil -> {:error, :not_found}
         project -> {:ok, project}
+      end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call(
+        {:connect_repository, project_id, provider, repository_id},
+        _from,
+        state
+      ) do
+    reply =
+      case :dets.lookup(state.table, {:project, project_id}) do
+        [{{:project, ^project_id}, stored}] ->
+          project = normalize_project(stored, state.table)
+
+          if canonical_repository_identity(project) == {provider, repository_id} do
+            connected = %{project | status: "connected"}
+            :ok = :dets.insert(state.table, {{:project, project_id}, connected})
+            :ok = :dets.sync(state.table)
+            {:ok, connected}
+          else
+            {:error, :canonical_repository_mismatch}
+          end
+
+        [] ->
+          {:error, :not_found}
       end
 
     {:reply, reply, state}

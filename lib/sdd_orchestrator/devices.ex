@@ -63,6 +63,11 @@ defmodule SddOrchestrator.Devices do
   @spec find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
   def find_by_fingerprint(fingerprint), do: adapter().find_by_fingerprint(fingerprint)
 
+  @doc "Marks one exact canonical repository identity connected after normal authorization."
+  def connect_repository(project_id, provider, repository_id) do
+    adapter().connect_repository(project_id, provider, repository_id)
+  end
+
   @doc "Atomically creates one device-authoritative specification aggregate."
   def create_specification(project_id, specification, revision) do
     adapter().create_specification(project_id, specification, revision)

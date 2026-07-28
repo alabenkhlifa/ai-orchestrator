@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, and 13 are complete. Tasks 20 and 21 are the next implementation tasks.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, and 20 are complete. Task 21 is the next implementation task.
 
 ## Active Slice
 
@@ -182,7 +182,7 @@ Release boundary:
   - Depends on: Task 19
   - Proof: Focused hosted and device state tests cover missing authorization, absence of packaged or stale credentials and connections, no automatic network or worker action, and one explicit reconnection action.
 
-- [ ] Task 20 - Integrate explicit GitHub repository reconnection.
+- [x] Task 20 - Integrate explicit GitHub repository reconnection.
   - Size: Standard
   - Purpose: Reuse normal GitHub provider authorization without treating package control as repository authority.
   - Owned surfaces: GitHub reconnection action, existing provider authorization and validation reuse, canonical GitHub repository identity binding, success and failure handoff, no packaged credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 20 complete: explicit GitHub repository reconnection
+
+- Completed: Added `GitHubReconnection` on top of the current account credential, GitHub identity, installation-access check, and metadata-read accessible-repository listing. The action rebinds only when the current provider result contains the exact packaged numeric repository ID; creates a normal hosted `RepositoryConnection` or atomically marks the exact device identity connected; is idempotent after success; and returns distinct authorization-required, provider-unavailable, canonical-mismatch, invalid-request, and unavailable-destination outcomes without accepting packaged or stale credentials. The device-store operation validates the provider and canonical ID before changing status.
+- Remaining: Integrate explicit local-repository reconnection through worker validation in Task 21.
+- Failed checks: None. Final proof passes: 67 focused GitHub reconnection, unconnected-boundary, provider discovery, hosted connection, registration, and device constraint tests, including a Git fixture proving content, HEAD, branches, remotes, status, and local configuration remain unchanged; `git diff --check`; `mix format --check-formatted`; `mix compile --warnings-as-errors`; `mix credo --strict`; `mix deps.audit`; and `mix sobelow --config`.
+- Spec updates: Marked Task 20 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 13 complete: unconnected restored-repository boundary
 
