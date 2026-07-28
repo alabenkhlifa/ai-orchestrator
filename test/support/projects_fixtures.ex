@@ -6,6 +6,7 @@ defmodule SddOrchestrator.ProjectsFixtures do
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
   alias SddOrchestrator.Repo
 
   @doc "Restores (or creates) the personal workspace for an account."
@@ -80,6 +81,25 @@ defmodule SddOrchestrator.ProjectsFixtures do
     {:ok, attempt} = Projects.start_device_onboarding_attempt(device_workspace)
     {:ok, attempt} = Projects.select_local_repository(device_workspace, attempt.id, repository)
     attempt
+  end
+
+  @doc """
+  Builds a bound, minimized device-readiness receipt for an attempt. Binds to the
+  attempt id and, for a device-origin attempt, the attempt's device workspace by
+  default; override any field through `attrs`.
+  """
+  def device_receipt(attempt, attrs \\ %{}) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    DeviceStorageReceipt.issue(%{
+      token: attrs[:token] || "opaque-#{System.unique_integer([:positive])}",
+      attempt_id: attrs[:attempt_id] || attempt.id,
+      device_workspace_id:
+        attrs[:device_workspace_id] || attempt.device_workspace_id || Ecto.UUID.generate(),
+      nonce: attrs[:nonce] || Ecto.UUID.generate(),
+      issued_at: attrs[:issued_at] || now,
+      expires_at: attrs[:expires_at] || DateTime.add(now, 3600, :second)
+    })
   end
 
   @doc "Registers a project in a workspace through the real registration transaction."

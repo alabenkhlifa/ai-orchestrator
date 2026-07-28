@@ -118,7 +118,7 @@ defmodule SddOrchestrator.ProjectStorage do
   def availability(:device, %ProjectOnboardingAttempt{} = attempt) do
     case DeviceStorageReceipt.from_attempt(attempt) do
       {:ok, receipt} ->
-        if DeviceStorageReceipt.valid?(receipt),
+        if DeviceStorageReceipt.valid_for?(receipt, attempt),
           do: :available,
           else: {:unavailable, :device_setup_required}
 

@@ -174,33 +174,52 @@ defmodule SddOrchestrator.Projects do
           String.t(),
           DeviceStorageReceipt.t()
         ) ::
-          {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
+          {:ok, ProjectOnboardingAttempt.t()}
+          | {:error,
+             :not_found | :receipt_binding_mismatch | :receipt_expired | Ecto.Changeset.t()}
   def record_device_receipt(
         %PersonalWorkspace{} = workspace,
         attempt_id,
         %DeviceStorageReceipt{} = receipt
       )
       when is_binary(attempt_id) do
-    update_attempt(workspace, attempt_id, fn attempt ->
-      ProjectOnboardingAttempt.device_setup_changeset(
-        attempt,
-        DeviceStorageReceipt.to_map(receipt)
-      )
-    end)
+    store_bound_receipt(get_onboarding_attempt(workspace, attempt_id), receipt, nil)
   end
 
   def record_device_receipt(
-        %DeviceWorkspace{} = workspace,
+        %DeviceWorkspace{id: device_workspace_id} = workspace,
         attempt_id,
         %DeviceStorageReceipt{} = receipt
       )
       when is_binary(attempt_id) do
-    update_device_attempt(workspace, attempt_id, fn attempt ->
-      ProjectOnboardingAttempt.device_setup_changeset(
-        attempt,
-        DeviceStorageReceipt.to_map(receipt)
-      )
-    end)
+    store_bound_receipt(
+      get_device_onboarding_attempt(workspace, attempt_id),
+      receipt,
+      device_workspace_id
+    )
+  end
+
+  # Stores a readiness receipt only when it is bound to this attempt (and, for a
+  # device-origin attempt, this device workspace) and unexpired. A mismatched,
+  # replayed, or expired receipt fails closed and writes nothing.
+  defp store_bound_receipt(nil, _receipt, _device_workspace_id), do: {:error, :not_found}
+
+  defp store_bound_receipt(%ProjectOnboardingAttempt{} = attempt, receipt, device_workspace_id) do
+    cond do
+      receipt.attempt_id != attempt.id ->
+        {:error, :receipt_binding_mismatch}
+
+      not is_nil(device_workspace_id) and receipt.device_workspace_id != device_workspace_id ->
+        {:error, :receipt_binding_mismatch}
+
+      not DeviceStorageReceipt.valid?(receipt) ->
+        {:error, :receipt_expired}
+
+      true ->
+        attempt
+        |> ProjectOnboardingAttempt.device_setup_changeset(DeviceStorageReceipt.to_map(receipt))
+        |> Repo.update()
+    end
   end
 
   ## Device-origin (accountless) onboarding attempts

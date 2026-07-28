@@ -15,7 +15,7 @@ defmodule SddOrchestrator.ProjectRegistrationTest do
 
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt, RepositoryConnection}
-  alias SddOrchestrator.ProjectStorage.{DeviceStorageReceipt, HostedProjectStorage}
+  alias SddOrchestrator.ProjectStorage.HostedProjectStorage
 
   alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.ProjectsFixtures
@@ -108,16 +108,12 @@ defmodule SddOrchestrator.ProjectRegistrationTest do
     test "device storage never writes a project or connection to hosted persistence", %{
       workspace: workspace
     } do
-      receipt = %DeviceStorageReceipt{
-        token: "ready",
-        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
-      }
-
       {:ok, attempt} = Projects.start_onboarding_attempt(workspace)
 
       {:ok, attempt} =
         Projects.select_repository(workspace, attempt.id, ProjectsFixtures.repository_metadata())
 
+      receipt = ProjectsFixtures.device_receipt(attempt)
       {:ok, _} = Projects.record_device_receipt(workspace, attempt.id, receipt)
       {:ok, attempt} = Projects.select_storage_mode(workspace, attempt.id, "device")
 

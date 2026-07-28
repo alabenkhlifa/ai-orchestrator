@@ -15,7 +15,6 @@ defmodule SddOrchestratorWeb.StorageSelectionLiveTest do
   alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.ProjectStorage
-  alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
 
   defp setup_account(conn) do
     %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
@@ -129,11 +128,7 @@ defmodule SddOrchestratorWeb.StorageSelectionLiveTest do
       ctx = setup_account(conn)
       attempt = ProjectsFixtures.attempt_with_repository(ctx.workspace)
 
-      receipt = %DeviceStorageReceipt{
-        token: "opaque",
-        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
-        device_label: "Laptop"
-      }
+      receipt = ProjectsFixtures.device_receipt(attempt)
 
       {:ok, attempt} = Projects.record_device_receipt(ctx.workspace, attempt.id, receipt)
       Map.merge(ctx, %{attempt: attempt})

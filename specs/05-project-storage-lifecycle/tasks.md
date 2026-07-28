@@ -118,6 +118,12 @@ Release boundary:
 
 ## Progress Log
 
+### 2026-07-28 - Task 3 bound and minimized device-readiness receipt
+
+- Engineering mechanism: Redesigned `DeviceStorageReceipt` to persist only a non-reversible binding — a SHA-256 `digest` of the worker's raw one-time proof plus its nonce, the bound onboarding attempt id, the bound device workspace id, and issue and expiry times. The raw proof is discarded after digesting, and the previously stored raw token and device label no longer enter hosted persistence. `valid_for?/2` additionally binds a device-origin receipt to the attempt's device workspace.
+- Fail-closed enforcement: `record_device_receipt/3` verifies the receipt is bound to the attempt (and, for a device-origin attempt, this device workspace) and is unexpired before storing; a mismatched, replayed, or expired receipt returns `:receipt_binding_mismatch` or `:receipt_expired` and writes nothing. Device availability now checks the bound `valid_for?/2` rather than expiry alone, so a receipt bound to another attempt reads as unavailable.
+- Passing proofs: `MIX_ENV=test mix test` full suite (492 passed, 1 excluded live browser test); `MIX_ENV=test mix compile --warnings-as-errors`; `mix format --check-formatted`; and `git diff --check`. New proofs cover minimized persistence (no raw proof or device label), digest-only serialization, and cross-attempt, cross-workspace, and expiry denial.
+
 ### 2026-07-28 - Task 3 shared attempt origin and identity-gated hosted availability
 
 - Engineering mechanism: Extended the one shared `ProjectOnboardingAttempt` with `origin_kind` (`hosted`/`device`), an opaque `device_workspace_id` (no foreign key, since device workspaces never persist in the hosted database), a `hosted_prerequisite_workspace_id` FK recorded only by a verified sign-in, and a `browser_flow_binding`; made `workspace_id` nullable; and added a database `onboarding_attempt_origin_shape` check so a hosted-origin attempt owns a hosted workspace with no device reference while a device-origin attempt references a device workspace and never carries a hosted owning workspace.

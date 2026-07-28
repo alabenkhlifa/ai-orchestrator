@@ -8,7 +8,6 @@ defmodule SddOrchestrator.ProjectsTest do
 
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
-  alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
 
   alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.ProjectsFixtures
@@ -198,14 +197,13 @@ defmodule SddOrchestrator.ProjectsTest do
       workspace: workspace,
       attempt: attempt
     } do
-      receipt = %DeviceStorageReceipt{
-        token: "opaque",
-        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
-        device_label: "Laptop"
-      }
+      receipt = ProjectsFixtures.device_receipt(attempt)
 
       assert {:ok, updated} = Projects.record_device_receipt(workspace, attempt.id, receipt)
-      assert updated.device_setup["token"] == "opaque"
+      # Only the minimized binding persists: a digest, never the raw proof or a device label.
+      assert is_binary(updated.device_setup["digest"])
+      refute Map.has_key?(updated.device_setup, "token")
+      refute Map.has_key?(updated.device_setup, "device_label")
       # Recording a receipt selects no mode and creates no project.
       assert is_nil(updated.storage_mode)
       refute Projects.has_projects?(workspace)
@@ -214,13 +212,28 @@ defmodule SddOrchestrator.ProjectsTest do
 
     test "never writes another workspace's attempt", %{attempt: attempt} do
       other = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
-
-      receipt = %DeviceStorageReceipt{
-        token: "opaque",
-        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
-      }
+      receipt = ProjectsFixtures.device_receipt(attempt)
 
       assert {:error, :not_found} = Projects.record_device_receipt(other, attempt.id, receipt)
+    end
+
+    test "a receipt bound to another attempt fails closed", %{
+      workspace: workspace,
+      attempt: attempt
+    } do
+      {:ok, other_attempt} = Projects.start_onboarding_attempt(workspace)
+      foreign = ProjectsFixtures.device_receipt(other_attempt)
+
+      assert {:error, :receipt_binding_mismatch} =
+               Projects.record_device_receipt(workspace, attempt.id, foreign)
+    end
+
+    test "an expired receipt fails closed", %{workspace: workspace, attempt: attempt} do
+      past = DateTime.add(DateTime.utc_now(), -60, :second) |> DateTime.truncate(:second)
+      expired = ProjectsFixtures.device_receipt(attempt, expires_at: past)
+
+      assert {:error, :receipt_expired} =
+               Projects.record_device_receipt(workspace, attempt.id, expired)
     end
   end
 
