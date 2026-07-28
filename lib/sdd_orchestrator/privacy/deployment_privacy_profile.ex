@@ -20,6 +20,7 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
     :incident_path,
     :retention_enforcement,
     :reviews,
+    :encrypted_backup_configuration,
     :passwordless_delivery_provider,
     :passwordless_processor_agreement,
     :passwordless_sender_domain,
@@ -39,6 +40,25 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
     encrypted_rolling_backups_days: 35
   }
 
+  @backup_evidence_fields [
+    :processor,
+    :processor_agreement,
+    :regions,
+    :transfer_safeguards,
+    :retention_enforcement,
+    :recovery_authorization,
+    :privacy_review
+  ]
+
+  @backup_lifecycle_contract %{
+    encrypted: true,
+    maximum_expiry_days: @retention_requirements.encrypted_rolling_backups_days,
+    restore_scope: :approved_recovery_only,
+    deletion_propagation: :required,
+    enforcement: :deployment_infrastructure,
+    evidence_stage: :release
+  }
+
   @doc "The deployment evidence fields required before a public hosted release."
   @spec required_fields() :: [atom()]
   def required_fields, do: @required
@@ -49,6 +69,31 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
           encrypted_rolling_backups_days: pos_integer()
         }
   def retention_requirements, do: @retention_requirements
+
+  @doc "The fixed encrypted-backup lifecycle that every deployment must enforce."
+  @spec backup_lifecycle_contract() :: %{
+          encrypted: true,
+          maximum_expiry_days: pos_integer(),
+          restore_scope: :approved_recovery_only,
+          deletion_propagation: :required,
+          enforcement: :deployment_infrastructure,
+          evidence_stage: :release
+        }
+  def backup_lifecycle_contract, do: @backup_lifecycle_contract
+
+  @doc "The lifecycle handoff attached to a verified rights action."
+  @spec backup_handoff(:access | :erasure | :apply_operator_decision) :: %{
+          action: :access | :erasure | :apply_operator_decision,
+          maximum_expiry_days: pos_integer(),
+          restore_scope: :approved_recovery_only,
+          deletion_propagation: :required
+        }
+  def backup_handoff(action)
+      when action in [:access, :erasure, :apply_operator_decision] do
+    @backup_lifecycle_contract
+    |> Map.take([:deletion_propagation, :maximum_expiry_days, :restore_scope])
+    |> Map.put(:action, action)
+  end
 
   @doc "Builds a profile from a map of provided evidence."
   @spec new(map()) :: t()
@@ -80,6 +125,30 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
   end
 
   @doc """
+  Checks the deployment's encrypted-backup processor and lifecycle evidence.
+
+  The configuration may shorten the fixed 35-day ceiling, but it cannot weaken
+  encryption, recovery authorization, or deletion propagation. Missing
+  deployment evidence blocks release only.
+  """
+  @spec ensure_backup_release_ready(t()) ::
+          :ok
+          | {:error, {:incomplete, [atom()]}}
+          | {:error, {:invalid_backup_configuration, [atom()]}}
+  def ensure_backup_release_ready(%__MODULE__{} = profile) do
+    with :ok <- ensure_release_ready(profile),
+         [] <- invalid_backup_fields(profile.encrypted_backup_configuration) do
+      :ok
+    else
+      {:error, {:incomplete, _missing}} = error ->
+        error
+
+      invalid when is_list(invalid) ->
+        {:error, {:invalid_backup_configuration, invalid}}
+    end
+  end
+
+  @doc """
   Enforces both deployment evidence and a production-capable passwordless
   delivery configuration.
   """
@@ -102,4 +171,47 @@ defmodule SddOrchestrator.Privacy.DeploymentPrivacyProfile do
   defp blank?(""), do: true
   defp blank?([]), do: true
   defp blank?(_), do: false
+
+  defp invalid_backup_fields(configuration) when is_map(configuration) do
+    evidence_errors =
+      Enum.reject(@backup_evidence_fields, fn field ->
+        configuration |> Map.get(field) |> evidence_present?()
+      end)
+
+    contract_errors =
+      []
+      |> invalid_unless(:encrypted, Map.get(configuration, :encrypted) == true)
+      |> invalid_unless(
+        :maximum_expiry_days,
+        valid_backup_expiry?(Map.get(configuration, :maximum_expiry_days))
+      )
+      |> invalid_unless(
+        :restore_scope,
+        Map.get(configuration, :restore_scope) == :approved_recovery_only
+      )
+      |> invalid_unless(
+        :deletion_propagation,
+        Map.get(configuration, :deletion_propagation) == :required
+      )
+
+    Enum.uniq(evidence_errors ++ contract_errors)
+  end
+
+  defp invalid_backup_fields(_configuration), do: [:encrypted_backup_configuration]
+
+  defp valid_backup_expiry?(days) do
+    is_integer(days) and days > 0 and
+      days <= @backup_lifecycle_contract.maximum_expiry_days
+  end
+
+  defp evidence_present?(value) when is_binary(value), do: String.trim(value) != ""
+
+  defp evidence_present?(value) when is_list(value) do
+    value != [] and Enum.all?(value, &evidence_present?/1)
+  end
+
+  defp evidence_present?(_value), do: false
+
+  defp invalid_unless(errors, _field, true), do: errors
+  defp invalid_unless(errors, field, false), do: errors ++ [field]
 end

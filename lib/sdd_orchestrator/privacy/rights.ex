@@ -54,6 +54,7 @@ defmodule SddOrchestrator.Privacy.Rights do
     PackageProvenances
   }
 
+  alias SddOrchestrator.Privacy.DeploymentPrivacyProfile
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
@@ -669,11 +670,6 @@ defmodule SddOrchestrator.Privacy.Rights do
   end
 
   defp backup_handoff(action) do
-    %{
-      action: action,
-      deletion_propagation: :required,
-      maximum_expiry_days: 35,
-      restore_scope: :approved_recovery_only
-    }
+    DeploymentPrivacyProfile.backup_handoff(action)
   end
 end

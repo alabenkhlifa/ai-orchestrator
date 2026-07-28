@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, 22, and 18 are complete. Task 23 is in progress.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, 22, 18, and 23 are complete. Task 24 is in progress.
 
 ## Active Slice
 
@@ -275,13 +275,14 @@ Release boundary:
   - Proof: Focused structured-log schema, redaction, failure-path, correlation, 30-day expiry, audit-minimization, diagnostic, and secret-exposure checks pass.
   - Delivered: Added one fixed portability security-event boundary with only event type, UTC occurrence time, coarse outcome, and a generated non-secret correlation identifier. Backup generation, restore intake and validation, terminal cleanup, hosted and device restore commits, and GitHub, device-local, and hosted-local reconnection and disconnection paths emit through that boundary without inspecting or serializing package data, project content, repository identities, bindings, workers, workspaces, filenames, paths, passphrases, decrypted fields, or error details. The deployment privacy profile is the single source for the 30-day operational-log expiry.
 
-- [ ] Task 23 - Enforce encrypted-backup expiry.
+- [x] Task 23 - Enforce encrypted-backup expiry.
   - Size: Standard
   - Purpose: Bound recovery copies without weakening verified deletion propagation.
   - Owned surfaces: 35-day encrypted rolling-backup expiry configuration, `DeploymentPrivacyProfile` evidence, approved recovery-only restoration boundary, deletion-propagation handoff, processor configuration, and release-gate evidence classification.
   - Owns: AC-24
   - Depends on: Task 17, Task 22
   - Proof: Focused deployment-profile, expiry-boundary, recovery authorization, deletion-propagation, processor-configuration, and release-gate checks prove the 35-day ceiling without claiming deployment evidence that is not locally available.
+  - Delivered: Added one structured encrypted-backup lifecycle contract and deployment-evidence check. It requires encryption, expiry at or below 35 days, recovery-only restoration, mandatory deletion propagation, and non-blank processor, agreement, region, transfer, retention-enforcement, recovery-authorization, and privacy-review evidence. Verified rights handoffs now consume the same fixed lifecycle contract. Missing or invalid deployment evidence blocks only the explicit public-release readiness check; implementation and local verification remain independently testable.
 
 - [ ] Task 24 - Prohibit portability secondary use and agent access.
   - Size: Standard
@@ -323,6 +324,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 23 complete: encrypted-backup expiry enforcement
+
+- Completed: Extended `DeploymentPrivacyProfile` with one structured encrypted-backup configuration and fixed lifecycle contract. A deployment passes the targeted release check only when backup copies are encrypted, expire in no more than 35 days, restore only through approved recovery, require deletion propagation, and name the processor, processor agreement, regions, transfer safeguards, retention enforcement, recovery authorization, and privacy review. Shorter expiry is allowed; a 36-day value or weakened recovery control is rejected. `Privacy.Rights` now derives access, erasure, restriction, and objection backup handoffs from that same contract.
+- Proof: The focused backup-lifecycle, deployment-profile, rights, encryption, restore-intake, and specification-governance set passed 37 tests. The proof covers the exact 35-day ceiling, shorter retention, encryption, recovery-only scope, deletion propagation, complete processor evidence, missing evidence, and release-only classification. `mix check` passed 735 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Prohibit portability secondary use and coding-agent or model-provider access in Task 24, then complete the consolidated privacy and security review in Task 7. The final slice gate must resolve the current Dialyzer warnings before verification.
+- Failed checks: Strict Credo initially required the new privacy-profile alias to be placed before the project aliases; the ordering was corrected before the passing proof. `mix dialyzer` still reports the same 14 warnings in earlier Slice 06 restore and reconnection code, with no Task 23-specific warning; the final slice gate remains open.
+- Spec updates: Marked Task 23 complete, recorded the enforceable deployment configuration and shared rights handoff, and made Task 24 the next executable task without changing requirements, design, ownership, dependencies, or capability edges.
 
 ### 2026-07-28 - Task 18 complete: minimized portability security logging
 
