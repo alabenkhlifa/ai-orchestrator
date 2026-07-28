@@ -83,6 +83,11 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     GenServer.call(__MODULE__, {:specification_count, project_id})
   end
 
+  @impl SddOrchestrator.Devices.DeviceStore
+  def current_specifications(project_id) do
+    GenServer.call(__MODULE__, {:current_specifications, project_id})
+  end
+
   @impl GenServer
   # The store path is trusted application configuration — a fixed dev/config value
   # or a test-supplied temporary path — never web or user input, so `File.mkdir_p!`
@@ -182,6 +187,34 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       )
 
     {:reply, count, state}
+  end
+
+  def handle_call({:current_specifications, project_id}, _from, state) do
+    currents =
+      :dets.foldl(
+        fn
+          {
+            {:specification, ^project_id, _specification_id},
+            %{specification: specification, revisions: revisions}
+          },
+          acc ->
+            [
+              %{
+                specification: specification,
+                revision: Map.fetch!(revisions, specification.current_revision_id)
+              }
+              | acc
+            ]
+
+          _other, acc ->
+            acc
+        end,
+        [],
+        state.table
+      )
+      |> Enum.sort_by(& &1.specification.id)
+
+    {:reply, currents, state}
   end
 
   @impl GenServer

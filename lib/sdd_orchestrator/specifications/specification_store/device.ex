@@ -8,7 +8,8 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Device do
     DeviceProjectSpecification,
     DeviceSpecificationRevision,
     SpecificationDocuments,
-    SpecificationLimits
+    SpecificationLimits,
+    SpecificationSnapshot
   }
 
   def create(%DeviceWorkspace{} = authority, project_id, attrs, opts) when is_map(attrs) do
@@ -90,6 +91,14 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Device do
       Devices.get_current_specification(project_id, specification_uuid)
     else
       _reason -> {:error, :not_found}
+    end
+  end
+
+  def current_snapshot(%DeviceWorkspace{} = authority, project_id) do
+    with :ok <- authorize(authority, project_id) do
+      project_id
+      |> Devices.current_specifications()
+      |> SpecificationSnapshot.new()
     end
   end
 

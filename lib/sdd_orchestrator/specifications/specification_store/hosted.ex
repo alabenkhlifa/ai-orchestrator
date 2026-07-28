@@ -12,7 +12,8 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Hosted do
     SpecificationAuthorization,
     SpecificationDocuments,
     SpecificationLimits,
-    SpecificationRevision
+    SpecificationRevision,
+    SpecificationSnapshot
   }
 
   @spec create(PersonalWorkspace.t(), String.t(), map(), keyword()) ::
@@ -91,6 +92,24 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Hosted do
 
   def append_revision(_authority, _project_id, _specification_id, _expected_revision_id, _attrs),
     do: {:error, :invalid_specification}
+
+  @spec current_snapshot(PersonalWorkspace.t(), String.t()) ::
+          {:ok, SpecificationSnapshot.t()} | {:error, atom()}
+  def current_snapshot(%PersonalWorkspace{} = authority, project_id) do
+    with {:ok, project} <- SpecificationAuthorization.hosted_project(authority, project_id) do
+      currents =
+        Repo.all(
+          from specification in ProjectSpecification,
+            join: revision in SpecificationRevision,
+            on: revision.id == specification.current_revision_id,
+            where: specification.project_id == ^project.id and revision.project_id == ^project.id,
+            order_by: [asc: specification.id],
+            select: %{specification: specification, revision: revision}
+        )
+
+      SpecificationSnapshot.new(currents)
+    end
+  end
 
   defp create_transaction(
          project,

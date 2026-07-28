@@ -58,4 +58,7 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   @doc "Counts the device-authoritative specifications for one project."
   @callback specification_count(String.t()) :: non_neg_integer()
+
+  @doc "Returns all current device-authoritative specifications for one project."
+  @callback current_specifications(String.t()) :: [SpecificationStore.current()]
 end

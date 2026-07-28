@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, and 3 are complete, and Task 4 is the next executable task.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, and 4 are complete, and Task 7 is the next executable task.
 
 ## Active Slice
 
@@ -94,7 +94,7 @@ Release gates:
   - Owns: AC-05
   - Proof: Shared adapter-contract, device persistence, isolation, transaction, restart, concurrency, and negative hosted-copy tests prove equivalent create, append, current-read, validation, and failure behavior in both destinations.
 
-- [ ] Task 4 — Implement consistent current-project snapshots.
+- [x] Task 4 — Implement consistent current-project snapshots.
   - Size: Standard
   - Depends on: Task 3
   - Purpose: Give authorized consumers one deterministic current view from either authoritative destination.
@@ -146,6 +146,13 @@ Release gates:
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Task 4 complete: consistent current-project snapshots
+
+- Completed: Added one strict transient `SpecificationSnapshot` allowlist, deterministic specification-id ordering, configured count and byte limits, a single joined hosted current-head query, and a worker-serialized device snapshot read. Snapshots contain only stable specification and current revision identities, titles, and the three approved documents; concurrent append proof observes either complete revision without mixing document fields.
+- Remaining: Implement restoration transaction participation in Task 7, then cross-operation readiness, governance, and verification.
+- Failed checks: Strict Credo initially rejected one alias ordering in the focused test; it was corrected. Final proof passes: `MIX_ENV=test mix test test/sdd_orchestrator/specifications/snapshot_test.exs` (5 tests), the combined specification suite (23 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 4 complete; requirements, design, ownership, dependencies, and capability readiness are unchanged.
 
 ### 2026-07-28 - Task 3 complete: device-authoritative specification adapter
 

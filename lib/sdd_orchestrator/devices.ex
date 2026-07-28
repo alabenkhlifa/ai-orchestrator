@@ -86,6 +86,9 @@ defmodule SddOrchestrator.Devices do
   @doc "Counts the device-authoritative specifications for one project."
   def specification_count(project_id), do: adapter().specification_count(project_id)
 
+  @doc "Returns all current device-authoritative specifications for one project."
+  def current_specifications(project_id), do: adapter().current_specifications(project_id)
+
   defp adapter do
     Application.fetch_env!(:sdd_orchestrator, __MODULE__)[:adapter]
   end

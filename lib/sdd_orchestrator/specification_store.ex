@@ -8,6 +8,7 @@ defmodule SddOrchestrator.SpecificationStore do
   """
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
+  alias SddOrchestrator.Specifications.SpecificationSnapshot
   alias SddOrchestrator.Specifications.SpecificationStore.{Device, Hosted}
 
   @type current :: %{
@@ -84,4 +85,16 @@ defmodule SddOrchestrator.SpecificationStore do
       attrs
     )
   end
+
+  @spec current_snapshot(PersonalWorkspace.t() | DeviceWorkspace.t(), String.t()) ::
+          {:ok, SpecificationSnapshot.t()} | {:error, atom()}
+  def current_snapshot(%PersonalWorkspace{} = authority, project_id) do
+    Hosted.current_snapshot(authority, project_id)
+  end
+
+  def current_snapshot(%DeviceWorkspace{} = authority, project_id) do
+    Device.current_snapshot(authority, project_id)
+  end
+
+  def current_snapshot(_authority, _project_id), do: {:error, :not_found}
 end
