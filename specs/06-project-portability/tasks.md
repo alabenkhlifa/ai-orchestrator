@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Blocked
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, and 20 are complete. Task 21 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, and 20 are complete. Task 21 is the next implementation task and is blocked on the local canonical-identity portability decision recorded below.
 
 ## Active Slice
 
@@ -192,6 +192,7 @@ Release boundary:
 
 - [ ] Task 21 - Integrate explicit local-repository reconnection.
   - Size: Standard
+  - Status: Blocked on an approved portable local canonical-identity mechanism.
   - Purpose: Reuse normal worker validation without treating package control as local repository authority.
   - Owned surfaces: Local reconnection action, existing worker authorization and repository-validation reuse, canonical local repository identity binding, success and failure handoff, no packaged path or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
   - Owns: AC-22
@@ -284,9 +285,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
+- Technical design and data handling: Slice 02's implemented local repository fingerprint is HMAC-keyed by the source device-workspace salt, but this slice excludes source workspace identity and environment-specific connection state from the package. A different authorized destination therefore cannot reproduce the packaged fingerprint through normal worker validation. Before Task 21, approve a non-reversible canonical-identity mechanism that supports exact post-restore validation and defines cross-workspace linkability plus legacy-fingerprint handling. This blocks technical-design readiness and active-slice implementation; it does not invalidate Tasks 1–20 or change the release-only deployment evidence.
 
 ## Progress Log
+
+### 2026-07-28 - Task 21 blocked: local canonical identity is not portable
+
+- Completed: Task 21 preflight traced the packaged local repository identity to Slice 02's worker validation and confirmed that its HMAC key is the source device-workspace salt. The package correctly excludes that workspace identity, local paths, and connection metadata, so a target worker cannot reproduce the exact packaged fingerprint after restoration.
+- Remaining: Approve and specify a non-reversible portable local canonical-identity mechanism, including cross-workspace linkability and legacy-fingerprint behavior, through `update-spec`; then resume Task 21.
+- Failed checks: No implementation check failed. The approved contracts are internally incomplete at the local reconnection seam, so application changes stopped before mutation.
+- Spec updates: Marked the slice and Task 21 blocked, recorded the technical-design question, and preserved all completed task and capability state.
 
 ### 2026-07-28 - Task 20 complete: explicit GitHub repository reconnection
 
