@@ -2,7 +2,7 @@
 
 ## Status
 
-Blocked
+Not Started
 
 ## Active Slice
 
@@ -49,7 +49,7 @@ Release boundary:
 
 ## Tasks
 
-- [ ] Task 1 - Approve the initial backup, restore-authority, lifecycle, and compatibility contract.
+- [x] Task 1 - Approve the initial backup, restore-authority, lifecycle, and compatibility contract.
   - Purpose: Define exactly what crosses the backup boundary, who may restore it, and how the data is governed before coding starts.
   - Owned surfaces: Active package scope, stable-identity semantics, passphrase and destination-authorization contract, conflict policy, package and compatibility contract, threat model, privacy data contract, and canonical verification commands.
   - Owns: none (agreement gate)
@@ -117,10 +117,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- Technical design: select package format, schema versioning, authenticated encryption, memory-hard passphrase derivation, transient secret handling, integrity, signing, compression, compatibility behavior, limits, extraction isolation, provenance, and atomic restore architecture.
-- Verification design: select canonical golden, compatibility, security, lifecycle, automated, responsive browser, production, and failure-log commands.
+- None. The technical-design and verification-design decisions that previously blocked this slice are resolved in `design.md` Decisions and Tradeoffs and closed in its Open Questions.
 
 ## Progress Log
+
+### 2026-07-28 - Technical and verification design resolved
+
+- Completed: Resolved every blocked technical-design and verification-design decision as engineering choices grounded in the existing codebase — a deterministic JSON container with compress-then-encrypt, Argon2id memory-hard passphrase derivation (`argon2_elixir`), AES-256-GCM authenticated encryption with the envelope bound as additional authenticated data, transient passphrase and key handling, isolated intake with explicit size, ratio, count, and length limits and reject-or-ignore version compatibility, an atomic `Ecto.Multi` restore with constraint-backed identity and canonical-repository hard blocks and minimal provenance, and privacy-lifecycle wiring through the existing `Privacy.ProcessingInventory`, `Privacy.Retention` and `RetentionPruner`, `DeploymentPrivacyProfile`, and `Privacy.Rights`. Selected the canonical Slice 01 verification commands. Marked Task 1 complete and moved the slice from Blocked to Approved.
+- Remaining: Implement Tasks 2–7 under the resolved design, then run the verification gate; create a separate child specification before any cross-user exchange or create-copy behavior.
+- Failed checks: None; implementation has not started.
+- Spec updates: Recorded the container, key-derivation, authenticated-encryption, transient-handling, intake-limit, compatibility, atomic-restore, provenance, and lifecycle-and-verification decisions in `design.md`; closed the four design open questions; removed the resolved Blocked Decisions section; and recorded that Task 3 introduces the `argon2_elixir` dependency.
 
 ### 2026-07-26 - Scope health checkpoint
 

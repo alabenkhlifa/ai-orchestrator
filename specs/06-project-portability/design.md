@@ -138,6 +138,48 @@ Required boundaries:
 - Access and rights: Limit active data to the authorized user and destination boundary plus approved personnel for necessary security, support, lifecycle, and verified rights work. Exclude coding agents and model providers. Apply verified access, correction, erasure, restriction, objection, and portability workflows to applicable service-held records, derived copies, processors, and backup expiry.
 - Consequence: A user-downloaded package remains under the user's control and cannot be deleted by the service. Public deployment still requires actual controller, processor, region, transfer, notice, incident, retention-enforcement, and required DPIA or legal evidence, but those facts do not block implementation or local verification of this approved contract.
 
+### Package Container And Deterministic Payload
+
+- Choice: Package one file as a non-secret cleartext envelope header followed by the authenticated-encryption ciphertext of a compressed, canonically serialized JSON payload. Serialize the project, repository, and current-specifications sections in fixed order with sorted keys via Jason, and compress the plaintext payload with `:zlib` (DEFLATE) before encryption, guarded by a decompressed-size ceiling and a maximum expansion ratio enforced at restore.
+- Reason: A structured JSON document rather than a filesystem archive makes the payload deterministic for golden fixtures and removes tar and zip path-traversal, symlink, and archive-member classes. Compressing before encryption keeps ciphertext opaque while bounding size.
+- Consequence: There is no archive-extraction step; intake is one package file. Decompression is bounded to defeat decompression bombs, and deterministic ordering enables byte-stable golden decrypted-payload fixtures. The envelope header stays cleartext but is authenticated by the encryption decision below.
+
+### Memory-Hard Passphrase Derivation (Argon2id)
+
+- Choice: Derive the 32-byte package key from the recovery passphrase with Argon2id, using a per-package 16-byte random salt and documented default cost parameters (time cost 3, memory 64 MiB, parallelism 1) that are tunable through application configuration. Store only the non-secret salt and cost parameters in the cleartext envelope. This adds the `argon2_elixir` dependency, introduced by Task 3.
+- Reason: The approved contract requires a memory-hard derivation resistant to offline guessing against a copied package; Argon2id is the current standard, and the codebase has no key-derivation dependency yet. The cost parameters must travel with the package so any restore can reproduce the key.
+- Consequence: Restore reproduces the key from the passphrase plus the envelope salt and parameters, and neither the passphrase nor the derived key is stored. `mix deps.audit` and `mix sobelow` continue to gate the added dependency, and parameter tuning is configuration rather than a design blocker.
+
+### Authenticated Package Encryption (AES-256-GCM)
+
+- Choice: Encrypt the compressed payload with AES-256-GCM via Erlang `:crypto`, using a per-package 12-byte random nonce and a 128-bit authentication tag, and bind the cleartext envelope header (format version, payload schema version, key-derivation identifier, salt, cost parameters, and nonce) as additional authenticated data.
+- Reason: AES-256-GCM matches the existing `SddOrchestrator.Vault` cipher, keeping one authenticated-encryption primitive across the codebase. Binding the envelope as additional authenticated data detects tampering or downgrade of the version and derivation parameters, and the GCM tag provides integrity without a separate signature because backups are user-held rather than publisher-signed.
+- Consequence: Any corruption, truncation, or tampering of the ciphertext or envelope fails authenticated decryption before parsing, satisfying integrity and compatibility rejection. No separate signing key or HMAC is introduced.
+
+### Transient Passphrase And Key Handling
+
+- Choice: Keep the passphrase and derived key only as local values for the single encrypt or decrypt operation, never placing them in persisted structs, logs, diagnostics, analytics, or return values, following the established magic-link transient-secret pattern, and use `Plug.Crypto` constant-time comparison for any equality check. A missing or incorrect passphrase, or a failed authentication tag, returns an opaque error that exposes no plaintext.
+- Reason: Confidentiality depends on never persisting the secret material, and constant-time handling avoids side channels.
+- Consequence: Restore reports only success or an opaque failure, and decrypted content and key material never enter persistence, logs, or telemetry.
+
+### Isolated Intake, Limits, And Compatibility
+
+- Choice: Hold the encrypted upload and validation state in `ImportAttempt`, encrypted at rest through the existing Cloak `Encrypted.Binary` type for its brief lifetime, and validate before any persistent project change with configuration-tunable limits: maximum encrypted package size, maximum decompressed payload size, maximum expansion ratio, maximum specification count and document size, and maximum field lengths, parsed by a strict JSON reader that rejects duplicate keys and non-finite numbers. Version the format and the payload schema separately: reject an unsupported major version, and within a supported major ignore unknown additive fields while recording a log line, without changing restored meaning.
+- Reason: The package crosses a trust boundary and must not create partial state, execute content, or be exhausted by malformed or oversized input, and explicit version rules make compatibility observable and satisfy the reject-or-ignore criterion.
+- Consequence: Validation is pure data parsing with no code execution, data absent from the allowlist is excluded rather than serialized so forward compatibility holds, and unknown additive fields never silently alter the restored project.
+
+### Atomic Restore And Minimal Provenance
+
+- Choice: Run conflict preflight and creation inside one Ecto `Multi` transaction — stable-identity existence check across the selected destination and session-accessible catalogs, canonical-repository uniqueness, and case-insensitive display-name uniqueness — then create the `Project` and a `PackageProvenance` holding only the package schema version and restoration timestamp, backed by database unique constraints on the stable project identity and canonical repository identity. Reuse the Slice 05 storage-selection prerequisites for the destination, and leave repository reconnection to the normal provider or worker flow.
+- Reason: A single transaction with database constraints guarantees atomicity and enforces the same-identity and repository hard blocks even under concurrency, and minimal provenance avoids unnecessary identity tracking.
+- Consequence: Any failure rolls back with no partial project, provenance, or attempt record; provenance carries no package hash, filename, source account, workspace, device, exporter identity, network address, or source storage mode; and repository content and configuration are never modified.
+
+### Backup Lifecycle And Verification Wiring
+
+- Choice: Register the slice's package, temporary, provenance, log, and restored-record categories in `Privacy.ProcessingInventory` and `DataProcessingRecord`, add the immediate-terminal and 24-hour stranded `ImportAttempt` and encrypted-temporary cleanup as new rules in `Privacy.Retention.prune_all/1` under the existing supervised `RetentionPruner`, keep 30-day operational-security-log and 35-day encrypted-backup expiry as deployment-infrastructure enforcement recorded in `DeploymentPrivacyProfile`, and extend the `Privacy.Rights` workflows to cover `ImportAttempt` and `PackageProvenance`. Prove the slice with the established Slice 01 toolchain: `mix test` with `stream_data` property tests and committed golden decrypted-payload and encrypted-package fixtures, the `mix check` gate plus `mix dialyzer`, `mix deps.audit`, and `mix sobelow --config`, the `npm --prefix assets run test:e2e` desktop and mobile browser scenarios, and the `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` production proofs.
+- Reason: The privacy lifecycle must reuse the existing idempotent, advisory-locked retention and inventory machinery rather than a parallel mechanism, and verification must use the canonical project checks already established.
+- Consequence: The 30-day log and 35-day backup expiry stay deployment-infrastructure concerns in the release gate, consistent with the existing retention module, and no new scheduler or verification toolchain is introduced.
+
 ## Risks
 
 - Secret filtering can miss a new field. Use an allowlisted schema, negative secret tests, and version review.
@@ -158,7 +200,4 @@ Required boundaries:
 
 ## Open Questions
 
-- Which authenticated-encryption, memory-hard passphrase-derivation, transient-processing, signing, integrity, and resource-limit mechanisms satisfy the approved recovery contract?
-- Which manifest format, compression, compatibility, and version-migration rules apply?
-- Which resource, file-type, attachment, path, and extraction limits are required?
-- Which golden fixtures, property tests, compatibility suites, security tests, and browser scenarios prove the backup contract?
+- None. The container, key-derivation, authenticated-encryption, transient-handling, intake-limit, compatibility, atomic-restore, provenance, lifecycle, and verification mechanisms are resolved in Decisions and Tradeoffs above. Argon2id cost parameters and the concrete size, count, and length limits are configuration values with documented defaults, not open design questions.
