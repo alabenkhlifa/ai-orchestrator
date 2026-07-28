@@ -24,10 +24,23 @@ defmodule SddOrchestrator.Devices.RepositoryValidation do
   """
   @spec validate(Path.t(), binary()) :: {:ok, ok()} | {:error, error()}
   def validate(path, workspace_salt) when is_binary(workspace_salt) do
-    with :ok <- accessible?(path),
-         :ok <- git_repository?(path),
-         {:ok, roots} <- root_commits(path) do
+    with {:ok, roots} <- root_commit_ids(path) do
       {:ok, %{fingerprint: fingerprint(roots, workspace_salt)}}
+    end
+  end
+
+  @doc """
+  Returns the sorted root-commit object ids used by worker-local identity
+  calculations.
+
+  These values are source metadata and must remain inside the operating-system
+  worker boundary.
+  """
+  @spec root_commit_ids(Path.t()) :: {:ok, [String.t()]} | {:error, error()}
+  def root_commit_ids(path) do
+    with :ok <- accessible?(path),
+         :ok <- git_repository?(path) do
+      load_root_commits(path)
     end
   end
 
@@ -42,7 +55,7 @@ defmodule SddOrchestrator.Devices.RepositoryValidation do
     end
   end
 
-  defp root_commits(path) do
+  defp load_root_commits(path) do
     case run(path, ["rev-list", "--max-parents=0", "HEAD"]) do
       {out, 0} ->
         case out |> String.split("\n", trim: true) |> Enum.sort() do

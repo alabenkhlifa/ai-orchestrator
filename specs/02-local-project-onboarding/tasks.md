@@ -132,13 +132,14 @@ Release boundary:
   - Proof: Desktop and mobile scenarios cover graphical installation, pairing, native selection, first-connection disclosure and confirmation, accessible later disclosure, data-loss warning, success, direct new-project dashboard routing, visible repository, storage mode, connection status, replacement-worker pairing, `Locate repository` recovery, and project-portability handoff when an export exists.
   - Delivered: `LocalOnboardingLive` runs the whole accountless flow as internal steps — storage-mode explanation, worker discovery (Task 2), stub-driven pairing, native folder selection (`RepositoryValidation.validate/2`, name/location shown locally), and a first-connection privacy disclosure that states what stays local, what is shared, and the accountless data-loss limit with a project-portability recovery mention. Confirmation is required once (inferred from an empty device store) and afterwards the disclosure stays accessible behind a disclosure control without re-prompting. Confirming registers the project atomically through `Devices.register_project/2` and routes to `DeviceProjectDashboardLive` at `/local/projects/:id`, which shows the repository, the `On this device` storage mode, and a connection status derived live from `Devices.worker_status/1`. A duplicate repository is blocked (one project per repository) with a link to the existing project. `Locate repository` (a `locate` query parameter carrying the project id) reconnects only a canonical-identity match and treats a non-matching selection as a different repository. Replacement-worker pairing reuses the discovery pairing form. Primary actions are full-width on mobile and never wrap; negative states use error-red icons.
 
-- [ ] Task 8 - Implement the versioned portable repository-identity boundary.
+- [x] Task 8 - Implement the versioned portable repository-identity boundary.
   - Size: Standard
   - Purpose: Let an authorized worker generate and exactly match a non-reversible local repository identity without a source workspace key.
   - Owned surfaces: `PortableRepositoryIdentity`, version tag and strict parser, random validation-salt generation, HMAC-SHA256 root-commit digest, constant-time matching, fresh independent identities, legacy-format recognition and original-workspace match, invalid and malformed identifier rejection, and path, credential, raw-object-ID, and workspace-identity exclusion.
   - Owns: AC-11, AC-13, AC-23, entity:PortableRepositoryIdentity
   - Depends on: Task 4
   - Proof: Focused worker-boundary tests cover generation, round trip, exact and mismatched matches, independent salts, moved paths, clones, worktrees, changed remotes, malformed and legacy formats, constant-time comparison seam, forbidden-field absence, and unchanged Git fixtures.
+  - Delivered: `Devices.PortableRepositoryIdentity` uses the strict canonical format `local-repo:v1:{validation_salt}:{digest}` with 32-byte URL-safe unpadded components, a fresh cryptographically random validation salt for every generation, and an HMAC-SHA256 digest over Task 4's sorted worker-local root commits. It strictly parses and round-trips portable values, rejects malformed and legacy values from portable matching, performs exact portable and original-workspace legacy matching through `Plug.Crypto.secure_compare/2`, and exposes an explicit comparison seam for proof. `RepositoryValidation.root_commit_ids/1` reuses Task 4's validation while keeping raw Git object ids inside the worker boundary.
 
 - [ ] Task 9 - Integrate portable identity creation, duplicate detection, and legacy upgrade.
   - Size: Standard
@@ -175,6 +176,14 @@ Release boundary:
 - Final privacy review and confirmation of retention durations for the device-metadata and pairing-credential data contract recorded in `design.md`.
 
 ## Progress Log
+
+### 2026-07-28 - Task 8 complete: versioned portable repository identity
+
+- Completed: Added the pure `PortableRepositoryIdentity` worker boundary for strict `local-repo:v1` generation, parsing, round trip, constant-time exact matching without a source workspace key, fresh independent identities, legacy-format recognition, and original-workspace legacy matching. Reused Task 4's validation through a worker-local sorted-root-commit interface; no path, credential, raw Git object id, or workspace identity enters the portable value, and identity operations leave repository state unchanged.
+- Proof: `mix test test/sdd_orchestrator/devices/portable_repository_identity_test.exs` passed (8 tests); combined Task 4 and Task 8 worker-boundary proof passed (16 tests); `mix check` passed (565 passed, 1 excluded `:live`); `mix sobelow --config` and `mix dialyzer` passed.
+- Remaining: Task 9 must integrate new-connection allocation, workspace-authorized duplicate comparison, outbound-contract validation, explicit legacy upgrade, atomic rollback, and backup-readiness handoff. The compound portable-identity verification item and `capability:portable-local-repository-identity` remain unavailable until Task 9 passes.
+- Failed checks: None.
+- Spec updates: Task 8 checked complete with its delivered mechanism and proof; Task 9 is now the next implementation task.
 
 ### 2026-07-28 - Portable local repository identity approved
 
