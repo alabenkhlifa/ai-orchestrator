@@ -49,8 +49,11 @@ defmodule SddOrchestrator.Devices.WorkerDiscoveryTest do
     end
 
     test "is :incompatible for an unsupported protocol version" do
-      assert WorkerDiscovery.status([worker(%{protocol_version: "2"})], now: @now) == :incompatible
-      assert WorkerDiscovery.status([worker(%{protocol_version: nil})], now: @now) == :incompatible
+      assert WorkerDiscovery.status([worker(%{protocol_version: "2"})], now: @now) ==
+               :incompatible
+
+      assert WorkerDiscovery.status([worker(%{protocol_version: nil})], now: @now) ==
+               :incompatible
     end
 
     test "is :unavailable for a compatible worker that has never reported" do

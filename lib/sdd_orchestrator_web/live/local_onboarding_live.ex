@@ -4,38 +4,34 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   The `Work without GitHub` entry action lands here. The path is accountless: it
   uses the single device workspace (`Devices.establish_workspace/0`) and never a
-  hosted account or session.
+  hosted account or session. The whole flow lives in this one LiveView as internal
+  steps:
 
-  ## Worker discovery (Task 2)
+    1. `:discovery` — a storage-mode explanation followed by worker discovery
+       (`Devices.worker_status/1`). Each of the four states — missing, incompatible,
+       unavailable, detected — gets graphical, terminal-free guidance. Missing and
+       incompatible carry install/update guidance plus a pairing-code entry (which
+       also covers replacement-worker pairing). Unavailable keeps projects visible.
+    2. `:selection` — the native folder picker (the local worker stand-in in
+       dev/test) yields a path validated entirely on the worker boundary through
+       `Devices.RepositoryValidation.validate/2`. Only the non-reversible
+       fingerprint crosses the boundary; the name and location are shown locally.
+    3. `:review` — the first-connection privacy disclosure. Before any approved
+       onboarding metadata leaves the device it explains what stays local, what is
+       shared, and the accountless data-loss limit (recoverable only by importing a
+       previous export). The user confirms once; later connections are not
+       re-prompted but the disclosure stays accessible. Confirming registers the
+       project through `Devices.register_project/2` and opens its dashboard.
 
-  On mount the page establishes the device workspace and classifies the local
-  worker through `Devices.worker_status/1`:
+  Moved or renamed repositories reconnect through `Locate repository`
+  (`?locate=<project_id>`): the selected repository is accepted only when its
+  canonical fingerprint matches the project's; a non-matching selection is treated
+  as a different repository and never replaces the connection.
 
-    * `:missing` — no worker is paired, so the user gets graphical installation
-      and pairing guidance (a download/install action and a pairing-code entry)
-      without any terminal command.
-    * `:incompatible` — a paired worker does not meet the supported macOS/protocol
-      policy, so the user is guided to update or reinstall and pair a replacement.
-    * `:unavailable` — a compatible worker is paired but not currently running, so
-      the user is told to start it and retry; existing projects stay visible with
-      an unavailable connection state rather than appearing deleted.
-    * `:detected` — a compatible worker has reported in and can open the folder
-      picker, so the user continues to repository selection.
-
-  The pairing-code entry uses the dashboard-issued, attempt-bound code. In
-  development and test the local worker stand-in
-  (`:device_worker_stub`) completes the pairing so the graphical flow is
-  exercisable without the signed native worker; with the stand-in off, the page
-  waits on the real (release-gated) worker and offers a retry.
-
-  ## Repository selection (Task 2)
-
-  Once a worker is detected, the native folder picker (the stand-in in dev/test)
-  yields a path that is validated entirely on the worker boundary through
-  `Devices.RepositoryValidation.validate/2`. Only the non-reversible fingerprint
-  crosses the boundary; the selected repository name and location are shown to the
-  user locally. Invalid, inaccessible, and empty selections are reported without
-  creating anything.
+  The `:device_worker_stub` flag (on in dev/test, off in prod) drives a local
+  worker stand-in so pairing and folder selection are exercisable without the
+  signed native worker; with it off the page waits on the real (release-gated)
+  worker.
   """
   use SddOrchestratorWeb, :live_view
 
@@ -43,6 +39,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{Pairing, RepositoryValidation, WorkerDiscovery}
+  alias SddOrchestrator.ProjectStorage
 
   @impl true
   def mount(_params, _session, socket) do
@@ -53,11 +50,36 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:page_title, "Work without GitHub")
      |> assign(:workspace, workspace)
      |> assign(:step, :discovery)
+     |> assign(:locate_project, nil)
      |> assign(:pairing_error, nil)
      |> assign(:selection_error, nil)
      |> assign(:selected, nil)
+     |> assign(:project_name, "")
+     |> assign(:name_error, nil)
+     |> assign(:duplicate, nil)
+     |> assign(:disclosure_required, Devices.list_projects() == [])
+     |> assign(:disclosure_confirmed, false)
      |> assign_worker_status()}
   end
+
+  @impl true
+  def handle_params(%{"locate" => project_id}, _uri, socket) do
+    case Devices.get_project(project_id) do
+      {:ok, project} ->
+        {:noreply,
+         socket
+         |> assign(:page_title, "Locate repository")
+         |> assign(:locate_project, project)
+         |> assign(:step, :selection)
+         |> assign(:selected, nil)
+         |> assign(:selection_error, nil)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("recheck", _params, socket) do
@@ -104,6 +126,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      socket
      |> assign(:step, :discovery)
      |> assign(:selection_error, nil)
+     |> assign(:locate_project, nil)
      |> assign_worker_status()}
   end
 
@@ -118,23 +141,114 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     end
   end
 
+  def handle_event("continue_to_review", _params, socket) do
+    selected = socket.assigns.selected
+
+    {:noreply,
+     socket
+     |> assign(:step, :review)
+     |> assign(:project_name, (selected && selected.name) || "")
+     |> assign(:name_error, nil)
+     |> assign(:duplicate, nil)
+     |> assign(:disclosure_confirmed, false)}
+  end
+
+  def handle_event("back_to_selection", _params, socket) do
+    {:noreply, assign(socket, step: :selection, name_error: nil, duplicate: nil)}
+  end
+
+  def handle_event("toggle_disclosure", _params, socket) do
+    {:noreply, assign(socket, :disclosure_confirmed, not socket.assigns.disclosure_confirmed)}
+  end
+
+  def handle_event("validate_name", %{"project" => %{"name" => name}}, socket) do
+    {:noreply, assign(socket, project_name: name, name_error: nil, duplicate: nil)}
+  end
+
+  def handle_event("create_project", %{"project" => %{"name" => name}}, socket) do
+    create_project(socket, name)
+  end
+
+  def handle_event("create_project", _params, socket) do
+    create_project(socket, socket.assigns.project_name)
+  end
+
+  # ---- selection / creation internals ----
+
   defp validate_selection(socket, path) do
     salt = socket.assigns.workspace.id
 
     case RepositoryValidation.validate(path, salt) do
       {:ok, %{fingerprint: fingerprint}} ->
-        {:noreply,
-         socket
-         |> assign(:selection_error, nil)
-         |> assign(:selected, %{
-           name: Path.basename(path),
-           location: path,
-           fingerprint: fingerprint
-         })}
+        resolve_selection(socket, %{
+          name: Path.basename(path),
+          location: path,
+          fingerprint: fingerprint
+        })
 
       {:error, reason} ->
         {:noreply,
          socket |> assign(:selected, nil) |> assign(:selection_error, selection_message(reason))}
+    end
+  end
+
+  # In `Locate repository` recovery only a matching canonical identity restores the
+  # connection; a non-matching selection is treated as a different repository.
+  defp resolve_selection(%{assigns: %{locate_project: %{} = project}} = socket, selected) do
+    if selected.fingerprint == project.repository_fingerprint do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Repository reconnected.")
+       |> push_navigate(to: ~p"/local/projects/#{project.id}")}
+    else
+      {:noreply,
+       socket
+       |> assign(:selected, nil)
+       |> assign(
+         :selection_error,
+         "That's a different repository, so it can't replace this project's repository. Choose the original repository, or start a new project instead."
+       )}
+    end
+  end
+
+  defp resolve_selection(socket, selected) do
+    {:noreply,
+     socket
+     |> assign(:selection_error, nil)
+     |> assign(:selected, selected)}
+  end
+
+  defp create_project(socket, name) do
+    cond do
+      socket.assigns.disclosure_required and not socket.assigns.disclosure_confirmed ->
+        {:noreply,
+         assign(socket, :name_error, "Confirm the data notice above before you continue.")}
+
+      is_nil(socket.assigns.selected) ->
+        {:noreply, assign(socket, step: :selection)}
+
+      true ->
+        attrs = %{
+          name: name,
+          repository_fingerprint: socket.assigns.selected.fingerprint,
+          status: "connected"
+        }
+
+        case Devices.register_project(attrs) do
+          {:ok, project} ->
+            {:noreply, push_navigate(socket, to: ~p"/local/projects/#{project.id}")}
+
+          {:error, {:repository_already_linked, existing}} ->
+            {:noreply, assign(socket, :duplicate, existing)}
+
+          {:error, :name_taken} ->
+            {:noreply,
+             assign(socket, :name_error, "A project already uses this name. Choose another.")}
+
+          {:error, _reason} ->
+            {:noreply,
+             assign(socket, :name_error, "Enter a project name (letters, numbers, and spaces).")}
+        end
     end
   end
 
@@ -150,6 +264,11 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   defp assign_worker_status(socket) do
     status = Devices.worker_status(socket.assigns.workspace.id)
     assign(socket, :worker_status, status)
+  end
+
+  defp create_enabled?(assigns) do
+    String.trim(assigns.project_name) != "" and
+      (not assigns.disclosure_required or assigns.disclosure_confirmed)
   end
 
   # ---- local worker stand-in (dev/test only) ----
@@ -205,13 +324,24 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           :if={@step == :selection}
           selected={@selected}
           selection_error={@selection_error}
+          locate_project={@locate_project}
+        />
+        <.review_step
+          :if={@step == :review}
+          selected={@selected}
+          project_name={@project_name}
+          name_error={@name_error}
+          duplicate={@duplicate}
+          disclosure_required={@disclosure_required}
+          disclosure_confirmed={@disclosure_confirmed}
+          create_enabled={create_enabled?(assigns)}
         />
       </div>
     </.app_shell>
     """
   end
 
-  # ---- worker discovery step ----
+  # ---- worker discovery step (with storage-mode explanation) ----
 
   attr :worker_status, :atom, required: true
   attr :pairing_error, :string, default: nil
@@ -234,12 +364,10 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         </div>
       </header>
 
+      <.storage_explanation />
+
       <div class="mt-6" data-worker-status={@worker_status}>
-        <.worker_missing
-          :if={@worker_status == :missing}
-          pairing_error={@pairing_error}
-          mode={:install}
-        />
+        <.worker_missing :if={@worker_status == :missing} pairing_error={@pairing_error} />
         <.worker_incompatible :if={@worker_status == :incompatible} pairing_error={@pairing_error} />
         <.worker_unavailable :if={@worker_status == :unavailable} />
         <.worker_detected :if={@worker_status == :detected} />
@@ -248,8 +376,50 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     """
   end
 
+  # Explains the two project-data storage modes before onboarding continues. This
+  # slice implements only "On this device"; hosted storage needs an account and is
+  # owned by other slices, so it links out rather than being selectable here.
+  defp storage_explanation(assigns) do
+    ~H"""
+    <section
+      class="mt-6 rounded-lg border border-line bg-surface p-4"
+      data-storage-explanation
+      aria-label="Where your project work is saved"
+    >
+      <h2 class="text-[13px] font-semibold text-ink">Where your project work is saved</h2>
+      <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+        Your specifications and project work are stored separately from your code. You have two
+        options:
+      </p>
+      <ul class="mt-3 flex flex-col gap-2.5">
+        <li class="flex gap-2.5">
+          <.lucide name="hard-drive" class="size-4 flex-none mt-0.5 text-primary" />
+          <span class="text-[13px] text-ink">
+            <span class="font-semibold">{ProjectStorage.label(:device)}</span>
+            — used by this accountless path. Your project stays on this computer and there's no
+            account to sign in to.
+          </span>
+        </li>
+        <li class="flex gap-2.5">
+          <.lucide name="cloud" class="size-4 flex-none mt-0.5 text-ink-muted" />
+          <span class="text-[13px] text-ink-muted">
+            <span class="font-semibold">{ProjectStorage.label(:hosted)}</span>
+            — available from any device you sign in on.
+            <.link
+              navigate={~p"/hosted/access?#{[return_to: "/onboarding/local"]}"}
+              class="font-semibold text-primary underline underline-offset-2"
+            >
+              Use a verified email
+            </.link>
+            to set that up instead.
+          </span>
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
   attr :pairing_error, :string, default: nil
-  attr :mode, :atom, default: :install
 
   defp worker_missing(assigns) do
     ~H"""
@@ -383,7 +553,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   defp pairing_form(assigns) do
     ~H"""
-    <form phx-submit="pair" class="mt-5" data-pairing-form>
+    <form id="pairing-form" phx-submit="pair" class="mt-5" data-pairing-form>
       <.text_field
         id="pairing-code"
         name="pairing[code]"
@@ -403,19 +573,28 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   attr :selected, :map, default: nil
   attr :selection_error, :string, default: nil
+  attr :locate_project, :map, default: nil
 
   defp selection_step(assigns) do
     ~H"""
-    <div data-step="selection">
+    <div data-step="selection" data-locate={@locate_project && "true"}>
       <header class="flex items-start gap-3">
         <span class="flex-none w-11 h-11 rounded-xl bg-raised text-ink-muted flex items-center justify-center">
           <.lucide name="folder-git-2" class="size-5" />
         </span>
         <div class="min-w-0">
-          <h1 class="text-xl font-bold tracking-tight text-ink">Choose your repository</h1>
+          <h1 class="text-xl font-bold tracking-tight text-ink">
+            {(@locate_project && "Locate this repository") || "Choose your repository"}
+          </h1>
           <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty">
-            The worker opens your Mac's folder picker. We check the folder is a Git repository right
-            here on your computer — its path, history, and code never leave this Mac.
+            <%= if @locate_project do %>
+              Pick where <span class="font-semibold text-ink">{@locate_project.name}</span>'s
+              repository lives now. Only the same repository can reconnect — a different one is kept
+              separate.
+            <% else %>
+              The worker opens your Mac's folder picker. We check the folder is a Git repository right
+              here on your computer — its path, history, and code never leave this Mac.
+            <% end %>
           </p>
         </div>
       </header>
@@ -442,6 +621,15 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         <p class="mt-1.5 text-[13px] text-ink-muted break-all" data-repository-location>
           {@selected.location}
         </p>
+
+        <.button
+          :if={!@locate_project}
+          phx-click="continue_to_review"
+          data-continue-review
+          class="mt-4 w-full sm:w-auto"
+        >
+          Continue <.lucide name="arrow-right" class="size-4" />
+        </.button>
       </div>
 
       <div class="mt-6">
@@ -449,6 +637,156 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           <.lucide name="arrow-left" class="size-4" /> Back
         </.button>
       </div>
+    </div>
+    """
+  end
+
+  # ---- review + first-connection disclosure + create step ----
+
+  attr :selected, :map, default: nil
+  attr :project_name, :string, required: true
+  attr :name_error, :string, default: nil
+  attr :duplicate, :map, default: nil
+  attr :disclosure_required, :boolean, required: true
+  attr :disclosure_confirmed, :boolean, required: true
+  attr :create_enabled, :boolean, required: true
+
+  defp review_step(assigns) do
+    ~H"""
+    <div data-step="review">
+      <header class="flex items-start gap-3">
+        <span class="flex-none w-11 h-11 rounded-xl bg-raised text-ink-muted flex items-center justify-center">
+          <.lucide name="shield" class="size-5" />
+        </span>
+        <div class="min-w-0">
+          <h1 class="text-xl font-bold tracking-tight text-ink">Before you connect</h1>
+          <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty">
+            Here's exactly what happens when you connect <span
+              :if={@selected}
+              class="font-semibold text-ink"
+            >{@selected.name}</span>.
+          </p>
+        </div>
+      </header>
+
+      <.disclosure_body :if={@disclosure_required} data-disclosure />
+
+      <details :if={!@disclosure_required} class="mt-6 rounded-lg border border-line bg-surface p-4">
+        <summary class="cursor-pointer text-sm font-semibold text-ink" data-disclosure-summary>
+          What stays on this device and what's shared
+        </summary>
+        <div class="mt-3">
+          <.disclosure_body data-disclosure />
+        </div>
+      </details>
+
+      <form
+        id="create-project-form"
+        phx-change="validate_name"
+        phx-submit="create_project"
+        class="mt-6"
+      >
+        <.text_field
+          id="project-name"
+          name="project[name]"
+          label="Project name"
+          value={@project_name}
+          error={@name_error}
+          hint="Defaults to the repository folder name. You can use spaces and any language."
+          autocomplete="off"
+          phx-debounce="150"
+        />
+
+        <label
+          :if={@disclosure_required}
+          class="mt-4 flex items-start gap-2.5 text-[13px] text-ink"
+          data-confirm-label
+        >
+          <input
+            type="checkbox"
+            name="confirm"
+            checked={@disclosure_confirmed}
+            phx-click="toggle_disclosure"
+            data-confirm-disclosure
+            class="mt-0.5 size-4 flex-none rounded border-line-strong"
+          />
+          <span>
+            I understand what stays on this device, what is shared, and that project history can't be
+            recovered without a previous export.
+          </span>
+        </label>
+
+        <div
+          :if={@duplicate}
+          class="mt-4"
+          data-duplicate
+        >
+          <.notice variant="warn" icon="triangle-alert">
+            <div class="flex flex-col gap-2">
+              <span>
+                This repository is already connected as <span class="font-semibold">{@duplicate.name}</span>. One repository can only be one
+                project.
+              </span>
+              <.button
+                variant="secondary"
+                size="sm"
+                navigate={~p"/local/projects/#{@duplicate.id}"}
+                class="w-full sm:w-auto"
+              >
+                Open {@duplicate.name} <.lucide name="arrow-right" class="size-4" />
+              </.button>
+            </div>
+          </.notice>
+        </div>
+
+        <div class="mt-6 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+          <.button type="submit" disabled={!@create_enabled} data-create class="w-full sm:w-auto">
+            <.lucide name="circle-check" class="size-4" /> Connect and create project
+          </.button>
+          <.button
+            type="button"
+            variant="secondary"
+            phx-click="back_to_selection"
+            class="w-full sm:w-auto"
+          >
+            <.lucide name="arrow-left" class="size-4" /> Back
+          </.button>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  attr :rest, :global
+
+  defp disclosure_body(assigns) do
+    ~H"""
+    <div class="mt-6 flex flex-col gap-3" {@rest}>
+      <.notice variant="neutral" icon="hard-drive">
+        <p class="font-semibold text-ink">Stays on this Mac</p>
+        <p class="mt-0.5">
+          Your repository's location, files, folder and file names, Git history, remote URLs, and
+          source code never leave this computer.
+        </p>
+      </.notice>
+
+      <.notice variant="info" icon="external-link">
+        <p class="font-semibold text-ink">What's shared</p>
+        <p class="mt-0.5">
+          Only the minimum needed to keep the connection: a scrambled repository fingerprint that
+          can't be reversed, coarse worker and app version info, and the connection status. Never a
+          path, file name, URL, or any of your code.
+        </p>
+      </.notice>
+
+      <.notice variant="warn" icon="triangle-alert">
+        <p class="font-semibold">This project has no account</p>
+        <p class="mt-0.5">
+          It lives only on this Mac. If this device's data is lost, its project history can't be
+          recovered by reconnecting the repository — that would start fresh history. Recovery is only
+          possible by importing a project export you made earlier (project portability).
+        </p>
+      </.notice>
     </div>
     """
   end

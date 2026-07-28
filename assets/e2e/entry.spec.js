@@ -43,7 +43,9 @@ test.describe("entry surface", () => {
     await page.goto("/");
     await page.getByRole("link", { name: /Work without GitHub/i }).click();
     await expect(page).toHaveURL(/\/onboarding\/local$/);
-    await expect(page.getByRole("heading", { name: /Work without GitHub/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Connect a repository on this computer/i }),
+    ).toBeVisible();
   });
 
   test("serves a strict CSP and the pre-paint theme script still runs under it", async ({

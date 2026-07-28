@@ -84,9 +84,10 @@ defmodule SddOrchestratorWeb.Router do
       live "/", EntryLive
     end
 
-    # Public handoff for the local onboarding action (owned by specs/02).
+    # Accountless local onboarding and its on-device project dashboard (specs/02).
     live_session :public, on_mount: [{SddOrchestratorWeb.UserAuth, :mount_current_account}] do
       live "/onboarding/local", LocalOnboardingLive
+      live "/local/projects/:id", DeviceProjectDashboardLive
     end
 
     live_session :hosted_access_public,
