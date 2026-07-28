@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, and 26 are complete. Task 21 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, and 21 are complete. Task 27 is the next implementation task.
 
 ## Active Slice
 
@@ -212,13 +212,14 @@ Release boundary:
   - Proof: Focused migration, constraint, authorization, field-minimization, access, idempotency, replacement, disconnect, worker-revocation, project-erasure, service-termination, unavailable-state, inventory, and forbidden-field tests prove one revocable hosted binding without device project data or repository mutation.
   - Delivered: Added the three-field project-keyed `HostedLocalRepositoryBinding`, scoped dual-workspace persistence boundary, portable local-project and exact-identifier checks, active reachable worker authorization, idempotent retention, atomic replacement, scoped disconnect, derived temporary-unavailability state, project and worker deletion cascades, database-enforced deletion on worker revocation, service-termination cleanup, project and worker associations, and the approved processing-inventory record without paths, credentials, duplicate workspace or repository identities, device labels, compatibility fields, or device project data.
 
-- [ ] Task 21 - Integrate explicit device local-repository reconnection.
+- [x] Task 21 - Integrate explicit device local-repository reconnection.
   - Size: Standard
   - Purpose: Reuse normal worker validation for a device-authoritative restored project without treating package control as local repository authority.
   - Owned surfaces: Shared exact local-worker validation boundary, device reconnection action, existing device-workspace worker authorization and portable repository-validation reuse, project-held identifier handoff, exact device-store canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no hosted binding, packaged path, or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
   - Owns: AC-22
   - Depends on: Task 13, Task 25
   - Proof: Focused shared worker-contract and device-store tests cover unavailable, failed, and successful validation, exact portable match, canonical identity mismatch, malformed and legacy identifiers, source-workspace independence, absence of hosted records, packaged paths, and credentials, and fixture-level proof that repository content and configuration remain unchanged.
+  - Delivered: Added a shared minimized `LocalRepositoryValidation` boundary that parses only portable identifiers, authenticates the current worker credential, reuses device-workspace authorization and worker reachability, and invokes a worker-local exact matcher without receiving a path. Added `LocalRepositoryReconnection` for restored device projects, with exact request rebinding, idempotent success, device-store canonical-identity enforcement, actionable malformed, legacy, mismatch, authorization, worker, repository, and destination failures, no hosted binding, and no repository or Git-configuration mutation.
 
 - [ ] Task 27 - Integrate explicit hosted local-repository reconnection.
   - Size: Standard
@@ -318,6 +319,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 21 complete: exact device local-repository reconnection
+
+- Completed: Added the shared worker validation result containing only worker ID, repository ID, and validation time; required a current active reachable worker credential authorized to the selected device workspace; parsed and matched the project-held portable identity without source workspace identity; kept the repository path inside the worker matcher; and connected the exact device-store project only after successful proof. Exact retries are idempotent, and malformed, legacy, mismatch, invalid credential, cross-workspace, unavailable worker, unavailable repository, worker failure, forged request, and foreign-destination outcomes leave the project disconnected and unchanged.
+- Proof: The focused local reconnection suite passed 7 tests, and the broader device reconnection, restore, portable-identity, device-store, and specification-store set passed 43 tests. A real Git fixture proved content, HEAD, branches, remotes, worktree status, and local configuration unchanged. `mix check` passed 697 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Consume the shared worker result and Task 26 foundation in Task 27 to connect restored hosted local-repository projects through explicit dual authority.
+- Failed checks: The first compilation found the validation result's inspect derivation after its struct declaration, and the first mismatch fixture accidentally produced the same root commit in two repositories because their root content and metadata were identical; the derivation order and fixture seed were corrected before final proof.
+- Spec updates: Marked Task 21 complete, recorded its delivered shared validation and device adapter, and made Task 27 the next executable task without changing requirements, design, ownership, dependencies, or capability edges.
 
 ### 2026-07-28 - Task 26 complete: hosted local-worker binding foundation
 
