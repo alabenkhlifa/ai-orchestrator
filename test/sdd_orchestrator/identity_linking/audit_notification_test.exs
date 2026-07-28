@@ -22,7 +22,7 @@ defmodule SddOrchestrator.IdentityLinking.AuditNotificationTest do
     :ok
   end
 
-  defp detected(email \\ "owner@example.com") do
+  defp detected(email) do
     absorbed = account_fixture()
     # The GitHub-authenticated account owns a personal workspace, as it would after
     # onboarding; the merge moves its projects out of it.
@@ -107,6 +107,19 @@ defmodule SddOrchestrator.IdentityLinking.AuditNotificationTest do
       end)
 
     assert log =~ "proof_failed"
+  end
+
+  test "send_passwordless_proof emails a single-use verification link to the candidate email" do
+    attempt = detected("owner@example.com")
+
+    assert :ok = IdentityLinking.send_passwordless_proof(attempt)
+
+    assert_email_sent(fn email ->
+      assert Enum.any?(email.to, fn {_name, address} -> address == "owner@example.com" end)
+      assert email.text_body =~ "/identity/link/verify?"
+      assert email.text_body =~ "challenge="
+      assert email.text_body =~ "token="
+    end)
   end
 
   test "a successful merge notifies the surviving identity" do

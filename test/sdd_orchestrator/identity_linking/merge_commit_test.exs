@@ -110,6 +110,24 @@ defmodule SddOrchestrator.IdentityLinking.MergeCommitTest do
     assert external.subject_key == Integer.to_string(github_user_id)
   end
 
+  test "the linked GitHub sign-in restores only the surviving workspace and cannot change the verified email" do
+    ctx = confirmed_merge()
+    github_user_id = ctx.absorbed.github_identity.github_user_id
+
+    assert {:ok, _} = IdentityLinking.commit_merge(ctx.attempt)
+
+    # Linked-GitHub access resolves to the surviving account/workspace only.
+    assert Accounts.get_account_by_github_user_id(github_user_id).id == ctx.surviving.id
+
+    # A GitHub-authenticated context still cannot change the verified email; the
+    # deferred two-proof flow is required.
+    assert {:error, :fresh_email_proofs_required} =
+             SddOrchestrator.HostedAccess.change_verified_email(
+               ctx.surviving_hi,
+               "new@example.com"
+             )
+  end
+
   test "is idempotent: a second commit is a no-op with no duplicate attachment" do
     ctx = confirmed_merge()
     assert {:ok, r1} = IdentityLinking.commit_merge(ctx.attempt)

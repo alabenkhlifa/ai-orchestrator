@@ -32,6 +32,7 @@ defmodule SddOrchestrator.IdentityLinking do
     Audit,
     EmailMatch,
     IdentityMergeAttempt,
+    LinkProofEmail,
     MergeNotificationEmail,
     Preflight,
     WorkspaceMergeRecord
@@ -273,6 +274,33 @@ defmodule SddOrchestrator.IdentityLinking do
   end
 
   @doc """
+  Issues and emails a passwordless proof challenge to the candidate email. The
+  raw token travels only in the email; nothing is disclosed to the initiator's
+  screen.
+  """
+  @spec send_passwordless_proof(IdentityMergeAttempt.t()) ::
+          :ok | {:error, :candidate_unavailable}
+  def send_passwordless_proof(%IdentityMergeAttempt{} = attempt) do
+    case request_passwordless_proof(attempt) do
+      {:ok, %{challenge_id: challenge_id, raw_token: raw_token, delivery_email: email}} ->
+        email |> LinkProofEmail.build(challenge_id, raw_token) |> Mailer.deliver()
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc "Fetches a live attempt scoped to its absorbed (initiating) account, or nil."
+  @spec get_live_attempt_for_account(term(), binary()) :: IdentityMergeAttempt.t() | nil
+  def get_live_attempt_for_account(id, account_id) when is_binary(account_id) do
+    case get_live_attempt(id) do
+      %IdentityMergeAttempt{absorbed_account_id: ^account_id} = attempt -> attempt
+      _ -> nil
+    end
+  end
+
+  @doc """
   Verifies a passwordless proof token for a challenge and records the fresh proof.
 
   Every invalid, expired, mismatched, replayed, or cancelled attempt returns the
@@ -382,30 +410,36 @@ defmodule SddOrchestrator.IdentityLinking do
   end
 
   defp validate_proof(%IdentityMergeAttempt{} = attempt, raw_token) do
-    valid? =
-      is_nil(attempt.committed_at) and attempt.status != "aborted" and
-        is_nil(attempt.passwordless_proven_at) and
-        not is_nil(attempt.passwordless_proof_digest) and
-        not is_nil(attempt.passwordless_proof_salt) and
-        not is_nil(attempt.passwordless_proof_expires_at) and
-        DateTime.compare(attempt.passwordless_proof_expires_at, now()) == :gt and
-        valid_token_shape?(raw_token) and
-        :crypto.hash_equals(
-          :crypto.hash(:sha256, attempt.passwordless_proof_salt <> raw_token),
-          attempt.passwordless_proof_digest
-        )
-
-    if valid?, do: :ok, else: :error
+    if proof_challenge_active?(attempt) and proof_token_matches?(attempt, raw_token),
+      do: :ok,
+      else: :error
   end
 
+  defp proof_challenge_active?(%IdentityMergeAttempt{} = attempt) do
+    is_nil(attempt.committed_at) and attempt.status != "aborted" and
+      is_nil(attempt.passwordless_proven_at) and
+      not is_nil(attempt.passwordless_proof_digest) and
+      not is_nil(attempt.passwordless_proof_salt) and
+      not is_nil(attempt.passwordless_proof_expires_at) and
+      DateTime.compare(attempt.passwordless_proof_expires_at, now()) == :gt
+  end
+
+  defp proof_token_matches?(%IdentityMergeAttempt{} = attempt, raw_token) do
+    valid_token_shape?(raw_token) and
+      :crypto.hash_equals(
+        :crypto.hash(:sha256, attempt.passwordless_proof_salt <> raw_token),
+        attempt.passwordless_proof_digest
+      )
+  end
+
+  # `raw_token` is always a binary here: the public entry point guards it, and the
+  # non-binary path returns the account-neutral error before reaching this.
   defp valid_token_shape?(raw_token) when is_binary(raw_token) do
     case Base.url_decode64(raw_token, padding: false) do
       {:ok, decoded} -> byte_size(decoded) == 32
       :error -> false
     end
   end
-
-  defp valid_token_shape?(_raw_token), do: false
 
   ## Atomic merge commit
 
@@ -507,6 +541,11 @@ defmodule SddOrchestrator.IdentityLinking do
     now = now()
     absorbed_ws = workspace_id_for_account(attempt.absorbed_account_id)
     surviving_ws = workspace_id_for_account(attempt.surviving_account_id)
+
+    # Defer the connection-follows-project composite FK to this transaction's
+    # commit so a project and its connection can move together; every other write
+    # still rejects a cross-workspace connection immediately.
+    Repo.query!("SET CONSTRAINTS repository_connections_project_workspace_fkey DEFERRED")
 
     move_projects(absorbed_ws, surviving_ws, now)
     revoke_absorbed_workers(absorbed_ws, now)

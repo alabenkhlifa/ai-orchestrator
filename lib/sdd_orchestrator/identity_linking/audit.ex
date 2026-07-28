@@ -29,8 +29,7 @@ defmodule SddOrchestrator.IdentityLinking.Audit do
       metadata
       |> Map.put(:event, name)
       |> Map.take(@allowed_keys)
-      |> Enum.map(fn {k, v} -> "#{k}=#{format(v)}" end)
-      |> Enum.join(" ")
+      |> Enum.map_join(" ", fn {k, v} -> "#{k}=#{format(v)}" end)
 
     Logger.info("[#{@tag}] #{payload}")
     :ok

@@ -69,22 +69,22 @@ Deferred after this slice:
   - Purpose: Retain only lawful merge evidence with enforced deletion.
   - Proof: Schema, access, retention, rights, deletion, and negative-field tests pass with required privacy or legal approval.
 
-- [ ] Implement disclosure, audit, security, and account-neutral failure behavior.
+- [x] Implement disclosure, audit, security, and account-neutral failure behavior.
   - Purpose: Make linking understandable and diagnosable without exposing identities or secrets.
   - Proof: Browser, security, audit, notification, and log reviews pass for success and every failure path.
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Provider retrieval and secondary-address non-retention tests pass.
-- [ ] Normalization registry, collision, ambiguity, Unicode, and IDNA tests pass.
-- [ ] Candidate secrecy, fresh two-method proof, explicit confirmation, cancellation, expiry, mismatch, and replay tests pass.
-- [ ] Preflight, idempotency, concurrency, atomicity, and rollback tests pass.
-- [ ] Project preservation and worker-pairing tests pass.
-- [ ] Linked-GitHub access restores only the surviving workspace and cannot authorize verified-email change, unlinking, or re-linking alone.
-- [ ] Merge-record data contract, access, retention, deletion, and privacy review pass.
-- [ ] Account-neutral UX, notification, audit, and secret-exposure reviews pass.
-- [ ] Build, formatting, lint, static checks, integration tests, and browser scenarios pass.
+- [x] Active-slice acceptance criteria pass.
+- [x] Provider retrieval and secondary-address non-retention tests pass.
+- [x] Normalization registry, collision, ambiguity, Unicode, and IDNA tests pass.
+- [x] Candidate secrecy, fresh two-method proof, explicit confirmation, cancellation, expiry, mismatch, and replay tests pass.
+- [x] Preflight, idempotency, concurrency, atomicity, and rollback tests pass.
+- [x] Project preservation and worker-pairing tests pass.
+- [x] Linked-GitHub access restores only the surviving workspace and cannot authorize verified-email change, unlinking, or re-linking alone.
+- [x] Merge-record data contract, access, retention, and deletion tests pass. **(The final privacy/legal review of the lawful basis and exact retention is a release-gate item, per AC and the design; it does not block local verification.)**
+- [x] Account-neutral UX, notification, audit, and secret-exposure reviews pass.
+- [x] Build, formatting, lint, static checks, integration tests, and browser scenarios pass. **(`mix check` green; `npm --prefix assets run test:e2e` 72 passed; `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` succeed. The tagged live-GitHub email smoke against the App's email permission is staging-only, environment-blocked locally, and covered deterministically by the `ReqProvider` `Req.Test` contract tests.)**
 
 ## Blocked Decisions
 
@@ -170,4 +170,13 @@ Deferred after this slice:
 - Contract/mechanism: the record is personal data on a legitimate-interest basis, access-restricted, analytics-prohibited, with rights + deletion support. Idempotency moved from a committed-attempt marker to the durable merge record so the transient account-linking attempt can be deleted (minimization). The Task 6 merge-commit tests were updated for the final teardown/return.
 - Release gate: final legal confirmation of the lawful basis and exact retention, plus the privacy review, remain release-gate items (AC allows implementation to proceed).
 - Proof: `mix test test/sdd_orchestrator/identity_linking/ test/sdd_orchestrator/privacy/` — 97 passed (5 properties, 92 tests), exit 0. Covers the exact six-field table (negative-field via information_schema), no sensitive struct field, the 180-day deadline, absorbed workspace/account/attempt reduction, restricted access, retention deletion, and rights erasure. `mix compile --warnings-as-errors` clean.
+- Failed checks: None.
+
+### 2026-07-28 - Task 9: disclosure, audit, notification, account-neutral behavior, and full verification gate
+
+- Completed: Task 9 and the slice verification gate. Added the append-only, allowlisted security-audit trail (`IdentityLinking.Audit`) covering candidate detection, proof request/success/failure, confirmation, conflict, and merge commit/failure — payloads carry only event, outcome/reason, and opaque attempt/workspace ids, never an email, token, secret, or project name. Added the surviving-identity merge notification email (delivered after commit; a delivery failure never affects the committed merge) and the passwordless proof email (`LinkProofEmail`) with a single-use verify link. Delivered the user-facing flow: the GitHub callback now detects a unique candidate and routes to `IdentityLinkLive` (detected → email verification → explicit confirmation → atomic commit → land in the surviving workspace; decline aborts non-mutatingly), the `IdentityLinkController` handles the emailed proof link account-neutrally, and both routes are wired with attempt ownership scoping.
+- Ownership: this task owns the linking UI and its browser/integration scenarios; it exercises the Task 5 security gate end to end (per that task's ownership note).
+- Gate fix discovered during verification: the Task 6 composite-FK migration was corrected from `DEFERRABLE INITIALLY DEFERRED` to `DEFERRABLE INITIALLY IMMEDIATE`, and the merge transaction now opts into deferral with `SET CONSTRAINTS ... DEFERRED`, so ordinary writes keep statement-time cross-workspace rejection (restoring the Slice 01 domain-boundary guarantee) while only the merge defers to commit. Reduced two functions' complexity and one `map_join` for `credo --strict`, and removed an unreachable clause for `dialyzer`.
+- Proof (full verification gate, all green): `mix check` exit 0 — `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` (no issues), `mix dialyzer` (0 new; 7 pre-existing ignores), `mix deps.audit` (no vulnerabilities), `mix sobelow --config`, and `mix test` (478 passed, 5 properties; 1 excluded `@tag :live`). `npm --prefix assets run test:e2e` — 72 passed on chromium and mobile-chromium (includes the identity-linking protected-route and account-neutral-verify scenarios). `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` succeed.
+- Readiness: product requirements Approved; technical design resolved; implementation READY — all 9 tasks complete; verification READY — the full local gate passes. Release BLOCKED — the final legal confirmation of the lawful basis and exact retention for the minimal merge record plus the privacy review, and any governed provider-registry additions beyond the Gmail launch entry, remain release-gate items and do not block implementation or local verification. The status stays `In Progress` until that release gate clears, consistent with the repository convention.
 - Failed checks: None.

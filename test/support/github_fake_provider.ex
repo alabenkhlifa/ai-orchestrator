@@ -82,22 +82,22 @@ defmodule SddOrchestrator.GitHubIntegration.FakeProvider do
   def get_verified_primary_email(@token_prefix <> login), do: primary_email(login)
   def get_verified_primary_email(_), do: {:error, :unauthorized}
 
+  @email_none_prefixes ~w(email-none email-unverified email-multi email-secondary email-noperm)
+
   defp primary_email("no-user"), do: {:error, :unauthorized}
 
   defp primary_email(login) do
     cond do
       String.starts_with?(login, "email-fail") -> {:error, :provider_error}
-      String.starts_with?(login, "email-none") -> {:ok, :none}
-      String.starts_with?(login, "email-unverified") -> {:ok, :none}
-      String.starts_with?(login, "email-multi") -> {:ok, :none}
-      String.starts_with?(login, "email-secondary") -> {:ok, :none}
-      String.starts_with?(login, "email-noperm") -> {:ok, :none}
-      login == "gmail-dotted" -> {:ok, "f.i.r.s.t@gmail.com"}
-      login == "gmail-tagged" -> {:ok, "first+work@gmail.com"}
-      login == "gmail-cased" -> {:ok, "First.Last@gmail.com"}
-      true -> {:ok, "#{login}@example.com"}
+      Enum.any?(@email_none_prefixes, &String.starts_with?(login, &1)) -> {:ok, :none}
+      true -> {:ok, fixed_or_default_email(login)}
     end
   end
+
+  defp fixed_or_default_email("gmail-dotted"), do: "f.i.r.s.t@gmail.com"
+  defp fixed_or_default_email("gmail-tagged"), do: "first+work@gmail.com"
+  defp fixed_or_default_email("gmail-cased"), do: "First.Last@gmail.com"
+  defp fixed_or_default_email(login), do: "#{login}@example.com"
 
   @impl true
   def refresh_token(@refresh_prefix <> code) do
