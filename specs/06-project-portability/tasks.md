@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Not Started
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Active implementation is blocked until the project-storage authority and project-specification store capabilities are delivered by their named provider tasks.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Task 8 is ready to begin without a cross-specification prerequisite. Task 2 remains blocked until the project-storage authority and project-specification store capabilities are delivered by their named provider tasks.
 
 ## Active Slice
 
@@ -15,13 +15,19 @@ Deliver passphrase-encrypted backup and restoration of one minimal project packa
 Requires:
 
 - `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 2`.
-- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 7`.
+- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 17`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 4` — required before `Task 2`.
-- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 7`.
+- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 22`.
 
 Provides:
 
 - `capability:project-portability` — ready after `Task 7`.
+
+## Task Size Gate
+
+- Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof expected to run in about ten minutes.
+- Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
+- Existing task labels are preserved; newly split tasks use the next unused labels and are listed by dependency order rather than numeric order.
 
 ## Implementation Boundary
 
@@ -65,55 +71,200 @@ Release boundary:
 ## Tasks
 
 - [x] Task 1 - Approve the initial backup, restore-authority, lifecycle, and compatibility contract.
+  - Size: Standard
   - Purpose: Define exactly what crosses the backup boundary, who may restore it, and how the data is governed before coding starts.
   - Owned surfaces: Active package scope, stable-identity semantics, passphrase and destination-authorization contract, conflict policy, package and compatibility contract, threat model, privacy data contract, and canonical verification commands.
   - Owns: none (agreement gate)
   - Depends on: none
   - Proof: Requirements, design, package schema, identity and authority model, threat model, data contract, capability dependencies, task ownership, sequence, and canonical test commands have no unresolved agreement decision.
 
-- [ ] Task 2 - Implement the consistent backup snapshot and allowlisted package.
+- [ ] Task 8 - Implement the deterministic package format and codec.
+  - Size: Standard
+  - Purpose: Establish one versioned package representation that can be proved independently of project persistence.
+  - Owned surfaces: `ProjectPackage`, `PackageSection`, cleartext envelope field map, format and payload schema versions, deterministic JSON encoding with sorted keys, fixed project, repository, and specifications section order, DEFLATE compression and bounded decompression seam, single-file framing, and golden codec fixtures.
+  - Owns: entity:ProjectPackage, entity:PackageSection
+  - Depends on: Task 1
+  - Proof: Focused codec tests prove byte-stable plaintext fixtures, exact envelope and section versions, deterministic ordering, round-trip serialization, malformed framing rejection, and bounded decompression without reading project persistence.
+
+- [ ] Task 2 - Implement the authorized current-project snapshot and allowlisted payload.
+  - Size: Standard
   - Status: Blocked by the two cross-specification capabilities.
   - Purpose: Produce one deterministic, versioned package from authorized current project data while preserving the stable project identity.
-  - Owned surfaces: `ProjectPackage`, `PackageSection`, authorization at snapshot time, read-only `SpecificationStore.current_snapshot` capability consumer, minimum envelope metadata, explicit project ID and display-name field map, provider and canonical-repository-identity field map, current specification identity, title, and three-document serialization, excluded-association boundary, manifest and section versions, section ordering, stable identity, and concurrent-update behavior without a second specification store.
-  - Owns: AC-01, entity:ProjectPackage, entity:PackageSection
-  - Depends on: Task 1
-  - Proof: Shared-capability contract, golden decrypted-payload, authorization, explicit field-map, excluded-field, deterministic-ordering, and concurrent-update tests cover every approved and forbidden field, all three sections, every current specification document, versions, and stable-identity values without duplicate persistence.
+  - Owned surfaces: Backup authorization at snapshot time, read-only `SpecificationStore.current_snapshot` capability consumer, explicit project ID and display-name mapping, provider and canonical-repository-identity mapping, current specification identity, title, and three-document mapping, excluded-association boundary, stable identity, snapshot consistency, and package-codec handoff without a second specification store.
+  - Owns: AC-01
+  - Depends on: Task 8
+  - Proof: Focused capability-contract, golden decrypted-payload, authorization, field-map, excluded-field, and concurrent-update tests cover every approved and forbidden field, every current specification document, and stable-identity values without duplicate persistence.
 
-- [ ] Task 3 - Implement secret exclusion, package encryption, and integrity.
-  - Purpose: Prevent credential leakage, encrypt every package with the user-set recovery passphrase, and detect corruption or tampering before restoration.
-  - Owned surfaces: Allowlist enforcement, forbidden-field and excluded-category detection, repository-source absence, secret filtering, passphrase handling, non-secret encryption parameters, transient key derivation, authenticated package encryption and decryption, passphrase and derived-key disposal, integrity calculation and verification, and negative package inspection.
-  - Owns: AC-02, AC-14
+- [ ] Task 9 - Enforce the payload allowlist and secret-exclusion boundary.
+  - Size: Standard
+  - Purpose: Fail closed when a mapped payload includes any unapproved or secret-bearing field.
+  - Owned surfaces: Allowlist enforcement, forbidden-field and excluded-category detection, repository-source absence, credential and secret filtering, association traversal denial, negative package inspection, and regression fixtures for newly added source fields.
+  - Owns: AC-02
   - Depends on: Task 2
-  - Proof: Negative secret, repository-source, excluded-category, and persistence scans; missing and incorrect passphrase tests; transient-key disposal checks; mutation tests; encryption and integrity fixtures; and schema coverage pass for every forbidden category and exported section.
+  - Proof: Focused negative secret, repository-source, excluded-category, association, persistence, and source-schema drift tests prove that every forbidden category is absent before encryption.
 
-- [ ] Task 4 - Implement isolated restore intake and validation.
-  - Purpose: Reject unsafe, incompatible, or unauthorized content before persistence and clean up every transient artifact.
-  - Owned surfaces: `ImportAttempt`, isolated encrypted intake, required passphrase handoff to the Task 3 decryption boundary, destination-authorization verification, format and version compatibility, unknown fields, integrity, size, path and extraction safety, attachment and content limits, resource limits, failure state, and temporary cleanup.
-  - Owns: AC-03, AC-04, AC-11, entity:ImportAttempt
-  - Depends on: Task 3
-  - Proof: Compatibility, destination-authorization, and security tests cover supported and unsupported versions, unknown fields, malformed sections, tampering, oversized input, path traversal, archive bombs, unsafe links, resource exhaustion, cancellation, failure, expiry, and cleanup without decrypted-content exposure or persistent project data.
+- [ ] Task 3 - Implement passphrase derivation and authenticated package encryption.
+  - Size: Standard
+  - Purpose: Encrypt every approved payload with the user-set recovery passphrase and reject corruption or tampering without exposing plaintext.
+  - Owned surfaces: Passphrase handling, Argon2id dependency and configured parameters, random salt, transient 32-byte key derivation, AES-256-GCM encryption and decryption, random nonce, envelope additional authenticated data, authentication tag, opaque failure, passphrase and key disposal, and encrypted-package fixtures.
+  - Owns: AC-14
+  - Depends on: Task 9
+  - Proof: Focused correct, missing, and incorrect passphrase tests, authenticated-envelope and ciphertext mutation tests, unique salt and nonce checks, transient-secret persistence and log scans, and golden encrypted-package round trips pass.
 
-- [ ] Task 5 - Implement conflict preflight and atomic same-project restoration.
-  - Purpose: Restore the packaged stable project once without silent overwrite, copy identity, duplicate repository identity, or partial state.
-  - Owned surfaces: `Project`, `PackageProvenance`, packaged-identity validation, selected-destination and current-accessible-catalog scope derivation, visibility-bounded duplicate checks, no global registry or unavailable-boundary query, later-visible collision handoff to the combined-catalog contract, case-insensitive display-name conflict detection, user-supplied replacement-name validation, cancellation without mutation, canonical-repository hard block, conflict precedence, selected storage prerequisites, `SpecificationStore.prepare_restore` capability consumer, atomic restore with packaged project and specification identities and approved display name, rollback, idempotency, no duplicate specification persistence, and explicit repository reconnection boundary.
-  - Owns: AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-15, entity:Project, entity:PackageProvenance
-  - Depends on: Task 4
-  - Proof: Domain, adapter, transaction, constraint, concurrency, retry, and fault-injection tests cover identity preservation, same-identity rejection in every accessible boundary, absence of signed-out or unavailable-device queries and global reporting, later-visible collision handoff without record mutation, conflicting packaged names, explicit valid and invalid replacement names, repeat name collisions, cancellation, repository hard blocks with and without name conflicts, both storage modes, missing authorization, atomic success, rollback, no partial records, and unchanged repository content and configuration.
-
-- [ ] Task 6 - Build the backup and restoration interface.
-  - Purpose: Show package scope, authority requirements, validation results, conflicts, and actionable recovery without presenting sharing or copy behavior.
-  - Owned surfaces: Backup scope and result UI with the three included content categories and explicit excluded categories, passphrase creation and confirmation, unrecoverable-loss acknowledgement, restore passphrase entry, restore intake and destination selection, destination-authorization step, validation progress and errors, name-only conflict form and inline validation, blocking repository-conflict state, cancellation, completion, and responsive accessibility behavior.
+- [ ] Task 6 - Build the backup creation and download interface.
+  - Size: Standard
+  - Purpose: Let an authorized user understand the package boundary, acknowledge passphrase loss, and receive one encrypted backup.
+  - Owned surfaces: Backup action and LiveView, three included content categories, explicit excluded categories, passphrase creation and confirmation, unrecoverable-loss acknowledgement, encrypted download delivery, actionable generation failure, cancellation, responsive accessibility behavior, and absence of sharing or create-copy claims.
   - Owns: AC-13
-  - Depends on: Task 2, Task 4, Task 5
-  - Proof: LiveView and desktop and mobile browser scenarios cover included and excluded scope, passphrase confirmation, unrecoverable-loss warning, encrypted backup, missing and incorrect restore passphrases, compatible restore, destination-authorization failure, unsafe rejection, same-identity rejection, explicit replacement-name success and validation failure, repository conflict with no bypass, cancellation, completion, and absence of cross-user sharing or create-copy claims.
+  - Depends on: Task 3
+  - Proof: Focused LiveView plus desktop and mobile browser scenarios cover scope copy, matching and mismatched passphrases, required loss acknowledgement, successful encrypted download, generation failure, cancellation, keyboard and focus behavior, and prohibited sharing or copy language.
 
-- [ ] Task 7 - Enforce the backup privacy lifecycle and security review.
-  - Status: Blocked until both governance capabilities and Tasks 2–6 are complete.
-  - Purpose: Govern packages, temporary files, logs, backups, provenance, restored records, processors, transfers, rights, and deletion.
-  - Owned surfaces: Active data inventory, approved service and security purposes and lawful bases, authorized-user and operations access controls, no completed service-package retention, immediate passphrase, derived-key, and decrypted-content disposal, immediate terminal and 24-hour stranded encrypted-temporary and `ImportAttempt` cleanup, minimal schema-version and restoration-time `PackageProvenance`, project-bound provenance deletion, 30-day structured security-log expiry, 35-day encrypted-backup expiry, derived-record and processor deletion propagation, verified rights behavior, processor and transfer configuration, no analytics, advertising, model training, identity tracking, or unrelated reuse, log redaction, audit minimization, required privacy or legal review, and `capability:project-portability` readiness write-back.
-  - Owns: AC-12, AC-16
-  - Depends on: Task 2, Task 3, Task 4, Task 5, Task 6
-  - Proof: Data-inventory, purpose and basis, access, terminal and stranded cleanup, no-completed-package, passphrase and decrypted-content disposal, provenance-field, project-erasure, rights, processor, transfer, structured-log, 30-day log-expiry, 35-day backup-expiry, derived-record propagation, negative secondary-use, secret-exposure, audit-minimization, and required privacy or legal checks pass.
+- [ ] Task 4 - Implement encrypted restore intake and terminal cleanup.
+  - Size: Standard
+  - Purpose: Isolate one restore request, establish destination authority, and remove transient state on every terminal path.
+  - Owned surfaces: `ImportAttempt`, encrypted upload-at-rest, restore state transitions, required passphrase handoff to the Task 3 decryption boundary, selected destination binding, destination-authorization verification, cancellation and failure state, opaque errors, immediate terminal upload and attempt cleanup, and absence of persistent project mutation.
+  - Owns: AC-11, entity:ImportAttempt
+  - Depends on: Task 3
+  - Proof: Focused intake state, encrypted-at-rest, destination-authorization, cancellation, failure, cleanup, and fault-injection tests prove immediate terminal deletion, opaque passphrase failure, and no decrypted-content exposure or persistent project data.
+
+- [ ] Task 10 - Implement package compatibility and safety validation.
+  - Size: Standard
+  - Purpose: Reject unsupported, malformed, oversized, or unsafe decrypted content before conflict checks or persistence.
+  - Owned surfaces: Format and payload-version compatibility, supported-major unknown-field handling, strict duplicate-key and non-finite-number rejection, encrypted and decompressed size ceilings, expansion-ratio limit, specification count and document-size limits, field-length limits, content and attachment denial, single-file path-safety invariant, resource limits, and actionable validation result.
+  - Owns: AC-03, AC-04
+  - Depends on: Task 4
+  - Proof: Focused compatibility, parser, property, and resource-limit tests cover supported and unsupported versions, additive unknown fields, duplicate keys, non-finite numbers, malformed sections, oversized input, decompression bombs, prohibited attachments, excessive counts and lengths, cancellation, and validation without persistent project state.
+
+- [ ] Task 14 - Build the restore intake and validation interface.
+  - Size: Standard
+  - Purpose: Let a user select a package, prove package control, authorize a destination, and understand validation without mutation.
+  - Owned surfaces: Restore entry and LiveView, package selection, passphrase entry, destination storage selection, destination setup or sign-in handoff, validation progress, compatible result, missing and incorrect passphrase result, authorization failure, unsafe and unsupported result, cancellation, and responsive accessibility behavior.
+  - Owns: AC-17
+  - Depends on: Task 10
+  - Proof: Focused LiveView plus desktop and mobile browser scenarios cover every destination mode, required passphrase, destination authorization, validation progress, compatible package, incorrect passphrase, unsupported and unsafe package, cancellation, keyboard and focus behavior, and no persistent project mutation.
+
+- [ ] Task 5 - Implement visibility-bounded stable-identity preflight.
+  - Size: Standard
+  - Purpose: Detect the packaged project identity only within boundaries already accessible to the restore session.
+  - Owned surfaces: Packaged stable-identity validation, selected-destination and current-accessible-catalog scope derivation, duplicate query contract, same-identity rejection, no global registry or unavailable-boundary query, no identity-presence telemetry, and later-visible collision handoff to the combined-catalog contract without record mutation.
+  - Owns: AC-06, AC-15
+  - Depends on: Task 10
+  - Proof: Focused domain and adapter tests cover same identity in each accessible boundary, signed-out and unavailable boundaries, absence of global lookup or reporting, and later-visible collision handoff while both records remain separate and unchanged.
+
+- [ ] Task 11 - Implement display-name and canonical-repository conflict decisions.
+  - Size: Standard
+  - Purpose: Permit an explicit display-label change only when no stable-identity or repository conflict blocks restoration.
+  - Owned surfaces: Case-insensitive display-name conflict detection, user-supplied replacement-name validation, repeat name conflicts, cancellation without mutation, canonical-repository conflict detection, repository conflict precedence, no relink, unlink, substitution, or automatic rename, and structured conflict results.
+  - Owns: AC-07, AC-08
+  - Depends on: Task 5
+  - Proof: Focused domain and constraint tests cover valid and invalid replacement names, repeat collisions, cancellation, repository conflicts with and without name conflicts, conflict precedence, and no identity, connection, or package mutation.
+
+- [ ] Task 12 - Implement the hosted atomic restoration adapter.
+  - Size: Standard
+  - Purpose: Create the packaged project and current specifications exactly once in authorized hosted storage.
+  - Owned surfaces: `Project`, `PackageProvenance`, hosted storage prerequisites, `SpecificationStore.prepare_restore` hosted contribution, one `Ecto.Multi`, stable project, repository, and specification identities, approved display name, database identity and canonical-repository constraints, minimal provenance insertion, rollback, idempotency, retry, and no duplicate specification persistence.
+  - Owns: AC-05, entity:Project, entity:PackageProvenance
+  - Depends on: Task 11
+  - Proof: Focused hosted transaction, constraint, concurrency, replay, retry, and fault-injection tests prove exactly one restored project and current specification set, identity preservation, minimal provenance, atomic rollback, and no partial or duplicate state.
+
+- [ ] Task 19 - Implement the device-authoritative atomic restoration adapter.
+  - Size: Standard
+  - Purpose: Create the packaged project and current specifications exactly once on an authorized device without a hosted authoritative copy.
+  - Owned surfaces: Device storage prerequisites, `SpecificationStore.prepare_restore` device contribution, worker-owned local transaction, stable project, repository, and specification identities, approved display name, device identity and canonical-repository constraints, minimal local provenance, acknowledgement, rollback, idempotency, retry, and no hosted authoritative or duplicate specification persistence.
+  - Owns: AC-21
+  - Depends on: Task 12
+  - Proof: Focused device transaction, persistence, restart, constraint, concurrency, replay, lost-acknowledgement, retry, and fault-injection tests prove exactly one device-authoritative project and current specification set, identity preservation, rollback, no partial state, and no hosted authoritative copy.
+
+- [ ] Task 13 - Preserve the unconnected restored-repository boundary.
+  - Size: Standard
+  - Purpose: Keep every restored canonical repository identity disconnected until a separate normal authorization flow succeeds.
+  - Owned surfaces: Hosted and device unconnected restored-repository state, absence of packaged credentials and connection records, no automatic reconnection, explicit reconnection action contract, and safe missing-authorization result.
+  - Owns: AC-09
+  - Depends on: Task 19
+  - Proof: Focused hosted and device state tests cover missing authorization, absence of packaged or stale credentials and connections, no automatic network or worker action, and one explicit reconnection action.
+
+- [ ] Task 20 - Integrate explicit GitHub repository reconnection.
+  - Size: Standard
+  - Purpose: Reuse normal GitHub provider authorization without treating package control as repository authority.
+  - Owned surfaces: GitHub reconnection action, existing provider authorization and validation reuse, canonical GitHub repository identity binding, success and failure handoff, no packaged credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
+  - Owns: AC-10
+  - Depends on: Task 13
+  - Proof: Focused GitHub provider-contract tests cover missing, failed, and successful authorization, canonical identity mismatch, absence of stale credentials, and fixture-level proof that repository content and configuration remain unchanged.
+
+- [ ] Task 21 - Integrate explicit local-repository reconnection.
+  - Size: Standard
+  - Purpose: Reuse normal worker validation without treating package control as local repository authority.
+  - Owned surfaces: Local reconnection action, existing worker authorization and repository-validation reuse, canonical local repository identity binding, success and failure handoff, no packaged path or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
+  - Owns: AC-22
+  - Depends on: Task 13
+  - Proof: Focused worker-contract tests cover unavailable, failed, and successful validation, canonical identity mismatch, absence of packaged paths and credentials, and fixture-level proof that repository content and configuration remain unchanged.
+
+- [ ] Task 15 - Build restore conflict recovery and completion interface.
+  - Size: Standard
+  - Purpose: Present identity and repository hard blocks, name-only recovery, cancellation, and successful completion clearly.
+  - Owned surfaces: Same-identity blocking state, name-only conflict form and inline validation, canonical-repository blocking state and precedence, cancellation, successful restored-project result, unconnected-repository explanation and explicit reconnection action, responsive accessibility behavior, and absence of cross-user sharing or create-copy claims.
+  - Owns: AC-18
+  - Depends on: Task 14, Task 20, Task 21
+  - Proof: Focused LiveView plus desktop and mobile browser scenarios cover same-identity rejection, valid and invalid replacement names, repeat conflict, repository conflict with no bypass, cancellation, completion, reconnection boundary copy, keyboard and focus behavior, and prohibited sharing or copy claims.
+
+- [ ] Task 16 - Enforce transient package and attempt cleanup.
+  - Size: Standard
+  - Purpose: Remove service-held package material after its active operation and recover stranded encrypted state.
+  - Owned surfaces: No completed service-package retention, immediate passphrase, derived-key, and decrypted-content disposal verification, immediate terminal encrypted-generation and restore-upload cleanup, 24-hour stranded encrypted-temporary and `ImportAttempt` retention rule, idempotent `Privacy.Retention.prune_all/1` integration, supervised `RetentionPruner` execution, cleanup reconciliation, and no temporary data in backups, caches, or indexes.
+  - Owns: AC-16
+  - Depends on: Task 4
+  - Proof: Focused terminal, stranded, time-boundary, idempotency, advisory-lock, restart, reconciliation, and negative persistence tests prove immediate disposal and the 24-hour cleanup ceiling without deleting active attempts.
+
+- [ ] Task 17 - Enforce the project-bound provenance lifecycle.
+  - Size: Standard
+  - Status: Blocked until `capability:project-storage-governance` and Task 16 are complete.
+  - Purpose: Minimize persistent restoration provenance and tie it to the restored project's deletion lifecycle.
+  - Owned surfaces: `capability:project-storage-governance` consumer, minimal schema-version and restoration-time `PackageProvenance`, project-bound provenance access, project-deletion cascade, service-termination handling, derived-record deletion propagation, and no package hash, filename, source account, workspace, device, exporter, network, or source-mode field.
+  - Owns: AC-19
+  - Depends on: Task 16, Task 19
+  - Proof: Focused provenance-field, access, hosted and device project-erasure, service-termination, cascade, and derived-record tests prove minimal retention without a source-identity link.
+
+- [ ] Task 22 - Propagate verified portability rights.
+  - Size: Standard
+  - Status: Blocked until `capability:project-specification-governance` and Task 17 are complete.
+  - Purpose: Apply verified rights actions across the project, its restored specifications, attempts, provenance, derived records, processors, and backup expiry.
+  - Owned surfaces: `capability:project-specification-governance` consumer, `Privacy.Rights` integration, verified access, correction, erasure, restriction, objection, and portability behavior, project and specification authorization, `ImportAttempt` and `PackageProvenance` coverage, derived-record and processor propagation, backup-expiry handoff, and cross-project non-disclosure.
+  - Owns: AC-23
+  - Depends on: Task 17
+  - Proof: Focused rights, authorization, cross-project isolation, attempt, provenance, restored-specification, derived-record, processor, and backup-propagation tests prove complete handling without disclosing another project or identity.
+
+- [ ] Task 18 - Enforce minimized operational-security logging.
+  - Size: Standard
+  - Purpose: Record only the minimum security event needed to operate backup and restoration safely.
+  - Owned surfaces: Fixed structured security-log event type, time, outcome, and non-secret correlation identifier, package, project-content, repository-identifier, filename, path, passphrase, and decrypted-field redaction, 30-day log-expiry configuration, audit minimization, and log, diagnostic, and error-path scans.
+  - Owns: AC-20
+  - Depends on: Task 16
+  - Proof: Focused structured-log schema, redaction, failure-path, correlation, 30-day expiry, audit-minimization, diagnostic, and secret-exposure checks pass.
+
+- [ ] Task 23 - Enforce encrypted-backup expiry.
+  - Size: Standard
+  - Purpose: Bound recovery copies without weakening verified deletion propagation.
+  - Owned surfaces: 35-day encrypted rolling-backup expiry configuration, `DeploymentPrivacyProfile` evidence, approved recovery-only restoration boundary, deletion-propagation handoff, processor configuration, and release-gate evidence classification.
+  - Owns: AC-24
+  - Depends on: Task 17, Task 22
+  - Proof: Focused deployment-profile, expiry-boundary, recovery authorization, deletion-propagation, processor-configuration, and release-gate checks prove the 35-day ceiling without claiming deployment evidence that is not locally available.
+
+- [ ] Task 24 - Prohibit portability secondary use and agent access.
+  - Size: Standard
+  - Purpose: Prevent package and restoration data from becoming analytics, training, identity-tracking, or agent input.
+  - Owned surfaces: No analytics, advertising, model training, identity tracking, or unrelated improvement, no coding-agent or model-provider access, genuinely anonymous aggregate boundary, and negative telemetry, cache, index, export, diagnostic, and content-routing scans.
+  - Owns: AC-25
+  - Depends on: Task 18, Task 23
+  - Proof: Focused negative secondary-use, agent-access, model-provider, telemetry, analytics-identifier, cache, index, export, diagnostic, and content-routing checks pass.
+
+- [ ] Task 7 - Complete the backup privacy and security review.
+  - Size: Standard
+  - Status: Blocked until both governance capabilities and all preceding implementation tasks are complete.
+  - Purpose: Confirm the complete portability data flow follows the approved privacy and security contract before publishing the capability.
+  - Owned surfaces: Active processing inventory, approved service and security purposes and lawful bases, authorized-user and operations access controls, processor and transfer configuration, audit minimization, consolidated privacy and security review, release-gate classification, and `capability:project-portability` readiness write-back.
+  - Owns: AC-12
+  - Depends on: Task 6, Task 15, Task 22, Task 24
+  - Proof: Focused data-inventory, purpose and basis, necessity, access, processor, transfer, audit-minimization, cross-task lifecycle, required privacy, and security reviews pass before capability readiness is recorded.
 
 ## Verification Gate
 
@@ -134,9 +285,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- No agreement decision remains unresolved. Task 2 is blocked until `capability:project-storage-authority` is delivered by `specs/05-project-storage-lifecycle#Task 4` and `capability:project-specification-store` by `specs/09-project-specification-storage#Task 4`; Task 7 additionally requires both providers' governance capabilities.
+- No agreement decision remains unresolved. Task 8 is immediately executable. Task 2 is blocked until `capability:project-storage-authority` is delivered by `specs/05-project-storage-lifecycle#Task 4` and `capability:project-specification-store` by `specs/09-project-specification-storage#Task 4`; Task 17 additionally requires `capability:project-storage-governance`, and Task 22 requires `capability:project-specification-governance`.
 
 ## Progress Log
+
+### 2026-07-28 - Task-size and execution sequence refined
+
+- Completed: Applied the Task Size Gate, preserved every existing task label, split the six unfinished broad tasks into twenty-three standard implementation tasks with focused proof, and moved package-format work ahead of the unavailable provider capabilities.
+- Remaining: Implement ready Task 8; complete the authority and specification-store provider tasks before Task 2; complete project-storage governance before Task 17 and specification-store governance before Task 22; finish the remaining dependency-ordered tasks and verification gate.
+- Failed checks: None; implementation has not started.
+- Spec updates: Changed task status from `Blocked` to `Not Started` because Task 8 is executable, moved governance capability consumption to its earliest consumer, split UI, validation, conflict, hosted and device restore, GitHub and local reconnection, cleanup, rights, logging, backup, secondary-use, and review ownership, and added AC-17 through AC-25 without changing approved behavior.
 
 ### 2026-07-28 - Cross-specification prerequisites corrected
 
