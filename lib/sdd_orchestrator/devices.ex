@@ -56,6 +56,36 @@ defmodule SddOrchestrator.Devices do
   @spec find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
   def find_by_fingerprint(fingerprint), do: adapter().find_by_fingerprint(fingerprint)
 
+  @doc "Atomically creates one device-authoritative specification aggregate."
+  def create_specification(project_id, specification, revision) do
+    adapter().create_specification(project_id, specification, revision)
+  end
+
+  @doc "Atomically appends one device-authoritative specification revision."
+  def append_specification_revision(
+        project_id,
+        specification_id,
+        expected_revision_id,
+        revision,
+        specification_attrs
+      ) do
+    adapter().append_specification_revision(
+      project_id,
+      specification_id,
+      expected_revision_id,
+      revision,
+      specification_attrs
+    )
+  end
+
+  @doc "Returns one device-authoritative specification and current revision."
+  def get_current_specification(project_id, specification_id) do
+    adapter().get_current_specification(project_id, specification_id)
+  end
+
+  @doc "Counts the device-authoritative specifications for one project."
+  def specification_count(project_id), do: adapter().specification_count(project_id)
+
   defp adapter do
     Application.fetch_env!(:sdd_orchestrator, __MODULE__)[:adapter]
   end

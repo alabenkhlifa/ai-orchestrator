@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2 and 6 are complete, and Task 3 is the next executable task.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, and 3 are complete, and Task 4 is the next executable task.
 
 ## Active Slice
 
@@ -86,7 +86,7 @@ Release gates:
   - Owns: AC-02
   - Proof: Focused append, immutability, expected-head, stale-writer, concurrency, duplicate-retry, current-reference, constraint, and rollback tests pass.
 
-- [ ] Task 3 — Implement the device-authoritative adapter and shared store contract.
+- [x] Task 3 — Implement the device-authoritative adapter and shared store contract.
   - Size: Standard
   - Depends on: Task 2, Task 6
   - Purpose: Provide equivalent specification behavior without creating a hosted device-project copy.
@@ -146,6 +146,13 @@ Release gates:
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Task 3 complete: device-authoritative specification adapter
+
+- Completed: Extended the worker-owned `DeviceStore` contract and development DETS adapter with atomic one-record specification aggregates, device value shapes matching the shared stable specification and immutable revision contract, create, optimistic append, current retrieval, capacity enforcement, restart durability, cross-device and cross-project authorization, serialized concurrency, and idempotent retry. Device specifications never create a hosted Ecto row or cache copy.
+- Remaining: Implement consistent current-project snapshots in Task 4, then restoration participation, cross-operation readiness, governance, and verification.
+- Failed checks: None. Final proof passes: the shared hosted and device specification suites (18 tests), existing device-store and registration regressions (18 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 3 complete; requirements, design, ownership, dependencies, and capability readiness are unchanged.
 
 ### 2026-07-28 - Task 6 complete: hosted optimistic revision append
 

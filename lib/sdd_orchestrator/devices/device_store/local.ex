@@ -21,6 +21,11 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   alias SddOrchestrator.Devices.DeviceProject
   alias SddOrchestrator.Projects.Project
 
+  alias SddOrchestrator.Specifications.{
+    DeviceProjectSpecification,
+    DeviceSpecificationRevision
+  }
+
   @workspace_key :device_workspace
 
   @doc false
@@ -47,6 +52,36 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   @impl SddOrchestrator.Devices.DeviceStore
   def find_by_fingerprint(fingerprint),
     do: GenServer.call(__MODULE__, {:find_by_fingerprint, fingerprint})
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def create_specification(project_id, specification, revision) do
+    GenServer.call(__MODULE__, {:create_specification, project_id, specification, revision})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def append_specification_revision(
+        project_id,
+        specification_id,
+        expected_revision_id,
+        revision,
+        specification_attrs
+      ) do
+    GenServer.call(
+      __MODULE__,
+      {:append_specification_revision, project_id, specification_id, expected_revision_id,
+       revision, specification_attrs}
+    )
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def get_current_specification(project_id, specification_id) do
+    GenServer.call(__MODULE__, {:get_current_specification, project_id, specification_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def specification_count(project_id) do
+    GenServer.call(__MODULE__, {:specification_count, project_id})
+  end
 
   @impl GenServer
   # The store path is trusted application configuration — a fixed dev/config value
@@ -102,6 +137,51 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   def handle_call({:register_project, attrs, opts}, _from, state) do
     {:reply, do_register(state.table, attrs, opts), state}
+  end
+
+  def handle_call(
+        {:create_specification, project_id, specification, revision},
+        _from,
+        state
+      ) do
+    {:reply, do_create_specification(state.table, project_id, specification, revision), state}
+  end
+
+  def handle_call(
+        {:append_specification_revision, project_id, specification_id, expected_revision_id,
+         revision, specification_attrs},
+        _from,
+        state
+      ) do
+    reply =
+      do_append_specification_revision(
+        state.table,
+        project_id,
+        specification_id,
+        expected_revision_id,
+        revision,
+        specification_attrs
+      )
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:get_current_specification, project_id, specification_id}, _from, state) do
+    {:reply, fetch_current_specification(state.table, project_id, specification_id), state}
+  end
+
+  def handle_call({:specification_count, project_id}, _from, state) do
+    count =
+      :dets.foldl(
+        fn
+          {{:specification, ^project_id, _specification_id}, _aggregate}, acc -> acc + 1
+          _other, acc -> acc
+        end,
+        0,
+        state.table
+      )
+
+    {:reply, count, state}
   end
 
   @impl GenServer
@@ -233,4 +313,123 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
+
+  # ---- specifications ----
+
+  defp do_create_specification(
+         table,
+         project_id,
+         %DeviceProjectSpecification{} = specification,
+         %DeviceSpecificationRevision{} = revision
+       ) do
+    key = specification_key(project_id, specification.id)
+
+    cond do
+      :dets.lookup(table, {:project, project_id}) == [] ->
+        {:error, :not_found}
+
+      :dets.lookup(table, key) != [] ->
+        {:error, :specification_conflict}
+
+      true ->
+        aggregate = %{
+          specification: specification,
+          revisions: %{revision.id => revision}
+        }
+
+        :ok = :dets.insert(table, {key, aggregate})
+        :ok = :dets.sync(table)
+        {:ok, %{specification: specification, revision: revision}}
+    end
+  end
+
+  defp do_append_specification_revision(
+         table,
+         project_id,
+         specification_id,
+         expected_revision_id,
+         %DeviceSpecificationRevision{} = revision,
+         specification_attrs
+       ) do
+    key = specification_key(project_id, specification_id)
+
+    case :dets.lookup(table, key) do
+      [{^key, aggregate}] ->
+        append_device_aggregate(
+          table,
+          key,
+          aggregate,
+          expected_revision_id,
+          revision,
+          specification_attrs
+        )
+
+      [] ->
+        {:error, :not_found}
+    end
+  end
+
+  defp append_device_aggregate(
+         table,
+         key,
+         %{specification: specification, revisions: revisions} = aggregate,
+         expected_revision_id,
+         revision,
+         specification_attrs
+       ) do
+    current_revision = Map.fetch!(revisions, specification.current_revision_id)
+
+    cond do
+      specification.current_revision_id == revision.id ->
+        if current_revision == revision do
+          {:ok, %{specification: specification, revision: current_revision}}
+        else
+          {:error, :revision_conflict}
+        end
+
+      specification.current_revision_id != expected_revision_id ->
+        {:error, :stale_revision}
+
+      Map.has_key?(revisions, revision.id) ->
+        {:error, :revision_conflict}
+
+      true ->
+        updated_specification =
+          %{
+            specification
+            | current_revision_id: revision.id,
+              title: Map.get(specification_attrs, :title, specification.title),
+              updated_at: now()
+          }
+
+        updated = %{
+          aggregate
+          | specification: updated_specification,
+            revisions: Map.put(revisions, revision.id, revision)
+        }
+
+        :ok = :dets.insert(table, {key, updated})
+        :ok = :dets.sync(table)
+        {:ok, %{specification: updated_specification, revision: revision}}
+    end
+  end
+
+  defp fetch_current_specification(table, project_id, specification_id) do
+    key = specification_key(project_id, specification_id)
+
+    case :dets.lookup(table, key) do
+      [{^key, %{specification: specification, revisions: revisions}}] ->
+        {:ok,
+         %{
+           specification: specification,
+           revision: Map.fetch!(revisions, specification.current_revision_id)
+         }}
+
+      [] ->
+        {:error, :not_found}
+    end
+  end
+
+  defp specification_key(project_id, specification_id),
+    do: {:specification, project_id, specification_id}
 end
