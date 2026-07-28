@@ -502,14 +502,22 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
        ) do
     key = specification_key(project_id, specification.id)
 
-    cond do
-      :dets.lookup(table, {:project, project_id}) == [] ->
+    case {:dets.lookup(table, {:project, project_id}), :dets.lookup(table, key)} do
+      {[], _specification} ->
         {:error, :not_found}
 
-      :dets.lookup(table, key) != [] ->
-        {:error, :specification_conflict}
+      {_project, [{^key, existing}]} ->
+        if same_device_aggregate?(existing, specification, revision) do
+          {:ok,
+           %{
+             specification: existing.specification,
+             revision: Map.fetch!(existing.revisions, revision.id)
+           }}
+        else
+          {:error, :specification_conflict}
+        end
 
-      true ->
+      {_project, []} ->
         aggregate = %{
           specification: specification,
           revisions: %{revision.id => revision}
@@ -519,6 +527,47 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
         :ok = :dets.sync(table)
         {:ok, %{specification: specification, revision: revision}}
     end
+  end
+
+  defp same_device_aggregate?(
+         %{specification: existing_specification, revisions: revisions},
+         specification,
+         revision
+       ) do
+    case Map.fetch(revisions, revision.id) do
+      {:ok, existing_revision} ->
+        %{
+          specification_id: existing_specification.id,
+          project_id: existing_specification.project_id,
+          title: existing_specification.title,
+          current_revision_id: existing_specification.current_revision_id,
+          revision: semantic_revision(existing_revision)
+        } ==
+          %{
+            specification_id: specification.id,
+            project_id: specification.project_id,
+            title: specification.title,
+            current_revision_id: specification.current_revision_id,
+            revision: semantic_revision(revision)
+          }
+
+      :error ->
+        false
+    end
+  end
+
+  defp semantic_revision(revision) do
+    Map.take(revision, [
+      :id,
+      :specification_id,
+      :project_id,
+      :sequence,
+      :requirements_document,
+      :design_document,
+      :tasks_document,
+      :content_digest,
+      :actor_ref
+    ])
   end
 
   defp do_append_specification_revision(

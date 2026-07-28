@@ -206,14 +206,22 @@ defmodule SddOrchestrator.Specifications.HostedStoreTest do
     assert Repo.aggregate(SpecificationRevision, :count) == 0
   end
 
-  test "rejects duplicate stable identities through the database constraint", context do
+  test "returns an identical committed create and rejects conflicting identity reuse", context do
     attrs = SpecificationFixtures.specification_attrs()
 
-    assert {:ok, _current} =
+    assert {:ok, created} =
              SpecificationStore.create(context.workspace, context.project.id, attrs)
 
-    assert {:error, %Ecto.Changeset{} = changeset} =
+    assert {:ok, retried} =
              SpecificationStore.create(context.workspace, context.project.id, attrs)
+
+    assert retried.specification.id == created.specification.id
+    assert retried.revision.id == created.revision.id
+
+    conflicting = put_in(attrs.documents.design, "different")
+
+    assert {:error, %Ecto.Changeset{} = changeset} =
+             SpecificationStore.create(context.workspace, context.project.id, conflicting)
 
     assert "has already been taken" in errors_on(changeset).id
     assert Repo.aggregate(ProjectSpecification, :count) == 1

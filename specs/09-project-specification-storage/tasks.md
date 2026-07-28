@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, 4, and 7 are complete, and Task 8 is the next executable task.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, 4, 7, and 8 are complete, `capability:project-specification-store` is ready, and Task 5 is the next executable task.
 
 ## Active Slice
 
@@ -110,7 +110,7 @@ Release gates:
   - Owns: AC-06
   - Proof: Focused hosted and device restore-contract, conflict, replay, idempotency, injected-failure, identity-preservation, and rollback tests prove no partial or duplicate specification state.
 
-- [ ] Task 8 — Enforce cross-operation concurrency and idempotency.
+- [x] Task 8 — Enforce cross-operation concurrency and idempotency.
   - Size: Standard
   - Depends on: Task 6, Task 7
   - Purpose: Preserve stable identities and current-head correctness when create, append, snapshot, and restore operations race or retry.
@@ -146,6 +146,14 @@ Release gates:
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Task 8 complete: cross-operation concurrency and idempotency
+
+- Completed: Made identical hosted and device create retries return the committed aggregate while rejecting the same stable identities with changed content or actor data. Added deterministic hosted and device races across create and restoration plus concurrent hosted append and snapshot observation, proving uniqueness, one complete current head, stale-writer rejection, replay convergence, and no duplicate or partial state.
+- Capability readiness: `capability:project-specification-store` is ready after Task 8; create, append, current read, current snapshot, and destination-local restoration preparation are available to Slice 06 and Slice 07 through the shared `SpecificationStore` interface.
+- Remaining: Complete lifecycle, privacy, and consumer compatibility in Task 5, record governance readiness, and run the slice verification gate.
+- Failed checks: The first focused run exposed an invalid DETS lookup condition in the new device retry path; it was replaced with an exhaustive project-and-specification lookup. The combined suite also exposed the superseded Task 2 expectation that an identical committed create must fail; the regression now requires idempotent return and still rejects conflicting identity reuse. Final proof passes: the focused race suite (5 tests across 10 repeated seeds), the combined specification suite (34 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 8 complete and recorded `capability:project-specification-store` readiness; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-28 - Task 7 complete: restoration transaction participation
 

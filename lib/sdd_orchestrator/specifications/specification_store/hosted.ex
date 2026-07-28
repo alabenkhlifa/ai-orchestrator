@@ -352,11 +352,78 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Hosted do
         {:ok, %{specification: specification, revision: revision}}
 
       {:error, _operation, %Ecto.Changeset{} = changeset, _changes} ->
-        {:error, changeset}
+        resolve_create_retry(
+          project.id,
+          specification_id,
+          revision_id,
+          title,
+          documents,
+          actor_ref,
+          changeset
+        )
 
       {:error, _operation, reason, _changes} ->
         {:error, reason}
     end
+  end
+
+  defp resolve_create_retry(
+         project_id,
+         specification_id,
+         revision_id,
+         title,
+         documents,
+         actor_ref,
+         changeset
+       ) do
+    case current_query(project_id, specification_id) do
+      {specification, revision} when not is_nil(specification) ->
+        if created_current_matches?(
+             specification,
+             revision,
+             revision_id,
+             title,
+             documents,
+             actor_ref
+           ),
+           do: {:ok, %{specification: specification, revision: revision}},
+           else: {:error, changeset}
+
+      _not_committed ->
+        {:error, changeset}
+    end
+  end
+
+  defp created_current_matches?(
+         specification,
+         revision,
+         revision_id,
+         title,
+         documents,
+         actor_ref
+       ) do
+    %{
+      title: specification.title,
+      current_revision_id: specification.current_revision_id,
+      revision_id: revision.id,
+      sequence: revision.sequence,
+      requirements: revision.requirements_document,
+      design: revision.design_document,
+      tasks: revision.tasks_document,
+      digest: revision.content_digest,
+      actor_ref: revision.actor_ref
+    } ==
+      %{
+        title: String.trim(title),
+        current_revision_id: revision_id,
+        revision_id: revision_id,
+        sequence: 1,
+        requirements: documents.requirements,
+        design: documents.design,
+        tasks: documents.tasks,
+        digest: SpecificationDocuments.digest(documents),
+        actor_ref: actor_ref
+      }
   end
 
   defp current_query(project_id, specification_id) do
