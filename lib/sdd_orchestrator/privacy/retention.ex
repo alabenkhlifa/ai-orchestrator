@@ -26,6 +26,7 @@ defmodule SddOrchestrator.Privacy.Retention do
 
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
+  alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.Repo
 
@@ -41,7 +42,8 @@ defmodule SddOrchestrator.Privacy.Retention do
       magic_link_attempts: prune_magic_link_attempts(now),
       onboarding_attempts: prune_onboarding_attempts(now),
       sessions: prune_sessions(now),
-      hosted_sessions: prune_hosted_sessions(now)
+      hosted_sessions: prune_hosted_sessions(now),
+      merge_records: IdentityLinking.prune_merge_records(now)
     }
   end
 

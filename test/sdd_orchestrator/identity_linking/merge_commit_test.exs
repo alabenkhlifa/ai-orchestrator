@@ -64,9 +64,9 @@ defmodule SddOrchestrator.IdentityLinking.MergeCommitTest do
   test "commits atomically: projects move, identity attaches, and stable ids are preserved" do
     ctx = confirmed_merge()
 
-    assert {:ok, committed} = IdentityLinking.commit_merge(ctx.attempt)
-    assert committed.status == "committed"
-    assert committed.committed_at
+    assert {:ok, record} = IdentityLinking.commit_merge(ctx.attempt)
+    assert record.merge_event_id == ctx.attempt.id
+    assert record.status == "completed"
 
     surviving_ids = project_ids_in(ctx.surviving_ws.id)
     # Complete data movement: every project now lives in the surviving workspace.
@@ -112,10 +112,9 @@ defmodule SddOrchestrator.IdentityLinking.MergeCommitTest do
 
   test "is idempotent: a second commit is a no-op with no duplicate attachment" do
     ctx = confirmed_merge()
-    assert {:ok, committed} = IdentityLinking.commit_merge(ctx.attempt)
-    assert {:ok, again} = IdentityLinking.commit_merge(committed)
-    assert again.id == committed.id
-    assert again.committed_at == committed.committed_at
+    assert {:ok, r1} = IdentityLinking.commit_merge(ctx.attempt)
+    assert {:ok, r2} = IdentityLinking.commit_merge(ctx.attempt)
+    assert r2.merge_event_id == r1.merge_event_id
 
     github_count =
       Repo.aggregate(
@@ -154,9 +153,11 @@ defmodule SddOrchestrator.IdentityLinking.MergeCommitTest do
 
     assert {:error, :conflict} = IdentityLinking.commit_merge(ctx.attempt)
 
-    # No partial state: absorbed project not moved, GitHub identity not re-pointed.
+    # No partial state: absorbed project not moved, GitHub identity not re-pointed,
+    # the transient attempt and absorbed account survive the rollback.
     assert Repo.get(Project, ctx.absorbed_project.id).workspace_id == ctx.absorbed_ws.id
     assert Accounts.get_account_by_github_user_id(github_user_id).id == ctx.absorbed.id
-    assert is_nil(Repo.get(IdentityMergeAttempt, ctx.attempt.id).committed_at)
+    assert Repo.get(IdentityMergeAttempt, ctx.attempt.id)
+    assert Repo.get(SddOrchestrator.Accounts.Account, ctx.absorbed.id)
   end
 end

@@ -39,6 +39,7 @@ defmodule SddOrchestrator.Privacy.Rights do
     Workspace
   }
 
+  alias SddOrchestrator.IdentityLinking.WorkspaceMergeRecord
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
@@ -83,6 +84,7 @@ defmodule SddOrchestrator.Privacy.Rights do
 
         Multi.new()
         |> delete_magic_link_attempts(email_keys)
+        |> delete_merge_records(workspace)
         |> maybe_delete_workspace(workspace)
         |> Multi.delete(:account, account)
         |> Repo.transaction()
@@ -132,6 +134,20 @@ defmodule SddOrchestrator.Privacy.Rights do
 
   defp maybe_delete_workspace(multi, %PersonalWorkspace{id: workspace_id}) do
     Multi.delete_all(multi, :workspace, from(w in Workspace, where: w.id == ^workspace_id))
+  end
+
+  # A surviving account's erasure also removes its minimal merge evidence, which
+  # carries no foreign key back to the account or workspace.
+  defp delete_merge_records(multi, nil), do: multi
+
+  defp delete_merge_records(multi, %PersonalWorkspace{id: workspace_id}) do
+    Multi.delete_all(
+      multi,
+      :merge_records,
+      from(r in WorkspaceMergeRecord,
+        where: r.surviving_workspace_id == ^workspace_id or r.source_workspace_id == ^workspace_id
+      )
+    )
   end
 
   defp delete_magic_link_attempts(multi, email_keys) do

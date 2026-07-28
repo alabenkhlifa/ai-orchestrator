@@ -65,7 +65,7 @@ Deferred after this slice:
   - Purpose: Prevent silent transfer of machine trust.
   - Proof: Tests show successful merge revokes old credentials without changing workers or files, while failed merge preserves them.
 
-- [ ] Reduce the absorbed workspace to the approved minimal record.
+- [x] Reduce the absorbed workspace to the approved minimal record.
   - Purpose: Retain only lawful merge evidence with enforced deletion.
   - Proof: Schema, access, retention, rights, deletion, and negative-field tests pass with required privacy or legal approval.
 
@@ -162,4 +162,12 @@ Deferred after this slice:
 - Completed: Task 7. The merge commit now revokes every active `LocalWorker` paired to the absorbed workspace inside the same transaction (state `revoked`, `revoked_at` stamped), so machine trust is never silently transferred; the worker rows and their credential material remain intact so the workers and local files are untouched and explicit re-pairing to the surviving workspace issues fresh credentials. A rollback leaves the prior pairing active.
 - Interpretation: a worker "belongs to" a workspace when `local_worker.device_workspace_id` equals that workspace id; revocation keys on the absorbed workspace id. This is the natural, forward-compatible mechanism against the Slice 02 worker model, in which the id field is an opaque workspace reference.
 - Proof: `mix test test/sdd_orchestrator/identity_linking/worker_revocation_test.exs` — 3 passed, exit 0. Covers success revokes-without-deleting, the surviving workspace's own worker is untouched, and a failed merge preserves the pairing. `mix compile --warnings-as-errors` clean.
+- Failed checks: None.
+
+### 2026-07-28 - Task 8: reduce absorbed workspace to the minimal merge record
+
+- Completed: Task 8. Added the `WorkspaceMergeRecord` schema + migration `20260728150000` holding exactly the six approved fields (merge event id, source workspace id, surviving workspace id, status, completed_at, delete_after), no timestamps, and no foreign keys — so absorbed-workspace deletion leaves it intact. The merge commit now, in the same transaction, writes the record and reduces the absorbed side to it: it deletes the emptied absorbed workspace (cascading its personal profile and onboarding attempts) and account (cascading the transient attempt), so no additional absorbed-workspace state or account-linking map remains. `commit_merge/1` now returns `{:ok, WorkspaceMergeRecord}` and is idempotent via the record (a retry after commit returns it). Bounded retention default is 180 days: `IdentityLinking.prune_merge_records/1` is wired into `Privacy.Retention.prune_all/1`, and `Privacy.Rights.erase_account/1` deletes the surviving account's merge record. Added `get_merge_record/1` (restricted access) and `delete_merge_records_for_workspace/1`.
+- Contract/mechanism: the record is personal data on a legitimate-interest basis, access-restricted, analytics-prohibited, with rights + deletion support. Idempotency moved from a committed-attempt marker to the durable merge record so the transient account-linking attempt can be deleted (minimization). The Task 6 merge-commit tests were updated for the final teardown/return.
+- Release gate: final legal confirmation of the lawful basis and exact retention, plus the privacy review, remain release-gate items (AC allows implementation to proceed).
+- Proof: `mix test test/sdd_orchestrator/identity_linking/ test/sdd_orchestrator/privacy/` — 97 passed (5 properties, 92 tests), exit 0. Covers the exact six-field table (negative-field via information_schema), no sensitive struct field, the 180-day deadline, absorbed workspace/account/attempt reduction, restricted access, retention deletion, and rights erasure. `mix compile --warnings-as-errors` clean.
 - Failed checks: None.

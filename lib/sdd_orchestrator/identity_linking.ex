@@ -22,11 +22,19 @@ defmodule SddOrchestrator.IdentityLinking do
     GitHubCredential,
     GitHubIdentity,
     HostedIdentity,
-    PersonalWorkspace
+    PersonalWorkspace,
+    Workspace
   }
 
   alias SddOrchestrator.Devices.LocalWorker
-  alias SddOrchestrator.IdentityLinking.{EmailMatch, IdentityMergeAttempt, Preflight}
+
+  alias SddOrchestrator.IdentityLinking.{
+    EmailMatch,
+    IdentityMergeAttempt,
+    Preflight,
+    WorkspaceMergeRecord
+  }
+
   alias SddOrchestrator.Projects.{Project, RepositoryConnection}
   alias SddOrchestrator.Repo
 
@@ -34,6 +42,8 @@ defmodule SddOrchestrator.IdentityLinking do
   @attempt_ttl_seconds 15 * 60
   # The passwordless proof challenge lives the same short window.
   @proof_ttl_seconds 15 * 60
+  # Default bounded retention for the minimal merge record (release-gate final value).
+  @merge_record_retention_days 180
 
   @type candidate_bundle :: %{
           hosted_identity: HostedIdentity.t(),
@@ -383,17 +393,18 @@ defmodule SddOrchestrator.IdentityLinking do
   records GitHub as a sign-in method on the surviving hosted identity. Any conflict
   or fault rolls everything back, leaving both original boundaries unchanged.
 
-  Idempotent: a retry of an already-committed attempt is a no-op that returns the
-  committed attempt. Returns `{:error, :not_eligible}` without both fresh proofs
-  and confirmation, and `{:error, :conflict}` on a preflight or constraint
-  collision.
+  On success the absorbed workspace and account are reduced to one minimal
+  `WorkspaceMergeRecord` and the transient attempt is removed. Idempotent: a retry
+  after commit returns the existing merge record. Returns `{:error, :not_eligible}`
+  without both fresh proofs and confirmation, and `{:error, :conflict}` on a
+  preflight or constraint collision.
   """
   @spec commit_merge(IdentityMergeAttempt.t()) ::
-          {:ok, IdentityMergeAttempt.t()} | {:error, :not_found | :not_eligible | :conflict}
+          {:ok, WorkspaceMergeRecord.t()} | {:error, :not_found | :not_eligible | :conflict}
   def commit_merge(%IdentityMergeAttempt{id: id}) do
     Repo.transaction(fn -> do_commit(id) end)
     |> case do
-      {:ok, attempt} -> {:ok, attempt}
+      {:ok, record} -> {:ok, record}
       {:error, reason} -> {:error, reason}
     end
   rescue
@@ -405,11 +416,12 @@ defmodule SddOrchestrator.IdentityLinking do
   defp do_commit(id) do
     case lock_attempt(id) do
       nil ->
-        Repo.rollback(:not_found)
-
-      %IdentityMergeAttempt{committed_at: committed} = attempt when not is_nil(committed) ->
-        # Already merged: idempotent no-op.
-        attempt
+        # The transient attempt is gone: either it never existed, or the merge
+        # already committed and left only its minimal record (idempotent retry).
+        case Repo.get(WorkspaceMergeRecord, id) do
+          %WorkspaceMergeRecord{} = record -> record
+          nil -> Repo.rollback(:not_found)
+        end
 
       %IdentityMergeAttempt{} = attempt ->
         lock_accounts([attempt.absorbed_account_id, attempt.surviving_account_id])
@@ -431,13 +443,33 @@ defmodule SddOrchestrator.IdentityLinking do
     revoke_absorbed_workers(absorbed_ws, now)
     repoint_github_account(attempt.absorbed_account_id, attempt.surviving_account_id, now)
     attach_github_sign_in(attempt, now)
+    record = write_merge_record(attempt, absorbed_ws, surviving_ws, now)
+    reduce_absorbed(attempt.absorbed_account_id, absorbed_ws)
 
-    {:ok, committed} =
-      attempt
-      |> IdentityMergeAttempt.status_changeset(%{status: "committed", committed_at: now})
-      |> Repo.update()
+    record
+  end
 
-    committed
+  # Retain only the six approved fields as the merge evidence.
+  defp write_merge_record(attempt, absorbed_ws, surviving_ws, now) do
+    %WorkspaceMergeRecord{}
+    |> WorkspaceMergeRecord.changeset(%{
+      merge_event_id: attempt.id,
+      source_workspace_id: absorbed_ws,
+      surviving_workspace_id: surviving_ws,
+      status: "completed",
+      completed_at: now,
+      delete_after: DateTime.add(now, @merge_record_retention_days * 24 * 60 * 60, :second)
+    })
+    |> Repo.insert!()
+  end
+
+  # Delete the emptied absorbed workspace (cascades its personal profile and
+  # onboarding attempts) and account (cascades the transient merge attempt), so no
+  # additional absorbed-workspace state or account-linking map remains — only the
+  # minimal merge record, which carries no foreign key to either.
+  defp reduce_absorbed(absorbed_account_id, absorbed_ws) do
+    Repo.delete_all(from w in Workspace, where: w.id == ^absorbed_ws)
+    Repo.delete_all(from a in Account, where: a.id == ^absorbed_account_id)
   end
 
   # Move every project and repository connection to the surviving workspace,
@@ -515,6 +547,41 @@ defmodule SddOrchestrator.IdentityLinking do
     ordered = account_ids |> Enum.uniq() |> Enum.sort()
 
     Repo.all(from a in Account, where: a.id in ^ordered, order_by: a.id, lock: "FOR UPDATE")
+  end
+
+  ## Merge record (minimal post-commit evidence)
+
+  @doc """
+  Fetches the minimal merge record by merge-event id, for the approved
+  idempotency, security-audit, verified-support, and rights workflows only.
+  """
+  @spec get_merge_record(term()) :: WorkspaceMergeRecord.t() | nil
+  def get_merge_record(merge_event_id) when is_binary(merge_event_id) do
+    case Ecto.UUID.cast(merge_event_id) do
+      {:ok, id} -> Repo.get(WorkspaceMergeRecord, id)
+      :error -> nil
+    end
+  end
+
+  def get_merge_record(_), do: nil
+
+  @doc """
+  Deletes merge records naming a workspace as source or survivor. Used by rights
+  erasure of the surviving account so its merge evidence is removed with it.
+  """
+  @spec delete_merge_records_for_workspace(binary()) :: {non_neg_integer(), nil}
+  def delete_merge_records_for_workspace(workspace_id) when is_binary(workspace_id) do
+    Repo.delete_all(
+      from r in WorkspaceMergeRecord,
+        where: r.surviving_workspace_id == ^workspace_id or r.source_workspace_id == ^workspace_id
+    )
+  end
+
+  @doc "Deletes merge records past their retention deadline. Idempotent; used by the pruner."
+  @spec prune_merge_records(DateTime.t()) :: non_neg_integer()
+  def prune_merge_records(now) do
+    {count, _} = Repo.delete_all(from r in WorkspaceMergeRecord, where: r.delete_after < ^now)
+    count
   end
 
   ## Preflight
