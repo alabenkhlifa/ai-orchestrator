@@ -69,6 +69,7 @@ Release boundary:
   - Proof: Migration, local-schema contract, constraint, and domain tests cover stable hosted backfill IDs, valid mode and workspace-kind pairs in each destination, hosted detail rows, absence of hosted device project and connection data, device ownership regardless of sign-in, non-owning personal-workspace composition, workspace isolation, invalid state, and rollback.
 
 - [ ] Task 3 - Implement the shared storage-selection and resumable prerequisite handoff.
+  - Status: In Progress.
   - Purpose: Let users understand and explicitly choose where project work is saved while preserving repository state across prerequisite setup.
   - Owned surfaces: Storage-selection LiveView and components, both approved options and cross-device-only hosted copy, availability states, origin and target workspace state, browser-flow and return binding, device-setup and hosted-sign-in return actions, `ProjectOnboardingAttempt`, bound and minimized `DeviceStorageReceipt`, and source-adapter handoff contract.
   - Owns: AC-01, AC-02, AC-03, AC-14, AC-16, entity:ProjectOnboardingAttempt, entity:DeviceStorageReceipt
@@ -116,6 +117,12 @@ Release boundary:
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Task 3 implementation started
+
+- Preflight: Task 2 is complete. Task 3 owns AC-01, AC-02, AC-03, AC-14, AC-16, `ProjectOnboardingAttempt`, `DeviceStorageReceipt`, the shared storage-selection surface, and the source-adapter handoff contract; its prerequisites exist in the hosted onboarding attempt, passwordless return, device workspace, worker, and local repository-validation foundations.
+- Engineering mechanism: Bind every transient attempt to the current signed browser session without persisting the raw binding; store only one-time hosted-return and device-readiness proof digests plus their minimum attempt, workspace, repository, nonce, issue, expiry, and consumption metadata. Treat an existing authenticated hosted session as an available hosted prerequisite only after the attempt and browser binding are verified.
+- Source boundary: GitHub continues to supply its approved numeric repository identity. The local adapter supplies only the device-local canonical repository fingerprint and display name to the transient handoff; no path, remote URL, filename, source content, Git history, device label, operating-system username, or stable hardware identifier enters hosted persistence.
 
 ### 2026-07-28 - Task 2 completed
 
