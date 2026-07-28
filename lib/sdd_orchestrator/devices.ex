@@ -52,6 +52,12 @@ defmodule SddOrchestrator.Devices do
   @spec get_project(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
   def get_project(id), do: adapter().get_project(id)
 
+  @doc "Deletes a device project and all worker-owned project data."
+  @spec delete_project(String.t()) ::
+          {:ok, %{project_id: String.t(), deleted_specifications: non_neg_integer()}}
+          | {:error, :not_found}
+  def delete_project(id), do: adapter().delete_project(id)
+
   @doc "Finds a device project by its canonical repository fingerprint."
   @spec find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
   def find_by_fingerprint(fingerprint), do: adapter().find_by_fingerprint(fingerprint)

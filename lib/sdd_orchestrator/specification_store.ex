@@ -9,7 +9,12 @@ defmodule SddOrchestrator.SpecificationStore do
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Devices.DeviceTransaction
-  alias SddOrchestrator.Specifications.SpecificationSnapshot
+
+  alias SddOrchestrator.Specifications.{
+    SpecificationSecurityLog,
+    SpecificationSnapshot
+  }
+
   alias SddOrchestrator.Specifications.SpecificationStore.{Device, Hosted}
 
   @type current :: %{
@@ -26,26 +31,38 @@ defmodule SddOrchestrator.SpecificationStore do
   def create(authority, project_id, attrs, opts \\ [])
 
   def create(%PersonalWorkspace{} = authority, project_id, attrs, opts) do
-    Hosted.create(authority, project_id, attrs, opts)
+    authority
+    |> Hosted.create(project_id, attrs, opts)
+    |> SpecificationSecurityLog.audit(:create)
   end
 
   def create(%DeviceWorkspace{} = authority, project_id, attrs, opts) do
-    Device.create(authority, project_id, attrs, opts)
+    authority
+    |> Device.create(project_id, attrs, opts)
+    |> SpecificationSecurityLog.audit(:create)
   end
 
-  def create(_authority, _project_id, _attrs, _opts), do: {:error, :not_found}
+  def create(_authority, _project_id, _attrs, _opts) do
+    SpecificationSecurityLog.audit({:error, :not_found}, :create)
+  end
 
   @spec get_current(PersonalWorkspace.t(), String.t(), String.t()) ::
           {:ok, current()} | {:error, :not_found}
   def get_current(%PersonalWorkspace{} = authority, project_id, specification_id) do
-    Hosted.get_current(authority, project_id, specification_id)
+    authority
+    |> Hosted.get_current(project_id, specification_id)
+    |> SpecificationSecurityLog.audit(:get_current)
   end
 
   def get_current(%DeviceWorkspace{} = authority, project_id, specification_id) do
-    Device.get_current(authority, project_id, specification_id)
+    authority
+    |> Device.get_current(project_id, specification_id)
+    |> SpecificationSecurityLog.audit(:get_current)
   end
 
-  def get_current(_authority, _project_id, _specification_id), do: {:error, :not_found}
+  def get_current(_authority, _project_id, _specification_id) do
+    SpecificationSecurityLog.audit({:error, :not_found}, :get_current)
+  end
 
   @spec append_revision(
           PersonalWorkspace.t(),
@@ -62,13 +79,9 @@ defmodule SddOrchestrator.SpecificationStore do
         expected_revision_id,
         attrs
       ) do
-    Hosted.append_revision(
-      authority,
-      project_id,
-      specification_id,
-      expected_revision_id,
-      attrs
-    )
+    authority
+    |> Hosted.append_revision(project_id, specification_id, expected_revision_id, attrs)
+    |> SpecificationSecurityLog.audit(:append_revision)
   end
 
   def append_revision(
@@ -78,26 +91,32 @@ defmodule SddOrchestrator.SpecificationStore do
         expected_revision_id,
         attrs
       ) do
-    Device.append_revision(
-      authority,
-      project_id,
-      specification_id,
-      expected_revision_id,
-      attrs
-    )
+    authority
+    |> Device.append_revision(project_id, specification_id, expected_revision_id, attrs)
+    |> SpecificationSecurityLog.audit(:append_revision)
+  end
+
+  def append_revision(_authority, _project_id, _specification_id, _expected_revision_id, _attrs) do
+    SpecificationSecurityLog.audit({:error, :not_found}, :append_revision)
   end
 
   @spec current_snapshot(PersonalWorkspace.t() | DeviceWorkspace.t(), String.t()) ::
           {:ok, SpecificationSnapshot.t()} | {:error, atom()}
   def current_snapshot(%PersonalWorkspace{} = authority, project_id) do
-    Hosted.current_snapshot(authority, project_id)
+    authority
+    |> Hosted.current_snapshot(project_id)
+    |> SpecificationSecurityLog.audit(:current_snapshot)
   end
 
   def current_snapshot(%DeviceWorkspace{} = authority, project_id) do
-    Device.current_snapshot(authority, project_id)
+    authority
+    |> Device.current_snapshot(project_id)
+    |> SpecificationSecurityLog.audit(:current_snapshot)
   end
 
-  def current_snapshot(_authority, _project_id), do: {:error, :not_found}
+  def current_snapshot(_authority, _project_id) do
+    SpecificationSecurityLog.audit({:error, :not_found}, :current_snapshot)
+  end
 
   @doc """
   Adds an already-validated current specification set to a caller-owned project
@@ -115,7 +134,9 @@ defmodule SddOrchestrator.SpecificationStore do
           keyword()
         ) :: {:ok, Ecto.Multi.t() | DeviceTransaction.t()} | {:error, term()}
   def prepare_restore(%PersonalWorkspace{} = authority, %Ecto.Multi{} = transaction, values, opts) do
-    Hosted.prepare_restore(authority, transaction, values, opts)
+    authority
+    |> Hosted.prepare_restore(transaction, values, opts)
+    |> SpecificationSecurityLog.audit(:prepare_restore)
   end
 
   def prepare_restore(
@@ -124,9 +145,12 @@ defmodule SddOrchestrator.SpecificationStore do
         values,
         opts
       ) do
-    Device.prepare_restore(authority, transaction, values, opts)
+    authority
+    |> Device.prepare_restore(transaction, values, opts)
+    |> SpecificationSecurityLog.audit(:prepare_restore)
   end
 
-  def prepare_restore(_authority, _transaction, _values, _opts),
-    do: {:error, :invalid_restore}
+  def prepare_restore(_authority, _transaction, _values, _opts) do
+    SpecificationSecurityLog.audit({:error, :invalid_restore}, :prepare_restore)
+  end
 end

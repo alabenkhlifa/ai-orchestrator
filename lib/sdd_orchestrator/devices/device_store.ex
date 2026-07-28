@@ -33,6 +33,11 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Fetches one device project by id."
   @callback get_project(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
 
+  @doc "Deletes one device project and every device-authoritative specification aggregate."
+  @callback delete_project(String.t()) ::
+              {:ok, %{project_id: String.t(), deleted_specifications: non_neg_integer()}}
+              | {:error, :not_found}
+
   @doc "Finds a device project by its canonical repository fingerprint, for reconnection."
   @callback find_by_fingerprint(String.t()) :: {:ok, DeviceProject.t()} | {:error, :not_found}
 

@@ -54,6 +54,9 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   def get_project(id), do: GenServer.call(__MODULE__, {:get_project, id})
 
   @impl SddOrchestrator.Devices.DeviceStore
+  def delete_project(id), do: GenServer.call(__MODULE__, {:delete_project, id})
+
+  @impl SddOrchestrator.Devices.DeviceStore
   def find_by_fingerprint(fingerprint),
     do: GenServer.call(__MODULE__, {:find_by_fingerprint, fingerprint})
 
@@ -137,6 +140,10 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       end
 
     {:reply, reply, state}
+  end
+
+  def handle_call({:delete_project, id}, _from, state) do
+    {:reply, do_delete_project(state.table, id), state}
   end
 
   def handle_call({:find_by_fingerprint, fingerprint}, _from, state) do
@@ -277,6 +284,36 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
           :ok = :dets.sync(table)
           {:ok, project}
         end
+    end
+  end
+
+  defp do_delete_project(table, project_id) do
+    case :dets.lookup(table, {:project, project_id}) do
+      [] ->
+        {:error, :not_found}
+
+      [_project] ->
+        specification_keys =
+          :dets.foldl(
+            fn
+              {{:specification, ^project_id, _specification_id} = key, _aggregate}, keys ->
+                [key | keys]
+
+              _object, keys ->
+                keys
+            end,
+            [],
+            table
+          )
+
+        Enum.each([{:project, project_id} | specification_keys], &:dets.delete(table, &1))
+        :ok = :dets.sync(table)
+
+        {:ok,
+         %{
+           project_id: project_id,
+           deleted_specifications: length(specification_keys)
+         }}
     end
   end
 

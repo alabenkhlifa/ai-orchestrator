@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, 4, 7, and 8 are complete, `capability:project-specification-store` is ready, and Task 5 is the next executable task.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, 4, 7, 8, and 5 are complete; both `capability:project-specification-store` and `capability:project-specification-governance` are ready. The full slice verification gate is next.
 
 ## Active Slice
 
@@ -118,7 +118,7 @@ Release gates:
   - Owns: AC-08
   - Proof: Focused create, append, snapshot, and restore race, replay, retry, stale-head, uniqueness, snapshot-consistency, and no-partial-state tests pass before capability readiness is recorded.
 
-- [ ] Task 5 — Enforce lifecycle, privacy, and cross-specification compatibility.
+- [x] Task 5 — Enforce lifecycle, privacy, and cross-specification compatibility.
   - Size: Standard
   - Depends on: Task 2, Task 3, Task 4, Task 6, Task 7, Task 8
   - Purpose: Make the capability safe and stable for Slice 06 and Slice 07 consumption.
@@ -146,6 +146,15 @@ Release gates:
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Task 5 complete: lifecycle, privacy, and consumer compatibility
+
+- Completed: Added the specification-processing inventory and exact persisted-field purpose map; complete hosted revision-history rights export; account, hosted-project, and device-project deletion propagation; fixed outcome-only security logs that exclude identifiers and user content; programmatic 30-day operational-log and 35-day encrypted-backup release ceilings; hosted and device processor boundaries; cache, index, analytics, secondary-use, and content-redaction proof; direct Slice 06 snapshot-to-restore compatibility; and the additive Slice 07 participant-authorization policy seam. The local privacy and security review found the implementation consistent with the approved purpose, access, minimization, lifecycle, rights, processor, transfer, logging, backup, and no-secondary-use contract. Deployment-specific controller, processors, regions, transfer safeguards, notice, enforcement evidence, and final accountable review remain release gates only.
+- Capability readiness: `capability:project-specification-governance` is ready after Task 5; its focused lifecycle, rights, privacy, security, and consumer-compatibility evidence is recorded here.
+- Remaining: Run and record the full slice verification gate. Public release remains blocked by the deployment privacy profile named under Release gates.
+- Failed checks: Dialyzer initially reported the established Elixir 1.20/OTP 29 `Ecto.Multi` opaque-`MapSet` false positive in the hosted specification module. The same narrow file-specific `call_without_opaque` suppression already documented for the repository's transaction modules was added, and Dialyzer then passed with no unsuppressed warning. Final proof passes: the focused governance suites (19 tests), relevant privacy, specification, device, and security regressions (137 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 5 complete and recorded `capability:project-specification-governance` readiness; requirements, design, ownership, and dependency edges are unchanged.
+- Local engineering decision: Reused the repository's narrow Dialyzer suppression for the known first-`Ecto.Multi.insert/3` opaque-`MapSet` analysis mismatch; no runtime behavior or verification requirement changed.
 
 ### 2026-07-28 - Task 8 complete: cross-operation concurrency and idempotency
 
