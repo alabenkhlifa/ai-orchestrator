@@ -18,13 +18,17 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   use GenServer
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, Workspace}
-  alias SddOrchestrator.Devices.DeviceProject
+  alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
   alias SddOrchestrator.Projects.Project
 
   alias SddOrchestrator.Specifications.{
     DeviceProjectSpecification,
-    DeviceSpecificationRevision
+    DeviceSpecificationRevision,
+    SpecificationDocuments,
+    SpecificationRestore
   }
+
+  alias SddOrchestrator.Specifications.SpecificationRestore.{DeviceContribution, Entry}
 
   @workspace_key :device_workspace
 
@@ -86,6 +90,11 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   @impl SddOrchestrator.Devices.DeviceStore
   def current_specifications(project_id) do
     GenServer.call(__MODULE__, {:current_specifications, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def commit_transaction(%DeviceTransaction{} = transaction) do
+    GenServer.call(__MODULE__, {:commit_transaction, transaction})
   end
 
   @impl GenServer
@@ -190,31 +199,11 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   end
 
   def handle_call({:current_specifications, project_id}, _from, state) do
-    currents =
-      :dets.foldl(
-        fn
-          {
-            {:specification, ^project_id, _specification_id},
-            %{specification: specification, revisions: revisions}
-          },
-          acc ->
-            [
-              %{
-                specification: specification,
-                revision: Map.fetch!(revisions, specification.current_revision_id)
-              }
-              | acc
-            ]
+    {:reply, current_specifications_from_table(state.table, project_id), state}
+  end
 
-          _other, acc ->
-            acc
-        end,
-        [],
-        state.table
-      )
-      |> Enum.sort_by(& &1.specification.id)
-
-    {:reply, currents, state}
+  def handle_call({:commit_transaction, transaction}, _from, state) do
+    {:reply, do_commit_transaction(state.table, transaction), state}
   end
 
   @impl GenServer
@@ -348,6 +337,162 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   # ---- specifications ----
+
+  defp do_commit_transaction(
+         table,
+         %DeviceTransaction{
+           project_id: project_id,
+           contributions:
+             %{specification_restore: %DeviceContribution{} = contribution} = contributions
+         }
+       )
+       when map_size(contributions) == 1 do
+    case :dets.lookup(table, {:project, project_id}) do
+      [{{:project, ^project_id}, %{storage_mode: "device"}}] ->
+        restore_device_entries(table, project_id, contribution)
+
+      _other ->
+        {:error, :not_found}
+    end
+  end
+
+  defp do_commit_transaction(_table, %DeviceTransaction{}),
+    do: {:error, :unsupported_transaction}
+
+  defp restore_device_entries(
+         table,
+         project_id,
+         %DeviceContribution{entries: entries, fault: fault}
+       ) do
+    existing = current_specifications_from_table(table, project_id)
+
+    cond do
+      existing == [] ->
+        with :ok <- ensure_device_restore_identities_available(table, entries),
+             {:ok, currents} <- insert_device_restore_entries(table, project_id, entries, fault) do
+          {:ok, %{specification_restore: currents}}
+        end
+
+      restored_device_entries_match?(existing, entries) ->
+        {:ok, %{specification_restore: existing}}
+
+      true ->
+        {:error, :specification_conflict}
+    end
+  end
+
+  defp ensure_device_restore_identities_available(table, entries) do
+    requested_specification_ids = MapSet.new(entries, & &1.id)
+    requested_revision_ids = MapSet.new(entries, & &1.revision_id)
+
+    conflict? =
+      :dets.foldl(
+        fn
+          {
+            {:specification, _project_id, specification_id},
+            %{revisions: revisions}
+          },
+          false ->
+            MapSet.member?(requested_specification_ids, specification_id) or
+              Enum.any?(Map.keys(revisions), &MapSet.member?(requested_revision_ids, &1))
+
+          _object, conflict ->
+            conflict
+        end,
+        false,
+        table
+      )
+
+    if conflict?, do: {:error, :specification_conflict}, else: :ok
+  end
+
+  defp insert_device_restore_entries(table, project_id, entries, fault) do
+    now = now()
+
+    currents =
+      Enum.map(entries, fn entry ->
+        aggregate = restored_device_aggregate(project_id, entry, now)
+
+        %{
+          key: specification_key(project_id, entry.id),
+          aggregate: aggregate,
+          current: %{
+            specification: aggregate.specification,
+            revision: Map.fetch!(aggregate.revisions, entry.revision_id)
+          }
+        }
+      end)
+
+    if fault == :after_specification and currents != [] do
+      {:error, :injected_failure}
+    else
+      objects = Enum.map(currents, &{&1.key, &1.aggregate})
+      :ok = :dets.insert(table, objects)
+      :ok = :dets.sync(table)
+      {:ok, Enum.map(currents, & &1.current)}
+    end
+  end
+
+  defp restored_device_aggregate(project_id, %Entry{} = entry, inserted_at) do
+    specification = %DeviceProjectSpecification{
+      id: entry.id,
+      project_id: project_id,
+      title: entry.title,
+      current_revision_id: entry.revision_id,
+      inserted_at: inserted_at,
+      updated_at: inserted_at
+    }
+
+    revision = %DeviceSpecificationRevision{
+      id: entry.revision_id,
+      specification_id: entry.id,
+      project_id: project_id,
+      sequence: 1,
+      requirements_document: entry.documents.requirements,
+      design_document: entry.documents.design,
+      tasks_document: entry.documents.tasks,
+      content_digest: SpecificationDocuments.digest(entry.documents),
+      actor_ref: nil,
+      inserted_at: inserted_at
+    }
+
+    %{specification: specification, revisions: %{revision.id => revision}}
+  end
+
+  defp restored_device_entries_match?(existing, entries)
+       when length(existing) == length(entries) do
+    Enum.zip(existing, entries)
+    |> Enum.all?(fn {current, entry} ->
+      SpecificationRestore.matches_current?(current, entry)
+    end)
+  end
+
+  defp restored_device_entries_match?(_existing, _entries), do: false
+
+  defp current_specifications_from_table(table, project_id) do
+    :dets.foldl(
+      fn
+        {
+          {:specification, ^project_id, _specification_id},
+          %{specification: specification, revisions: revisions}
+        },
+        acc ->
+          [
+            %{
+              specification: specification,
+              revision: Map.fetch!(revisions, specification.current_revision_id)
+            }
+            | acc
+          ]
+
+        _other, acc ->
+          acc
+      end,
+      [],
+      table
+    )
+    |> Enum.sort_by(& &1.specification.id)
+  end
 
   defp do_create_specification(
          table,

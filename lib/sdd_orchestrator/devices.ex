@@ -9,7 +9,7 @@ defmodule SddOrchestrator.Devices do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.{DeviceProject, Pairing, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction, Pairing, WorkerDiscovery}
 
   @doc "Returns the established accountless device workspace, creating it if absent."
   @spec establish_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, term()}
@@ -88,6 +88,12 @@ defmodule SddOrchestrator.Devices do
 
   @doc "Returns all current device-authoritative specifications for one project."
   def current_specifications(project_id), do: adapter().current_specifications(project_id)
+
+  @doc "Commits a caller-owned transaction through the device worker boundary."
+  @spec commit_transaction(DeviceTransaction.t()) :: {:ok, map()} | {:error, term()}
+  def commit_transaction(%DeviceTransaction{} = transaction) do
+    adapter().commit_transaction(transaction)
+  end
 
   defp adapter do
     Application.fetch_env!(:sdd_orchestrator, __MODULE__)[:adapter]

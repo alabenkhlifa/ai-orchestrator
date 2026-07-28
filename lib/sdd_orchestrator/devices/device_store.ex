@@ -10,7 +10,7 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.DeviceProject
+  alias SddOrchestrator.Devices.{DeviceProject, DeviceTransaction}
   alias SddOrchestrator.SpecificationStore
 
   alias SddOrchestrator.Specifications.{
@@ -61,4 +61,8 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   @doc "Returns all current device-authoritative specifications for one project."
   @callback current_specifications(String.t()) :: [SpecificationStore.current()]
+
+  @doc "Commits the supported contributions in one worker-owned device transaction."
+  @callback commit_transaction(DeviceTransaction.t()) ::
+              {:ok, map()} | {:error, term()}
 end

@@ -8,6 +8,7 @@ defmodule SddOrchestrator.SpecificationStore do
   """
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
+  alias SddOrchestrator.Devices.DeviceTransaction
   alias SddOrchestrator.Specifications.SpecificationSnapshot
   alias SddOrchestrator.Specifications.SpecificationStore.{Device, Hosted}
 
@@ -97,4 +98,35 @@ defmodule SddOrchestrator.SpecificationStore do
   end
 
   def current_snapshot(_authority, _project_id), do: {:error, :not_found}
+
+  @doc """
+  Adds an already-validated current specification set to a caller-owned project
+  restoration transaction.
+
+  The caller supplies its idempotency key through `opts`. Hosted callers receive
+  an extended `Ecto.Multi`; device callers receive an extended worker-owned
+  `DeviceTransaction`. Package parsing and project conflict policy are outside
+  this boundary.
+  """
+  @spec prepare_restore(
+          PersonalWorkspace.t() | DeviceWorkspace.t(),
+          Ecto.Multi.t() | DeviceTransaction.t(),
+          [map()],
+          keyword()
+        ) :: {:ok, Ecto.Multi.t() | DeviceTransaction.t()} | {:error, term()}
+  def prepare_restore(%PersonalWorkspace{} = authority, %Ecto.Multi{} = transaction, values, opts) do
+    Hosted.prepare_restore(authority, transaction, values, opts)
+  end
+
+  def prepare_restore(
+        %DeviceWorkspace{} = authority,
+        %DeviceTransaction{} = transaction,
+        values,
+        opts
+      ) do
+    Device.prepare_restore(authority, transaction, values, opts)
+  end
+
+  def prepare_restore(_authority, _transaction, _values, _opts),
+    do: {:error, :invalid_restore}
 end

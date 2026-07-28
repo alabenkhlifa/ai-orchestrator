@@ -12,9 +12,12 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Hosted do
     SpecificationAuthorization,
     SpecificationDocuments,
     SpecificationLimits,
+    SpecificationRestore,
     SpecificationRevision,
     SpecificationSnapshot
   }
+
+  alias SddOrchestrator.Specifications.SpecificationRestore.Entry
 
   @spec create(PersonalWorkspace.t(), String.t(), map(), keyword()) ::
           {:ok, SddOrchestrator.SpecificationStore.current()}
@@ -110,6 +113,200 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Hosted do
       SpecificationSnapshot.new(currents)
     end
   end
+
+  def prepare_restore(%PersonalWorkspace{} = authority, %Multi{} = multi, values, opts) do
+    project_operation = Keyword.get(opts, :project_operation, :project)
+    fault = Keyword.get(opts, :fault)
+
+    with %PersonalWorkspace{} <- Repo.get(PersonalWorkspace, authority.id),
+         true <- is_atom(project_operation),
+         {:ok, idempotency_key} <-
+           SpecificationRestore.validate_idempotency_key(Keyword.get(opts, :idempotency_key)),
+         {:ok, entries} <- SpecificationRestore.normalize(values) do
+      add_restore_contribution(
+        multi,
+        authority.id,
+        project_operation,
+        idempotency_key,
+        entries,
+        fault
+      )
+    else
+      false -> {:error, :invalid_restore}
+      nil -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp add_restore_contribution(
+         multi,
+         workspace_id,
+         project_operation,
+         idempotency_key,
+         entries,
+         fault
+       ) do
+    digest = SpecificationRestore.digest(entries)
+
+    plan = %{
+      digest: digest,
+      fault: fault,
+      project_operation: project_operation,
+      workspace_id: workspace_id
+    }
+
+    plan_name = {:specification_restore_plan, idempotency_key}
+    commit_name = {:specification_restore, idempotency_key}
+
+    case existing_restore_plan(multi) do
+      nil ->
+        multi =
+          multi
+          |> Multi.put(plan_name, plan)
+          |> Multi.run(
+            commit_name,
+            restore_callback(workspace_id, project_operation, entries, fault)
+          )
+
+        {:ok, multi}
+
+      {^plan_name, {:put, ^plan}} ->
+        {:ok, multi}
+
+      _other ->
+        {:error, :restore_conflict}
+    end
+  end
+
+  defp restore_callback(workspace_id, project_operation, entries, fault) do
+    fn repo, changes ->
+      case restore_project(changes, project_operation, workspace_id) do
+        {:ok, project} -> restore_hosted_entries(repo, project, entries, fault)
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp existing_restore_plan(multi) do
+    Enum.find(Multi.to_list(multi), fn
+      {{:specification_restore_plan, _idempotency_key}, _operation} -> true
+      _operation -> false
+    end)
+  end
+
+  defp restore_project(changes, project_operation, workspace_id) do
+    case Map.fetch(changes, project_operation) do
+      {:ok, %{workspace_id: ^workspace_id, storage_mode: "hosted"} = project} ->
+        {:ok, project}
+
+      _other ->
+        {:error, :not_found}
+    end
+  end
+
+  defp restore_hosted_entries(repo, project, entries, fault) do
+    existing = current_project_entries(repo, project.id)
+
+    cond do
+      existing == [] ->
+        with :ok <- ensure_restore_identities_available(repo, entries) do
+          insert_restored_entries(repo, project, entries, fault)
+        end
+
+      restored_entries_match?(existing, entries) ->
+        {:ok, existing}
+
+      true ->
+        {:error, :specification_conflict}
+    end
+  end
+
+  defp current_project_entries(repo, project_id) do
+    repo.all(
+      from specification in ProjectSpecification,
+        join: revision in SpecificationRevision,
+        on: revision.id == specification.current_revision_id,
+        where: specification.project_id == ^project_id and revision.project_id == ^project_id,
+        order_by: [asc: specification.id],
+        select: %{specification: specification, revision: revision}
+    )
+  end
+
+  defp ensure_restore_identities_available(repo, entries) do
+    specification_ids = Enum.map(entries, & &1.id)
+    revision_ids = Enum.map(entries, & &1.revision_id)
+
+    conflict? =
+      repo.exists?(
+        from specification in ProjectSpecification,
+          where: specification.id in ^specification_ids
+      ) or
+        repo.exists?(
+          from revision in SpecificationRevision,
+            where: revision.id in ^revision_ids
+        )
+
+    if conflict?, do: {:error, :specification_conflict}, else: :ok
+  end
+
+  defp insert_restored_entries(repo, project, entries, fault) do
+    entries
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {entry, index}, {:ok, restored} ->
+      case insert_restored_entry(repo, project, entry) do
+        {:ok, _current} when fault == :after_specification and index == 0 ->
+          {:halt, {:error, :injected_failure}}
+
+        {:ok, current} ->
+          {:cont, {:ok, [current | restored]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, restored} -> {:ok, Enum.reverse(restored)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_restored_entry(repo, project, %Entry{} = entry) do
+    with {:ok, specification} <-
+           repo.insert(
+             ProjectSpecification.create_changeset(%ProjectSpecification{}, %{
+               id: entry.id,
+               project_id: project.id,
+               title: entry.title
+             })
+           ),
+         {:ok, revision} <-
+           repo.insert(
+             SpecificationRevision.create_changeset(%SpecificationRevision{}, %{
+               id: entry.revision_id,
+               specification_id: entry.id,
+               project_id: project.id,
+               sequence: 1,
+               requirements_document: entry.documents.requirements,
+               design_document: entry.documents.design,
+               tasks_document: entry.documents.tasks,
+               content_digest: SpecificationDocuments.digest(entry.documents),
+               actor_ref: nil
+             })
+           ),
+         {:ok, current_specification} <-
+           repo.update(ProjectSpecification.current_revision_changeset(specification, revision)) do
+      {:ok, %{specification: current_specification, revision: revision}}
+    end
+  end
+
+  defp restored_entries_match?(existing, entries) when length(existing) == length(entries) do
+    Enum.zip(existing, entries)
+    |> Enum.all?(fn {current, entry} ->
+      SpecificationRestore.matches_current?(current, entry)
+    end)
+  end
+
+  defp restored_entries_match?(_existing, _entries), do: false
 
   defp create_transaction(
          project,

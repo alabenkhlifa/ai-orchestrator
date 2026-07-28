@@ -3,14 +3,18 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Device do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.DeviceTransaction
 
   alias SddOrchestrator.Specifications.{
     DeviceProjectSpecification,
     DeviceSpecificationRevision,
     SpecificationDocuments,
     SpecificationLimits,
+    SpecificationRestore,
     SpecificationSnapshot
   }
+
+  alias SddOrchestrator.Specifications.SpecificationRestore.DeviceContribution
 
   def create(%DeviceWorkspace{} = authority, project_id, attrs, opts) when is_map(attrs) do
     with :ok <- authorize(authority, project_id),
@@ -99,6 +103,31 @@ defmodule SddOrchestrator.Specifications.SpecificationStore.Device do
       project_id
       |> Devices.current_specifications()
       |> SpecificationSnapshot.new()
+    end
+  end
+
+  def prepare_restore(
+        %DeviceWorkspace{} = authority,
+        %DeviceTransaction{} = transaction,
+        values,
+        opts
+      ) do
+    with {:ok, %DeviceWorkspace{id: authority_id}} <- Devices.get_workspace(),
+         true <- authority_id == authority.id,
+         {:ok, idempotency_key} <-
+           SpecificationRestore.validate_idempotency_key(Keyword.get(opts, :idempotency_key)),
+         {:ok, entries} <- SpecificationRestore.normalize(values) do
+      contribution = %DeviceContribution{
+        idempotency_key: idempotency_key,
+        digest: SpecificationRestore.digest(entries),
+        entries: entries,
+        fault: Keyword.get(opts, :fault)
+      }
+
+      DeviceTransaction.put(transaction, :specification_restore, contribution)
+    else
+      false -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
     end
   end
 

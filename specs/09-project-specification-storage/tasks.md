@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, and 4 are complete, and Task 7 is the next executable task.
+The product, technical, privacy, task-sequence, and verification contracts are approved. Slice 05 has delivered both required capabilities. Tasks 2, 6, 3, 4, and 7 are complete, and Task 8 is the next executable task.
 
 ## Active Slice
 
@@ -102,7 +102,7 @@ Release gates:
   - Owns: AC-03, entity:SpecificationSnapshot
   - Proof: Focused hosted and device snapshot consistency, allowlist, ordering, limit, authorization, concurrent-append, and deterministic fixture tests pass.
 
-- [ ] Task 7 — Implement restoration transaction participation.
+- [x] Task 7 — Implement restoration transaction participation.
   - Size: Standard
   - Depends on: Task 4
   - Purpose: Contribute validated specification state atomically to a caller-owned hosted or device project-creation transaction.
@@ -146,6 +146,13 @@ Release gates:
 - None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
 
 ## Progress Log
+
+### 2026-07-28 - Task 7 complete: restoration transaction participation
+
+- Completed: Added strict shared restoration-value validation, stable input ordering and digesting, caller idempotency-key binding, hosted `Ecto.Multi` contribution, and a typed worker-owned device transaction contribution. Hosted commits preserve project, specification, and revision identities in one caller transaction; device commits preserve the specification set in one serialized batch without a hosted copy. Exact committed replays return the existing result, while malformed values, duplicate identities, conflicting state, foreign authority, changed reuse of an idempotency key, and injected failure leave no partial state.
+- Remaining: Enforce cross-operation concurrency and record `capability:project-specification-store` readiness in Task 8, then complete governance and the verification gate.
+- Failed checks: Strict Credo initially identified one nested callback and two complex semantic comparisons; they were simplified into a focused callback and one shared current-value comparison. Final proof passes: the focused hosted and device restoration suite (6 tests), the combined specification suite (29 tests), device transaction and registration regressions (24 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 7 complete; requirements, design, ownership, dependencies, and capability readiness are unchanged.
 
 ### 2026-07-28 - Task 4 complete: consistent current-project snapshots
 
