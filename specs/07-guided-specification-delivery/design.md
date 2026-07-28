@@ -47,7 +47,7 @@ Implement the orchestration semantics natively behind the Phoenix control plane 
 - `Evidence`: an immutable typed required-check result, screenshot artifact, branch and commit reference, preview outcome, or other approved proof with run, attempt, source, digest, redaction, and supersession provenance.
 - `PreviewDeployment`: one idempotent non-production deployment request and observed lifecycle for an exact successfully verified run revision.
 - `ReviewDecision`: an authorized approval or feedback-based rejection for one completed run.
-- `Notification`: one recipient-scoped durable in-product message with a unique event key, delivery state, read state, safe feature link, and minimized status content.
+- `Notification`: one Slice 07 event type stored through the shared account-level notification foundation established by Slice 08, with a unique event key, delivery state, read state, safe feature link, and minimized status content.
 - `DataProcessingRecord`: the existing deployment inventory entry extended to cover every Slice 07 personal-data and project-content category, purpose, basis, field, access boundary, retention rule, right, processor, and transfer.
 - `DeploymentPrivacyProfile`: the existing release-gate record extended with the actual worker, model, preview, artifact, hosting, backup, support, region, transfer, retention, training-use, notice, incident, and review evidence for the deployment.
 
@@ -60,7 +60,7 @@ Required boundaries:
 - Current participant presentation consumes the project-specific display name and never exposes another participant's email.
 - Assignment, notification delivery, run control, review, and every project-content read revalidate current participation and fail closed when authorization is stale or absent.
 - Before the first start and after any execution, provider, preview, or transfer-boundary change, the start interface requires confirmation of the configured processing summary. An unchanged boundary does not interrupt every run.
-- The participation-removal handoff clears current assignment, routes pending question and review responsibility to the immutable project owner, preserves the last accepted project display name as non-interactive historical attribution, and keeps an active run available only under owner control.
+- Slice 07 idempotently claims the versioned `ParticipationRevocation` handoff produced by Slice 08, clears current assignment, routes pending question and review responsibility to the immutable project owner, preserves the last accepted project display name as non-interactive historical attribution, keeps an active run available only under owner control, and acknowledges the handoff after its authoritative transaction commits.
 - Feature, revision, run, attempt, command, activity, question, and evidence authority follows the project's selected storage mode. Hosted projects commit through PostgreSQL; device projects commit through the worker-owned device store without creating a hosted project-data copy.
 - Every state-changing user action commits the validated current-state transition, ordered activity entry, and any resulting command in one authoritative-storage transaction.
 - Hosted dispatchers claim pending commands with database locking and leases. Device dispatch is claimed inside the serialized worker-owned store. Both adapters expose the same idempotent delivery-store contract.
@@ -103,7 +103,7 @@ Required boundaries:
 ## Interfaces
 
 - Board interface: show the five lifecycle columns, creator, optional assignment, readiness, active run, completion outcome, and visible `Blocked` or `Failed` status without moving the feature to another column. Let an authorized project participant select any authorized participant for `Assigned` or use `Assign to me`. Do not use free dragging to change lifecycle state; expose the gated workflow action available to an authorized user.
-- Participant interface: consume current project-participant identity, project display name, authorization, and removal handoff from the separate participation boundary for assignment, notification, run-control, review, content-access, responsibility routing, historical attribution, and active-run control without exposing participant emails or participation-management actions in this slice.
+- Participant interface: consume current project-participant identity, project display name, authorization, and the versioned `ParticipationRevocation` claim and acknowledgement contract from the separate participation boundary for assignment, notification, run-control, review, content-access, responsibility routing, historical attribution, and active-run control without exposing participant emails or participation-management actions in this slice.
 - Specification guidance interface: describe required information, classify visible findings as blocking or non-blocking, and allow only non-blocking suggestions to be dismissed.
 - Start interface: remain unavailable while any blocker exists, show the configured execution location, agent or model provider, preview provider, and data-transfer boundary, require confirmation before the first run and after a boundary change, then let any current authorized participant authorize one ready feature revision and create one run without duplicate dispatch.
 - Delivery-store interface: transactionally read and transition feature and run state, append ordered activity, enqueue idempotent commands, claim one current attempt, record fenced events, and reconcile through the authoritative hosted or device adapter.
@@ -117,7 +117,7 @@ Required boundaries:
 - Evidence interface: require one immutable typed result per configured check and exact commit, store private artifacts through the authoritative adapter, link superseding proof, redact logs and screenshots before participant presentation, and distinguish absent, unsupported, failed, passed, and superseded evidence.
 - Preview-adapter interface: idempotently request one non-production deployment for the verified commit, poll or consume status, mark timeout and provider failure visibly, expose safe ready and expiry metadata, supersede older attempts, and invoke configured cleanup on cancellation, project deletion, or adapter expiry without blocking `Ready for review`.
 - Review interface: present the completed run and its evidence in `Ready for review`, accept approval or rejection only from the current responsible participant or project owner, move an approved feature to `Done`, or record rejection feedback and continue the same run and branch as a new attempt in `In development`.
-- Notification-projector interface: consume durable lifecycle events at least once, resolve approved roles and current participation at insertion time, enforce one unique event-recipient key, persist unread state before publishing a UI hint, and expose authorized list, mark-read, and safe-link behavior without external delivery.
+- Notification-projector interface: extend Slice 08's shared account-level notification store with Slice 07 lifecycle event types, consume those events at least once, resolve approved roles and current participation at insertion time, enforce one unique event-recipient key, persist unread state before publishing a UI hint, and expose project-authorized list, mark-read, and safe-link behavior without external delivery.
 - Privacy interface: extend the existing processing inventory, retention pruner, verified rights workflow, and deployment privacy profile across every Slice 07 store, worker exchange, provider, artifact, preview, notification, log, cache, backup, export, and derived record without creating a product-analytics pipeline.
 
 ## Decisions and Tradeoffs
@@ -160,13 +160,13 @@ Required boundaries:
 
 ### External Project-Participation Prerequisite
 
-- Choice: Define participant provisioning, invitations, membership, roles, access removal, and their lifecycle in a separate focused project-participation specification. This slice consumes only its current authorized-participant boundary.
+- Choice: Define participant provisioning, invitations, membership, roles, access removal, their lifecycle, a shared account-level notification foundation, and a versioned revocation producer contract in a separate focused project-participation specification. This slice consumes current authorization and owns every feature-delivery mutation caused by revocation.
 - Reason: Participation management is an independently valuable access-control workflow with its own identity, invitation, revocation, notification, privacy, and security lifecycle.
-- Consequence: Slice 07 remains focused on specification and delivery, but implementation cannot begin until the prerequisite exposes an approved participant-authorization contract. Stale or missing authorization fails closed, and no Slice 07 flow may change participation.
+- Consequence: Slice 07 remains focused on specification and delivery, but implementation cannot begin until the prerequisite exposes approved participant-authorization, notification-foundation, and revocation claim and acknowledgement contracts. Stale or missing authorization fails closed, no Slice 07 flow may change participation, and Slice 08 does not need Slice 07 records to be implemented or verified.
 
 ### Removed-Participant Responsibility Handoff
 
-- Choice: Clear current assignment and route pending blocking-question and review responsibility to the immutable project owner when participation ends. Preserve prior contributions under the last accepted project display name as non-interactive historical attribution and keep an active run under owner control instead of canceling it automatically.
+- Choice: Idempotently consume the versioned `ParticipationRevocation` produced by Slice 08, clear current assignment, route pending blocking-question and review responsibility to the immutable project owner, preserve prior contributions under the supplied last accepted project display name as non-interactive historical attribution, keep an active run under owner control instead of canceling it automatically, and acknowledge the handoff only after commit.
 - Reason: Removal must end access without erasing project history, losing pending work, or making a membership action implicitly destroy an active run.
 - Consequence: The former participant cannot receive project notifications or actions, the owner becomes the deterministic fallback, and historical attribution follows the retention and rights contract defined by the participation prerequisite.
 
@@ -222,7 +222,7 @@ Required boundaries:
 
 - Choice: Project lifecycle events into recipient-scoped notification records through an at-least-once projector with a unique event-type, run-state-version, and recipient key. Treat durable unread state as delivery and PubSub only as a live UI hint.
 - Reason: In-product delivery should survive application restarts and disconnected browsers without adding an external messaging provider or duplicating events after projector replay.
-- Consequence: Recipient authorization is resolved before insertion and checked again on read. Duplicate roles create one record. Removed participants lose access to existing project notifications. Mark-read is idempotent, and notification bodies remain minimal while details stay behind the authorized feature link.
+- Consequence: Slice 07 adds event types and project authorization to the shared account-level notification foundation instead of creating a second store. Recipient authorization is resolved before insertion and checked again on read. Duplicate roles create one record. Removed participants lose access to existing project notifications. Mark-read is idempotent, and notification bodies remain minimal while details stay behind the authorized feature link.
 
 ### Shared Phoenix Control Plane
 

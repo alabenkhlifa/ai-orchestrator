@@ -24,12 +24,13 @@ The owner of one hosted project can invite another person by email to become an 
 - Proof of the invited email and explicit acceptance before access begins.
 - Current participant listing needed for assignment and authorization consumers.
 - Participant access to project specifications, feature content, comments, and run evidence without management or credential authority.
-- A project-specific participant display name and minimized email visibility.
+- Project-specific owner and participant display names with one shared uniqueness boundary and minimized email visibility.
+- Invitation-bound fresh email proof that never treats an unrelated active browser session as the invited identity.
 - Seven-day, single-pending invitation lifecycle with resend invalidation, cancellation, decline, and fresh re-invitation.
 - Invitation, participation-outcome, removal, and leave notifications through the approved email and in-product channels.
 - Owner removal of a participant and participant self-leave.
 - Immediate fail-closed authorization after removal, leave, invalid proof, cancellation, expiry, or other unsuccessful invitation outcomes.
-- Removal and leave handoff that clears current assignment, routes pending responsibility to the owner, preserves historical attribution, and leaves active agent runs under owner control.
+- A durable removal and leave handoff that records the owner fallback and historical label without mutating Slice 07 feature, question, review, or run records.
 - A read-only current-participant authorization contract for `specs/07-guided-specification-delivery/`.
 - GDPR data contracts for invited emails, invitation state, participation, delivery, audit, support, logs, derived records, and processors.
 
@@ -44,26 +45,28 @@ The owner of one hosted project can invite another person by email to become an 
 - Participant management by participants, project deletion, storage-mode changes, repository-connection changes, and provider, worker, agent, invitation, or session credential access.
 - Public links, anonymous access, domain-wide access, or automatic membership.
 - Chat, mobile push, webhook, or other external participation-notification channels beyond the approved invitation and removal emails.
-- Slice 07 feature assignment, run-control, review, and notification behavior beyond the current-participant authorization handoff.
+- Slice 07 feature assignment, run-control, review, and notification behavior beyond the current-participant authorization and revocation-producer handoffs.
 - Repository-provider credential sharing, worker credential transfer, or agent-provider credential sharing.
 - General project deletion, storage migration, or cross-user project ownership transfer.
 
 ## Primary Workflow
 
-1. The authenticated owner opens participation management for one hosted project.
+1. The authenticated owner opens participation management for one hosted project and establishes their project-specific display name before sending the first invitation.
 2. The owner enters an email address; the product provides no searchable account directory and does not reveal whether the email already has an account.
-3. The product creates an invitation for that project and sends the invitation through the approved email-delivery boundary.
-4. The invited person opens the invitation and proves control of the invited email through the approved passwordless verification boundary.
-5. The product identifies the project and participation consequence, asks for a project-specific display name, and requires explicit acceptance.
-6. Successful acceptance creates one active `Participant` authorization and display label for the stable hosted identity and project; every unsuccessful outcome leaves project access unchanged.
-7. The project exposes the participant through its current-participant authorization interface for assignment, notifications, run control, review, and content access.
-8. The owner may later remove the participant, or the participant may leave; either action ends future authorization without transferring project ownership.
-9. Invitation and participation outcomes notify the approved recipients through the minimum email or in-product channel for that event.
+3. The product creates an invitation for that project and sends the invitation through the approved email-delivery boundary. An email already attached to the owner or a current participant creates no invitation and shows the existing project role to the owner.
+4. The invited person opens the invitation and proves control of the invited email through the approved passwordless verification boundary. If another hosted identity is active in the browser, the product explains that continuing authenticates the invited email for this browser and does not treat the existing session as proof.
+5. Fresh proof creates or restores the stable hosted identity for the invited email and establishes its hosted browser session without revoking sessions belonging to another identity.
+6. The product then identifies the project and owner display name, explains the participation consequence, asks for a project-specific participant display name, and requires explicit acceptance.
+7. Successful acceptance creates one active `Participant` authorization and display profile for the proven stable hosted identity and project; every unsuccessful outcome leaves project access unchanged.
+8. The project exposes the participant through its current-participant authorization interface for assignment, notifications, run control, review, and content access.
+9. The owner may later remove the participant, or the participant may leave; either action ends future authorization, records one durable Slice 07 handoff, and does not transfer project ownership or directly mutate feature-delivery records.
+10. Invitation and participation outcomes notify the approved recipients through the minimum email or in-product channel for that event.
 
 ## Business Rules
 
 - Participation is scoped to one hosted project and grants no access to the owning workspace or any other project.
 - The project owner is derived from the existing hosted project ownership boundary and remains the immutable `Owner` in the first release.
+- Before the first invitation is sent, the owner must establish a project-specific display name. The owner may later edit only their own project display name.
 - A non-owner may participate only through one active `Participant` authorization attached to their stable hosted identity.
 - An active participant may view and edit project specifications and feature content, comment, and inspect agent-run evidence that belongs to the project.
 - Participation does not authorize participant management, project deletion, storage-mode or repository-connection changes, or access to provider, worker, agent, invitation, or application-session credentials.
@@ -83,16 +86,19 @@ The owner of one hosted project can invite another person by email to become an 
 - Successful acceptance attaches participation to the stable hosted identity that proved the invited email, not to a browser, session, or email string alone.
 - Successful acceptance records a project-specific display name as a presentation label, never as stable participant identity.
 - A participant may change only their own project-specific display name.
-- Display-name comparison trims surrounding whitespace and is case-insensitively unique within one project while preserving the accepted spelling for display.
+- Owner and participant display-name comparison trims surrounding whitespace and is case-insensitively unique within one project while preserving the accepted spelling for display.
 - A conflicting display name is rejected for explicit correction; the product must not select or append an automatic suffix.
-- Current project participants see the owner and participant display names. The owner may see invitation and verified participant emails for membership management; each participant may see their own email; participants do not see another participant's or the owner's email through this feature.
+- Current project participants see the owner and participant display names. The owner may see invitation and verified participant emails for membership management; each participant may see their own email; participants do not see another participant's or the owner's email through this feature. The owner's email is not used as their project display name.
 - Historical attribution resolves through stable participant identity, shows the current project display name while participation is active, and preserves the last accepted display name as a non-interactive label after departure only while identifiable attribution remains necessary for project accountability. An approved rights or deletion workflow anonymizes the label when continued identification is unnecessary.
 - At most one active participant authorization may exist for one hosted identity and project.
 - Repeated, concurrent, invalid, canceled, expired, replayed, or otherwise unsuccessful invitation actions must not create duplicate or partial authorization.
+- Inviting an email attached to the project owner or a current participant creates no invitation. The owner may see the existing project role because it is already authorized membership state, but the product must not disclose unrelated account or identity information.
+- Invitation proof is bound to one invitation and its normalized invited email. An existing hosted session, including a session for another identity, is never sufficient proof.
+- When fresh invitation proof succeeds, the browser becomes authenticated as the stable hosted identity that proved the invited email. Replacing the browser's current session cookie must not revoke another identity's server-side sessions.
 - Current-participant reads and every protected consumer action must fail closed when participation is inactive, removed, left, stale, or absent.
 - Removing or leaving ends future project access and cannot remove, replace, or transfer the immutable owner.
-- Removing or leaving clears the former participant from current assignment, routes their pending blocking-question and review responsibility to the project owner, and preserves prior comments, decisions, evidence, and other contributions with non-interactive historical attribution subject to the approved necessity, retention, and anonymization rules.
-- An active agent run is not canceled solely because its initiating, assigned, or responsible participant leaves or is removed; control returns to the project owner, who may continue or cancel it under Slice 07.
+- Removing or leaving atomically ends current participation and records one idempotent revocation handoff containing only the project, former participant, immutable owner fallback, last accepted project display name, reason, event time, and contract version needed by approved consumers.
+- Slice 08 does not mutate feature assignment, blocking-question, review, notification, contribution, or agent-run records. Slice 07 consumes the revocation handoff to clear current responsibility, preserve governed historical attribution, keep an active run under owner control, and deny former-participant actions.
 - Participation must not expose or transfer repository-provider credentials, worker credentials, agent-provider credentials, session secrets, or invitation secrets.
 - Invitation and resend send email to the invited address.
 - Acceptance sends an in-product confirmation to the participant and an in-product outcome to the owner. Decline and expiry notify the owner in-product.
@@ -118,8 +124,8 @@ The owner of one hosted project can invite another person by email to become an 
 - [AC-13] Given invitation, participation, delivery, support, audit, log, or derived data is processed, when lifecycle and access controls run, then the approved data contract is enforced, secrets and unauthorized project content are not exposed, and analytics remain aggregate and genuinely anonymous.
 - [AC-14] Given an active participant opens the project, when authorization succeeds, then they may view and edit its specifications and feature content, comment, and inspect project run evidence without receiving access to another project or the owning workspace.
 - [AC-15] Given a participant attempts participant management, project deletion, storage or repository changes, or credential access, when authorization is evaluated, then the action is denied and no protected setting, credential, or secret is exposed.
-- [AC-16] Given invitation acceptance or the participant list is shown, when identity labels are presented, then acceptance requires a project-specific display name, current participants see display names, the owner may see membership-management emails, each participant may see their own email, and other participant emails remain hidden.
-- [AC-17] Given a participant with current assignment, pending responsibility, historical contributions, or an active run leaves or is removed, when the change commits, then current assignment clears, pending question and review responsibility route to the owner, historical contributions retain non-interactive attribution, the run remains active under owner control, and the former participant loses access.
+- [AC-16] Given invited-email proof succeeds and acceptance is shown, when identity details are presented, then acceptance requires an available project-specific participant display name, the project and owner display name are visible, and no other participant email is exposed.
+- [AC-17] Given an active participant leaves or is removed, when the change commits, then participation becomes inactive, future project authorization fails closed, and exactly one durable idempotent revocation handoff records the immutable owner fallback and last accepted project display name without directly mutating or canceling Slice 07 work.
 - [AC-18] Given invitation creation, resend, cancellation, expiry, or re-invitation is requested, when the lifecycle action succeeds, then invitations expire after seven days, at most one remains pending per project and normalized email, resend invalidates the prior link, cancellation is terminal, and every re-invitation creates a fresh credential and requires fresh acceptance.
 - [AC-19] Given the invitee declines an invitation, when decline commits, then the invitation becomes terminal, no access is created, the owner can see the declined outcome, and any later invitation requires a fresh flow.
 - [AC-20] Given an active participant changes their project display name, when the trimmed name is available case-insensitively, then the preserved spelling becomes the current label; when it conflicts, the change is rejected without an automatic suffix or identity change, and departure preserves the last accepted label for historical attribution.
@@ -128,6 +134,11 @@ The owner of one hosted project can invite another person by email to become an 
 - [AC-23] Given a participant is removed or leaves, when notification runs, then removal notifies the former participant in-product and by email, leave notifies the owner in-product, and no notification restores access or exposes project content.
 - [AC-24] Given any participation notification is inspected, when its payload and delivery records are reviewed, then they contain only the approved minimum project and action context and no specification, feature, comment, evidence, repository, credential, secret, or unrelated identity data.
 - [AC-25] Given a departed participant's last project display name remains on historical contributions, when continued identifiable attribution is no longer necessary or an approved rights workflow requires anonymization, then the stable contribution history remains but the display label and account link no longer identify that person.
+- [AC-26] Given a hosted project has no owner display profile, when the owner sends the first invitation, then invitation delivery remains unavailable until the owner saves an available project-specific display name that is not derived from or presented as their email.
+- [AC-27] Given participation management or a participant list is shown, when identity labels are presented, then current members see project display names, the owner may see invitation and verified participant emails, each participant may see only their own email, and no participant sees another member's email.
+- [AC-28] Given an invitation is opened while another hosted identity is active in the browser, when the invitee continues, then the product explains the identity change, requires fresh proof of the invited email, authenticates the proven stable identity for this browser, preserves unrelated server-side sessions, and still grants no project access before explicit acceptance.
+- [AC-29] Given an owner submits an email already attached to the project owner or a current participant, when invitation creation is evaluated, then no invitation or credential is created, the existing project role is shown to the owner, and no unrelated account information is disclosed.
+- [AC-30] Given the project owner changes their project display name, when the trimmed name is available case-insensitively, then the preserved spelling becomes the owner label; when it conflicts, the change is rejected without an automatic suffix, email-derived fallback, or ownership change.
 
 ## Open Questions
 
