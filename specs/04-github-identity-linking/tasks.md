@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -36,7 +36,7 @@ Deferred after this slice:
 
 ## Tasks
 
-- [ ] Approve identity matching, provider rules, merge evidence, and privacy contracts.
+- [x] Approve identity matching, provider rules, merge evidence, and privacy contracts.
   - Purpose: Resolve launch allowlist, retention, recovery, transaction, and verification blockers.
   - Proof: Requirements, design, data contracts, and canonical test commands have no unresolved slice blockers.
 
@@ -109,3 +109,11 @@ Deferred after this slice:
 - Remaining: Implement the slice on the approved contracts; complete the release-gate final privacy or legal review and any governed registry additions.
 - Failed checks: None; implementation has not started.
 - Spec updates: Moved requirements from `Draft` to `Approved`, cleared the product, technical-design, and privacy blockers, replaced `Blocked Decisions` with a `Release Gate`, and moved tasks from `Blocked` to `Not Started`.
+
+### 2026-07-28 - Slice implementation started; approval gate confirmed
+
+- Completed: Task 1. Readiness preflight confirmed the approval gate has no unresolved slice blockers: requirements `Approved` with no open questions, design decisions and the merge-record and unlink-policy data contract recorded, `Blocked Decisions: None`, and `validate_spec.py` passing. Foundation slices 01/02/03 have their implementation tasks complete, so the GitHub identity, passwordless magic-link proof, personal workspace, project, worker-pairing, and repository-connection surfaces this slice builds on exist in the baseline. Created branch `slice/04-github-identity-linking` from up-to-date `main`.
+- Remaining: Tasks 2-9 (verified-primary retrieval, canonicalization, candidate resolution and preflight, two-method proof and confirmation, atomic consolidation, worker-credential revocation, minimal merge record, disclosure and audit) and the verification gate.
+- Failed checks: None. Environment ready: Elixir 1.20.2/OTP 29, Postgres 17 healthy on 5433.
+- Spec updates: Status `Not Started` to `In Progress`; checked Task 1.
+- Release gate: Unchanged — final legal confirmation of lawful basis and exact retention plus the privacy review, and governed provider-registry additions beyond the Gmail launch entry, remain release-gate items and do not block implementation or local verification.
