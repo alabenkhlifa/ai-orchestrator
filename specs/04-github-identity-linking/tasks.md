@@ -48,7 +48,7 @@ Deferred after this slice:
   - Purpose: Apply ASCII eligibility and only approved exact-provider transformations.
   - Proof: Unit and property tests cover whitespace, domain case, local-part case, dot and tag rules, custom domains, Unicode, IDNA, ambiguity, and registry versions.
 
-- [ ] Implement identity candidate resolution and complete merge preflight.
+- [x] Implement identity candidate resolution and complete merge preflight.
   - Purpose: Detect one valid candidate without account disclosure and identify every project-name or repository conflict before mutation.
   - Proof: Tests cover zero, one, multiple, retry, concurrency, name conflict, repository conflict, candidate secrecy, and unchanged state after abort.
 
@@ -131,4 +131,12 @@ Deferred after this slice:
 - Engineering mechanism: the registry lives in code as the single source of truth so a change is a reviewed code change with a version bump, matching the governance decision; no runtime config indirection was added.
 - Dependency: added `{:stream_data, "~> 1.1", only: [:dev, :test]}` (design-approved verification tool) for the normalization/eligibility property tests.
 - Proof: `mix test test/sdd_orchestrator/identity_linking/` — 24 passed (5 properties, 19 unit), exit 0. Covers whitespace, domain case, local-part case, Gmail dot/tag/case, custom-domain fail-closed, Unicode, IDNA, the ambiguity collision mechanism, and registry versions. `mix compile --warnings-as-errors` clean.
+- Failed checks: None.
+
+### 2026-07-28 - Task 4: candidate resolution and non-mutating merge preflight
+
+- Completed: Task 4. Added the transient `IdentityMergeAttempt` schema + migration (binds absorbed/surviving accounts and the candidate hosted identity by id, records the fresh GitHub proof, expires in 15 minutes, carries no candidate email/project/secret, and a partial unique index enforces one live attempt per absorbed account). Added the `IdentityLinking` context: `find_candidate/2` matches a GitHub email against passwordless email identities using the Task 3 comparison key (same-domain SQL pre-filter via `split_part`, then exact key confirmation in Elixir), returning `:none` (no match / ineligible), `{:ok, bundle}` (exactly one), or `:ambiguous` (multiple hosted identities, fail closed); `start_merge_attempt/2` opens/reuses the transient attempt only for a single candidate and returns account-neutral `{:ok, :none}` for no-match and ambiguity; `preflight/1` reports case-insensitive project-name and canonical repository collisions across both workspaces without mutation; plus `get_live_attempt/1` and `abort_merge_attempt/1`. Added the `Preflight` result struct with `clear?/1`.
+- Security: candidate detection never exposes the matched account (no email/name/project on the record; Inspect redacts), ambiguity fails closed with no disclosure, and preflight and abort mutate no identity, workspace, project, or connection.
+- Engineering mechanism: `IdentityMergeAttempt` is defined once as the whole slice's transient orchestration record (proof/confirmation/commit columns present, nullable); Task 4 only writes the detection and reuse paths, Tasks 5-6 write the proof and commit paths.
+- Proof: `mix test test/sdd_orchestrator/identity_linking/` — 42 passed (5 properties, 37 tests), exit 0. Covers zero/one/multiple(ambiguous), ineligible, self-exclusion, candidate secrecy, idempotent reuse, concurrent convergence, account-neutral non-matches, name conflict, repository conflict, clear preflight, and non-mutation on preflight+abort. `mix compile --warnings-as-errors` clean; migration applied to the test DB.
 - Failed checks: None.
