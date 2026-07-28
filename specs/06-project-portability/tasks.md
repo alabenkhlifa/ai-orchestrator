@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, and 5 are complete. Task 11 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, and 11 are complete. Task 12 is the next implementation task.
 
 ## Active Slice
 
@@ -150,7 +150,7 @@ Release boundary:
   - Depends on: Task 10
   - Proof: Focused domain and adapter tests cover same identity in each accessible boundary, signed-out and unavailable boundaries, absence of global lookup or reporting, and later-visible collision handoff while both records remain separate and unchanged.
 
-- [ ] Task 11 - Implement display-name and canonical-repository conflict decisions.
+- [x] Task 11 - Implement display-name and canonical-repository conflict decisions.
   - Size: Standard
   - Purpose: Permit an explicit display-label change only when no stable-identity or repository conflict blocks restoration.
   - Owned surfaces: Case-insensitive display-name conflict detection, user-supplied replacement-name validation, repeat name conflicts, cancellation without mutation, canonical-repository conflict detection, repository conflict precedence, no relink, unlink, substitution, or automatic rename, and structured conflict results.
@@ -287,6 +287,13 @@ Release boundary:
 - None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 11 complete: restore conflict decisions
+
+- Completed: Added a non-persistent `RestoreDecision` value and a `RestoreConflicts` evaluator with explicit precedence for stable identity, canonical repository identity, and then case-insensitive display name. The evaluator preserves packaged project and repository identities, blocks repository collisions even when a replacement name is supplied, permits one explicit validated and available replacement only for a name-only conflict, rejects repeat name collisions and unrequested renames, and uses the destination's existing hosted or device uniqueness rules without relinking, unlinking, substituting, auto-renaming, or mutating records.
+- Remaining: Implement the hosted atomic restoration adapter in Task 12.
+- Failed checks: None. Final proof passes: 47 focused conflict, preflight, hosted constraint, and device constraint tests, `git diff --check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 11 complete; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 5 complete: visibility-bounded stable-identity preflight
 
