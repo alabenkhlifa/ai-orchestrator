@@ -29,12 +29,15 @@ defmodule SddOrchestrator.IdentityLinking do
   alias SddOrchestrator.Devices.LocalWorker
 
   alias SddOrchestrator.IdentityLinking.{
+    Audit,
     EmailMatch,
     IdentityMergeAttempt,
+    MergeNotificationEmail,
     Preflight,
     WorkspaceMergeRecord
   }
 
+  alias SddOrchestrator.Mailer
   alias SddOrchestrator.Projects.{Project, RepositoryConnection}
   alias SddOrchestrator.Repo
 
@@ -136,9 +139,18 @@ defmodule SddOrchestrator.IdentityLinking do
   @spec start_merge_attempt(Account.t(), term()) :: {:ok, IdentityMergeAttempt.t()} | {:ok, :none}
   def start_merge_attempt(%Account{} = absorbed, github_email) do
     case find_candidate(github_email, absorbed.id) do
-      {:ok, bundle} -> {:ok, upsert_attempt(absorbed, bundle)}
-      :none -> {:ok, :none}
-      :ambiguous -> {:ok, :none}
+      {:ok, bundle} ->
+        attempt = upsert_attempt(absorbed, bundle)
+        Audit.event(:candidate_detected, %{attempt_id: attempt.id})
+        {:ok, attempt}
+
+      :none ->
+        Audit.event(:candidate_skipped, %{outcome: :none})
+        {:ok, :none}
+
+      :ambiguous ->
+        Audit.event(:candidate_skipped, %{outcome: :ambiguous})
+        {:ok, :none}
     end
   end
 
@@ -255,6 +267,7 @@ defmodule SddOrchestrator.IdentityLinking do
           })
           |> Repo.update()
 
+        Audit.event(:proof_requested, %{attempt_id: attempt.id})
         {:ok, %{challenge_id: challenge_id, raw_token: raw_token, delivery_email: email}}
     end
   end
@@ -279,14 +292,24 @@ defmodule SddOrchestrator.IdentityLinking do
       end
     end)
     |> case do
-      {:ok, attempt} -> {:ok, attempt}
-      {:error, _reason} -> {:error, :invalid_or_expired}
+      {:ok, attempt} ->
+        Audit.event(:proof_succeeded, %{attempt_id: attempt.id})
+        {:ok, attempt}
+
+      {:error, _reason} ->
+        Audit.event(:proof_failed, %{outcome: :invalid_or_expired})
+        {:error, :invalid_or_expired}
     end
   rescue
-    _error -> {:error, :invalid_or_expired}
+    _error ->
+      Audit.event(:proof_failed, %{outcome: :invalid_or_expired})
+      {:error, :invalid_or_expired}
   end
 
-  def submit_passwordless_proof(_challenge_id, _raw_token), do: {:error, :invalid_or_expired}
+  def submit_passwordless_proof(_challenge_id, _raw_token) do
+    Audit.event(:proof_failed, %{outcome: :invalid_or_expired})
+    {:error, :invalid_or_expired}
+  end
 
   @doc """
   Records explicit user confirmation, the final gate before commit.
@@ -304,10 +327,13 @@ defmodule SddOrchestrator.IdentityLinking do
 
       Preflight.conflicted?(preflight(attempt)) ->
         {:ok, _} = attempt |> IdentityMergeAttempt.conflict_changeset() |> Repo.update()
+        Audit.event(:merge_conflict, %{attempt_id: attempt.id})
         {:error, :conflict}
 
       true ->
-        attempt |> IdentityMergeAttempt.confirm_changeset() |> Repo.update()
+        {:ok, confirmed} = attempt |> IdentityMergeAttempt.confirm_changeset() |> Repo.update()
+        Audit.event(:merge_confirmed, %{attempt_id: confirmed.id})
+        {:ok, confirmed}
     end
   end
 
@@ -404,13 +430,29 @@ defmodule SddOrchestrator.IdentityLinking do
   def commit_merge(%IdentityMergeAttempt{id: id}) do
     Repo.transaction(fn -> do_commit(id) end)
     |> case do
-      {:ok, record} -> {:ok, record}
-      {:error, reason} -> {:error, reason}
+      {:ok, {:committed, record}} ->
+        Audit.event(:merge_committed, %{
+          merge_event_id: record.merge_event_id,
+          source_workspace_id: record.source_workspace_id,
+          surviving_workspace_id: record.surviving_workspace_id
+        })
+
+        notify_merge(record)
+        {:ok, record}
+
+      {:ok, {:idempotent, record}} ->
+        {:ok, record}
+
+      {:error, reason} ->
+        Audit.event(:merge_failed, %{reason: reason})
+        {:error, reason}
     end
   rescue
     # A concurrent conflicting insert trips a workspace uniqueness constraint; the
     # transaction is already rolled back, so no partial state remains.
-    Ecto.ConstraintError -> {:error, :conflict}
+    Ecto.ConstraintError ->
+      Audit.event(:merge_failed, %{reason: :conflict})
+      {:error, :conflict}
   end
 
   defp do_commit(id) do
@@ -419,7 +461,7 @@ defmodule SddOrchestrator.IdentityLinking do
         # The transient attempt is gone: either it never existed, or the merge
         # already committed and left only its minimal record (idempotent retry).
         case Repo.get(WorkspaceMergeRecord, id) do
-          %WorkspaceMergeRecord{} = record -> record
+          %WorkspaceMergeRecord{} = record -> {:idempotent, record}
           nil -> Repo.rollback(:not_found)
         end
 
@@ -429,8 +471,35 @@ defmodule SddOrchestrator.IdentityLinking do
         cond do
           not proven_and_confirmed?(attempt) -> Repo.rollback(:not_eligible)
           Preflight.conflicted?(preflight(attempt)) -> Repo.rollback(:conflict)
-          true -> consolidate(attempt)
+          true -> {:committed, consolidate(attempt)}
         end
+    end
+  end
+
+  # Notify the surviving identity of the linking, after commit. A delivery failure
+  # never affects the already-committed merge.
+  defp notify_merge(%WorkspaceMergeRecord{} = record) do
+    case surviving_email(record.surviving_workspace_id) do
+      nil -> :ok
+      email -> email |> MergeNotificationEmail.build() |> Mailer.deliver()
+    end
+  rescue
+    _error -> :ok
+  end
+
+  defp surviving_email(surviving_workspace_id) do
+    with %PersonalWorkspace{account_id: account_id} <-
+           Repo.get(PersonalWorkspace, surviving_workspace_id),
+         %HostedIdentity{id: hosted_identity_id} <-
+           Repo.get_by(HostedIdentity, account_id: account_id),
+         %ExternalIdentity{display_identifier: email} <-
+           Repo.get_by(ExternalIdentity,
+             hosted_identity_id: hosted_identity_id,
+             provider: "email"
+           ) do
+      email
+    else
+      _ -> nil
     end
   end
 
