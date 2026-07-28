@@ -6,6 +6,10 @@ defmodule SddOrchestrator.Devices.DeviceProject do
   and its case-insensitive comparison key, the non-reversible repository
   fingerprint, the connection status, and the authoritative device storage mode.
   It never holds a local path, remote URL, filename, Git history, or source.
+
+  `idempotency_key` is the transient onboarding attempt's key. It makes device
+  registration idempotent: a committed retry or a lost control-plane
+  acknowledgement resolves to the already-created project instead of a duplicate.
   """
 
   @enforce_keys [:id, :name, :name_key, :repository_fingerprint, :status]
@@ -16,6 +20,7 @@ defmodule SddOrchestrator.Devices.DeviceProject do
     :repository_fingerprint,
     :status,
     :inserted_at,
+    :idempotency_key,
     storage_mode: "device"
   ]
 

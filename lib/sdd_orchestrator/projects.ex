@@ -14,6 +14,8 @@ defmodule SddOrchestrator.Projects do
 
   alias Ecto.Multi
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
+  alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.DeviceProject
   alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt, RepositoryConnection}
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.{DeviceStorageReceipt, Hosted}
@@ -362,6 +364,71 @@ defmodule SddOrchestrator.Projects do
       attempt.storage_mode == "device" -> {:error, :device_registration_not_available}
       true -> do_register(workspace, attempt, opts, 0)
     end
+  end
+
+  @doc """
+  Registers an on-device project for a confirmed device-origin attempt.
+
+  The device store owns the worker transaction that commits the project, its
+  repository connection (the canonical fingerprint), and the device storage mode
+  atomically under the operating-system boundary — nothing device-authoritative is
+  written to hosted PostgreSQL. The commit is idempotent by the attempt's
+  idempotency key, so a committed retry or a lost control-plane acknowledgement
+  resolves to the already-created project without a duplicate. After the local
+  commit, the transient control-plane attempt is acknowledged by consuming it; a
+  failed acknowledgement is reconciled on the next attempt through the same
+  idempotency key rather than by rolling back committed device data.
+
+  Requires an explicitly selected, available device mode; returns
+  `:storage_mode_required` or `:storage_not_ready` otherwise so a project is never
+  created without a usable storage boundary.
+  """
+  @spec register_device_project(DeviceWorkspace.t(), ProjectOnboardingAttempt.t(), keyword()) ::
+          {:ok, DeviceProject.t()}
+          | {:error,
+             :repository_required
+             | :storage_mode_required
+             | :storage_not_ready
+             | :name_taken
+             | {:repository_already_linked, DeviceProject.t()}
+             | term()}
+  def register_device_project(
+        %DeviceWorkspace{} = workspace,
+        %ProjectOnboardingAttempt{} = attempt,
+        opts \\ []
+      ) do
+    cond do
+      is_nil(attempt.selected_repository) -> {:error, :repository_required}
+      attempt.storage_mode != "device" -> {:error, :storage_mode_required}
+      not ProjectStorage.available?(:device, attempt) -> {:error, :storage_not_ready}
+      true -> do_register_device(workspace, attempt, opts)
+    end
+  end
+
+  defp do_register_device(workspace, attempt, opts) do
+    repo = attempt.selected_repository
+
+    attrs = %{
+      name: Keyword.get(opts, :name) || repo["name"] || "project",
+      repository_fingerprint: repo["fingerprint"],
+      status: "connected",
+      idempotency_key: attempt.idempotency_key
+    }
+
+    case Devices.register_project(attrs, Keyword.take(opts, [:allocate_suffix?])) do
+      {:ok, %DeviceProject{} = project} ->
+        # Acknowledge the transient control-plane attempt. If this fails, the
+        # committed device project stays reconcilable by its idempotency key.
+        _ = acknowledge_device_attempt(workspace, attempt)
+        {:ok, project}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp acknowledge_device_attempt(workspace, attempt) do
+    update_device_attempt(workspace, attempt.id, &ProjectOnboardingAttempt.consume_changeset/1)
   end
 
   @doc """

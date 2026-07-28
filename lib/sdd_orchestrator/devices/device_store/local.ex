@@ -143,26 +143,47 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     name = get(attrs, :name)
     fingerprint = get(attrs, :repository_fingerprint)
     status = get(attrs, :status) || "connected"
+    idempotency_key = get(attrs, :idempotency_key)
     projects = all_projects(table)
 
-    with {:ok, valid_name} <- validate_name(name),
-         :ok <- validate_fingerprint(fingerprint),
-         :ok <- check_repository_unique(projects, fingerprint),
-         {:ok, final_name} <-
-           resolve_name(projects, valid_name, Keyword.get(opts, :allocate_suffix?, false)) do
-      project = %DeviceProject{
-        id: Ecto.UUID.generate(),
-        name: final_name,
-        name_key: Project.name_key(final_name),
-        repository_fingerprint: fingerprint,
-        status: status,
-        storage_mode: "device",
-        inserted_at: now()
-      }
+    # Idempotent commit and lost-acknowledgement reconciliation: a registration
+    # carrying an already-committed attempt key resolves to the same project
+    # rather than creating a duplicate. Checked before repository uniqueness so a
+    # retry of the same registration is never mistaken for a duplicate link.
+    case find_by_key(projects, idempotency_key) do
+      {:ok, existing} ->
+        {:ok, existing}
 
-      :ok = :dets.insert(table, {{:project, project.id}, project})
-      :ok = :dets.sync(table)
-      {:ok, project}
+      :error ->
+        with {:ok, valid_name} <- validate_name(name),
+             :ok <- validate_fingerprint(fingerprint),
+             :ok <- check_repository_unique(projects, fingerprint),
+             {:ok, final_name} <-
+               resolve_name(projects, valid_name, Keyword.get(opts, :allocate_suffix?, false)) do
+          project = %DeviceProject{
+            id: Ecto.UUID.generate(),
+            name: final_name,
+            name_key: Project.name_key(final_name),
+            repository_fingerprint: fingerprint,
+            status: status,
+            storage_mode: "device",
+            idempotency_key: idempotency_key,
+            inserted_at: now()
+          }
+
+          :ok = :dets.insert(table, {{:project, project.id}, project})
+          :ok = :dets.sync(table)
+          {:ok, project}
+        end
+    end
+  end
+
+  defp find_by_key(_projects, nil), do: :error
+
+  defp find_by_key(projects, key) do
+    case Enum.find(projects, &(&1.idempotency_key == key)) do
+      nil -> :error
+      project -> {:ok, project}
     end
   end
 

@@ -284,36 +284,47 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   end
 
   defp create_project(socket, name) do
+    attempt = socket.assigns.onboarding_attempt
+
     cond do
       socket.assigns.disclosure_required and not socket.assigns.disclosure_confirmed ->
         {:noreply,
          assign(socket, :name_error, "Confirm the data notice above before you continue.")}
 
-      is_nil(socket.assigns.selected) ->
-        {:noreply, assign(socket, step: :selection)}
+      is_nil(attempt) or is_nil(socket.assigns.selected) ->
+        # Reached without the storage handoff: restart the flow.
+        {:noreply, push_navigate(socket, to: ~p"/onboarding/local")}
 
       true ->
-        attrs = %{
-          name: name,
-          repository_fingerprint: socket.assigns.selected.fingerprint,
-          status: "connected"
-        }
+        register_device_project(socket, attempt, name)
+    end
+  end
 
-        case Devices.register_project(attrs) do
-          {:ok, project} ->
-            {:noreply, push_navigate(socket, to: ~p"/local/projects/#{project.id}")}
+  # Commits the on-device project through the attempt-integrated device
+  # registration: the device store owns the atomic worker transaction, and the
+  # transient control-plane attempt is acknowledged. A committed retry resolves to
+  # the same project by the attempt's idempotency key.
+  defp register_device_project(socket, attempt, name) do
+    opts = [name: name, allocate_suffix?: false]
 
-          {:error, {:repository_already_linked, existing}} ->
-            {:noreply, assign(socket, :duplicate, existing)}
+    case Projects.register_device_project(socket.assigns.workspace, attempt, opts) do
+      {:ok, project} ->
+        {:noreply, push_navigate(socket, to: ~p"/local/projects/#{project.id}")}
 
-          {:error, :name_taken} ->
-            {:noreply,
-             assign(socket, :name_error, "A project already uses this name. Choose another.")}
+      {:error, {:repository_already_linked, existing}} ->
+        {:noreply, assign(socket, :duplicate, existing)}
 
-          {:error, _reason} ->
-            {:noreply,
-             assign(socket, :name_error, "Enter a project name (letters, numbers, and spaces).")}
-        end
+      {:error, :name_taken} ->
+        {:noreply,
+         assign(socket, :name_error, "A project already uses this name. Choose another.")}
+
+      {:error, reason} when reason in [:storage_not_ready, :storage_mode_required] ->
+        # The device readiness lapsed: send the user back to re-establish it.
+        {:noreply, push_navigate(socket, to: ~p"/onboarding/local")}
+
+      {:error, _reason} ->
+        {:noreply,
+         assign(socket, :name_error, "Enter a project name (letters, numbers, and spaces).")}
     end
   end
 

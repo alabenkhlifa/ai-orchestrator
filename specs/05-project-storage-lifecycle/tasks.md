@@ -75,7 +75,7 @@ Release boundary:
   - Depends on: Task 2
   - Proof: Service, LiveView, and browser tests cover both repository-source adapters, approved copy without a collaboration promise, visible unavailable modes, stable origin and explicit target ownership, device setup and hosted sign-in, preserved state, success, cancellation, failure, expiry, mismatch, replay, cross-workspace denial, minimized proof persistence, refreshed availability after success, account-neutral unsuccessful sign-in, and no implicit selection or project creation.
 
-- [ ] Task 4 - Integrate storage state with atomic project creation.
+- [x] Task 4 - Integrate storage state with atomic project creation.
   - Purpose: Prevent projects with a missing, ambiguous, unavailable, or partially initialized storage boundary.
   - Owned surfaces: Explicit-selection validation, stable destination project ID, workspace-kind and mode revalidation, `Project`, hosted `Ecto.Multi`, device-local worker transaction, repository-connection transaction participation, hosted-root insertion or device-receipt consumption, destination acknowledgement, adapter preparation and abort or reconciliation, onboarding-attempt consumption, unique idempotency constraints, committed retry, and `capability:project-storage-authority` readiness write-back.
   - Owns: AC-04, AC-07, AC-08, entity:Project
@@ -116,6 +116,13 @@ Release boundary:
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Task 4 complete: attempt-integrated atomic registration for both destinations
+
+- Hosted destination (AC-04, AC-07, AC-08): already delivered — `Projects.register_project/3` commits the project, its canonical repository connection, the hosted storage root, and attempt consumption in one `Ecto.Multi`, rolls back atomically, and returns the same project for a committed retry (proven by `project_registration_test`).
+- Device destination (new): added `Projects.register_device_project/3`. The device store owns the atomic worker transaction that commits the on-device project, its fingerprint connection, and the device mode under the operating-system boundary — nothing device-authoritative is written to hosted PostgreSQL. The commit is idempotent by the attempt's key (`DeviceProject.idempotency_key`, deduped in `DeviceStore.Local` before the repository-uniqueness check), so a committed retry returns the same project and a lost control-plane acknowledgement is reconciled without a duplicate. After the local commit the transient control-plane attempt is acknowledged by consumption. Creation is blocked without an explicit, available device mode (`:storage_mode_required` / `:storage_not_ready`). The accountless local flow's review/create step now registers through this path.
+- Passing proofs: `MIX_ENV=test mix test test/sdd_orchestrator/projects/device_registration_test.exs` (6: AC-07 commit + acknowledgement + no hosted write, AC-04/AC-08 explicit-selection and readiness blocking, committed-retry idempotency, lost-acknowledgement reconciliation, repository-already-linked); full `MIX_ENV=test mix test` (507 passed, 1 excluded live test); `mix format --check-formatted`; `mix credo --strict`; `mix dialyzer`; and `mix compile --warnings-as-errors`.
+- Follow-on (source-owned cross-source combinations, per the `Shared Contract, Source-Owned Integration` decision): registering an on-device project from the signed-in GitHub flow, and a hosted project from the accountless local flow (the local hosted-continue remains a placeholder and needs a local-repository hosted connection shape). Both build on the two registration mechanisms this task delivers and are owned by `specs/01` and `specs/02` integration.
 
 ### 2026-07-28 - Task 3 complete: local flow routed through the shared step and browser-proven
 
