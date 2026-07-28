@@ -32,6 +32,7 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - Local worker discovery, installation guidance, pairing, revocation, and reconnect states needed for onboarding.
 - Local Git repository selection and validation.
 - Minimum repository identity and connection metadata exchange.
+- Versioned portable local repository identity generation, exact matching, and source-side upgrade from the legacy workspace-scoped fingerprint.
 - First-connection privacy disclosure, confirmation, and accountless data-loss warning.
 - Project creation using the shared naming and repository-uniqueness rules.
 - Direct post-creation handoff to the new project's dashboard.
@@ -69,6 +70,10 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - A selected path must be validated as a Git repository before project creation.
 - During onboarding, local filesystem paths, remote URLs, filenames, Git history, and source code must not leave the device.
 - Only the minimum approved connection and compatibility metadata may leave the device during onboarding. The exact fields and internal identifiers are a technical-design decision constrained by this boundary.
+- A new local repository connection receives a versioned, non-reversible canonical identifier whose validation material permits a worker to prove the same repository after an explicit same-project backup transfer without carrying a path, credential, source workspace identity, or raw Git object ID.
+- Independently onboarding the same repository in another workspace must create a different canonical identifier. Cross-workspace equality becomes visible only when an existing identifier is deliberately transferred through the same-project portability workflow.
+- Within one workspace, duplicate detection must compare the selected repository against that workspace's existing canonical identifiers through worker validation before allocating a new identifier.
+- A legacy workspace-scoped repository fingerprint is not portable. Before a local project using that format can be backed up for replacement-environment reconnection, the user must explicitly locate the source repository and pass exact worker validation; a successful match atomically upgrades only the connection identity, while a mismatch or unavailable source leaves the project unchanged and backup blocked.
 - Before approved onboarding metadata leaves the device for the first time, the product must explain in plain language what remains local, what is shared, and that accountless project history cannot be recovered without a previous export. The user must confirm before the connection continues.
 - The disclosure must remain available after confirmation. It must not require confirmation on every connection unless the disclosed data handling changes.
 - Linking must not modify repository files, branches, remotes, hooks, or Git configuration.
@@ -79,6 +84,7 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - Reinstalling or replacing the worker under the same operating-system user must leave existing projects visible and require explicit pairing of the replacement before filesystem access resumes.
 - When a repository is moved or renamed, the project must remain visible and provide a `Locate repository` action.
 - `Locate repository` may restore the existing connection only when the selected repository matches its canonical identity. A non-matching repository must be treated as a different repository and must not replace the existing connection.
+- Matching a portable canonical identifier must not require the source workspace identity. Matching or upgrading an identifier must not modify repository files, branches, remotes, hooks, settings, or Git configuration.
 - Authentication later may combine on-device and authorized hosted projects in one catalog, but must not upload, reassign, duplicate, or change the storage mode of on-device projects.
 - Every project in a combined catalog must show its storage mode and current device availability.
 - Different stable projects must remain separate catalog entries even when they link to the same repository. A shared repository alone must not merge or deduplicate them.
@@ -91,32 +97,38 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 
 ## Acceptance Criteria
 
-- Given a user selects `Work without GitHub`, when onboarding starts, then no GitHub authentication is requested.
-- Given a candidate first usable release, when either primary action is selected, then its specified onboarding path is available through completion without a disabled, placeholder, or dead action.
-- Given no compatible worker is paired on macOS, when the local path continues, then the user receives graphical installation and pairing guidance without requiring terminal commands.
-- Given a valid pairing attempt, when pairing succeeds, then the worker is bound only to the current workspace with protected replaceable credentials.
-- Given a paired worker is available, when the user chooses a repository, then the operating system's folder picker opens and the product shows the selected repository name and location without requiring manual path entry.
-- Given a path is not a Git repository, when validation runs, then project creation is blocked and no source content is uploaded.
-- Given approved onboarding metadata would leave the device for the first time, when the connection is presented, then the user sees what remains local, what is shared, and the accountless data-loss warning before deciding whether to continue.
-- Given the user does not confirm the first-connection disclosure, when onboarding stops, then no repository or device metadata is sent.
-- Given the user previously confirmed the disclosure and the disclosed data handling has not changed, when a later connection occurs, then confirmation is not required again and the disclosure remains accessible.
-- Given a valid local Git repository, when the user confirms the connection, then the worker returns only minimum approved connection and compatibility metadata while local paths, remote URLs, filenames, Git history, and source code remain on the device.
-- Given an unlinked local repository and an available project name, when creation succeeds, then one project and one repository connection are created atomically.
-- Given local project creation commits successfully, when onboarding completes, then the new project's dashboard opens and shows the linked repository, selected storage mode, and current connection status.
-- Given the same canonical local repository is already linked in the workspace, when creation is attempted again, then it is blocked without creating a duplicate.
-- Given linking completes, when local repository state is inspected, then files, branches, remotes, hooks, and Git configuration are unchanged.
-- Given the worker later becomes unavailable, when the catalog is shown, then the project remains visible with an unavailable or authorization-required connection state.
-- Given the worker is reinstalled or replaced under the same operating-system user, when the user returns, then existing projects remain visible and filesystem access resumes only after the replacement worker is explicitly paired.
-- Given a linked repository is moved or renamed, when the project is opened, then it remains visible with a `Locate repository` action.
-- Given `Locate repository` is used, when the selected repository matches the existing canonical identity, then the connection is restored; when it does not match, then the existing connection is preserved and the selection is treated as a different repository.
-- Given an accountless device user later authenticates, when the combined catalog is shown, then on-device projects remain local and identify their storage and availability state.
-- Given distinct on-device and hosted projects link to the same repository, when the combined catalog is shown, then both remain separate entries with their own storage mode and device availability.
-- Given one stable project has been explicitly migrated or resynchronized, when the combined catalog is shown, then it appears once with its authoritative storage mode.
-- Given catalog entries refer to the same repository, when the catalog is composed, then no project merge, identity link, upload, synchronization, or storage-mode change occurs automatically.
-- Given the authenticated user signs out, when `Work without GitHub` is opened under the same operating-system boundary, then on-device projects remain available.
-- Given accountless device-workspace data is lost without a previous export, when the repository is connected again, then the product warns that prior project history cannot be restored and starts new project history rather than claiming recovery.
-- Given accountless device-workspace data is lost and a previous export exists, when the user chooses to recover the project, then recovery continues through the import workflow defined by `specs/06-project-portability/`.
-- Given pairing or repository validation fails, when the operation ends, then no partial project, connection, credential, or source upload remains.
+- [AC-01] Given a user selects `Work without GitHub`, when onboarding starts, then no GitHub authentication is requested.
+- [AC-02] Given a candidate first usable release, when either primary action is selected, then its specified onboarding path is available through completion without a disabled, placeholder, or dead action.
+- [AC-03] Given no compatible worker is paired on macOS, when the local path continues, then the user receives graphical installation and pairing guidance without requiring terminal commands.
+- [AC-04] Given a valid pairing attempt, when pairing succeeds, then the worker is bound only to the current workspace with protected replaceable credentials.
+- [AC-05] Given a paired worker is available, when the user chooses a repository, then the operating system's folder picker opens and the product shows the selected repository name and location without requiring manual path entry.
+- [AC-06] Given a path is not a Git repository, when validation runs, then project creation is blocked and no source content is uploaded.
+- [AC-07] Given approved onboarding metadata would leave the device for the first time, when the connection is presented, then the user sees what remains local, what is shared, and the accountless data-loss warning before deciding whether to continue.
+- [AC-08] Given the user does not confirm the first-connection disclosure, when onboarding stops, then no repository or device metadata is sent.
+- [AC-09] Given the user previously confirmed the disclosure and the disclosed data handling has not changed, when a later connection occurs, then confirmation is not required again and the disclosure remains accessible.
+- [AC-10] Given a valid local Git repository, when the user confirms the connection, then the worker returns only minimum approved connection and compatibility metadata while local paths, remote URLs, filenames, Git history, and source code remain on the device.
+- [AC-11] Given a repository is linked for the first time, when worker validation succeeds, then the connection receives a versioned non-reversible canonical identifier that contains no path, credential, workspace identity, or raw Git object ID.
+- [AC-12] Given the same repository is selected again in one workspace, when duplicate validation runs against that workspace's existing canonical identifiers, then the existing connection is found without allocating a second identity.
+- [AC-13] Given the same repository is independently onboarded in another workspace without an existing identifier being supplied, when creation succeeds, then it receives a different canonical identifier and no global repository-equality signal is emitted.
+- [AC-14] Given an unlinked local repository and an available project name, when creation succeeds, then one project and one repository connection are created atomically.
+- [AC-15] Given local project creation commits successfully, when onboarding completes, then the new project's dashboard opens and shows the linked repository, selected storage mode, and current connection status.
+- [AC-16] Given the same canonical local repository is already linked in the workspace, when creation is attempted again, then it is blocked without creating a duplicate.
+- [AC-17] Given linking completes, when local repository state is inspected, then files, branches, remotes, hooks, and Git configuration are unchanged.
+- [AC-18] Given the worker later becomes unavailable, when the catalog is shown, then the project remains visible with an unavailable or authorization-required connection state.
+- [AC-19] Given the worker is reinstalled or replaced under the same operating-system user, when the user returns, then existing projects remain visible and filesystem access resumes only after the replacement worker is explicitly paired.
+- [AC-20] Given a linked repository is moved or renamed, when the project is opened, then it remains visible with a `Locate repository` action.
+- [AC-21] Given `Locate repository` is used, when the selected repository matches the existing canonical identity, then the connection is restored; when it does not match, then the existing connection is preserved and the selection is treated as a different repository.
+- [AC-22] Given a project still uses a legacy workspace-scoped fingerprint, when the user explicitly locates the source repository and exact worker validation succeeds, then the connection is atomically upgraded to the portable identifier without changing project identity or repository state; when validation fails or the source is unavailable, the legacy connection remains unchanged and cross-device backup remains blocked.
+- [AC-23] Given a portable canonical identifier arrives through the same-project restoration workflow, when a paired target worker validates a selected repository against it, then an exact match can reconnect without the source workspace identity and a mismatch cannot replace the packaged identity.
+- [AC-24] Given an accountless device user later authenticates, when the combined catalog is shown, then on-device projects remain local and identify their storage and availability state.
+- [AC-25] Given distinct on-device and hosted projects link to the same repository, when the combined catalog is shown, then both remain separate entries with their own storage mode and device availability.
+- [AC-26] Given one stable project has been explicitly migrated or resynchronized, when the combined catalog is shown, then it appears once with its authoritative storage mode.
+- [AC-27] Given catalog entries refer to the same repository, when the catalog is composed, then no project merge, identity link, upload, synchronization, or storage-mode change occurs automatically.
+- [AC-28] Given the authenticated user signs out, when `Work without GitHub` is opened under the same operating-system boundary, then on-device projects remain available.
+- [AC-29] Given accountless device-workspace data is lost without a previous export, when the repository is connected again, then the product warns that prior project history cannot be restored and starts new project history rather than claiming recovery.
+- [AC-30] Given accountless device-workspace data is lost and a previous export exists, when the user chooses to recover the project, then recovery continues through the import workflow defined by `specs/06-project-portability/`.
+- [AC-31] Given pairing fails, when the operation ends, then no partial connection, credential, or source upload remains.
+- [AC-32] Given repository validation fails, when the operation ends, then no partial project, connection, or source upload remains.
 
 ## Open Questions
 

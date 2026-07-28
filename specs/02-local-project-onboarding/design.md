@@ -34,6 +34,7 @@ Implement the local and GitHub paths as separate slices, but hold the first usab
 - `LocalWorker`: an installed endpoint paired to one workspace with replaceable credentials.
 - `PairingAttempt`: short-lived state binding one user-confirmed worker and workspace.
 - `RepositoryConnection`: stable local repository identity, approved display metadata, and availability state.
+- `PortableRepositoryIdentity`: a versioned, non-secret validation salt and non-reversible digest carried as the canonical local repository identifier.
 - `Project`: stable project identity and display name created for one repository.
 
 Required boundaries:
@@ -43,6 +44,7 @@ Required boundaries:
 - Repository validation and source access run on the worker.
 - Local paths, remote URLs, filenames, Git history, and source content do not leave the device during onboarding.
 - Metadata leaving the device is limited to the minimum connection and compatibility contract and covered by an approved data contract.
+- A portable repository identifier is linkable personal data wherever that exact identifier is deliberately copied. Independent onboarding generates a different identifier and creates no global repository-equality signal.
 - First-use confirmation precedes outbound onboarding metadata. The disclosure remains accessible and requires confirmation again only when the disclosed handling changes.
 - A repository connection does not contain enough information to reconstruct lost accountless project history; recovery requires a previous export.
 - Authentication changes catalog composition, not ownership or storage of accountless projects.
@@ -52,10 +54,10 @@ Required boundaries:
 
 - Worker discovery interface: report whether a compatible paired worker is available.
 - Pairing interface: create, expire, confirm, revoke, and replace a workspace-bound credential.
-- Local repository interface: let the user select a path, validate Git state, and return only approved canonical identity and status metadata.
+- Local repository interface: let the user select a path, validate Git state, generate a new portable canonical identity or match a supplied existing identity, and return only approved identity and status metadata.
 - Local selection interface: open the operating system's folder picker, then display the selected repository name and location without requiring manual path entry.
 - Privacy disclosure interface: before the first outbound onboarding exchange, explain what remains local, what is shared, and the accountless recovery limit; record confirmation without requiring it for every unchanged connection.
-- Recovery interface: pair a replacement worker explicitly and locate a moved repository without changing project identity or accepting a different repository as a replacement.
+- Recovery interface: pair a replacement worker explicitly, locate a moved repository by recomputing its supplied portable identity, and upgrade a legacy workspace-scoped identity only after an exact source-side match without changing project identity or accepting a different repository as a replacement.
 - Project-history recovery interface: direct users with a previous export to the import workflow and otherwise establish new history without presenting reconnection as recovery.
 - Project registration interface: enforce naming and repository uniqueness and commit project plus connection atomically.
 - Connection-status interface: distinguish connected, unavailable, authorization-required, and invalid states.
@@ -138,15 +140,21 @@ Required boundaries:
 
 ### Minimum Outbound Connection Contract
 
-- Choice: The only data that leaves the device during onboarding is a fixed `RepositoryConnectionContract`: a server-generated opaque `connection_id`, the owning `workspace_id` and `worker_id`, a non-reversible `repository_fingerprint`, coarse compatibility descriptors (`app_version`, `protocol_version`, `os_family`, `os_major`), and a `connection_status`. The user-chosen project name travels through project registration, not the worker payload.
+- Choice: The only data that leaves the device during onboarding is a fixed `RepositoryConnectionContract`: a server-generated opaque `connection_id`, the owning `workspace_id` and `worker_id`, a versioned non-reversible `repository_fingerprint` whose opaque value includes its non-secret validation salt and digest, coarse compatibility descriptors (`app_version`, `protocol_version`, `os_family`, `os_major`), and a `connection_status`. The user-chosen project name travels through project registration, not the worker payload.
 - Reason: These fields authorize, deduplicate, restore, and display a connection while keeping local paths, remote URLs, filenames, Git history, and source on the device.
 - Consequence: No hostname, OS username, serial number, MAC address, full path, remote URL, filename, or raw commit id is sent. The folder basename and path stay local; only the naming-rule project name the user confirms is stored server-side.
 
-### Canonical Repository Fingerprint
+### Versioned Portable Repository Identity
 
-- Choice: Compute repository identity on the worker as a salted, non-reversible hash of the repository's root-commit object id(s), independent of path, worktree, clone, and remote. An unborn (no-commit) repository uses its local init identity until the first commit, after which the commit-rooted fingerprint applies.
-- Reason: Root-commit history is stable across moves, renames, re-clones, and remote changes and distinguishes unrelated repositories, while a salted hash avoids sending the raw commit id off-device.
-- Consequence: `Locate repository` and duplicate detection compare fingerprints; a non-matching selection is treated as a different repository. Worktrees and clones of the same history intentionally resolve to the same repository.
+- Choice: Represent a local canonical repository identity as a versioned value containing a worker-generated random per-identity validation salt and an HMAC-SHA256 digest over the repository's sorted root-commit object IDs. Creating a new connection generates a fresh salt. Matching an existing connection or restored project supplies its full canonical identifier to the worker, which parses the salt, recomputes the digest locally, and compares in constant time. The source workspace identifier is not an input and does not enter the identifier. An unborn repository remains unsupported until it has a root commit.
+- Reason: A supplied salt lets an authorized target worker prove an exact repository match after same-project restoration without exposing raw commit IDs, local paths, credentials, or source workspace identity. A fresh salt for independent onboarding prevents the service from deriving global equality merely because separate workspaces chose the same repository.
+- Consequence: The same identifier is linkable personal data only across records or packages where it is deliberately copied. Independently onboarded connections for the same Git history have different identifiers. Within one workspace, duplicate detection asks the worker to compare the selected repository against the workspace's existing identifiers before allocating a new one. Worktrees and clones match when tested against the same supplied identifier; a non-matching selection remains a different repository.
+
+### Legacy Workspace-Scoped Identity Upgrade
+
+- Choice: Treat the existing bare workspace-HMAC fingerprint as legacy and non-portable. A local project using it cannot produce a replacement-environment-ready backup until the user explicitly selects the source repository through `Locate repository`. The worker first proves the legacy match with the original workspace scope, then generates the versioned portable identity; the device store atomically replaces only that project's canonical repository identity after rechecking workspace uniqueness. Failure, mismatch, unavailability, or a uniqueness race preserves the legacy identity and blocks portable backup. A legacy package identifier is not accepted as proof of cross-workspace repository authority.
+- Reason: The legacy digest does not carry the key needed by another workspace, so it cannot support exact target validation. Explicit source-side proof avoids weakening identity matching or adding source workspace identity to the package.
+- Consequence: Existing projects remain visible and usable before upgrade, but portability reports an actionable source-side upgrade requirement. The upgrade changes neither project identity nor repository content or configuration. The normal source workspace can still validate its legacy value until upgrade completes.
 
 ### macOS Worker Packaging
 
@@ -186,7 +194,7 @@ Required boundaries:
 
 ### Device-Metadata Data-Protection Contract
 
-- Choice: Treat the outbound connection contract and the pairing-credential hash as personal data. Purpose is limited to establishing and maintaining the repository connection and worker authorization for the created project. Lawful basis is contract necessity for connection metadata and legitimate interest for pairing security events. Access is scoped to the owning workspace, and the credential hash is reachable only by the pairing and verification path. Retention: connection and compatibility for the project lifetime, credential hash until revoked or replaced, pairing attempts expired within minutes, and security-audit events bounded. Deleting the project deletes its connection, compatibility, and fingerprint. Analytics stay aggregate and anonymous with no fingerprint, workspace, or worker identifiers.
+- Choice: Treat the outbound connection contract, portable repository identifier including its non-secret validation salt, legacy fingerprint, and pairing-credential hash as personal data. Purpose is limited to establishing, maintaining, deduplicating, upgrading, and explicitly restoring the repository connection for the created project. Lawful basis is contract necessity for connection metadata and legitimate interest for pairing security events. Access is scoped to the owning workspace except when the user deliberately transfers the same canonical identifier inside an encrypted same-project backup; the credential hash is reachable only by the pairing and verification path. Retention: connection identity and compatibility for the project lifetime, credential hash until revoked or replaced, pairing attempts expired within minutes, and security-audit events bounded. Deleting the project deletes its connection, compatibility, and identifier. Analytics stay aggregate and anonymous with no repository identifier, workspace, or worker identifiers.
 - Reason: Applies data minimization, purpose limitation, storage limitation, and least privilege from the specification onward.
 - Consequence: Final retention durations, the hosting processor, region, and transfer safeguards (if hosted), and the required privacy review are release-gate items; the contract above is sufficient to build and locally verify.
 
@@ -198,6 +206,8 @@ Required boundaries:
 - Users may mistake repository reconnection for project-history recovery. Distinguish connection recovery, export import, and new project history.
 - Worker unavailability can make a project look deleted. Preserve the project and expose connection state separately.
 - Different paths, worktrees, clones, and remotes can defeat naive duplicate detection. Define canonical local repository identity before implementation.
+- Reusing one deterministic repository digest globally would create unnecessary cross-workspace linkability. Generate a fresh validation salt for independent onboarding and compare only identifiers already authorized to the current workspace or deliberately supplied through same-project restoration.
+- A failed or partial legacy upgrade could detach a project or weaken uniqueness. Require exact legacy proof and one atomic identity replacement guarded by the workspace's repository constraint.
 - A replacement worker or moved path could be accepted too broadly. Require explicit pairing and canonical-identity confirmation before access or reconnection.
 - macOS-only delivery limits the first slice's reach. Keep the worker contract portable and specify Windows and Linux in later slices.
 - Users may confuse worker location with later agent location. Use distinct labels and recovery messages.
