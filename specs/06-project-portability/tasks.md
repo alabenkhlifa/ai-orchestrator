@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product, package, cryptographic, privacy, and verification agreements remain approved. Task 8 is complete. Task 2 is the next implementation task and remains blocked until the project-specification store capability is delivered by its named provider task.
+The product, package, cryptographic, privacy, and verification agreements remain approved. Tasks 8 and 2 are complete. Task 9 is the next implementation task.
 
 ## Active Slice
 
@@ -86,9 +86,8 @@ Release boundary:
   - Depends on: Task 1
   - Proof: Focused codec tests prove byte-stable plaintext fixtures, exact envelope and section versions, deterministic ordering, round-trip serialization, malformed framing rejection, and bounded decompression without reading project persistence.
 
-- [ ] Task 2 - Implement the authorized current-project snapshot and allowlisted payload.
+- [x] Task 2 - Implement the authorized current-project snapshot and allowlisted payload.
   - Size: Standard
-  - Status: Blocked by the two cross-specification capabilities.
   - Purpose: Produce one deterministic, versioned package from authorized current project data while preserving the stable project identity.
   - Owned surfaces: Backup authorization at snapshot time, read-only `SpecificationStore.current_snapshot` capability consumer, explicit project ID and display-name mapping, provider and canonical-repository-identity mapping, current specification identity, title, and three-document mapping, excluded-association boundary, stable identity, snapshot consistency, and package-codec handoff without a second specification store.
   - Owns: AC-01
@@ -285,9 +284,16 @@ Release boundary:
 
 ## Blocked Decisions
 
-- No agreement decision remains unresolved. Task 8 is complete. Task 2 is blocked until `capability:project-specification-store` is delivered by `specs/09-project-specification-storage#Task 8`; the project-storage authority and governance capabilities are available, while Task 22 additionally requires `capability:project-specification-governance`.
+- None. Both project-storage and specification-store capabilities, including their governance boundaries, are available.
 
 ## Progress Log
+
+### 2026-07-28 - Task 2 complete: authorized allowlisted project snapshot
+
+- Completed: Added an authorized hosted and device `BackupSnapshot` mapper that reads current specification heads only through `SpecificationStore.current_snapshot/2`, preserves stable project and specification identities, maps only project id and name, provider and canonical repository identity, and each specification title and three current documents, then hands the versioned sections to the deterministic codec. Device snapshots create no hosted copy.
+- Remaining: Enforce the payload and secret-exclusion boundary in Task 9, then continue encryption and the dependency-ordered backup and restoration workflow.
+- Failed checks: None. Final proof passes: the focused hosted and device snapshot suite (4 tests), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 2 complete and removed its delivered capability blocker; requirements, design, ownership, dependencies, and capability edges are unchanged.
 
 ### 2026-07-28 - Task 8 complete: deterministic package codec
 
