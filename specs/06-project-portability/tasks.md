@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, and 27 are complete. Task 15 is the next implementation task.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, and 15 are complete. Task 16 is in progress.
 
 ## Active Slice
 
@@ -230,13 +230,14 @@ Release boundary:
   - Proof: Focused hosted reconnection, dual-authority, active-worker, binding, idempotency, replacement, disconnect, revocation, unavailability, malformed, legacy, mismatch, cross-workspace denial, forbidden-field, and unchanged-Git-fixture tests prove the exact minimal binding and preserve the previous binding on every failed replacement.
   - Delivered: Added `HostedLocalRepositoryReconnection` as the narrow consumer of the restored-project request, Task 21 shared worker proof, and Task 26 transactional binding foundation. It requires the owning personal workspace, explicitly selected device workspace, current active reachable worker credential, and exact portable match; creates, refreshes, or replaces only the minimized binding; exposes a worker-free derived connection state; supports scoped idempotent disconnect; removes the binding on revocation; and preserves the prior binding and repository on every invalid, unavailable, unauthorized, malformed, legacy, mismatch, repository, or worker failure.
 
-- [ ] Task 15 - Build restore conflict recovery and completion interface.
+- [x] Task 15 - Build restore conflict recovery and completion interface.
   - Size: Standard
   - Purpose: Present identity and repository hard blocks, name-only recovery, cancellation, and successful completion clearly.
   - Owned surfaces: Same-identity blocking state, name-only conflict form and inline validation, canonical-repository blocking state and precedence, cancellation, successful restored-project result, unconnected-repository explanation and explicit reconnection action, responsive accessibility behavior, and absence of cross-user sharing or create-copy claims.
   - Owns: AC-18
   - Depends on: Task 14, Task 20, Task 21, Task 27
   - Proof: Focused LiveView plus desktop and mobile browser scenarios cover same-identity rejection, valid and invalid replacement names, repeat conflict, repository conflict with no bypass, cancellation, completion, reconnection boundary copy, keyboard and focus behavior, and prohibited sharing or copy claims.
+  - Delivered: Extended the restore LiveView from validation into an explicit second-step conflict check and atomic restore, with transient passphrase re-entry; same-identity and repository hard blocks; repository-conflict precedence; name-only recovery with inline blank and repeat validation; terminal cancellation cleanup; stable-identity completion; and destination-specific GitHub or local-worker reconnection actions. Added focus events, narrow-mobile full-width controls, accessible status and alert states, and copy that excludes sharing, create-copy, alternate-repository, and relink claims.
 
 - [ ] Task 16 - Enforce transient package and attempt cleanup.
   - Size: Standard
@@ -320,6 +321,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 15 complete: restore conflict recovery and completion
+
+- Completed: Added the explicit restore confirmation step without retaining the validation passphrase; reran conflict decisions immediately before the atomic restore; blocked same project identity before repository and name checks; blocked an already-linked canonical repository without a bypass; retained only the encrypted attempt for name-only recovery; required a valid available replacement name and passphrase re-entry; and removed the attempt on cancellation or every terminal result. Successful completion preserves project and repository identity, creates no repository connection, and presents the normal destination-specific GitHub or exact local-worker reconnection action with clear non-mutation boundaries.
+- Proof: The focused restore validation and completion set passed 12 LiveView tests. The isolated end-to-end backup and restore scenario passed in desktop and mobile Chromium, including keyboard selection, visible conflict focus, narrow-mobile full-width actions, Axe accessibility checks, and prohibited sharing, create-copy, alternate-repository, and relink claims. `mix check` passed 709 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Implement Task 16's immediate terminal cleanup and 24-hour stranded encrypted-state recovery, then continue the provenance and rights lifecycle tasks. The final slice gate must resolve the current Dialyzer warnings before verification.
+- Failed checks: The first browser run reached a legacy local project whose identity correctly required source-side upgrade, so the reusable setup now completes that product handoff. The first mobile rerun used a nonexistent child selector for its width assertion, which was corrected to measure the restore screen. `mix dialyzer` reports 14 warnings in earlier Slice 06 restore and reconnection modules outside Task 15's owned files; the final slice gate remains open.
+- Spec updates: Marked Task 15 complete, recorded its delivered recovery and completion behavior, and made Task 16 the next executable task without changing requirements, design, ownership, dependencies, or capability edges.
 
 ### 2026-07-28 - Task 27 complete: hosted local-repository reconnection
 

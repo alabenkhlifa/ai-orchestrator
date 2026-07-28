@@ -67,6 +67,18 @@ window.addEventListener("phx:restore-form-error", () => {
   requestAnimationFrame(() => document.getElementById("restore-form-error")?.focus())
 })
 
+window.addEventListener("phx:restore-name-focus", () => {
+  requestAnimationFrame(() => document.getElementById("restore-project-name")?.focus())
+})
+
+window.addEventListener("phx:restore-conflict-focus", () => {
+  requestAnimationFrame(() => document.getElementById("restore-conflict")?.focus())
+})
+
+window.addEventListener("phx:restore-complete-focus", () => {
+  requestAnimationFrame(() => document.getElementById("restore-complete")?.focus())
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,

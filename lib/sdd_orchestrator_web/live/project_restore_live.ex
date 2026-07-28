@@ -12,7 +12,14 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Portability.RestoreIntake
+
+  alias SddOrchestrator.Portability.{
+    DeviceRestore,
+    HostedRestore,
+    RepositoryReconnection,
+    RestoreConflicts,
+    RestoreIntake
+  }
 
   @impl true
   def mount(_params, _session, socket) do
@@ -27,7 +34,13 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
      |> assign(:selected_destination, nil)
      |> assign(:attempt_id, nil)
      |> assign(:validating?, false)
+     |> assign(:restoring?, false)
      |> assign(:validation_result, nil)
+     |> assign(:stage, :intake)
+     |> assign(:conflict, nil)
+     |> assign(:name_value, "")
+     |> assign(:name_error, nil)
+     |> assign(:completion, nil)
      |> assign(:error, nil)
      |> assign(:return_path, return_path(socket))
      |> allow_upload(:package,
@@ -40,14 +53,24 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
 
   @impl true
   def handle_event("select_destination", %{"destination" => destination}, socket) do
-    if destination_available?(socket, destination) do
-      {:noreply,
-       socket
-       |> assign(:selected_destination, destination)
-       |> assign(:error, nil)
-       |> assign(:validation_result, nil)}
-    else
-      {:noreply, assign(socket, :error, authorization_message(destination))}
+    cond do
+      socket.assigns.attempt_id != nil ->
+        {:noreply,
+         assign(
+           socket,
+           :error,
+           "Cancel this restore before choosing a different destination."
+         )}
+
+      destination_available?(socket, destination) ->
+        {:noreply,
+         socket
+         |> assign(:selected_destination, destination)
+         |> assign(:error, nil)
+         |> reset_outcome()}
+
+      true ->
+        {:noreply, assign(socket, :error, authorization_message(destination))}
     end
   end
 
@@ -71,7 +94,10 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
        socket
        |> assign(:attempt_id, attempt.id)
        |> assign(:validating?, true)
+       |> assign(:stage, :intake)
        |> assign(:validation_result, nil)
+       |> assign(:conflict, nil)
+       |> assign(:completion, nil)
        |> assign(:error, nil)
        |> start_async(:validate_package, fn ->
          RestoreIntake.begin_validation(authority, attempt.id, passphrase)
@@ -93,6 +119,59 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
     {:noreply, form_error(socket, "Enter the recovery passphrase and choose a package.")}
   end
 
+  def handle_event("restore_project", %{"restore" => params}, socket) do
+    passphrase = Map.get(params, "passphrase", "")
+    replacement_name = replacement_name(socket, params)
+
+    with :ok <- validate_restore_submission(socket, passphrase),
+         {:ok, authority} <- selected_authority(socket),
+         attempt_id when is_binary(attempt_id) <- socket.assigns.attempt_id do
+      session_authorities = session_authorities(socket)
+
+      {:noreply,
+       socket
+       |> assign(:restoring?, true)
+       |> assign(:name_value, replacement_name || "")
+       |> assign(:name_error, nil)
+       |> assign(:error, nil)
+       |> start_async(:restore_project, fn ->
+         finish_restore(
+           authority,
+           attempt_id,
+           passphrase,
+           replacement_name,
+           session_authorities
+         )
+       end)}
+    else
+      {:error, message} when is_binary(message) ->
+        {:noreply, restore_form_error(socket, message)}
+
+      _reason ->
+        {:noreply,
+         restore_form_error(
+           socket,
+           "The restore attempt is no longer available. Choose the package and try again."
+         )}
+    end
+  end
+
+  def handle_event("restore_project", _params, socket) do
+    {:noreply, restore_form_error(socket, "Enter the recovery passphrase to continue.")}
+  end
+
+  def handle_event("start_over", _params, socket) do
+    cleanup_attempt(socket)
+
+    {:noreply,
+     socket
+     |> assign(:attempt_id, nil)
+     |> assign(:validating?, false)
+     |> assign(:restoring?, false)
+     |> assign(:error, nil)
+     |> reset_outcome()}
+  end
+
   def handle_event("cancel", _params, socket) do
     socket = cancel_async(socket, :validate_package)
 
@@ -110,6 +189,7 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
      socket
      |> assign(:validating?, false)
      |> assign(:validation_result, :compatible)
+     |> assign(:stage, :compatible)
      |> assign(:error, nil)}
   end
 
@@ -118,7 +198,7 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
      socket
      |> assign(:validating?, false)
      |> assign(:attempt_id, nil)
-     |> assign(:validation_result, nil)
+     |> reset_outcome()
      |> assign(:error, validation_message(reason))
      |> push_event("restore-form-error", %{})}
   end
@@ -130,9 +210,79 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
      socket
      |> assign(:validating?, false)
      |> assign(:attempt_id, nil)
-     |> assign(:validation_result, nil)
+     |> reset_outcome()
      |> assign(:error, "Validation stopped unexpectedly. Choose the package and try again.")
      |> push_event("restore-form-error", %{})}
+  end
+
+  def handle_async(:restore_project, {:ok, {:ok, completion}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:restoring?, false)
+     |> assign(:attempt_id, nil)
+     |> assign(:stage, :complete)
+     |> assign(:completion, completion)
+     |> assign(:conflict, nil)
+     |> assign(:name_error, nil)
+     |> assign(:error, nil)
+     |> push_event("restore-complete-focus", %{})}
+  end
+
+  def handle_async(:restore_project, {:ok, {:conflict, %{type: :name} = conflict}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:restoring?, false)
+     |> assign(:stage, :name_conflict)
+     |> assign(:conflict, conflict)
+     |> assign(:name_error, name_conflict_message(conflict))
+     |> assign(:error, nil)
+     |> push_event("restore-name-focus", %{})}
+  end
+
+  def handle_async(:restore_project, {:ok, {:conflict, conflict}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:restoring?, false)
+     |> assign(:attempt_id, nil)
+     |> assign(:stage, :blocked)
+     |> assign(:conflict, conflict)
+     |> assign(:name_error, nil)
+     |> assign(:error, nil)
+     |> push_event("restore-conflict-focus", %{})}
+  end
+
+  def handle_async(:restore_project, {:ok, {:name_error, message}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:restoring?, false)
+     |> assign(:stage, :name_conflict)
+     |> assign(:name_error, message)
+     |> assign(:error, nil)
+     |> push_event("restore-name-focus", %{})}
+  end
+
+  def handle_async(:restore_project, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:restoring?, false)
+     |> assign(:attempt_id, nil)
+     |> assign(:stage, :blocked)
+     |> assign(:conflict, %{type: :restore_failed, reason: reason})
+     |> assign(:error, nil)
+     |> push_event("restore-conflict-focus", %{})}
+  end
+
+  def handle_async(:restore_project, {:exit, _reason}, socket) do
+    cleanup_attempt(socket)
+
+    {:noreply,
+     socket
+     |> assign(:restoring?, false)
+     |> assign(:attempt_id, nil)
+     |> assign(:stage, :blocked)
+     |> assign(:conflict, %{type: :restore_failed, reason: :unexpected})
+     |> assign(:error, nil)
+     |> push_event("restore-conflict-focus", %{})}
   end
 
   defp validate_submission(socket, passphrase) do
@@ -157,6 +307,146 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
     end
   end
 
+  defp validate_restore_submission(socket, passphrase) do
+    cond do
+      socket.assigns.restoring? ->
+        {:error, "Restore is already in progress."}
+
+      socket.assigns.stage not in [:compatible, :name_conflict] ->
+        {:error, "Validate the package before restoring it."}
+
+      not is_binary(socket.assigns.attempt_id) ->
+        {:error, "The restore attempt is no longer available. Choose the package again."}
+
+      passphrase == "" ->
+        {:error, "Enter the recovery passphrase again. It isn't stored after validation."}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp replacement_name(%{assigns: %{stage: :name_conflict}}, params),
+    do: Map.get(params, "name", "")
+
+  defp replacement_name(_socket, _params), do: nil
+
+  defp finish_restore(
+         authority,
+         attempt_id,
+         passphrase,
+         replacement_name,
+         session_authorities
+       ) do
+    with {:ok, _attempt, package} <-
+           RestoreIntake.begin_validation(authority, attempt_id, passphrase) do
+      case RestoreConflicts.evaluate(
+             package,
+             authority,
+             session_authorities: session_authorities,
+             replacement_name: replacement_name
+           ) do
+        {:ok, decision} ->
+          commit_restore(authority, attempt_id, package, decision)
+
+        {:conflict, %{type: :name} = conflict} ->
+          {:conflict, conflict}
+
+        {:conflict, conflict} ->
+          RestoreIntake.fail(authority, attempt_id)
+          {:conflict, conflict}
+
+        {:error, {:invalid_name, changeset}} ->
+          {:name_error, name_changeset_message(changeset)}
+
+        {:error, reason} ->
+          RestoreIntake.fail(authority, attempt_id)
+          {:error, reason}
+      end
+    end
+  end
+
+  defp commit_restore(authority, attempt_id, package, decision) do
+    case restore_adapter(authority, package, decision, attempt_id) do
+      {:ok, %{project: project}} ->
+        reconnection_method =
+          case RepositoryReconnection.required(authority, project.id) do
+            {:ok, request} -> request.method
+            {:error, _reason} -> nil
+          end
+
+        RestoreIntake.complete(authority, attempt_id)
+
+        {:ok,
+         %{
+           project_id: project.id,
+           project_name: project.name,
+           destination: destination(authority),
+           repository_provider: decision.repository_provider,
+           reconnection_method: reconnection_method
+         }}
+
+      {:error, :name_conflict} ->
+        {:conflict,
+         %{
+           type: :name,
+           packaged_name: package.project.content["name"],
+           requested_name: decision.display_name
+         }}
+
+      {:error, :identity_conflict} ->
+        RestoreIntake.fail(authority, attempt_id)
+        {:conflict, %{type: :same_identity, project_id: decision.project_id, boundaries: []}}
+
+      {:error, :repository_conflict} ->
+        RestoreIntake.fail(authority, attempt_id)
+
+        {:conflict,
+         %{
+           type: :repository,
+           provider: decision.repository_provider,
+           repository_id: decision.repository_id
+         }}
+
+      {:error, reason} ->
+        RestoreIntake.fail(authority, attempt_id)
+        {:error, reason}
+    end
+  end
+
+  defp restore_adapter(authority, package, decision, attempt_id) do
+    opts = [idempotency_key: attempt_id]
+
+    case authority do
+      %SddOrchestrator.Accounts.PersonalWorkspace{} ->
+        HostedRestore.restore(authority, package, decision, opts)
+
+      %SddOrchestrator.Accounts.DeviceWorkspace{} ->
+        DeviceRestore.restore(authority, package, decision, opts)
+    end
+  end
+
+  defp destination(%SddOrchestrator.Accounts.PersonalWorkspace{}), do: "hosted"
+  defp destination(%SddOrchestrator.Accounts.DeviceWorkspace{}), do: "device"
+
+  defp session_authorities(socket) do
+    [socket.assigns.hosted_authority, socket.assigns.device_authority]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp name_changeset_message(%Ecto.Changeset{} = changeset) do
+    case changeset.errors[:name] do
+      {message, _opts} -> "Project name #{message}."
+      nil -> "Enter a valid project name."
+    end
+  end
+
+  defp name_conflict_message(%{requested_name: nil}),
+    do: "A project already uses the packaged name. Enter a different project name."
+
+  defp name_conflict_message(%{requested_name: _name}),
+    do: "That project name is already in use. Enter a different name or cancel."
+
   defp consume_package(socket) do
     case consume_uploaded_entries(socket, :package, &read_uploaded_package/2) do
       [encrypted_package] when is_binary(encrypted_package) -> {:ok, encrypted_package}
@@ -179,6 +469,22 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
     |> assign(:error, message)
     |> assign(:validation_result, nil)
     |> push_event("restore-form-error", %{})
+  end
+
+  defp restore_form_error(socket, message) do
+    socket
+    |> assign(:error, message)
+    |> push_event("restore-form-error", %{})
+  end
+
+  defp reset_outcome(socket) do
+    socket
+    |> assign(:validation_result, nil)
+    |> assign(:stage, :intake)
+    |> assign(:conflict, nil)
+    |> assign(:name_value, "")
+    |> assign(:name_error, nil)
+    |> assign(:completion, nil)
   end
 
   defp upload_error(socket) do
@@ -270,6 +576,53 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
   defp validation_message(_invalid_or_passphrase),
     do: "The package or recovery passphrase couldn't be verified. Check both and try again."
 
+  defp conflict_title(%{type: :same_identity}), do: "This project already exists"
+
+  defp conflict_title(%{type: :repository}),
+    do: "This repository is already linked to another project"
+
+  defp conflict_title(%{type: :restore_failed}), do: "The project couldn't be restored"
+  defp conflict_title(_conflict), do: "The restore is blocked"
+
+  defp conflict_message(%{type: :same_identity}) do
+    "Restoration preserves the packaged project identity, so the existing project can't be overwritten, merged, updated, or renamed by this backup. Nothing was changed."
+  end
+
+  defp conflict_message(%{type: :repository}) do
+    "Repository identity can't be changed to resolve this conflict. The existing link wasn't removed or replaced, and no project data was changed."
+  end
+
+  defp conflict_message(%{type: :restore_failed, reason: :destination_unavailable}) do
+    "The selected destination became unavailable before the atomic restore. Reconnect it and choose the package again. Nothing was changed."
+  end
+
+  defp conflict_message(%{type: :restore_failed}) do
+    "The atomic restore didn't complete. No partial project or repository connection was created."
+  end
+
+  defp conflict_message(_conflict), do: "Nothing was changed."
+
+  defp reconnection_method_label(:github_authorization), do: "GitHub authorization"
+  defp reconnection_method_label(:local_worker_validation), do: "local worker validation"
+  defp reconnection_method_label(_method), do: "repository authorization"
+
+  defp reconnection_action_label(:github_authorization), do: "Reconnect with GitHub"
+  defp reconnection_action_label(:local_worker_validation), do: "Locate the exact repository"
+  defp reconnection_action_label(_method), do: "Reconnect repository"
+
+  defp completion_path(%{
+         destination: "device",
+         repository_provider: "local",
+         project_id: project_id
+       }),
+       do: ~p"/onboarding/local?#{[locate: project_id]}"
+
+  defp completion_path(%{destination: "device", project_id: project_id}),
+    do: ~p"/local/projects/#{project_id}"
+
+  defp completion_path(%{destination: "hosted", project_id: project_id}),
+    do: ~p"/projects/#{project_id}"
+
   defp limit(name) do
     :sdd_orchestrator
     |> Application.fetch_env!(:portability_limits)
@@ -294,7 +647,11 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
           the restored project should be saved. Validation doesn't create or change a project.
         </p>
 
-        <section class="mt-6" aria-labelledby="restore-destination-heading">
+        <section
+          :if={@stage == :intake}
+          class="mt-6"
+          aria-labelledby="restore-destination-heading"
+        >
           <h2 id="restore-destination-heading" class="text-sm font-bold text-ink">
             Where should the restored project be saved?
           </h2>
@@ -369,7 +726,7 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
         </.notice>
 
         <.notice
-          :if={@validation_result == :compatible}
+          :if={@stage == :compatible && @validation_result == :compatible}
           variant="info"
           icon="circle-check"
           class="mt-5"
@@ -381,6 +738,7 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
         </.notice>
 
         <form
+          :if={@stage == :intake}
           id="project-restore-form"
           phx-change="upload_changed"
           phx-submit="validate_package"
@@ -431,6 +789,182 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
             </.button>
           </div>
         </form>
+
+        <form
+          :if={@stage == :compatible}
+          id="project-restore-confirm-form"
+          phx-submit="restore_project"
+          class="mt-6"
+          data-restore-confirmation
+        >
+          <h2 class="text-sm font-bold text-ink">Check conflicts and restore</h2>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-muted">
+            Re-enter the recovery passphrase to run the conflict checks and atomic restore. The
+            passphrase wasn't stored after validation.
+          </p>
+
+          <div class="mt-5">
+            <.text_field
+              id="restore-confirm-passphrase"
+              name="restore[passphrase]"
+              type="password"
+              label="Recovery passphrase"
+              value=""
+              hint="Used only for this restore operation."
+              autocomplete="current-password"
+              required
+            />
+          </div>
+
+          <div class="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+            <.button
+              type="button"
+              variant="secondary"
+              phx-click="cancel"
+              data-cancel-restore
+              class="w-full sm:w-auto"
+            >
+              Cancel
+            </.button>
+            <.button
+              type="submit"
+              disabled={@restoring?}
+              data-restore-project
+              class="w-full sm:w-auto"
+            >
+              <.lucide name="folder-open" class="size-4" />
+              {if @restoring?, do: "Restoring…", else: "Restore project"}
+            </.button>
+          </div>
+        </form>
+
+        <form
+          :if={@stage == :name_conflict}
+          id="restore-name-conflict-form"
+          phx-submit="restore_project"
+          class="mt-6"
+          data-name-conflict
+        >
+          <div id="restore-name-conflict" role="status" tabindex="-1">
+            <.notice variant="warn" icon="triangle-alert">
+              The packaged project name is already in use. The project identity and repository
+              identity can't change, but you can enter a different display name.
+            </.notice>
+          </div>
+
+          <div class="mt-5">
+            <.text_field
+              id="restore-project-name"
+              name="restore[name]"
+              label="Different project name"
+              value={@name_value}
+              error={@name_error}
+              autocomplete="off"
+              required
+            />
+          </div>
+
+          <div class="mt-5">
+            <.text_field
+              id="restore-conflict-passphrase"
+              name="restore[passphrase]"
+              type="password"
+              label="Recovery passphrase"
+              value=""
+              hint="Re-enter it because passphrases are never retained between operations."
+              autocomplete="current-password"
+              required
+            />
+          </div>
+
+          <div class="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+            <.button
+              type="button"
+              variant="secondary"
+              phx-click="cancel"
+              data-cancel-restore
+              class="w-full sm:w-auto"
+            >
+              Cancel
+            </.button>
+            <.button
+              type="submit"
+              disabled={@restoring?}
+              data-restore-with-name
+              class="w-full sm:w-auto"
+            >
+              <.lucide name="folder-open" class="size-4" />
+              {if @restoring?, do: "Restoring…", else: "Restore with this name"}
+            </.button>
+          </div>
+        </form>
+
+        <section
+          :if={@stage == :blocked}
+          id="restore-conflict"
+          tabindex="-1"
+          class="mt-6"
+          data-restore-blocked
+          data-conflict-type={@conflict.type}
+        >
+          <.notice variant="err" icon="circle-alert">
+            <p class="font-semibold">{conflict_title(@conflict)}</p>
+            <p class="mt-1">{conflict_message(@conflict)}</p>
+          </.notice>
+
+          <div class="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+            <.button
+              variant="secondary"
+              phx-click="cancel"
+              data-cancel-restore
+              class="w-full sm:w-auto"
+            >
+              Cancel
+            </.button>
+            <.button
+              phx-click="start_over"
+              data-choose-another-package
+              class="w-full sm:w-auto"
+            >
+              Choose another package
+            </.button>
+          </div>
+        </section>
+
+        <section
+          :if={@stage == :complete}
+          id="restore-complete"
+          tabindex="-1"
+          class="mt-6"
+          data-restore-complete
+        >
+          <.notice variant="info" icon="circle-check">
+            <p class="font-semibold">Project restored</p>
+            <p class="mt-1">
+              <span data-restored-project-name>{@completion.project_name}</span>
+              was restored with its existing project identity.
+            </p>
+          </.notice>
+
+          <div class="mt-4 rounded-lg border border-line bg-surface p-4" data-reconnection-boundary>
+            <p class="text-[13px] font-semibold text-ink">Reconnect the repository explicitly</p>
+            <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+              Repository source and authorization aren't included in the backup. Use the normal {reconnection_method_label(
+                @completion.reconnection_method
+              )} flow to reconnect the
+              exact repository. This action doesn't change repository files or Git configuration.
+            </p>
+            <.button
+              navigate={completion_path(@completion)}
+              data-reconnect-repository
+              data-reconnection-method={@completion.reconnection_method}
+              class="mt-3 w-full sm:w-auto"
+            >
+              <.lucide name="unplug" class="size-4" />
+              {reconnection_action_label(@completion.reconnection_method)}
+            </.button>
+          </div>
+        </section>
       </div>
     </.app_shell>
     """

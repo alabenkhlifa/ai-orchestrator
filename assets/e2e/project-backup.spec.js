@@ -29,6 +29,21 @@ async function pairStubWorker(page) {
   });
 }
 
+async function ensurePortableBackupReady(page) {
+  const upgrade = page.locator("[data-upgrade-repository-identity]");
+
+  if (await upgrade.isVisible().catch(() => false)) {
+    await upgrade.click();
+    await waitConnected(page);
+    await expect(page.locator("[data-step=selection][data-locate=true]")).toBeVisible();
+    await page.locator("[data-select-folder]").click();
+    await expect(page).toHaveURL(/\/local\/projects\/[^/]+$/);
+    await expect(page.locator('[data-screen="device-project-dashboard"]')).toBeVisible();
+  }
+
+  await expect(page.locator("[data-backup-readiness=backup_ready]")).toBeVisible();
+}
+
 // Creates the accountless project on the first run. Later desktop/mobile runs
 // select the same canonical repository and follow the existing-project action.
 async function openDeviceProject(page) {
@@ -63,6 +78,7 @@ async function openDeviceProject(page) {
     await duplicate.getByRole("link", { name: /^Open / }).click();
     await expect(page).toHaveURL(/\/local\/projects\/[^/]+$/);
     await expect(page.locator('[data-screen="device-project-dashboard"]')).toBeVisible();
+    await ensurePortableBackupReady(page);
     return;
   }
 
@@ -98,6 +114,7 @@ async function openDeviceProject(page) {
 
   await expect(page).toHaveURL(/\/local\/projects\/[^/]+$/);
   await expect(page.locator('[data-screen="device-project-dashboard"]')).toBeVisible();
+  await ensurePortableBackupReady(page);
 }
 
 test.describe("project backup", () => {
@@ -208,19 +225,41 @@ test.describe("project backup", () => {
       "No project has been created yet.",
     );
 
+    const confirmPassphrase = page.locator("#restore-confirm-passphrase");
+    await confirmPassphrase.focus();
+    await expect(confirmPassphrase).toBeFocused();
+    await confirmPassphrase.fill("browser recovery phrase");
+    await page.locator("[data-restore-project]").click();
+
+    const conflict = page.locator(
+      "[data-restore-blocked][data-conflict-type=same_identity]",
+    );
+    await expect(conflict).toBeVisible();
+    await expect(page.locator("#restore-conflict")).toBeFocused();
+    await expect(conflict).toContainText("This project already exists");
+    await expect(conflict).toContainText(
+      "can't be overwritten, merged, updated, or renamed",
+    );
+
+    const restoreBody = await page.locator("body").innerText();
+    expect(restoreBody).not.toMatch(/share (this|the) (project|backup)/i);
+    expect(restoreBody).not.toMatch(/create a copy/i);
+    expect(restoreBody).not.toMatch(/choose a different repository/i);
+    expect(restoreBody).not.toMatch(/relink/i);
+
     const restoreA11y = await new AxeBuilder({ page })
       .include('[data-screen="project-restore"]')
       .analyze();
     expect(restoreA11y.violations).toEqual([]);
 
     if (page.viewportSize().width < 640) {
-      const restoreFormWidth = await page
-        .locator("#project-restore-form")
+      const restoreScreenWidth = await page
+        .locator('[data-screen="project-restore"]')
         .evaluate((el) => el.clientWidth);
-      const validateWidth = await page
-        .locator("[data-validate-package]")
+      const chooseAnotherWidth = await page
+        .locator("[data-choose-another-package]")
         .evaluate((el) => el.getBoundingClientRect().width);
-      expect(validateWidth).toBeGreaterThan(restoreFormWidth * 0.9);
+      expect(chooseAnotherWidth).toBeGreaterThan(restoreScreenWidth * 0.9);
     }
 
     await page.locator("main [data-cancel-restore]").click();
