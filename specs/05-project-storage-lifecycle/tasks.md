@@ -4,6 +4,8 @@
 
 In Progress
 
+Tasks 1–6 are implemented and locally verified. The full local verification gate passes: `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` (515 passing); `npm --prefix assets ci` and the full `npm --prefix assets run test:e2e` (74 passing across `chromium` and `mobile-chromium`); and `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release`. The slice stays short of `Verified` for two reasons, both recorded in the 2026-07-28 progress entries: the signed-in mixed-catalog and same-id identity-conflict scenarios are proven deterministically at the query and LiveView level but not yet as a browser scenario (that scenario needs an e2e-creatable hosted project plus a `specs/06-project-portability/` restore for the collision), and a public hosted release remains gated on the deployment privacy profile (controller, processors, regions, transfer safeguards, notices, incident path, retention enforcement, and required review). The cross-source registration combinations (a device project from the signed-in GitHub flow, and a hosted project from the accountless local flow) are source-owned follow-ons that build on the two registration mechanisms delivered here.
+
 ## Active Slice
 
 Deliver one shared storage-selection foundation that lets GitHub and local repository onboarding establish an explicit device or hosted storage mode, commit it atomically with project creation, and show it consistently without implementing later storage migration.
@@ -98,24 +100,30 @@ Release boundary:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Every active acceptance criterion and data entity has one clear primary task owner.
-- [ ] Storage-mode domain, ownership, prerequisite, and workspace-isolation tests pass.
-- [ ] Common workspace backfill preserves every existing hosted workspace, project, repository connection, and stable identifier, and invalid workspace-kind and storage-mode pairs are rejected.
-- [ ] GitHub and local source adapters pass shared storage-selection integration tests without transferring source-specific ownership into this specification.
-- [ ] Storage selection shows the approved labels and explanation, describes hosted storage as cross-device access without claiming collaboration, keeps unavailable modes visible with setup actions, preserves repository and onboarding state across device setup and hosted sign-in, returns after every outcome without an implicit choice, and requires an explicit available selection.
-- [ ] Hosted registration commits project, connection, hosted state, mode, and attempt in one `Ecto.Multi`; device registration commits project, local connection, mode, and receipt in one local transaction and reconciles a lost control-plane acknowledgement without duplication.
-- [ ] Expired, mismatched, replayed, or cross-workspace hosted returns and device receipts fail closed; stored prerequisite proof is minimized and one-time.
-- [ ] Mixed catalog, same-ID identity-conflict, post-creation dashboard, device availability, hosted authorization, sign-in, and sign-out browser scenarios pass without merging records or persisting a cross-boundary collision link.
-- [ ] GDPR data contract, retention and deletion controls, privacy review, log review, no-analytics proof, and secret-exposure checks pass.
-- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
+- [x] Active-slice acceptance criteria pass.
+- [x] Every active acceptance criterion and data entity has one clear primary task owner.
+- [x] Storage-mode domain, ownership, prerequisite, and workspace-isolation tests pass.
+- [x] Common workspace backfill preserves every existing hosted workspace, project, repository connection, and stable identifier, and invalid workspace-kind and storage-mode pairs are rejected.
+- [x] GitHub and local source adapters pass shared storage-selection integration tests without transferring source-specific ownership into this specification.
+- [x] Storage selection shows the approved labels and explanation, describes hosted storage as cross-device access without claiming collaboration, keeps unavailable modes visible with setup actions, preserves repository and onboarding state across device setup and hosted sign-in, returns after every outcome without an implicit choice, and requires an explicit available selection.
+- [x] Hosted registration commits project, connection, hosted state, mode, and attempt in one `Ecto.Multi`; device registration commits project, local connection, mode, and receipt in one local transaction and reconciles a lost control-plane acknowledgement without duplication.
+- [x] Expired, mismatched, replayed, or cross-workspace hosted returns and device receipts fail closed; stored prerequisite proof is minimized and one-time.
+- [ ] Mixed catalog, same-ID identity-conflict, post-creation dashboard, device availability, hosted authorization, sign-in, and sign-out browser scenarios pass without merging records or persisting a cross-boundary collision link. (Deterministically proven at the query and LiveView level; the storage-selection step is browser-proven. The signed-in mixed-catalog and same-id browser scenario is a follow-on: it needs an e2e-creatable hosted project and a `specs/06` restore for the collision.)
+- [x] GDPR data contract, retention and deletion controls, privacy review, log review, no-analytics proof, and secret-exposure checks pass.
+- [x] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
+- [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
 
 ## Blocked Decisions
 
 - None.
 
 ## Progress Log
+
+### 2026-07-28 - Slice implementation complete and locally verified
+
+- All six tasks are implemented and their proofs pass. The shared storage-selection surface (approved source-neutral copy, identity-gated hosted availability, device-setup and hosted sign-in return handoffs, bound and minimized readiness receipt), the accountless local flow's routing through it, attempt-integrated atomic registration for both destinations (hosted `Ecto.Multi`; idempotent device transaction with reconciliation), the combined non-mutating catalog with identity-conflict presentation, and the privacy and security contract are all in place.
+- Full local verification gate passing: `mix check` and every explicit quality and security command (`mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `mix test` — 515 passing, 1 excluded live test); `npm --prefix assets ci` and the full `npm --prefix assets run test:e2e` (74 passing across `chromium` and `mobile-chromium`); `MIX_ENV=prod mix assets.deploy`; `MIX_ENV=prod mix release`; the spec validator; and the migration apply/rollback/reapply proof.
+- Kept short of `Verified`: the signed-in mixed-catalog and same-id identity-conflict browser scenario (deterministically covered; needs an e2e-creatable hosted project and a `specs/06` restore for the collision), and the public-deployment release gate (deployment privacy profile: controller, processors, regions, transfer safeguards, notices, incident path, retention enforcement, and required review). The cross-source registration combinations remain source-owned follow-ons. The slice branch is ready to merge into the default branch once these are accepted.
 
 ### 2026-07-28 - Task 6 complete: active-slice privacy and security contract enforced
 
