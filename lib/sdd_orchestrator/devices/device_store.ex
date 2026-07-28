@@ -36,7 +36,12 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   @doc "Deletes one device project and every device-authoritative specification aggregate."
   @callback delete_project(String.t()) ::
-              {:ok, %{project_id: String.t(), deleted_specifications: non_neg_integer()}}
+              {:ok,
+               %{
+                 project_id: String.t(),
+                 deleted_specifications: non_neg_integer(),
+                 deleted_provenance: boolean()
+               }}
               | {:error, :not_found}
 
   @doc "Finds a device project by its canonical repository fingerprint, for reconnection."

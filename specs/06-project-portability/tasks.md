@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, and 16 are complete. Task 17 is in progress.
+The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, and 17 are complete. Task 22 is in progress.
 
 ## Active Slice
 
@@ -248,18 +248,18 @@ Release boundary:
   - Proof: Focused terminal, stranded, time-boundary, idempotency, advisory-lock, restart, reconciliation, and negative persistence tests prove immediate disposal and the 24-hour cleanup ceiling without deleting active attempts.
   - Delivered: Extended the shared retention pass with exact 24-hour hosted and device `ImportAttempt` rules, including expiry fallback, idempotent deletion counts, an unavailable-device no-op that reconciles on the next pass, and device-store atomic scan, delete, and sync behavior. Preserved immediate terminal intake deletion, the supervised hourly pruner, and its PostgreSQL advisory lock; confirmed the attempt schema contains only encrypted temporary payload and lifecycle fields and no secret, decrypted-content, filename, path, or package-hash field.
 
-- [ ] Task 17 - Enforce the project-bound provenance lifecycle.
+- [x] Task 17 - Enforce the project-bound provenance lifecycle.
   - Size: Standard
-  - Status: In Progress.
   - Purpose: Minimize persistent restoration provenance and tie it to the restored project's deletion lifecycle.
   - Owned surfaces: `capability:project-storage-governance` consumer, minimal schema-version and restoration-time `PackageProvenance`, project-bound provenance access, project-deletion cascade, service-termination handling, derived-record deletion propagation, and no package hash, filename, source account, workspace, device, exporter, network, or source-mode field.
   - Owns: AC-19
   - Depends on: Task 16, Task 19
   - Proof: Focused provenance-field, access, hosted and device project-erasure, service-termination, cascade, and derived-record tests prove minimal retention without a source-identity link.
+  - Delivered: Added one project-authorized provenance boundary for hosted and device storage; hosted reads join through the owning personal workspace, while device reads require the current device workspace and exact device project. Hosted database cascades and account erasure remove provenance with the project; device project deletion now removes and syncs provenance with specification aggregates; hosted service termination is idempotent. Registered the exact three-field record and its dual storage lifecycle without any source-identity field.
 
 - [ ] Task 22 - Propagate verified portability rights.
   - Size: Standard
-  - Status: Blocked until `capability:project-specification-governance`, Task 17, and Task 27 are complete.
+  - Status: In Progress.
   - Purpose: Apply verified rights actions across the project, its restored specifications, attempts, provenance, derived records, processors, and backup expiry.
   - Owned surfaces: `capability:project-specification-governance` consumer, `Privacy.Rights` integration, verified access, correction, erasure, restriction, objection, and portability behavior, project and specification authorization, `ImportAttempt`, `HostedLocalRepositoryBinding`, and `PackageProvenance` coverage, derived-record and processor propagation, backup-expiry handoff, and cross-project non-disclosure.
   - Owns: AC-23
@@ -322,6 +322,14 @@ Release boundary:
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 17 complete: project-bound provenance lifecycle
+
+- Completed: Added `PackageProvenances` as the only provenance read and service-termination boundary. Hosted reads require a provenance-to-project join scoped to the owning `PersonalWorkspace`; device reads require the current `DeviceWorkspace`, exact device project, and matching project-bound provenance. The existing hosted foreign-key cascade and account-erasure transaction remove provenance with projects. Device project deletion now removes and syncs its provenance alongside every specification aggregate, surviving store restart without an orphan. Hosted service-termination cleanup deletes all provenance idempotently without creating a source link. The processing inventory records exactly project ID, payload schema version, and restoration time across the hosted database or device worker.
+- Proof: The focused provenance-lifecycle suite passed 4 tests, and the combined hosted restore, device restore, specification-governance, and provenance-lifecycle set passed 30 tests. The proof covers exact fields, inventory, hosted and device authorization, cross-workspace denial, hosted cascade, device restart durability, account erasure, service termination, idempotency, and no source-identity fields. `mix check` passed 718 tests including 6 properties with 1 excluded `:live` test. Formatting, compilation with warnings as errors, strict Credo, dependency audit, Sobelow, `git diff --check`, the Slice 06 validator, and the global capability graph passed.
+- Remaining: Propagate verified portability access, correction, erasure, restriction, objection, and portability handling in Task 22, including attempts, bindings, provenance, specifications, derived records, processors, and backup-expiry handoff. The final slice gate must resolve the current Dialyzer warnings before verification.
+- Failed checks: The first focused proof checked forbidden terms across the inventory's explanatory exclusion text rather than the persisted schema; it now checks the exact stored fields while keeping the exclusion statement visible. `mix dialyzer` still reports the same 14 warnings in earlier Slice 06 restore and reconnection modules, with no Task 17 warning; the final slice gate remains open.
+- Spec updates: Marked Task 17 complete, recorded its project-bound dual-storage lifecycle, unblocked Task 22 because both governance capabilities and its Task 17 and Task 27 dependencies are complete, and made Task 22 the next executable task without changing requirements, design, ownership, or capability edges.
 
 ### 2026-07-28 - Task 16 complete: transient package and attempt cleanup
 

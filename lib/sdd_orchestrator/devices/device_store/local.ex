@@ -461,12 +461,20 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
             table
           )
 
-        Enum.each([{:project, project_id} | specification_keys], &:dets.delete(table, &1))
+        provenance_key = {:package_provenance, project_id}
+        deleted_provenance? = :dets.member(table, provenance_key)
+
+        Enum.each(
+          [{:project, project_id}, provenance_key | specification_keys],
+          &:dets.delete(table, &1)
+        )
+
         :ok = :dets.sync(table)
 
         {:ok,
          %{
            project_id: project_id,
+           deleted_provenance: deleted_provenance?,
            deleted_specifications: length(specification_keys)
          }}
     end

@@ -63,7 +63,12 @@ defmodule SddOrchestrator.Devices do
 
   @doc "Deletes a device project and all worker-owned project data."
   @spec delete_project(String.t()) ::
-          {:ok, %{project_id: String.t(), deleted_specifications: non_neg_integer()}}
+          {:ok,
+           %{
+             project_id: String.t(),
+             deleted_specifications: non_neg_integer(),
+             deleted_provenance: boolean()
+           }}
           | {:error, :not_found}
   def delete_project(id), do: adapter().delete_project(id)
 

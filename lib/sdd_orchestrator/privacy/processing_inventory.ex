@@ -231,6 +231,26 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
       review: "Approved project-portability binding data contract (Slice 06 design.md)."
     },
     %DataProcessingRecord{
+      activity: :package_provenance,
+      purpose:
+        "Record the minimum project-bound fact needed to apply the restored package schema.",
+      lawful_basis: :contract,
+      personal_data: ["project id", "payload schema version", "restoration time"],
+      access:
+        "Owning project authority and approved operations personnel when necessary; never a source account, workspace, device, or exporter.",
+      retention:
+        "Only while the restored project or hosted service requires it; deleted with project erasure or service termination, with encrypted backup copies expired within 35 days.",
+      rights:
+        "Access, erasure, restriction, objection, and portability via the verified project workflow.",
+      processors: [
+        "Hosting database for hosted projects",
+        "Device worker under the operating-system boundary for device projects"
+      ],
+      transfers:
+        "Hosted processing follows the deployment privacy profile; device provenance has no hosted transfer.",
+      review: "Approved project-portability provenance data contract (Slice 06 design.md)."
+    },
+    %DataProcessingRecord{
       activity: :project_onboarding_attempt,
       purpose: "Hold short-lived onboarding workflow state until a project is created.",
       lawful_basis: :contract,
