@@ -89,6 +89,10 @@ defmodule SddOrchestrator.Delivery.AgentRun do
   def create_changeset(run, attrs) do
     run
     |> cast(attrs, [
+      # The run identity is accepted from the caller because the execution
+      # manifest binds it, and the manifest has to exist before the attempt
+      # that records its digest can be written.
+      :id,
       :project_id,
       :feature_id,
       :initiator_account_id,
