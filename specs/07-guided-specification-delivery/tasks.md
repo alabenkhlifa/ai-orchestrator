@@ -213,7 +213,7 @@ Prerequisite:
   - Depends on: Task 7, Task 16
   - Proof: Focused channel, authentication, capability, delivery, acknowledgement, heartbeat, reconnect, incompatible, stale, cross-workspace, and worker-double tests pass.
 
-- [ ] Task 20 - Implement worker workspace and branch isolation.
+- [x] Task 20 - Implement worker workspace and branch isolation.
   - Size: Standard
   - Purpose: Ensure one run executes only inside its normalized workspace and isolated branch.
   - Owned surfaces: Workspace-root configuration, normalized run path, traversal denial, exact process working directory, isolated branch creation and reuse, base revision validation, target-branch stability, one-current-process lock, cancellation stop seam, repository content boundary, fixtures, and worker-side tests.
@@ -528,6 +528,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 20 complete: worker workspace and branch isolation
+
+- Completed: Added `Delivery.Worker.Workspace`, `Worker.Branch`, and `Worker.ProcessLock`. A run gets one normalized workspace under the configured root, one stable isolated branch validated against its manifest, and one current process protected by a fenced on-disk lock.
+- Containment proved: A candidate path must be its own real path under the resolved real root, so traversal, absolute segments, separator-carrying segments, and symlink escapes are all refused — and all with the same `:workspace_escape`, so a caller gets a refusal rather than a diagnosis of which check failed. The symlink guarantee was verified by mutation: replacing the real-path pin with plain string expansion fails exactly the three link tests and passes the other fifty, which is what proves those tests are testing the link resolution rather than the expansion.
+- Branch boundary: The default branch is refused by any spelling (`main`, `master`, `HEAD`, `refs/heads/main`, case-insensitively), so a run can never write to it. The base revision must match the manifest before work begins, and one run always resolves the same branch — a request naming a different branch for that run is rejected. Worker bookkeeping (the branch record, lock, and stop marker) lives beside the checkout rather than inside it, so it never enters the tree being committed. The git boundary shells out with an argument list rather than a shell, refuses any argument readable as a flag, and sets `GIT_TERMINAL_PROMPT=0` so it cannot acquire a credential by asking.
+- Fencing recorded: A higher fence token takes the lock from a lower one unconditionally, even when the holder's process is alive; a lower fence is refused even when the holder is dead. Equal fences fall back to liveness, and an unreadable liveness probe answers "alive". Fencing, never liveness, is the guaranteed way past a stuck holder.
+- Mechanism recorded: `Branch` re-validates the manifest through `ExecutionManifest.new/1` rather than restating the branch grammar, so nothing is redefined and a tampered manifest is rejected as invalid. A genuine `mkdir_p` or write failure reports `:workspace_unavailable` rather than `:workspace_escape`, because an I/O failure is not a containment failure and saying so would be dishonest.
+- Failed checks: None in this task. Adding its 53 tests did expose a pre-existing flake in the Slice 08 invitation-proof test, which asserts on a recorded magic-link attempt without resetting the passwordless limiter's shared global bucket; once enough of the suite ran first, the request was throttled correctly and account-neutrally, so nothing was recorded. Three other suites already reset the limiter for exactly this reason and that one did not; it now does, and the full suite is deterministic across three seeds. Final proof passes with real exit status: 53 isolation tests, `mix test` (1408 passing), `mix credo --strict`, `mix sobelow --config`, and `mix compile --warnings-as-errors`.
+- Remaining: Task 43 (configured coding-agent adapter) is unblocked by this, and Task 13 follows it.
+- Spec updates: Marked Task 20 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 12 complete: start-time processing-boundary disclosure
 
