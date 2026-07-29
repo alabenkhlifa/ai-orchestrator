@@ -42,6 +42,10 @@ config :sdd_orchestrator, SddOrchestrator.Vault,
 # races the Ecto sandbox or deletes another test's data.
 config :sdd_orchestrator, start_retention_pruner: false
 
+# The command dispatcher is driven directly in tests for the same reason: a
+# timer must never race the Ecto sandbox or claim another test's rows.
+config :sdd_orchestrator, start_command_dispatcher: false
+
 # Exercise the local worker stand-in (pairing completion and folder selection) so
 # the local-onboarding LiveView flow is driveable without the signed native worker.
 config :sdd_orchestrator, :device_worker_stub, true

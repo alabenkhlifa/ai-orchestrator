@@ -18,6 +18,7 @@ defmodule SddOrchestrator.Application do
         {Phoenix.PubSub, name: SddOrchestrator.PubSub}
       ] ++
         retention_children() ++
+        dispatcher_children() ++
         device_store_children() ++
         [
           # Start to serve requests, typically the last entry
@@ -43,6 +44,17 @@ defmodule SddOrchestrator.Application do
   defp retention_children do
     if Application.get_env(:sdd_orchestrator, :start_retention_pruner, true) do
       [SddOrchestrator.Privacy.RetentionPruner]
+    else
+      []
+    end
+  end
+
+  # The command dispatcher drains the durable outbox in dev and prod. Tests
+  # drive SddOrchestrator.Delivery.Dispatcher.dispatch_now/1 directly so a timer
+  # never races the Ecto sandbox.
+  defp dispatcher_children do
+    if Application.get_env(:sdd_orchestrator, :start_command_dispatcher, true) do
+      [SddOrchestrator.Delivery.Dispatcher]
     else
       []
     end

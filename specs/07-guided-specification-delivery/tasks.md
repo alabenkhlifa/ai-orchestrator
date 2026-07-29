@@ -165,7 +165,7 @@ Prerequisite:
   - Depends on: Task 1
   - Proof: Focused migration, changeset, constraint, ordering, exclusivity, revision, branch, lease, fence, project-isolation, and rollback tests pass.
 
-- [ ] Task 16 - Implement the hosted durable command outbox and dispatcher.
+- [x] Task 16 - Implement the hosted durable command outbox and dispatcher.
   - Size: Standard
   - Purpose: Persist and claim worker instructions without relying on OTP process memory.
   - Owned surfaces: `RunCommand`, hosted migration and schema, stable command ID, operation, expected state version, manifest digest, due time, delivery and acknowledgement state, result replay, transaction contribution, PostgreSQL locking and lease claim, supervised dispatcher, restart recovery, and fixtures.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 16 complete: durable command outbox and dispatcher
+
+- Completed: Added `run_commands` with its migration and schema, the `Delivery.CommandOutbox` claim and replay surface, the `Delivery.CommandTransport` hand-off boundary, and the supervised `Delivery.Dispatcher`. A start, resume, retry, cancel, or reconcile instruction is a durable row with a due time, not a message in process memory.
+- Boundary held: Enqueueing contributes to the caller's transaction, so a command cannot exist for a state change that rolled back. One instruction is one row however often it is enqueued: the recorded command is returned with its acknowledged result rather than starting a second process, and reusing one command ID for a different operation is surfaced as `:command_id_reused` instead of being silently dropped. Claims use `FOR UPDATE SKIP LOCKED` with an expiring lease, so two concurrent dispatchers take different rows and never the same one. An acknowledgement is recorded once and replayed thereafter, so a reconnecting worker's duplicate acknowledgement cannot overwrite the first answer.
+- Restart recovery proved: A dispatcher that dies mid-delivery leaves claimed rows behind; `release_expired/1` returns them to the queue once their lease passes, while a live claim and an acknowledged command are both left alone. Backoff is scheduling rather than sleeping — a retry is a command that is not due yet — so a pending retry survives a control-plane restart.
+- Mechanism recorded: The primary key is supplied by the enqueueing transaction, which makes `on_conflict: :nothing` unusable for idempotency — Ecto returns the unpersisted struct as though it had been written, so a conflict is undetectable. The outbox reads the recorded row first and falls back to re-reading on the insert race instead. `CommandTransport` keeps the hand-off separate from durability, so the queue is proven without a worker and Task 19 can attach the channel without touching claim, lease, or replay semantics; its default reports no connected worker, which leaves work queued rather than failing it. The dispatcher is supervised and started in dev and prod, and driven directly in tests through `config :sdd_orchestrator, start_command_dispatcher: false` so a timer never races the Ecto sandbox.
+- Remaining: Task 9 (assignment and responsibility) is next; Task 18 then gives the device adapter the same contract, and Task 3 composes state, activity, and command into one transaction.
+- Failed checks: None. Focused proof passes with real exit status: 28 outbox and dispatcher tests, `mix format --check-formatted`, and `mix credo --strict`.
+- Spec updates: Marked Task 16 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 17 complete: ordered feature activity
 
