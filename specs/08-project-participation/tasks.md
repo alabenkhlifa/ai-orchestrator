@@ -104,7 +104,7 @@ Release gates:
   - Owns: AC-26, AC-30
   - Proof: Focused LiveView, authorization, validation, and browser tests cover missing-profile blocking, successful creation and editing, conflicting labels, no suffix, no email presentation, non-owner denial, keyboard, focus, and mobile layout.
 
-- [ ] Task 7 — Implement the shared account-level notification foundation.
+- [x] Task 7 — Implement the shared account-level notification foundation.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Provide durable recipient-scoped in-product notification storage reusable by participation and Slice 07.
@@ -366,6 +366,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 7 complete: shared account-level notification foundation
+
+- Completed: Added `account_notifications` with its migration, schema, and the `SddOrchestrator.Notifications` context. A notification is a fixed field set — event type, subject reference, subject state version, title, body, optional project and actor labels, safe internal link, occurrence and read time — with no free-form payload column, so project content cannot be copied into it. A unique event, subject, version, and recipient index makes both `deliver/1` and the transactional `deliver_multi/3` idempotent under at-least-once replay, and a replay returns the stored record without resetting its read state.
+- Boundary held: The stored unread row is the delivery guarantee and PubSub is only a presentation hint, proven by delivering with no subscriber and finding the durable unread record afterwards. List, fetch, and mark-read authorize at the account boundary and fail closed for another account, a missing id, or a malformed id; mark-read is idempotent and preserves the first read time. Event types are namespaced, and the reserved `delivery.` namespace is the seam Slice 07 extends instead of creating a second store.
+- Remaining: Task 8 is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 14 notification tests, `mix test` (793 passing), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 7 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 28 complete: owner project-display profile workflow
 
