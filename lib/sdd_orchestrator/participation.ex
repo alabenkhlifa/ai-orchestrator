@@ -236,6 +236,65 @@ defmodule SddOrchestrator.Participation do
     end
   end
 
+  @doc """
+  Renames one member's own project display name.
+
+  Each current member may change only their own label. The change is
+  presentation only: the stable participant identity, the account link, and the
+  role never move with it, and a conflicting label is rejected for correction
+  rather than given an automatic suffix.
+  """
+  @spec rename_member_profile(
+          Project.t() | Ecto.UUID.t(),
+          Ecto.UUID.t() | nil,
+          Ecto.UUID.t() | nil,
+          term()
+        ) ::
+          {:ok, ProjectMemberProfile.t()} | {:error, :unauthorized | Ecto.Changeset.t()}
+  def rename_member_profile(project, account_id, hosted_identity_id, display_name) do
+    with {:ok, role} <- member_role(project, account_id, hosted_identity_id),
+         %ProjectMemberProfile{} = profile <- own_profile(project, role, account_id) do
+      profile
+      |> ProjectMemberProfile.rename_changeset(%{display_name: display_name})
+      |> Repo.update()
+    else
+      _other -> {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Preserves one departing member's last accepted label as historical attribution.
+
+  The profile row and its label survive so prior contributions stay readable;
+  only the interactive membership ends. Rights-driven anonymization removes the
+  remaining account link separately.
+  """
+  @spec preserve_historical_label(Ecto.UUID.t(), Ecto.UUID.t() | nil) ::
+          {:ok, String.t() | nil} | {:error, Ecto.Changeset.t()}
+  def preserve_historical_label(project_id, account_id) do
+    case member_profile(project_id, account_id) do
+      nil ->
+        {:ok, nil}
+
+      profile ->
+        profile
+        |> ProjectMemberProfile.historical_changeset()
+        |> Repo.update()
+        |> case do
+          {:ok, historical} -> {:ok, historical.display_name}
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  defp own_profile(project, :owner, _account_id), do: owner_profile(project_id(project))
+
+  defp own_profile(project, :participant, account_id),
+    do: member_profile(project_id(project), account_id)
+
+  defp project_id(%Project{id: id}), do: id
+  defp project_id(project_id) when is_binary(project_id), do: project_id
+
   defp authorize_owner(project, account_id) do
     case owner(project) do
       {:ok, %{account_id: ^account_id} = owner} when not is_nil(account_id) -> {:ok, owner}

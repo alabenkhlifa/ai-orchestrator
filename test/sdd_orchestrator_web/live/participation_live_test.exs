@@ -414,6 +414,49 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       refute html =~ "data-invitation-list"
     end
 
+    test "a participant edits only their own label inline", %{conn: conn} do
+      %{project: project, participants: [first, _second]} = project_with_participants()
+
+      access =
+        SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: first.external_identity.display_identifier
+        })
+
+      {:ok, view, html} =
+        conn
+        |> Phoenix.ConnTest.init_test_session(%{})
+        |> Plug.Conn.put_session(
+          SddOrchestrator.HostedAccess.SessionCookie.session_key(),
+          access.session_cookie.value
+        )
+        |> live(~p"/projects/#{project.id}/participation")
+
+      assert html =~ ~s(id="member-profile-form")
+      assert html =~ "First Member"
+
+      saved =
+        view
+        |> form("#member-profile-form", owner: %{display_name: "  Renamed Member  "})
+        |> render_submit()
+
+      assert saved =~ "data-member-profile-saved"
+      assert saved =~ "Renamed Member"
+
+      assert Participation.member_profile(project.id, first.account.id).display_name ==
+               "Renamed Member"
+
+      conflict =
+        view
+        |> form("#member-profile-form", owner: %{display_name: "second member"})
+        |> render_submit()
+
+      assert conflict =~ "is already used in this project"
+      refute conflict =~ "second member 2"
+
+      assert Participation.member_profile(project.id, first.account.id).display_name ==
+               "Renamed Member"
+    end
+
     test "a former participant and an outsider fail closed", %{conn: conn} do
       %{project: project, participants: [first, _second]} = project_with_participants()
 

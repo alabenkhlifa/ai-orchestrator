@@ -70,13 +70,12 @@ defmodule SddOrchestratorWeb.ParticipationLive do
   end
 
   def handle_event("save_display_name", %{"owner" => %{"display_name" => name}}, socket) do
-    socket.assigns.project
-    |> Participation.save_owner_profile(socket.assigns.current_account.id, name)
+    socket
+    |> save_display_name(name)
     |> case do
       {:ok, profile} ->
         {:noreply,
          socket
-         |> assign(:owner_profile, profile)
          |> assign(:display_name, profile.display_name)
          |> assign(:display_name_error, nil)
          |> assign(:saved?, true)
@@ -172,6 +171,25 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     end
   end
 
+  # The owner may still be establishing their first label, so creation and
+  # renaming share one action; a participant already has one from acceptance.
+  defp save_display_name(%{assigns: %{role: :owner}} = socket, name) do
+    Participation.save_owner_profile(
+      socket.assigns.project,
+      socket.assigns.acting_account_id,
+      name
+    )
+  end
+
+  defp save_display_name(socket, name) do
+    Participation.rename_member_profile(
+      socket.assigns.project,
+      socket.assigns.acting_account_id,
+      acting_identity_id(socket),
+      name
+    )
+  end
+
   defp invite_message({:existing_role, :owner}), do: Map.fetch!(@invite_messages, :existing_owner)
 
   defp invite_message({:existing_role, :participant}),
@@ -190,7 +208,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:members, Participation.members(project, role, account_id))
     |> assign(:invitations, invitations_for(project, role))
     |> assign(:owner_profile, profile)
-    |> assign(:display_name, (profile && profile.display_name) || "")
+    |> assign(:display_name, current_label(project, role, account_id))
     |> assign(:display_name_error, nil)
     |> assign(:saved?, false)
     |> assign(:invite_email, "")
@@ -198,6 +216,20 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:invite_sent?, false)
     |> assign(:invite_canceled?, false)
     |> assign(:resendable?, false)
+  end
+
+  defp current_label(project, :owner, _account_id) do
+    case Participation.owner_profile(project.id) do
+      nil -> ""
+      profile -> profile.display_name
+    end
+  end
+
+  defp current_label(project, :participant, account_id) do
+    case Participation.member_profile(project.id, account_id) do
+      nil -> ""
+      profile -> profile.display_name
+    end
   end
 
   defp role_label(:owner), do: "Runs this project"
@@ -221,6 +253,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:members, Participation.members(project, role, account_id))
     |> assign(:invitations, invitations_for(project, role))
     |> assign(:owner_profile, Participation.owner_profile(project.id))
+    |> assign(:display_name, current_label(project, role, account_id))
   end
 
   defp display_name_error(%Ecto.Changeset{} = changeset) do
@@ -397,9 +430,40 @@ defmodule SddOrchestratorWeb.ParticipationLive do
         </div>
 
         <div :if={@role == :participant} class="mt-6" data-participant-view>
-          <.notice variant="info" icon="users">
-            You're on this project. Only the project owner can invite or remove people.
-          </.notice>
+          <form
+            id="member-profile-form"
+            phx-change="validate_display_name"
+            phx-submit="save_display_name"
+          >
+            <.text_field
+              id="member-display-name"
+              name="owner[display_name]"
+              label="Your name on this project"
+              value={@display_name}
+              error={@display_name_error}
+              hint="People on this project see this name. It has to be different from every other name on the project."
+              autocomplete="off"
+              phx-debounce="200"
+            />
+            <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <.button type="submit" class="w-full sm:w-auto" data-save-member-profile>
+                <.lucide name="check" class="size-4" /> Save name
+              </.button>
+              <span
+                :if={@saved?}
+                class="inline-flex items-center gap-1.5 text-[13px] text-ok-fg"
+                data-member-profile-saved
+              >
+                <.lucide name="circle-check" class="size-4" /> Saved
+              </span>
+            </div>
+          </form>
+
+          <div class="mt-6">
+            <.notice variant="info" icon="users">
+              You're on this project. Only the project owner can invite or remove people.
+            </.notice>
+          </div>
         </div>
       </div>
     </.app_shell>

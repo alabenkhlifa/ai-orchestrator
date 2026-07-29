@@ -211,8 +211,9 @@ Release gates:
   - Owns: AC-27
   - Proof: Focused query, authorization, LiveView, desktop and mobile browser tests cover owner, participant, other project, invitation states, display labels, self email, other-email denial, management control visibility, keyboard, and focus.
 
-- [ ] Task 29 — Deliver member-controlled display-name editing.
+- [x] Task 29 — Deliver member-controlled display-name editing.
   - Size: Standard
+  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 15
   - Purpose: Let each current member change only their own project label without changing authorization identity.
   - Owned surfaces: Participant self-edit action, owner self-edit reuse, trimmed case-insensitive uniqueness, accepted spelling, conflict rejection without suffix, stable identity preservation, current-label rendering, last-accepted-label handoff seam, fixtures, and inline accessible validation.
@@ -369,6 +370,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 29 complete: member-controlled display-name editing
+
+- Completed: Added `Participation.rename_member_profile/4` and the participant's own label form on the participation screen. A participant edits their label there; the owner keeps the same action through their existing form, so one rule governs both.
+- Boundary held: A rename is presentation only — the participant authorization row, the stable hosted identity, the account link, and the role are unchanged. Labels are trimmed, compared case-insensitively across owner and participants in one project, and a conflict is rejected inline for correction with no automatic suffix. An unusable label (blank, oversized, control-bearing, email-shaped) is rejected. Renaming another member's label, renaming without a session, and renaming after departure all fail closed.
+- Seam recorded: `Participation.preserve_historical_label/2` moves a departing member's profile to historical while keeping the last accepted label and account link, and frees that label for a current member. Task 17 and Task 18 call it from their removal and leave transactions.
+- Remaining: Task 16 (participant project capabilities) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 7 member-profile tests, 20 participation LiveView tests, `mix test` (898 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 29 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 15 complete: participation management and identity visibility
 
