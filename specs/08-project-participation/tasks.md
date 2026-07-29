@@ -228,8 +228,9 @@ Release gates:
   - Owns: AC-05, AC-14, AC-15
   - Proof: Focused authorization matrix, current and stale membership, project and workspace isolation, approved capability, protected setting, destructive action, credential, secret, and content-existence disclosure tests pass.
 
-- [ ] Task 17 — Deliver atomic owner removal and the revocation handoff.
+- [x] Task 17 — Deliver atomic owner removal and the revocation handoff.
   - Size: Standard
+  - Status: Complete; the authenticated browser matrix for the removal control is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 16, Task 29
   - Purpose: End owner-selected participation and publish exactly one durable consumer handoff in the same transaction.
   - Owned surfaces: `ParticipationRevocation`, owner removal command, active-participant row locking, atomic inactive transition and outbox insertion, immediate authorization invalidation, immutable owner fallback, last accepted display name, reason, event time, contract version, idempotent handoff identity, claim and acknowledgement operations, no Slice 07 record mutation, fixtures, and removal result.
@@ -370,6 +371,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 17 complete: owner removal and the revocation handoff
+
+- Completed: Added `participation_revocations` with its migration and schema, the `Participation.Revocations` domain, and the owner's inline remove control. One transaction locks the active authorization, marks it departed, preserves the last accepted project label as historical attribution, and inserts exactly one versioned handoff naming the project, the former participant, the immutable owner fallback, that label, the reason, the event time, and the contract version.
+- Boundary held: Authorization ends at commit — the next capability decision returns nothing and the project is no longer visible to that identity. A non-owner, an absent actor, an outsider target, and a repeat are all rejected without creating a second handoff. A person who rejoins and later departs produces a distinct handoff, because the handoff is keyed to the participation row rather than the person. A row-count comparison across every table proves removal adds only the handoff and touches no consumer-owned record.
+- Consumer contract: `pending/1`, `claim/1`, and `acknowledge/3` expose the producer side. Claiming is a delivery marker only, so a consumer that crashes before acknowledging sees the same handoff again and its own idempotent handling absorbs the repeat; acknowledging twice keeps the first record and consumer reference.
+- Remaining: Task 18 (participant self-leave and immutable-owner denial) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: Dialyzer reported the known `Ecto.Multi` opacity warning for the new transaction module, which now uses the repository's existing narrow suppression list. Final proof passes with real exit status: 9 revocation tests, 21 participation LiveView tests, `mix test` (917 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 17 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 16 complete: participant project capabilities
 

@@ -14,7 +14,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
   use SddOrchestratorWeb, :live_view
 
   alias SddOrchestrator.Participation
-  alias SddOrchestrator.Participation.Invitations
+  alias SddOrchestrator.Participation.{Invitations, Revocations}
 
   @invite_messages %{
     unauthorized: "Only the project owner can invite people to this project.",
@@ -128,6 +128,21 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     end
   end
 
+  def handle_event("remove_member", %{"account" => account_id}, socket) do
+    socket.assigns.project
+    |> Revocations.remove(
+      socket.assigns.acting_account_id,
+      hosted_identity_for(socket.assigns.project, account_id)
+    )
+    |> case do
+      {:ok, _removed} ->
+        {:noreply, socket |> assign(:removed?, true) |> refresh()}
+
+      {:error, _reason} ->
+        {:noreply, socket |> assign(:removed?, false) |> refresh()}
+    end
+  end
+
   def handle_event("cancel_invitation", _params, socket) do
     socket.assigns.project
     |> Invitations.cancel(socket.assigns.current_account.id, socket.assigns.invite_email)
@@ -216,6 +231,33 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:invite_sent?, false)
     |> assign(:invite_canceled?, false)
     |> assign(:resendable?, false)
+    |> assign(:removed?, false)
+  end
+
+  # The list presents accounts; removal needs the stable hosted identity that
+  # holds the authorization.
+  defp hosted_identity_for(project, account_id) do
+    project.id
+    |> Participation.active_participants()
+    |> Enum.find_value(fn participant ->
+      if Participation.member_profile(project.id, account_id) &&
+           participant_account_id(participant) == account_id,
+         do: participant.hosted_identity_id
+    end)
+  end
+
+  defp participant_account_id(participant) do
+    case participant.hosted_identity_id do
+      nil ->
+        nil
+
+      hosted_identity_id ->
+        SddOrchestrator.Repo.get(SddOrchestrator.Accounts.HostedIdentity, hosted_identity_id)
+        |> case do
+          nil -> nil
+          identity -> identity.account_id
+        end
+    end
   end
 
   defp current_label(project, :owner, _account_id) do
@@ -289,6 +331,13 @@ defmodule SddOrchestratorWeb.ParticipationLive do
 
         <section class="mt-6" data-members>
           <h2 class="text-[13px] font-semibold text-ink">People on this project</h2>
+          <p
+            :if={@removed?}
+            class="mt-2 inline-flex items-center gap-1.5 text-[13px] text-ok-fg"
+            data-member-removed
+          >
+            <.lucide name="circle-check" class="size-4" /> That person no longer has access.
+          </p>
           <ul class="mt-3 flex flex-col gap-2">
             <li
               :for={member <- @members}
@@ -304,9 +353,22 @@ defmodule SddOrchestratorWeb.ParticipationLive do
                   {member.email}
                 </p>
               </div>
-              <span class="text-[13px] text-ink-muted" data-member-role-label>
-                {role_label(member.role)}
-              </span>
+              <div class="flex items-center gap-3">
+                <span class="text-[13px] text-ink-muted" data-member-role-label>
+                  {role_label(member.role)}
+                </span>
+                <.button
+                  :if={@role == :owner and member.role == :participant}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  phx-click="remove_member"
+                  phx-value-account={member.account_id}
+                  data-remove-member
+                >
+                  <.lucide name="x" class="size-4" /> Remove
+                </.button>
+              </div>
             </li>
           </ul>
         </section>

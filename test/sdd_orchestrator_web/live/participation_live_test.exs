@@ -414,6 +414,33 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       refute html =~ "data-invitation-list"
     end
 
+    test "the owner removes a participant inline and access ends", %{conn: conn} do
+      %{project: project, account: account, participants: [first, second]} =
+        project_with_participants()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      assert html =~ "data-remove-member"
+
+      removed =
+        view
+        |> element("[data-remove-member][phx-value-account=\"#{first.account.id}\"]")
+        |> render_click()
+
+      assert removed =~ "data-member-removed"
+      refute removed =~ "First Member"
+      assert removed =~ "Second Member"
+
+      refute Participation.active_participant(project.id, first.hosted_identity.id)
+      assert Participation.active_participant(project.id, second.hosted_identity.id)
+
+      assert [revocation] = SddOrchestrator.Participation.Revocations.pending()
+      assert revocation.project_id == project.id
+      assert revocation.reason == "removed"
+      assert revocation.last_display_name == "First Member"
+    end
+
     test "a participant edits only their own label inline", %{conn: conn} do
       %{project: project, participants: [first, _second]} = project_with_participants()
 
