@@ -4,11 +4,15 @@
 
 In Progress
 
-The product, technical, privacy, handoff, task-sequence, and verification
-contracts are approved. Implementation is running the dependency-ordered task
-sequence toward `capability:project-participation-boundary` after Task 4; Slice
-07 remains a downstream consumer and is not an implementation prerequisite for
-this slice.
+`capability:project-participation-boundary` is ready: Tasks 1, 2, 3, 4, 6, 7, 8,
+9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 25, 26, 27, and 29 are complete and
+Slice 07 may consume the published boundary. The remaining lifecycle, retention,
+rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
+30, 31, 32, 33, and 5) are not started, so
+`capability:project-participation-governance` is still unavailable and the slice
+has not reached its verification gate. The authenticated participation browser
+matrix is environment-blocked because the Playwright harness cannot establish an
+application session; each affected task records it.
 
 ## Active Slice
 
@@ -262,7 +266,7 @@ Release gates:
   - Owns: AC-36
   - Proof: Focused recipient, template, safe-link, replay, failure, diagnostic-minimization, credential-absence, and project-content redaction tests pass.
 
-- [ ] Task 4 — Publish the current-participant authorization boundary.
+- [x] Task 4 — Publish the current-participant authorization boundary.
   - Size: Standard
   - Depends on: Task 9, Task 16, Task 18, Task 19, Task 27
   - Purpose: Give Slice 07 and approved consumers one fail-closed read and revocation contract without participation mutation.
@@ -372,6 +376,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 4 complete: current-participant authorization boundary published
+
+- Completed: Added `Participation.Boundary`, the whole contract approved consumers use. It resolves the immutable owner and each active participant as a minimum result — stable identity, role, and project display name — answers capability questions, exposes the versioned departure handoff through claim, pending, and acknowledge, and lets a consumer add its own namespaced event types to the shared account-level notification store.
+- Capability readiness: `capability:project-participation-boundary` is ready after Task 4. Slice 07 may now consume current participant identity and authorization, the shared notification foundation, and the `ParticipationRevocation` claim and acknowledgement contract.
+- Boundary held: No email address crosses the boundary — the member result has exactly four keys and membership management keeps addresses inside this specification. A stale, removed, departed, absent, or cross-project identity receives one denial that does not say which case applied. Reads are direct: removing a participant changes the very next answer with no cache step, and a sequence of reads leaves participation state byte-identical. The handoff carries the owner fallback and the last accepted label and contains no consumer-owned field; an unapproved notification namespace is rejected.
+- Remaining: The lifecycle, retention, rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24, 30, 31, 32, 33, and 5) remain, so `capability:project-participation-governance` is unavailable and the slice verification gate has not run.
+- Failed checks: None. Focused proof passes with real exit status: 9 consumer-contract tests, `mix test` (942 passing), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, and `mix sobelow --config`.
+- Spec updates: Marked Task 4 complete and recorded capability readiness in the slice status; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 27 complete: participant-removal email
 
