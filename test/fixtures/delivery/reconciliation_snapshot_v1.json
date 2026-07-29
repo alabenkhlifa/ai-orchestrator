@@ -1,0 +1,1 @@
+{"attempts":[{"attempt_number":1,"branch":"sdd/feature/ftr-0002/run-0003","command_id":"cmd_01HZX0000000000000000004","fence_token":1,"last_sequence":4,"run_id":"run_01HZX0000000000000000003","state":"running"}],"observed_at":"2026-07-29T09:17:00Z","protocol_version":1,"type":"reconciliation_snapshot","worker_id":"wrk_01HZX0000000000000000006"}

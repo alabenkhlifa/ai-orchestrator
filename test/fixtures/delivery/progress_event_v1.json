@@ -1,0 +1,1 @@
+{"attempt_number":1,"command_id":"cmd_01HZX0000000000000000004","event_id":"evt_01HZX0000000000000000005","event_type":"progress","fence_token":1,"occurred_at":"2026-07-29T09:15:30Z","payload":{"summary":"Prepared the isolated workspace"},"protocol_version":1,"run_id":"run_01HZX0000000000000000003","sequence":1,"source":"worker","type":"event"}

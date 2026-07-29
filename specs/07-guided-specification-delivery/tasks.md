@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+Blocked
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 is ready to begin without a cross-specification prerequisite. Task 1 remains blocked until the three operational provider capabilities are delivered.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 is complete, so the protocol and execution-manifest foundation exists. The next executable task, Task 1, requires `capability:project-participation-boundary` from `specs/08-project-participation#Task 4`, which is not yet delivered; the storage-authority, storage-governance, specification-store, and specification-governance provider capabilities are already available. Every remaining Slice 07 task depends transitively on Task 1, so implementation stays blocked until the participation boundary is ready.
 
 ## Active Slice
 
@@ -77,7 +77,7 @@ Prerequisite:
 
 ## Tasks
 
-- [ ] Task 7 - Implement the worker protocol and execution-manifest codec.
+- [x] Task 7 - Implement the worker protocol and execution-manifest codec.
   - Size: Standard
   - Purpose: Establish the provider-independent versioned command, event, acknowledgement, heartbeat, reconciliation, and immutable execution-manifest shapes.
   - Owned surfaces: Protocol version and capability values, command and normalized-event envelopes, stable IDs, expected state version, attempt number, fence token, sequence, acknowledgement and heartbeat payloads, reconciliation snapshot, immutable execution manifest and digest, configured reference fields, payload limits, deterministic encoding, decoding, and fixtures.
@@ -529,6 +529,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 7 complete: worker protocol and execution-manifest codec
+
+- Completed: Added the provider-independent protocol foundation under `lib/sdd_orchestrator/delivery/`: protocol version 1 with capability negotiation that ignores unknown names and fails closed on a missing required capability, the stable URL-safe identifier format, configured payload limits, deterministic canonical JSON with duplicate-key rejection, the immutable execution manifest and its stable digest, the raw-credential boundary, and strict encoding and decoding for the command, normalized event, acknowledgement, heartbeat, and reconciliation-snapshot envelopes with exact field sets, ordering fields, fence tokens, sequences, expected state version, manifest-digest binding, and byte-stable fixtures under `test/fixtures/delivery/`.
+- Boundary held: The codec validates envelope identity, ordering, structure, references, and limits only. Event payload semantics, dispatch, and persistence stay with their owning tasks; a repository, schema, and migration absence check proves the modules carry no project persistence.
+- Remaining: Task 1 is blocked until `capability:project-participation-boundary` is delivered by `specs/08-project-participation#Task 4`. Every other Slice 07 task depends transitively on Task 1, so no further Slice 07 task is executable until that provider capability is ready.
+- Failed checks: None. Focused proof passes with real exit status: 46 delivery protocol tests, then `mix test` (793 passing), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix sobelow --config`, and `mix deps.audit`.
+- Spec updates: Marked Task 7 complete and moved the slice status to `In Progress`; requirements, design, ownership, acceptance criteria, and capability edges are unchanged.
 
 ### 2026-07-28 - Specification-store provider task refined
 
