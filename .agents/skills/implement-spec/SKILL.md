@@ -43,7 +43,7 @@ Do not stop implementation only because a recorded deployment or release gate re
 
 An unavailable environment dependency, such as a stopped service, missing daemon, or absent credential, is an environment blocker, not an implementation defect. Pause the affected proofs, continue independent work, surface it to the user, and record it as environment-blocked. Verify evidence by real exit status and re-run ambiguous results; do not record a masked or piped exit code as a pass.
 
-Use sub-agents only when work separates cleanly by ownership, files, and proof. Reconcile all results and run final verification in one place.
+Delegate task development to sub-agents by default, and run them in parallel when work separates cleanly by ownership, files, and proof. Reconcile all results and run final verification in one place.
 
 ## Boundaries
 
