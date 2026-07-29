@@ -117,13 +117,20 @@ defmodule SddOrchestrator.Participation.RevocationsTest do
 
       after_tables = table_counts()
 
-      # Only participation-owned tables move. Nothing else in the database is
-      # touched, so no consumer record can be mutated by a membership action.
-      assert Map.drop(after_tables, ["participation_revocations"]) ==
-               Map.drop(before_tables, ["participation_revocations"])
+      # Only participation-owned tables move: the handoff this specification
+      # produces and its own account-level notification. Nothing else in the
+      # database is touched, so no consumer record can be mutated by a
+      # membership action.
+      participation_owned = ["participation_revocations", "account_notifications"]
+
+      assert Map.drop(after_tables, participation_owned) ==
+               Map.drop(before_tables, participation_owned)
 
       assert after_tables["participation_revocations"] ==
                before_tables["participation_revocations"] + 1
+
+      assert after_tables["account_notifications"] ==
+               before_tables["account_notifications"] + 1
     end
   end
 
