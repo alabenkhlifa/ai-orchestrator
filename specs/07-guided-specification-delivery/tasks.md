@@ -253,7 +253,7 @@ Prerequisite:
   - Depends on: Task 21
   - Proof: Focused migration, blocked transition, checkpoint, one-question, duplicate, stale-event, branch and workspace preservation, status, activity, and browser tests pass.
 
-- [ ] Task 23 - Route blocking-question responsibility.
+- [x] Task 23 - Route blocking-question responsibility.
   - Size: Standard
   - Purpose: Tag the current assigned participant or creator with owner fallback when responsibility is stale.
   - Owned surfaces: Assigned-first and creator fallback resolution, current-participant revalidation, owner fallback, responder set, project display-name presentation, participant-email non-disclosure, stale and former-participant denial, question activity tags, fixtures, and UI presentation.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 23 complete: blocking-question responsibility routing
+
+- Completed: Added `Delivery.QuestionRouting` and the responder presentation on the feature detail screen. An open question names who it is waiting on, and only that person may answer it.
+- Boundary held (AC-05, AC-06): The assigned participant is tagged even when the creator is someone else, and the creator is tagged when `Assigned` is empty — both asserted by name. When the assignee has left, and when the assignee *and* the creator have both left, responsibility routes to the immutable project owner rather than to a former participant. A person who is not a current responder is refused without learning who the real responder is.
+- Presentation: Responders are participation-boundary member results — project display name, role, account reference — and no participant email appears in any return value, activity payload, or rendered output, which is asserted directly. The recorded question names its responder by account reference only; display names resolve at render, so a later rename or departure is reflected rather than frozen.
+- Mechanism recorded: Routing consumes `Assignment.responsible/2` rather than restating the assignee-creator-owner rule. One resolution, one place — the routing rule and the screen's "answers questions" label cannot drift apart.
+- Failed checks: None. Final proof passes with real exit status: the routing suite plus the feature-detail LiveView suite, `mix test` (1542 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 24 (accepted-answer specification write-back and resume) is next; it consumes the routed responder's authorization.
+- Spec updates: Marked Task 23 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 22 complete: durable blocked-run and question state
 

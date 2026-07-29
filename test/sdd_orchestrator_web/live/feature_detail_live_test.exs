@@ -495,6 +495,105 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     end
   end
 
+  describe "who the blocking question is waiting on [AC-05] [AC-06]" do
+    setup %{project: project, account: account} do
+      blocked = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = DeliveryFixtures.run_fixture(project, blocked)
+      ask(project, blocked, run, %{question: "Which retention window applies?"})
+
+      %{blocked: blocked, run: run}
+    end
+
+    test "names the assigned participant even though the creator is someone else [AC-05]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      blocked: blocked,
+      account: account
+    } do
+      member_label = Participation.member_profile(project.id, context.identity.account.id)
+
+      {:ok, assigned} =
+        Assignment.assign(project.id, context.owner_actor, blocked, context.identity.account.id)
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, assigned))
+
+      assert view |> element("[data-question-responder]") |> render() =~
+               member_label.display_name
+
+      # The creator is reading it, so the screen does not claim the decision is
+      # theirs.
+      assert view |> element("[data-blocking-question]") |> render() =~ "Waiting on a decision"
+      refute html =~ "@example.com"
+    end
+
+    test "names the creator when nobody is assigned [AC-06]", %{
+      conn: conn,
+      project: project,
+      blocked: blocked,
+      account: account
+    } do
+      owner_label = Participation.owner_profile(project.id).display_name
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, blocked))
+
+      assert view |> element("[data-question-responder]") |> render() =~ owner_label
+
+      assert view |> element("[data-blocking-question]") |> render() =~
+               "Waiting on your decision"
+
+      refute html =~ "@example.com"
+    end
+
+    test "tells the assigned responder the decision is theirs [AC-05]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      blocked: blocked
+    } do
+      {:ok, assigned} =
+        Assignment.assign(project.id, context.owner_actor, blocked, context.identity.account.id)
+
+      {:ok, view, html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, assigned))
+
+      assert view |> element("[data-blocking-question]") |> render() =~
+               "Waiting on your decision"
+
+      refute html =~ "@example.com"
+    end
+
+    test "names the owner once the assignee has left", %{
+      conn: conn,
+      context: context,
+      project: project,
+      blocked: blocked,
+      account: account
+    } do
+      member_label = Participation.member_profile(project.id, context.identity.account.id)
+
+      {:ok, assigned} =
+        Assignment.assign(project.id, context.owner_actor, blocked, context.identity.account.id)
+
+      {:ok, _removed} =
+        Revocations.remove(project, account.id, context.identity.hosted_identity.id)
+
+      owner_label = Participation.owner_profile(project.id).display_name
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, assigned))
+
+      responder = view |> element("[data-question-responder]") |> render()
+
+      assert responder =~ owner_label
+      refute responder =~ member_label.display_name
+    end
+  end
+
   defp in_development(feature) do
     {:ok, ready} =
       feature

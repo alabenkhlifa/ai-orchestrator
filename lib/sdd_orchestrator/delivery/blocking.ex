@@ -25,7 +25,8 @@ defmodule SddOrchestrator.Delivery.Blocking do
     BlockingQuestion,
     DeliveryStore,
     EventIngestion,
-    ParticipantGuard
+    ParticipantGuard,
+    QuestionRouting
   }
 
   alias SddOrchestrator.Repo
@@ -126,13 +127,17 @@ defmodule SddOrchestrator.Delivery.Blocking do
           attempt_id: attempt.id,
           actor_kind: "agent",
           type: "question_asked",
-          payload: %{
-            "operation_key" => envelope["event_id"],
-            "question_id" => {:ref, :question, :id},
-            "branch" => run.branch,
-            "attempt_number" => envelope["attempt_number"],
-            "summary" => String.slice(attrs.question, 0, 200)
-          }
+          payload:
+            Map.merge(
+              %{
+                "operation_key" => envelope["event_id"],
+                "question_id" => {:ref, :question, :id},
+                "branch" => run.branch,
+                "attempt_number" => envelope["attempt_number"],
+                "summary" => String.slice(attrs.question, 0, 200)
+              },
+              QuestionRouting.tag(run.project_id, feature)
+            )
         }}}
     ]
   end

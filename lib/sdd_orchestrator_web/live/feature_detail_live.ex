@@ -20,7 +20,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     Comments,
     Features,
     ParticipantGuard,
-    ProcessingDisclosure
+    ProcessingDisclosure,
+    QuestionRouting
   }
 
   @column_labels %{
@@ -171,7 +172,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:feature, feature)
     |> assign(:names, Map.new(members, &{&1.account_id, &1.display_name}))
     |> assign(:members, members)
-    |> assign(:responsible, responsible_label(project_id, feature))
+    |> assign(:responsible, QuestionRouting.responder_label(project_id, feature))
+    |> assign(:question_for_me?, QuestionRouting.tagged?(project_id, feature, actor))
     |> assign(:question, open_question(project_id, actor, feature))
     |> assign(:assignment_error, socket.assigns[:assignment_error])
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
@@ -218,14 +220,10 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
-  # Responsibility is derived, not stored, so the screen shows who would
-  # actually be asked right now rather than a possibly stale field.
-  defp responsible_label(project_id, feature) do
-    case Assignment.responsible(project_id, feature) do
-      {:ok, member} -> member.display_name
-      {:error, :unavailable} -> nil
-    end
-  end
+  # A question that is not this reader's to answer says so, rather than telling
+  # everyone who opens the feature that it is waiting on them.
+  defp question_heading(true), do: "Waiting on your decision"
+  defp question_heading(false), do: "Waiting on a decision"
 
   defp name(_names, nil), do: nil
   defp name(names, account_id), do: Map.get(names, account_id)
@@ -281,7 +279,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             id="blocking-question-heading"
             class="flex items-center gap-1.5 text-[13px] font-semibold text-err-fg"
           >
-            <.lucide name="circle-alert" class="size-4 flex-none" /> Waiting on your decision
+            <.lucide name="circle-alert" class="size-4 flex-none" />
+            {question_heading(@question_for_me?)}
           </h2>
           <p class="mt-2 text-sm text-ink" data-question-text>{@question.question}</p>
           <p
@@ -290,6 +289,9 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             data-question-context
           >
             {@question.context}
+          </p>
+          <p class="mt-2 text-xs text-ink-muted" data-question-responder>
+            Answered by {@responsible || "the project owner"}.
           </p>
           <p class="mt-2 text-xs text-ink-muted" data-question-branch>
             The work so far is kept on {@question.branch}.
