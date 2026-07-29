@@ -189,6 +189,36 @@ test.describe("feature delivery", () => {
     );
   });
 
+  test("a participant comments under their project display name", async ({ page }) => {
+    const { project_id, features, participant_name } = await bootstrap(page, "features", {
+      populated: "true",
+      as: "participant",
+    });
+    await openLive(page, `/projects/${project_id}/features/${features.draft}`);
+
+    await expect(page.locator("[data-comments-empty]")).toBeVisible();
+
+    await fillDebounced(page, "#comment-body", "The empty state needs work.");
+    await page.locator("[data-post-comment]").click();
+
+    await expect(page.locator("[data-comment]")).toHaveCount(1);
+    await expect(page.locator("[data-comment-body]")).toHaveText("The empty state needs work.");
+    await expect(page.locator("[data-comment-author]")).toHaveText(participant_name);
+    await expect(page.locator("[data-comments-empty]")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("@example.com");
+  });
+
+  test("a comment carrying an address is refused inline", async ({ page }) => {
+    const { project_id, features } = await bootstrap(page, "features", { populated: "true" });
+    await openLive(page, `/projects/${project_id}/features/${features.draft}`);
+
+    await fillDebounced(page, "#comment-body", "ask alex@example.com about this");
+    await page.locator("[data-post-comment]").click();
+
+    await expect(page.locator("#comment-body-error")).toContainText(/Remove the address/i);
+    await expect(page.locator("[data-comment]")).toHaveCount(0);
+  });
+
   test("the board is reachable by keyboard with a visible focus ring", async ({ page }) => {
     const { project_id } = await bootstrap(page, "features", { populated: "true" });
     await openLive(page, `/projects/${project_id}/features`);

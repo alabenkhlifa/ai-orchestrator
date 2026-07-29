@@ -14,7 +14,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   """
   use SddOrchestratorWeb, :live_view
 
-  alias SddOrchestrator.Delivery.{Assignment, Features, ParticipantGuard}
+  alias SddOrchestrator.Delivery.{Assignment, Comments, Features, ParticipantGuard}
 
   @column_labels %{
     "draft" => "Draft",
@@ -36,7 +36,41 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     "done" => "This feature is done."
   }
 
+  @comment_messages %{
+    empty_comment: "Write something before posting.",
+    comment_too_long: "That comment is too long. Shorten it and try again.",
+    redacted_content: "Remove the address or credential from that comment before posting.",
+    duplicate_comment: "That comment was already posted.",
+    not_found: "This feature is no longer available."
+  }
+
   @impl true
+  def handle_event("comment", %{"comment" => %{"body" => body}}, socket) do
+    socket.assigns.project_id
+    |> Comments.add(socket.assigns.actor, socket.assigns.feature.id, body)
+    |> case do
+      {:ok, _entry} ->
+        {:noreply,
+         socket
+         |> assign(:comment_body, "")
+         |> assign(:comment_error, nil)
+         |> refresh_activity()}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:comment_body, body)
+         |> assign(:comment_error, Map.fetch!(@comment_messages, reason))}
+    end
+  end
+
+  def handle_event("validate_comment", %{"comment" => %{"body" => body}}, socket) do
+    {:noreply, socket |> assign(:comment_body, body) |> assign(:comment_error, nil)}
+  end
+
   def handle_event("assign", %{"assignment" => %{"account_id" => account_id}}, socket) do
     socket.assigns.project_id
     |> Assignment.assign(socket.assigns.actor, socket.assigns.feature, blank_to_nil(account_id))
@@ -111,6 +145,25 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:members, members)
     |> assign(:responsible, responsible_label(project_id, feature))
     |> assign(:assignment_error, socket.assigns[:assignment_error])
+    |> assign(:comment_body, socket.assigns[:comment_body] || "")
+    |> assign(:comment_error, socket.assigns[:comment_error])
+    |> load_activity(project_id, actor, feature)
+  end
+
+  defp load_activity(socket, project_id, actor, feature) do
+    case Comments.list(project_id, actor, feature.id) do
+      {:ok, comments} -> assign(socket, :comments, comments)
+      {:error, :unauthorized} -> assign(socket, :comments, [])
+    end
+  end
+
+  defp refresh_activity(socket) do
+    load_activity(
+      socket,
+      socket.assigns.project_id,
+      socket.assigns.actor,
+      socket.assigns.feature
+    )
   end
 
   # Responsibility is derived, not stored, so the screen shows who would
@@ -243,6 +296,48 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             {gated_action(@feature.lifecycle_column)}
           </p>
         </div>
+
+        <section class="mt-6" data-comments>
+          <h2 class="text-[13px] font-semibold text-ink">Comments</h2>
+
+          <ul :if={@comments != []} class="mt-3 flex flex-col gap-2">
+            <li
+              :for={comment <- @comments}
+              class="rounded-lg border border-line bg-surface p-3.5"
+              data-comment
+            >
+              <p class="text-[13px] font-semibold text-ink" data-comment-author>
+                {name(@names, comment.actor_account_id) || "A former member"}
+              </p>
+              <p class="mt-1 text-sm text-ink" data-comment-body>{comment.payload["body"]}</p>
+            </li>
+          </ul>
+
+          <p :if={@comments == []} class="mt-3 text-xs text-ink-muted" data-comments-empty>
+            Nothing said about this feature yet.
+          </p>
+
+          <form
+            id="comment-form"
+            phx-change="validate_comment"
+            phx-submit="comment"
+            class="mt-4"
+          >
+            <.text_field
+              id="comment-body"
+              name="comment[body]"
+              label="Add a comment"
+              value={@comment_body}
+              error={@comment_error}
+              hint="Comments explain the work. They never stand in for a required check."
+              autocomplete="off"
+              phx-debounce="200"
+            />
+            <.button type="submit" class="mt-3 w-full sm:w-auto" data-post-comment>
+              <.lucide name="pencil" class="size-4" /> Post comment
+            </.button>
+          </form>
+        </section>
       </div>
     </.app_shell>
     """

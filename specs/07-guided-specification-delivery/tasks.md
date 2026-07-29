@@ -181,7 +181,7 @@ Prerequisite:
   - Depends on: Task 15
   - Proof: Focused migration, ordering, immutability, actor, type, transaction, authorization, pagination, payload-minimization, raw-event absence, and concurrency tests pass.
 
-- [ ] Task 46 - Deliver participant feature comments.
+- [x] Task 46 - Deliver participant feature comments.
   - Size: Standard
   - Purpose: Let current participants add one authorized project-scoped comment to ordered feature activity.
   - Owned surfaces: Comment action, current-participant revalidation, project and feature scope, display-name attribution, comment content limits and redaction, one transactionally appended `ActivityEntry`, duplicate-submission protection, stale and removed denial, participant-email non-disclosure, fixtures, and responsive accessible comment form.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 46 complete: participant feature comments
+
+- Completed: Added `Delivery.Comments` and the comment section on the feature detail screen. A comment is one `ActivityEntry` of type `comment` rather than a separate record, so what people said sits in the same ordered history as agent progress, questions, answers, and evidence — a reviewer reads one story instead of reconciling two timelines.
+- Boundary held: A comment is explanatory only and can satisfy no required check and move no column; participant prose and agent prose have the same standing as evidence, which is none. Authorization is revalidated on every post: an outsider, an unauthenticated visitor, a departed participant, another project's feature, and an unknown feature are all refused with nothing appended.
+- Redaction proved: A comment is the one payload written freely by a person, so a pasted credential (OpenAI, GitHub PAT and fine-grained PAT, PEM private key, AWS key id) or any address is refused at submission rather than stored and redacted later. Attribution uses the project display name; the stored entry was asserted to contain no address.
+- Duplicate submission: Identical text repeated as the same person's immediately preceding comment is rejected as a resubmission, which is what a double-clicked button produces. The same text after someone else's comment is a real comment, and two people may say the same thing.
+- Failed checks: The comment button first used a `message-square` icon that the project's fixed inline icon set does not carry, which failed every render. It now uses `pencil` rather than extending the shared presentation foundation owned by another slice. Final proof passes with real exit status: 18 comment tests, 15 feature-detail LiveView tests, 15 `chromium` feature-delivery browser scenarios, `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 18 (device delivery-store adapter) and Task 3 (run-state transactions) continue the orchestration path.
+- Spec updates: Marked Task 46 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 9 complete: project-participant assignment and responsibility
 

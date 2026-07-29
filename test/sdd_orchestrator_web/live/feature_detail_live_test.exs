@@ -244,6 +244,82 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     end
   end
 
+  describe "comments" do
+    test "a participant posts a comment that appears under their project name", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature
+    } do
+      label = Participation.member_profile(project.id, context.identity.account.id).display_name
+
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-comments-empty]")
+
+      view
+      |> form("#comment-form", %{"comment" => %{"body" => "The empty state needs work."}})
+      |> render_submit()
+
+      assert view |> element("[data-comment-body]") |> render() =~ "The empty state needs work."
+      assert view |> element("[data-comment-author]") |> render() =~ label
+      refute has_element?(view, "[data-comments-empty]")
+    end
+
+    test "a pasted address is rejected inline and never posted", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view
+      |> form("#comment-form", %{"comment" => %{"body" => "ask alex@example.com"}})
+      |> render_submit()
+
+      assert view |> element("#comment-body-error") |> render() =~ "Remove the address"
+      assert has_element?(view, "[data-comments-empty]")
+    end
+
+    test "an empty comment is rejected inline", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> form("#comment-form", %{"comment" => %{"body" => "   "}}) |> render_submit()
+
+      assert view |> element("#comment-body-error") |> render() =~ "Write something"
+    end
+
+    test "a resubmitted comment is reported rather than posted twice", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      for _submit <- 1..2 do
+        view
+        |> form("#comment-form", %{"comment" => %{"body" => "Double clicked."}})
+        |> render_submit()
+      end
+
+      assert view |> element("#comment-body-error") |> render() =~ "already posted"
+      assert view |> render() |> then(&Regex.scan(~r/data-comment-body/, &1)) |> length() == 1
+    end
+  end
+
   defp feature_path(project, feature), do: ~p"/projects/#{project.id}/features/#{feature.id}"
 
   defp log_in_hosted(conn, hosted_identity) do
