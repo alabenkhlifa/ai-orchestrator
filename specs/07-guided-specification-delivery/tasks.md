@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. Task 8 established the durable feature and its lifecycle invariants and Task 2 delivered the board and feature detail screens, so Task 9 (project-participant assignment) is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. Task 8 established the durable feature and its lifecycle invariants and Task 2 delivered the board and feature detail screens, so Task 9 (project-participant assignment) is the next executable task. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -111,7 +111,6 @@ Prerequisite:
 
 - [x] Task 2 - Deliver the feature lifecycle board.
   - Size: Standard
-  - Status: Complete; the desktop and mobile browser matrix is environment-blocked because the Playwright harness cannot establish an authenticated session. Deterministic LiveView proof covers the same behavior, including the responsive column layout and focus styling.
   - Purpose: Make the fixed lifecycle and gated movement durable and understandable before agent execution.
   - Owned surfaces: Project-scoped board and feature-detail LiveViews, five fixed columns, lifecycle card grouping, creator and assignment display seam, no-drag behavior, gated action presentation, generic status seam for later blocked and failed states, empty and populated states, fixtures, and responsive accessibility behavior.
   - Owns: AC-01, AC-03
@@ -529,6 +528,15 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 2 browser matrix unblocked
+
+- Completed: The desktop and mobile browser matrix recorded as environment-blocked on Task 2 now runs for real. Ten scenarios cover the five fixed lifecycle columns empty and populated, the creator label, the visible status that does not move a card out of its column, the absence of any drag affordance (no `draggable` attribute and no handle on any card), card-to-detail navigation with no direct column choice, and adding a feature to `Draft` — with keyboard, focus-ring, viewport, and axe passes on both `chromium` and `mobile-chromium`. The environment-blocked `Status:` line is removed because the condition it recorded no longer holds.
+- Mechanism recorded: The blocker was that Playwright could establish neither auth boundary. `SddOrchestratorWeb.E2EBootstrapController` at `/_e2e/session`, owned by specs/08's write-back of the same date, establishes the application and hosted sessions and seeds a board by walking the real transition table from `Draft`. It is harness code, not product behavior: no acceptance criterion, entity, or task ownership changed here.
+- Security boundary: The route is compiled in only under `Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false)`, which no production configuration sets; a `MIX_ENV=prod` build compiles 31 routes and contains no `/_e2e/session`. The action also answers `404` at runtime when the flag is off.
+- Remaining: Unchanged. Task 9 (project-participant assignment and responsibility) is still the next executable task, and `capability:project-participation-governance` remains unavailable, which affects Task 40 only. The live configured worker and coding-agent smoke proofs in the verification gate remain environment-blocked for their own separate reason and are untouched by this change.
+- Failed checks: None. Proof passes with real exit status: `npm --prefix assets run test:e2e` (69 passing on `chromium` and 69 on `mobile-chromium`, of which 10 per project are these feature-delivery scenarios) and `mix check` (1037 passing).
+- Spec updates: Removed the satisfied environment-blocked `Status:` line from Task 2. Requirements, design, acceptance criteria, ownership, task sizes, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 2 complete: feature lifecycle board
 

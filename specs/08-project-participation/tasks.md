@@ -11,8 +11,8 @@ rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
 30, 31, 32, 33, and 5) are not started, so
 `capability:project-participation-governance` is still unavailable and the slice
 has not reached its verification gate. The authenticated participation browser
-matrix is environment-blocked because the Playwright harness cannot establish an
-application session; each affected task records it.
+matrix now runs for real on desktop and mobile against a dev/test-only session
+bootstrap, so no participation task carries an environment-blocked proof.
 
 ## Active Slice
 
@@ -101,7 +101,6 @@ Release gates:
 
 - [x] Task 28 — Deliver the owner project-display profile workflow.
   - Size: Standard
-  - Status: Complete; the authenticated-owner browser matrix (keyboard, focus, mobile layout) is environment-blocked because the e2e harness has no account sign-in path. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 6
   - Purpose: Require an understandable owner label before the first invitation and let the owner maintain it safely.
   - Owned surfaces: Owner-profile prerequisite, owner self-edit action, participation-settings owner-profile form, no email-derived fallback, trimmed case-insensitive uniqueness, conflict correction, preserved spelling, authorization, fixtures, and responsive accessible browser behavior.
@@ -174,7 +173,6 @@ Release gates:
 
 - [x] Task 12 — Deliver invitation-bound fresh email proof.
   - Size: Standard
-  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 25
   - Purpose: Establish the invited stable hosted identity in the browser without treating an unrelated session as proof.
   - Owned surfaces: Invitation-bound proof token handoff, normalized invited-email binding, fresh passwordless verification reuse, different-email denial, active-other-identity warning, browser-cookie identity transition, unrelated server-side session preservation, proven-identity session establishment, pre-acceptance authorization denial, invalid and replay-safe result, fixtures, and responsive accessible browser behavior.
@@ -191,7 +189,6 @@ Release gates:
 
 - [x] Task 13 — Deliver acceptance and decline interface.
   - Size: Standard
-  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 3
   - Purpose: Explain the identified project and consequence, collect the participant label, and require an explicit outcome.
   - Owned surfaces: Post-proof project and owner-display-name presentation, participant display-name form, availability validation, explicit accept and decline actions, safe invalid result, declined terminal state, fresh-flow requirement, no other-participant email, fixtures, and responsive accessible browser behavior.
@@ -208,7 +205,6 @@ Release gates:
 
 - [x] Task 15 — Deliver participation management and identity visibility.
   - Size: Standard
-  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 3
   - Purpose: Show only the membership and invitation fields each current member is allowed to see.
   - Owned surfaces: Participation-management LiveView, current owner and participant role presentation, project display names, owner-only invitation and verified participant email visibility, participant self-email visibility, other-email non-disclosure, pending and terminal invitation list fields, owner-only management controls, fixtures, and responsive accessible browser behavior.
@@ -217,7 +213,6 @@ Release gates:
 
 - [x] Task 29 — Deliver member-controlled display-name editing.
   - Size: Standard
-  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 15
   - Purpose: Let each current member change only their own project label without changing authorization identity.
   - Owned surfaces: Participant self-edit action, owner self-edit reuse, trimmed case-insensitive uniqueness, accepted spelling, conflict rejection without suffix, stable identity preservation, current-label rendering, last-accepted-label handoff seam, fixtures, and inline accessible validation.
@@ -234,7 +229,6 @@ Release gates:
 
 - [x] Task 17 — Deliver atomic owner removal and the revocation handoff.
   - Size: Standard
-  - Status: Complete; the authenticated browser matrix for the removal control is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 16, Task 29
   - Purpose: End owner-selected participation and publish exactly one durable consumer handoff in the same transaction.
   - Owned surfaces: `ParticipationRevocation`, owner removal command, active-participant row locking, atomic inactive transition and outbox insertion, immediate authorization invalidation, immutable owner fallback, last accepted display name, reason, event time, contract version, idempotent handoff identity, claim and acknowledgement operations, no Slice 07 record mutation, fixtures, and removal result.
@@ -243,7 +237,6 @@ Release gates:
 
 - [x] Task 18 — Deliver participant self-leave and immutable-owner denial.
   - Size: Standard
-  - Status: Complete; the authenticated browser matrix for the leave control is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 16, Task 17
   - Purpose: Let a participant end only their own access while keeping project ownership unchanged.
   - Owned surfaces: Participant self-leave command, owner and other-participant denial, atomic inactive transition and versioned revocation insertion reuse, immediate authorization invalidation, immutable-owner invariant, idempotency, concurrency, fixtures, and leave result.
@@ -376,6 +369,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Authenticated participation browser matrix unblocked
+
+- Completed: The desktop and mobile browser matrices recorded as environment-blocked on Tasks 28, 12, 13, 15, 29, 17, and 18 now run for real. Twenty scenarios cover the owner label prerequisite and conflicting-label rejection, invitation send, replacement and cancellation with their list states, the member list and its email-visibility rule, participant self-rename, self-leave with immediate loss of access, the unproven invitee, the other-identity warning, explicit acceptance, decline, and the one safe result a used-up invitation returns — each with keyboard, focus-ring, viewport, and axe passes on both `chromium` and `mobile-chromium`. The per-task environment-blocked `Status:` lines are removed because the condition they recorded no longer holds.
+- Mechanism recorded: The blocker was that Playwright could establish neither auth boundary — an application session comes only from a live GitHub round trip and a hosted session only from a delivered passwordless credential. `SddOrchestratorWeb.E2EBootstrapController` at `/_e2e/session` establishes both and seeds one scenario's project graph. It is harness code, not product behavior: no acceptance criterion, entity, or task ownership changed. Seeding runs the real domain commands — `Invitations.create/3`, `Acceptance.accept/3`, and the lifecycle transition table — so every seeded state is one the product itself can produce, and the invited person's credential is read back out of the delivered message rather than reconstructed, which also exercises the Task 11 delivery path.
+- Security boundary: The route is excluded from production by construction, not by a runtime check. The router compiles it only under `Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false)`; `config/test.exs` sets the flag, `config/dev.exs` sets it only when `E2E_MODE` is on, and no production configuration sets it at all, so an ordinary `mix phx.server` does not expose it either. Verified against a real production build: `MIX_ENV=prod` compiles 31 routes and neither `/_e2e/session` nor `/_ui` is among them. The action re-checks the same flag at runtime and answers `404` when it is off, which is asserted directly, as is the absence of the key from the production configuration.
+- Remaining: Unchanged. The lifecycle, retention, rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24, 30, 31, 32, 33, and 5) still remain, so `capability:project-participation-governance` is unavailable and the slice verification gate has not run. The gate's browser line now has real desktop and mobile evidence and will be confirmed when the gate runs as a whole.
+- Failed checks: None. Proof passes with real exit status: 13 bootstrap-controller tests, `npm --prefix assets run test:e2e` (69 passing on `chromium` and 69 on `mobile-chromium`, of which 20 per project are these participation and invitation scenarios), `mix check` (1037 passing), and `mix sobelow --config`.
+- Spec updates: Removed the satisfied environment-blocked `Status:` lines from Tasks 28, 12, 13, 15, 29, 17, and 18 and the matching sentence from the slice status. Requirements, design, acceptance criteria, ownership, task sizes, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 4 complete: current-participant authorization boundary published
 
