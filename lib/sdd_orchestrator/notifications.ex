@@ -46,15 +46,18 @@ defmodule SddOrchestrator.Notifications do
   """
   @spec deliver_multi(Multi.t(), Multi.name(), map()) :: Multi.t()
   def deliver_multi(multi, name, attrs) do
-    changeset = AccountNotification.changeset(%AccountNotification{}, attrs)
-
     multi
-    |> Multi.insert({name, :insert}, changeset,
-      on_conflict: :nothing,
-      conflict_target: @conflict_target
-    )
-    |> Multi.run(name, fn repo, _changes -> {:ok, get_by_key(repo, changeset)} end)
+    |> Multi.insert({name, :insert}, changeset(attrs), insert_options())
+    |> Multi.run(name, fn repo, _changes -> {:ok, get_by_key(repo, changeset(attrs))} end)
   end
+
+  @doc "Builds one notification changeset for a caller-owned transaction step."
+  @spec changeset(map()) :: Ecto.Changeset.t()
+  def changeset(attrs), do: AccountNotification.changeset(%AccountNotification{}, attrs)
+
+  @doc "Insert options that make a notification step idempotent under replay."
+  @spec insert_options() :: keyword()
+  def insert_options, do: [on_conflict: :nothing, conflict_target: @conflict_target]
 
   @doc "Publishes the presentation hint for notifications committed in a transaction."
   @spec publish_committed([AccountNotification.t() | nil]) :: :ok

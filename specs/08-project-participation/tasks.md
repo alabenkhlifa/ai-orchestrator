@@ -177,7 +177,7 @@ Release gates:
   - Owns: AC-28
   - Proof: Focused session, token-binding, matching and different email, active-other-identity, warning, cookie replacement, unrelated-session preservation, invalid, replay, and browser tests pass without granting project access.
 
-- [ ] Task 3 — Deliver atomic participation acceptance.
+- [x] Task 3 — Deliver atomic participation acceptance.
   - Size: Standard
   - Depends on: Task 6, Task 7, Task 12
   - Purpose: Create project access exactly once after valid proof and explicit acceptance.
@@ -367,6 +367,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 3 complete: atomic participation acceptance
+
+- Completed: Added `Participation.Acceptance`. One `Ecto.Multi` locks the invitation row, revalidates at commit time that it is still pending, unexpired, and freshly proven by the acting identity, creates the participant authorization and its project display profile, consumes the invitation while erasing its credential, and inserts the participant and owner outcome notifications.
+- Boundary held: Exactly one active participant exists per identity and project — a replayed acceptance returns the existing participation without a second participant, profile, or notification, and a self-race leaves one participant and one accepted invitation. Every unusable path (unknown or malformed id, absent identity, expired, canceled, or an identity that proved a different address) returns the same safe result and leaves no participant, profile, consumed invitation, or notification behind. An unavailable or invalid project display name rolls the whole transaction back and reports which of the two it was.
+- Mechanism recorded: `Notifications` now exposes `changeset/1` and `insert_options/0` so a caller composes notification steps inside its own transaction without passing an opaque `Ecto.Multi` across a module boundary. The module was added to the repository's existing documented `call_without_opaque` suppression list, which every `Ecto.Multi` module here already carries for the same known Ecto/Dialyzer interaction.
+- Remaining: Task 13 (acceptance and decline interface) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: Strict Credo flagged an `Enum.count/2` predicate count in a race assertion. Dialyzer reported the known `Ecto.Multi` opacity warning; the notification composition was restructured first and the residual warning uses the repository's existing narrow suppression. Final proof passes with real exit status: 7 acceptance tests, `mix test` (878 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 3 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 12 complete: invitation-bound fresh email proof
 

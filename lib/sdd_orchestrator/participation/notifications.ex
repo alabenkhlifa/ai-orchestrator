@@ -9,9 +9,10 @@ defmodule SddOrchestrator.Participation.ProjectNotifications do
   behind the participation link, which is authorized on its own.
   """
 
+  alias SddOrchestrator.Accounts.HostedIdentity
   alias SddOrchestrator.Notifications
   alias SddOrchestrator.Participation
-  alias SddOrchestrator.Participation.ProjectInvitation
+  alias SddOrchestrator.Participation.{ProjectInvitation, ProjectMemberProfile}
   alias SddOrchestrator.Projects.Project
 
   @doc """
@@ -38,6 +39,62 @@ defmodule SddOrchestrator.Participation.ProjectNotifications do
     end
   end
 
+  @doc "The event that confirms accepted participation to the new participant."
+  @spec acceptance_participant_event(Project.t(), ProjectMemberProfile.t(), HostedIdentity.t()) ::
+          map()
+  def acceptance_participant_event(
+        %Project{} = project,
+        %ProjectMemberProfile{} = profile,
+        identity
+      ) do
+    %{
+      account_id: identity.account_id,
+      event_type: "participation.joined",
+      subject_ref: profile.id,
+      event_version: 1,
+      title: "You joined #{project.name}",
+      body: "You are now on #{project.name} as #{profile.display_name}.",
+      project_label: project.name,
+      actor_label: profile.display_name,
+      link_path: project_path(project)
+    }
+  end
+
+  @doc "The event that tells the owner one invitation was accepted."
+  @spec acceptance_owner_event(Project.t(), ProjectMemberProfile.t(), map()) :: map()
+  def acceptance_owner_event(%Project{} = project, %ProjectMemberProfile{} = profile, owner) do
+    %{
+      account_id: owner.account_id,
+      event_type: "participation.participant_joined",
+      subject_ref: profile.id,
+      event_version: 1,
+      title: "Someone joined #{project.name}",
+      body: "#{profile.display_name} accepted an invitation to #{project.name}.",
+      project_label: project.name,
+      actor_label: profile.display_name,
+      link_path: participation_path(project)
+    }
+  end
+
+  @doc "The event that tells the owner one invitation was declined."
+  @spec decline_owner_event(Project.t(), ProjectInvitation.t(), map()) :: map()
+  def decline_owner_event(%Project{} = project, %ProjectInvitation{} = invitation, owner) do
+    %{
+      account_id: owner.account_id,
+      event_type: "participation.invitation_declined",
+      subject_ref: invitation.id,
+      event_version: invitation.credential_version,
+      title: "An invitation was declined",
+      body: "One invitation to #{project.name} was declined.",
+      project_label: project.name,
+      link_path: participation_path(project),
+      occurred_at: invitation.terminal_at
+    }
+  end
+
   @spec participation_path(Project.t()) :: String.t()
   def participation_path(%Project{id: id}), do: "/projects/#{id}/participation"
+
+  @spec project_path(Project.t()) :: String.t()
+  def project_path(%Project{id: id}), do: "/projects/#{id}"
 end
