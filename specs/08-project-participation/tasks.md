@@ -194,7 +194,7 @@ Release gates:
   - Owns: AC-16, AC-19
   - Proof: Focused LiveView and desktop and mobile browser tests cover project and owner labels, available and conflicting participant names, explicit acceptance, decline, invalid and terminal invitations, no other email, keyboard, focus, and no access after decline.
 
-- [ ] Task 14 — Deliver acceptance and decline notifications.
+- [x] Task 14 — Deliver acceptance and decline notifications.
   - Size: Standard
   - Depends on: Task 7, Task 13
   - Purpose: Confirm accepted participation to both parties and a declined outcome only to the owner.
@@ -368,6 +368,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 14 complete: acceptance and decline notifications
+
+- Completed: Proved the in-product outcome channel end to end. Acceptance confirms to the new participant and reports to the project owner; declining reports to the owner only. Every record uses the shared store's event, subject, version, and recipient key, so replaying an outcome creates no duplicate for either person.
+- Boundary held: A project bystander receives nothing, and the person who declined receives no record for a project they did not join. Each body names the project label, the action, and the new participant's project display name only — never the invited address, the invitation identifier, a credential, or an account-existence signal — and each link stays inside the project it belongs to. Unread delivery is durable, mark-read is idempotent, and marking is denied for another recipient.
+- Remaining: Task 15 (participation management and identity visibility) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 6 outcome-notification tests, `mix test` (887 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Spec updates: Marked Task 14 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 13 complete: acceptance and decline interface
 
