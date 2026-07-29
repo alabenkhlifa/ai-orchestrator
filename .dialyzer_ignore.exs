@@ -13,5 +13,9 @@
   {"lib/sdd_orchestrator/portability/hosted_restore.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/specifications/specification_store/hosted.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/participation/acceptance.ex", :call_without_opaque},
-  {"lib/sdd_orchestrator/participation/revocations.ex", :call_without_opaque}
+  {"lib/sdd_orchestrator/participation/revocations.ex", :call_without_opaque},
+  {"lib/sdd_orchestrator/delivery/activity.ex", :call_without_opaque},
+  {"lib/sdd_orchestrator/delivery/assignment.ex", :call_without_opaque},
+  {"lib/sdd_orchestrator/delivery/command_outbox.ex", :call_without_opaque},
+  {"lib/sdd_orchestrator/delivery/delivery_store/hosted.ex", :call_without_opaque}
 ]
