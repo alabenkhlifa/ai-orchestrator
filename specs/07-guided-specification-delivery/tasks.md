@@ -141,7 +141,7 @@ Prerequisite:
   - Depends on: Task 45
   - Proof: Focused specification-store contract, assessment, classification, revision, blocker, non-dismissal, stale-head, authorization, presentation, and no-duplicate-store tests pass.
 
-- [ ] Task 11 - Deliver suggestion dismissal and development readiness.
+- [x] Task 11 - Deliver suggestion dismissal and development readiness.
   - Size: Standard
   - Purpose: Let authorized users dismiss only non-blocking suggestions and expose readiness when every blocker is resolved.
   - Owned surfaces: Non-blocking suggestion dismissal, blocking-classification revalidation, assessment version check, ready-state transition, `Start development` availability, dismissal activity, unauthorized and stale denial, fixtures, and LiveView result.
@@ -528,6 +528,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 11 complete: suggestion dismissal and development readiness
+
+- Completed: Added `Delivery.Suggestions` with the dismissal action and the explicit promotion to `Ready for development`. Any current participant may dismiss a suggestion or promote a feature whose blockers are all resolved.
+- Boundary held (AC-11, AC-12): A blocking finding is refused however the request is phrased, and so is an unknown finding — neither is silently recorded. The blocking classification is re-read from the stored assessment at the moment of the action rather than trusted from the request, so a finding that has since become blocking cannot be dismissed on the strength of a stale screen. Dismissing every suggestion never clears a blocker for promotion, which is asserted directly. An outsider and a departed participant are both refused.
+- Readiness is a decision, not a side effect (AC-04, AC-13): `promote/4` commits its own transition with its own activity entry through `RunTransitions`, so the board shows a decision that happened rather than a state someone inferred, and a repeated promotion is absorbed by the operation key. A feature with a remaining blocker cannot be promoted.
+- Nothing starts (AC-14): Promotion was asserted to create no run and no command. Ready is an invitation; starting development still needs a person to press the button, which Task 13 delivers.
+- Mechanism recorded: Freshness is checked before dismissibility. Against a superseded finding list nothing else the request says is meaningful, and reporting "that finding is gone" would be a confusing way to say "the list changed" — a reassessment now correctly yields `:stale_assessment` rather than `:not_dismissible`.
+- Failed checks: The check order above was the first defect, surfaced by the reassessment test. One assertion also expected a single dismissal to empty a two-suggestion list. Final proof passes with real exit status: 17 dismissal and readiness tests and `mix credo --strict`.
+- Remaining: Task 12 (start-time processing-boundary disclosure) is next on the readiness path.
+- Spec updates: Marked Task 11 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 19 complete: authenticated worker gateway
 
