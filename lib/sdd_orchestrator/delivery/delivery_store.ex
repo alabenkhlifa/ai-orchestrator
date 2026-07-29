@@ -41,6 +41,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:transition_run, AgentRun.t(), String.t(), keyword()}
           | {:set_effective_revision, AgentRun.t(), String.t(), String.t()}
           | {:advance_attempt_number, AgentRun.t(), pos_integer()}
+          | {:resume_run, AgentRun.t(), String.t(), String.t(), pos_integer()}
           | {:insert_attempt, map()}
           | {:transition_attempt, RunAttempt.t(), String.t()}
           | {:claim_lease, RunAttempt.t(), String.t(), DateTime.t()}
@@ -48,6 +49,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:transition_feature, Feature.t(), String.t(), keyword()}
           | {:set_feature_status, Feature.t(), String.t()}
           | {:insert_blocking_question, map()}
+          | {:resolve_question, BlockingQuestion.t(), String.t(), String.t() | nil}
           | {:append_activity, map()}
           | {:enqueue_command, map()}
 
@@ -92,9 +94,9 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   def operations do
     ~w(
       insert_run transition_run set_effective_revision advance_attempt_number
-      insert_attempt transition_attempt claim_lease observe_sequence
+      resume_run insert_attempt transition_attempt claim_lease observe_sequence
       transition_feature set_feature_status insert_blocking_question
-      append_activity enqueue_command
+      resolve_question append_activity enqueue_command
     )a
   end
 

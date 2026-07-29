@@ -186,6 +186,9 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   defp apply_operation(_project_id, {:advance_attempt_number, run, number}, _results),
     do: run_write(run, AgentRun.attempt_advance_changeset(run, number, run.state_version))
 
+  defp apply_operation(_project_id, {:resume_run, run, id, digest, number}, _results),
+    do: run_write(run, AgentRun.resume_changeset(run, id, digest, number, run.state_version))
+
   defp apply_operation(project_id, {:insert_attempt, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
          %{valid?: true} = changeset <- RunAttempt.create_changeset(%RunAttempt{}, resolved),
@@ -243,6 +246,13 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp apply_operation(_project_id, {:resolve_question, question, to, revision_id}, _results),
+    do:
+      question_write(
+        question,
+        BlockingQuestion.resolve_changeset(question, to, question.state_version, revision_id)
+      )
 
   defp apply_operation(project_id, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
@@ -321,6 +331,15 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   end
 
   defp feature_write(_feature, changeset), do: {:error, changeset}
+
+  defp question_write(question, %{valid?: true} = changeset) do
+    updated = changeset |> Ecto.Changeset.apply_changes() |> bump_version()
+
+    {:ok, updated,
+     write(:question, updated.id, BlockingQuestion.to_value(updated), question.state_version)}
+  end
+
+  defp question_write(_question, changeset), do: {:error, changeset}
 
   # `optimistic_lock/2` only takes effect inside `Repo.update`, which this
   # adapter never calls, so the increment is applied here. Without it the stored

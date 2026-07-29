@@ -485,7 +485,11 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
       {:ok, _answered} =
         question
-        |> BlockingQuestion.resolve_changeset("answered", question.state_version)
+        |> BlockingQuestion.resolve_changeset(
+          "answered",
+          question.state_version,
+          Ecto.UUID.generate()
+        )
         |> Repo.update()
 
       {:ok, view, _html} =
@@ -606,6 +610,116 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       |> Repo.update()
 
     developing
+  end
+
+  describe "answering the blocking question [AC-18]" do
+    setup %{project: project, context: context, account: account} do
+      {:ok, _current} =
+        SddOrchestrator.SpecificationStore.create(
+          context.workspace,
+          project.id,
+          SddOrchestrator.SpecificationFixtures.specification_attrs(),
+          actor_ref: "owner"
+        )
+
+      previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
+
+      Application.put_env(:sdd_orchestrator, :delivery_execution,
+        approved_slice: "slice-07",
+        repository_base_revision: "a1b2c3d4e5f6a7b8",
+        required_checks: [],
+        agent_ref: %{"provider" => "configured-agent"},
+        worker_ref: %{"target" => "configured-worker"}
+      )
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
+        else
+          Application.delete_env(:sdd_orchestrator, :delivery_execution)
+        end
+      end)
+
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = DeliveryFixtures.run_fixture(project, feature)
+      attempt = DeliveryFixtures.attempt_fixture(run, %{fence_token: 1})
+
+      {:ok, running} =
+        run
+        |> SddOrchestrator.Delivery.AgentRun.transition_changeset("running", run.state_version)
+        |> Repo.update()
+
+      question =
+        ask(project, feature, running, %{
+          question: "Should archived items appear?",
+          context: "Unclear."
+        })
+
+      {:ok, blocked_run} =
+        running
+        |> SddOrchestrator.Delivery.AgentRun.transition_changeset(
+          "blocked",
+          running.state_version
+        )
+        |> Repo.update()
+
+      {:ok, blocked_feature} =
+        feature |> Feature.status_changeset("blocked", feature.state_version) |> Repo.update()
+
+      %{feature: blocked_feature, run: blocked_run, attempt: attempt, question: question}
+    end
+
+    test "the responder answers and the run continues", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-answer-form]")
+
+      view
+      |> form("#answer-form", %{"answer" => %{"body" => "Yes, include archived items."}})
+      |> render_submit()
+
+      # The status clears and the feature keeps its place in development.
+      refute has_element?(view, "[data-blocking-question]")
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+      assert Repo.get!(Feature, feature.id).status == "none"
+    end
+
+    test "an empty answer is refused inline and nothing resumes", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> form("#answer-form", %{"answer" => %{"body" => "   "}}) |> render_submit()
+
+      assert view |> element("#answer-body-error") |> render() =~ "Write your decision"
+      assert Repo.get!(SddOrchestrator.Delivery.AgentRun, run.id).state == "blocked"
+    end
+
+    test "someone who is not the responder is not offered the form", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature
+    } do
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-blocking-question]")
+      refute has_element?(view, "[data-answer-form]")
+    end
   end
 
   defp ask(project, feature, run, attrs) do

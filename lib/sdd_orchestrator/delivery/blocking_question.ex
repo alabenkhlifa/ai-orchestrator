@@ -46,6 +46,7 @@ defmodule SddOrchestrator.Delivery.BlockingQuestion do
     field :branch, :string
     field :workspace_path, :string
     field :asked_at, :utc_datetime_usec
+    field :resulting_revision_id, :string
     field :state_version, :integer, default: 1
 
     belongs_to :project, Project
@@ -120,15 +121,24 @@ defmodule SddOrchestrator.Delivery.BlockingQuestion do
   Only an open question can be resolved, so an answer offered twice moves
   nothing the second time.
   """
-  def resolve_changeset(%__MODULE__{} = question, to, expected_state_version) do
+  def resolve_changeset(%__MODULE__{} = question, to, expected_state_version, revision_id \\ nil) do
     question
     |> change(%{})
     |> validate_expected_version(expected_state_version)
     |> validate_resolution(to)
     |> put_change(:state, to)
+    |> put_change(:resulting_revision_id, revision_id)
+    |> require_resolution_link(to)
     |> optimistic_lock(:state_version)
     |> apply_constraints()
   end
+
+  # An answer that changed the specification must say which revision it
+  # produced; a question superseded for any other reason produced none.
+  defp require_resolution_link(changeset, "answered"),
+    do: validate_required(changeset, [:resulting_revision_id])
+
+  defp require_resolution_link(changeset, _to), do: changeset
 
   @doc "The device-adapter value shape, with no Ecto or hosted dependency."
   @spec to_value(t()) :: map()

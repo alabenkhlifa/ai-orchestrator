@@ -173,6 +173,36 @@ defmodule SddOrchestrator.Delivery.AgentRun do
     |> apply_constraints()
   end
 
+  @doc """
+  Continues one blocked run against the revision an accepted answer produced.
+
+  The state move, the newer effective revision, and the next ordered attempt
+  number are one update because they are one fact. Offered as three, they would
+  write the same run three times inside a single commit, and the second would be
+  rejected against the version the first just bumped.
+  """
+  def resume_changeset(
+        %__MODULE__{} = run,
+        revision_id,
+        revision_digest,
+        attempt_number,
+        expected_state_version
+      ) do
+    run
+    |> change(%{})
+    |> validate_expected_version(expected_state_version)
+    |> validate_transition("running")
+    |> put_change(:state, "running")
+    |> put_change(:failure_reason, nil)
+    |> put_change(:effective_revision_id, revision_id)
+    |> put_change(:effective_revision_digest, revision_digest)
+    |> put_change(:current_attempt_number, attempt_number)
+    |> validate_required([:effective_revision_id, :effective_revision_digest])
+    |> validate_attempt_advance(attempt_number)
+    |> optimistic_lock(:state_version)
+    |> apply_constraints()
+  end
+
   @doc "The device-adapter value shape, with no Ecto or hosted dependency."
   @spec to_value(t()) :: map()
   def to_value(%__MODULE__{} = run) do

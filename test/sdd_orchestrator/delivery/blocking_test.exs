@@ -222,7 +222,11 @@ defmodule SddOrchestrator.Delivery.BlockingTest do
 
       {:ok, answered} =
         first
-        |> BlockingQuestion.resolve_changeset("answered", first.state_version)
+        |> BlockingQuestion.resolve_changeset(
+          "answered",
+          first.state_version,
+          Ecto.UUID.generate()
+        )
         |> Repo.update()
 
       assert answered.state == "answered"
@@ -239,7 +243,11 @@ defmodule SddOrchestrator.Delivery.BlockingTest do
 
       {:ok, answered} =
         first
-        |> BlockingQuestion.resolve_changeset("answered", first.state_version)
+        |> BlockingQuestion.resolve_changeset(
+          "answered",
+          first.state_version,
+          Ecto.UUID.generate()
+        )
         |> Repo.update()
 
       changeset =
@@ -256,7 +264,12 @@ defmodule SddOrchestrator.Delivery.BlockingTest do
       {:ok, question} = Repo.insert(question_changeset(project, feature, run))
 
       changeset =
-        BlockingQuestion.resolve_changeset(question, "answered", question.state_version + 1)
+        BlockingQuestion.resolve_changeset(
+          question,
+          "answered",
+          question.state_version + 1,
+          Ecto.UUID.generate()
+        )
 
       refute changeset.valid?
     end

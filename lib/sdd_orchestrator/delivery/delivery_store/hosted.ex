@@ -140,6 +140,12 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     |> repo.update()
   end
 
+  defp apply_operation(repo, {:resume_run, run, id, digest, number}, _results) do
+    run
+    |> AgentRun.resume_changeset(id, digest, number, run.state_version)
+    |> repo.update()
+  end
+
   defp apply_operation(repo, {:insert_attempt, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
       %RunAttempt{} |> RunAttempt.create_changeset(resolved) |> repo.insert()
@@ -180,6 +186,12 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
       %BlockingQuestion{} |> BlockingQuestion.ask_changeset(resolved) |> repo.insert()
     end
+  end
+
+  defp apply_operation(repo, {:resolve_question, question, to, revision_id}, _results) do
+    question
+    |> BlockingQuestion.resolve_changeset(to, question.state_version, revision_id)
+    |> repo.update()
   end
 
   defp apply_operation(repo, {:append_activity, attrs}, results) do

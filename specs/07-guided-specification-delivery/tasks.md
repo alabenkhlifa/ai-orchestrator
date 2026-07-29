@@ -261,7 +261,7 @@ Prerequisite:
   - Depends on: Task 9, Task 22
   - Proof: Focused assigned, unassigned, creator, stale assigned, stale creator, owner fallback, responder authorization, display-name, email non-disclosure, and browser tests pass.
 
-- [ ] Task 24 - Deliver accepted-answer specification write-back and resume.
+- [x] Task 24 - Deliver accepted-answer specification write-back and resume.
   - Size: Standard
   - Purpose: Record the accepted product decision in the shared specification before the same run continues.
   - Owned surfaces: Authorized responder action, accepted answer, expected-head `SpecificationStore` append, immutable resulting revision, question-resolution link, effective revision and manifest update, continuation checkpoint, next attempt and resume command transaction, same run, branch and workspace preservation, provider-thread-independent reconstruction, activity, fixtures, and conflict result.
@@ -528,6 +528,18 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 24 complete: accepted-answer write-back and resume
+
+- Completed: Added `Delivery.Answers` and the answer form on the feature detail screen. An accepted answer is written into the shared specification as a new revision, and only then does the same run continue.
+- Ordering is the contract (AC-18): The append happens first, under expected-head concurrency, and only a committed revision may resume anything. It is deliberately outside the resume transaction — the specification store is a separate authority with its own concurrency rule, and a distributed transaction across the two is what the storage design forbids. The worst case is therefore a recorded decision whose resume failed, which is recoverable, rather than a run continuing against an agreement that was never written.
+- Same run, same branch, same workspace: All three are asserted unchanged. Only the attempt number, the fence token, and the effective revision move, which is what lets accepted work survive the pause instead of being repeated. The prior attempt is superseded in the same commit, so the paused worker's fence is useless the moment the next attempt exists. The run's immutable starting revision is never rewritten.
+- Feature placement: The blocked status clears while the feature keeps its place in `In development`, asserted directly.
+- Provider-thread independence: The next attempt is reconstructable from its manifest digest, the accepted revision, the preserved checkpoint, and the continuation reason alone — the stored attempt value was asserted to carry no thread reference. A thread lost while a human was thinking costs nothing.
+- New invariant: An answered question now names the revision its answer produced, enforced by a check constraint. Without the link the durable agreement and the question that changed it are two records nobody can join. Three existing tests that resolved a question without a revision were updated to satisfy the invariant rather than the invariant being relaxed.
+- Failed checks: Two agent attempts at this task died on infrastructure (one stalled, one lost its connection), so it was implemented directly; the partial work they left — an `AgentRun.resume_changeset/5` folding the run's three facts into one update precisely to avoid a double write, plus `resume_run` and `resolve_question` store operations — was sound and was kept. The question lookup first scanned activity for runs, which found nothing when a question was recorded without one; it now asks `Blocking.for_feature/3` directly. A named question that is not the open one reports `:question_mismatch` rather than `:no_open_question`, because working from a stale screen is a different thing from having nothing to answer. Strict Credo also flagged parameter count, resolved with a context map. Final proof passes with real exit status: 15 answer tests, 29 feature-detail LiveView tests, `mix test` (1564 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 25 (bounded automatic and manual retry) is next.
+- Spec updates: Marked Task 24 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 23 complete: blocking-question responsibility routing
 

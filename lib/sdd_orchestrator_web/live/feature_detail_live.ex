@@ -15,6 +15,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   use SddOrchestratorWeb, :live_view
 
   alias SddOrchestrator.Delivery.{
+    Answers,
     Assignment,
     Blocking,
     Comments,
@@ -52,7 +53,47 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     not_found: "This feature is no longer available."
   }
 
+  @answer_messages %{
+    empty_answer: "Write your decision before continuing.",
+    answer_too_long: "That answer is too long. Shorten it and try again.",
+    question_mismatch: "This question changed while you were reading it.",
+    no_open_question: "This question has already been answered.",
+    revision_conflict: "The specification changed while you were answering. Try again.",
+    no_specification: "This project has no specification to write the answer into."
+  }
+
   @impl true
+  def handle_event("answer", %{"answer" => %{"body" => body}}, socket) do
+    socket
+    |> storage_authority()
+    |> Answers.accept(
+      socket.assigns.actor,
+      %{project: socket.assigns.project, feature: socket.assigns.feature},
+      socket.assigns.question && socket.assigns.question.id,
+      body
+    )
+    |> case do
+      {:ok, results} ->
+        {:noreply,
+         socket
+         |> assign(:answer_body, "")
+         |> assign(:answer_error, nil)
+         |> assign_feature(socket.assigns.project_id, socket.assigns.actor, results.feature)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:answer_body, body)
+         |> assign(
+           :answer_error,
+           Map.get(@answer_messages, reason, "That answer was not accepted.")
+         )}
+    end
+  end
+
   def handle_event("confirm_boundary", %{"digest" => digest}, socket) do
     # Deliberately not the mounted assign: the agreement must be checked against
     # the boundary in force right now, or a configuration change during the
@@ -175,6 +216,9 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:responsible, QuestionRouting.responder_label(project_id, feature))
     |> assign(:question_for_me?, QuestionRouting.tagged?(project_id, feature, actor))
     |> assign(:question, open_question(project_id, actor, feature))
+    |> assign(:project, SddOrchestrator.Repo.get(SddOrchestrator.Projects.Project, project_id))
+    |> assign(:answer_body, socket.assigns[:answer_body] || "")
+    |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
@@ -224,6 +268,15 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   # everyone who opens the feature that it is waiting on them.
   defp question_heading(true), do: "Waiting on your decision"
   defp question_heading(false), do: "Waiting on a decision"
+
+  # The delivery store dispatches on the project's owning authority, so the
+  # screen has to hand it the same value the domain would. A project whose
+  # workspace cannot be resolved yields `nil`, which every store call refuses
+  # rather than guessing a store.
+  defp storage_authority(%{assigns: %{project: %{workspace_id: workspace_id}}}),
+    do: SddOrchestrator.Repo.get(SddOrchestrator.Accounts.PersonalWorkspace, workspace_id)
+
+  defp storage_authority(_socket), do: nil
 
   defp name(_names, nil), do: nil
   defp name(names, account_id), do: Map.get(names, account_id)
@@ -296,6 +349,27 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           <p class="mt-2 text-xs text-ink-muted" data-question-branch>
             The work so far is kept on {@question.branch}.
           </p>
+
+          <form
+            :if={@question_for_me?}
+            id="answer-form"
+            phx-submit="answer"
+            class="mt-4"
+            data-answer-form
+          >
+            <.text_field
+              id="answer-body"
+              name="answer[body]"
+              label="Your decision"
+              value={@answer_body}
+              error={@answer_error}
+              hint="This is written into the specification before the run continues."
+              autocomplete="off"
+            />
+            <.button type="submit" class="mt-3 w-full sm:w-auto" data-submit-answer>
+              <.lucide name="check" class="size-4" /> Answer and continue
+            </.button>
+          </form>
         </section>
 
         <dl class="mt-6 flex flex-col gap-3">
