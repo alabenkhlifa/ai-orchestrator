@@ -92,6 +92,44 @@ defmodule SddOrchestrator.Participation.ProjectNotifications do
     }
   end
 
+  @doc """
+  The event that tells a removed person at their account boundary.
+
+  The link stays at the account level because project access has already ended;
+  it restores nothing.
+  """
+  @spec removal_event(Project.t(), map()) :: map()
+  def removal_event(%Project{} = project, revocation) do
+    %{
+      account_id: revocation.former_account_id,
+      event_type: "participation.removed",
+      subject_ref: revocation.id,
+      event_version: revocation.contract_version,
+      title: "You were removed from #{project.name}",
+      body: "You no longer have access to #{project.name}. Your account is unchanged.",
+      project_label: project.name,
+      link_path: "/hosted/access/sessions",
+      occurred_at: revocation.occurred_at
+    }
+  end
+
+  @doc "The event that tells the owner one participant left."
+  @spec leave_event(Project.t(), map()) :: map()
+  def leave_event(%Project{} = project, revocation) do
+    %{
+      account_id: revocation.owner_account_id,
+      event_type: "participation.left",
+      subject_ref: revocation.id,
+      event_version: revocation.contract_version,
+      title: "Someone left #{project.name}",
+      body: "#{revocation.last_display_name || "A participant"} left #{project.name}.",
+      project_label: project.name,
+      actor_label: revocation.last_display_name,
+      link_path: participation_path(project),
+      occurred_at: revocation.occurred_at
+    }
+  end
+
   @spec participation_path(Project.t()) :: String.t()
   def participation_path(%Project{id: id}), do: "/projects/#{id}/participation"
 

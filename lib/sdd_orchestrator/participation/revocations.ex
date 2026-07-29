@@ -17,8 +17,15 @@ defmodule SddOrchestrator.Participation.Revocations do
   import Ecto.Query
 
   alias Ecto.Multi
+  alias SddOrchestrator.Notifications
   alias SddOrchestrator.Participation
-  alias SddOrchestrator.Participation.{ParticipationRevocation, ProjectParticipant}
+
+  alias SddOrchestrator.Participation.{
+    ParticipationRevocation,
+    ProjectNotifications,
+    ProjectParticipant
+  }
+
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
@@ -143,6 +150,9 @@ defmodule SddOrchestrator.Participation.Revocations do
         occurred_at: now
       })
     end)
+    |> Multi.merge(fn %{revocation: revocation} ->
+      notify(project, revocation)
+    end)
     |> Repo.transaction()
     |> case do
       {:ok, %{departed: departed, revocation: revocation}} ->
@@ -154,6 +164,30 @@ defmodule SddOrchestrator.Participation.Revocations do
       {:error, _step, _reason, _changes} ->
         {:error, :not_a_participant}
     end
+  end
+
+  # Removal reaches the former participant at their account boundary, where the
+  # record stays readable after project access ends. Leaving reaches the owner.
+  defp notify(project, %ParticipationRevocation{reason: "removed"} = revocation) do
+    if revocation.former_account_id do
+      Multi.insert(
+        Multi.new(),
+        :notification,
+        Notifications.changeset(ProjectNotifications.removal_event(project, revocation)),
+        Notifications.insert_options()
+      )
+    else
+      Multi.new()
+    end
+  end
+
+  defp notify(project, %ParticipationRevocation{reason: "left"} = revocation) do
+    Multi.insert(
+      Multi.new(),
+      :notification,
+      Notifications.changeset(ProjectNotifications.leave_event(project, revocation)),
+      Notifications.insert_options()
+    )
   end
 
   defp claim_active(repo, project_id, hosted_identity_id) when is_binary(hosted_identity_id) do

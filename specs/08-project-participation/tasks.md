@@ -246,7 +246,7 @@ Release gates:
   - Owns: AC-08, AC-09
   - Proof: Focused authorization, self-leave, owner-leave denial, other-member denial, repeated, concurrent, rollback, handoff, immediate access denial, and immutable-owner tests pass.
 
-- [ ] Task 19 — Deliver removal and leave in-product notifications.
+- [x] Task 19 — Deliver removal and leave in-product notifications.
   - Size: Standard
   - Depends on: Task 7, Task 17, Task 18
   - Purpose: Notify the directly affected account after removal and the owner after self-leave.
@@ -372,6 +372,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 19 complete: removal and leave in-product notifications
+
+- Completed: The departure transaction now projects one minimized notification per event. Removal reaches the former participant at their account boundary with an account-level link, and leaving reaches the project owner with the participation link. Both are keyed by the handoff and its contract version.
+- Boundary held: The removal record stays readable and markable after project access has ended, and reading it restores nothing — participation and project visibility remain closed. Neither person is notified about their own action. Bodies name the project label and the action only, with the departing member's last accepted label as the actor on the owner's record; no address, invitation, or credential appears. Re-projecting the same handoff is idempotent through the shared event-recipient key, while a rejoined and re-removed person produces a second distinct record.
+- Remaining: Task 27 (participant-removal email) is next, then Task 4 publishes `capability:project-participation-boundary`.
+- Failed checks: None. Focused proof passes with real exit status: 6 departure-notification tests, `mix test` (928 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 19 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 18 complete: participant self-leave and immutable-owner denial
 
