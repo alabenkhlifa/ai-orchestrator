@@ -4,7 +4,7 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLiveTest do
   import Phoenix.LiveViewTest
 
   alias SddOrchestrator.Accounts.MagicLinkAttempt
-  alias SddOrchestrator.HostedAccess.SessionCookie
+  alias SddOrchestrator.HostedAccess.{RateLimiter, SessionCookie}
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.Invitations
   alias SddOrchestrator.ParticipationDeliveryDouble
@@ -12,6 +12,12 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLiveTest do
   alias SddOrchestrator.Repo
 
   setup do
+    # Requesting invitation proof consumes from the passwordless limiter's
+    # shared global bucket, which no test resets on its way out. Without this
+    # the request is throttled — correctly, and account-neutrally — once enough
+    # of the suite has run before it, and no attempt is recorded to assert on.
+    RateLimiter.reset()
+
     previous = Application.get_env(:sdd_orchestrator, :participation_email_delivery)
 
     Application.put_env(
