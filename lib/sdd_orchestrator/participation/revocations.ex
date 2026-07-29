@@ -17,10 +17,12 @@ defmodule SddOrchestrator.Participation.Revocations do
   import Ecto.Query
 
   alias Ecto.Multi
+  alias SddOrchestrator.Accounts.{ExternalIdentity, HostedIdentity}
   alias SddOrchestrator.Notifications
   alias SddOrchestrator.Participation
 
   alias SddOrchestrator.Participation.{
+    EmailDelivery,
     ParticipationRevocation,
     ProjectNotifications,
     ProjectParticipant
@@ -43,8 +45,10 @@ defmodule SddOrchestrator.Participation.Revocations do
           {:ok, %{participant: ProjectParticipant.t(), revocation: ParticipationRevocation.t()}}
           | {:error, revoke_error()}
   def remove(project, owner_account_id, hosted_identity_id, now \\ DateTime.utc_now()) do
-    with {:ok, project, owner} <- authorize_owner(project, owner_account_id) do
-      end_participation(project, owner, hosted_identity_id, "removed", now)
+    with {:ok, project, owner} <- authorize_owner(project, owner_account_id),
+         {:ok, result} <- end_participation(project, owner, hosted_identity_id, "removed", now) do
+      send_removal_email(project, result.revocation, hosted_identity_id)
+      {:ok, result}
     end
   end
 
@@ -165,6 +169,37 @@ defmodule SddOrchestrator.Participation.Revocations do
         {:error, :not_a_participant}
     end
   end
+
+  # The removal message goes to the address currently verified for that stable
+  # identity. It is sent after the authoritative transaction commits, so a
+  # provider outage leaves a recorded failure rather than an uncommitted removal.
+  defp send_removal_email(project, revocation, hosted_identity_id) do
+    case verified_address(hosted_identity_id) do
+      nil ->
+        :ok
+
+      address ->
+        EmailDelivery.deliver(:participant_removed, %{
+          subject_ref: revocation.id,
+          event_version: revocation.contract_version,
+          recipient: address,
+          project_label: project.name
+        })
+    end
+  end
+
+  defp verified_address(hosted_identity_id) when is_binary(hosted_identity_id) do
+    ExternalIdentity
+    |> join(:inner, [e], h in HostedIdentity, on: e.hosted_identity_id == h.id)
+    |> where([e, h], h.id == ^hosted_identity_id and e.provider == "email")
+    |> select([e, _h], e.display_identifier)
+    |> limit(1)
+    |> Repo.one()
+  rescue
+    Ecto.Query.CastError -> nil
+  end
+
+  defp verified_address(_hosted_identity_id), do: nil
 
   # Removal reaches the former participant at their account boundary, where the
   # record stays readable after project access ends. Leaving reaches the owner.

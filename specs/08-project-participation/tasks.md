@@ -254,7 +254,7 @@ Release gates:
   - Owns: AC-23
   - Proof: Focused projector, recipient, removal-after-access, leave, replay, minimized-payload, unread, mark-read, link-authorization, and no-restored-access tests pass.
 
-- [ ] Task 27 — Deliver participant-removal email.
+- [x] Task 27 — Deliver participant-removal email.
   - Size: Standard
   - Depends on: Task 8, Task 17
   - Purpose: Notify the former participant externally without exposing project content or credentials.
@@ -372,6 +372,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 27 complete: participant-removal email
+
+- Completed: Owner removal now sends the approved removal message to the address currently verified for that stable identity, after the authoritative transaction commits, and records its own minimized delivery outcome keyed by the handoff and contract version.
+- Boundary held: The message carries no link, no credential, no invitation reference, and no project content beyond the project label; it states that the person's account is unchanged. A retried removal finds nothing to remove and sends nothing, and re-issuing the same event returns the recorded outcome without a second message. A provider failure leaves the removal committed with a recorded failure code and a log line that does not contain the address. Leaving sends no removal message.
+- Remaining: Task 4 publishes `capability:project-participation-boundary`, which is what Slice 07 waits on.
+- Failed checks: The full run again exposed Task 17's negative scan, which now also had to account for this specification's own email-delivery diagnostic; the participation-owned table list was extended and each new row is asserted, keeping the scan's meaning that no consumer-owned record is touched. Final proof passes with real exit status: 5 removal-email tests, `mix test` (933 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 27 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 19 complete: removal and leave in-product notifications
 
