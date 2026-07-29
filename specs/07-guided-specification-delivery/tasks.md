@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. The readiness path (Tasks 45, 10, 11, 12), the orchestration foundation (Tasks 15, 16, 17, 18, 3), the worker path (Tasks 19, 20, 43), and assignment and comments (Tasks 9, 46) are complete, and Task 13 now starts one run end to end. Task 21 (normalized progress and run-status presentation) is the next executable task. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. The readiness path (Tasks 45, 10, 11, 12), the orchestration foundation (Tasks 15, 16, 17, 18, 3), the worker path (Tasks 19, 20, 43), and assignment and comments (Tasks 9, 46) are complete, and Task 13 now starts one run end to end. The evidence path (Tasks 4, 29) now records typed proof and stores its private artifacts. Task 44 (conditional screenshot evidence) is the next executable task. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -309,7 +309,7 @@ Prerequisite:
   - Depends on: Task 21, Task 28
   - Proof: Focused migration, event schema, valid, invalid, stale, duplicate, out-of-order, oversized, unauthorized, worker-derived, agent-prose denial, immutability, supersession, hosted, and device tests pass.
 
-- [ ] Task 29 - Implement private evidence-artifact storage.
+- [x] Task 29 - Implement private evidence-artifact storage.
   - Size: Standard
   - Purpose: Store screenshots and larger approved proof privately through the authoritative project-storage boundary.
   - Owned surfaces: Private artifact-store behaviour, hosted and device adapters, project and evidence authorization, content type, byte-size and digest limits, encrypted or protected storage reference, redaction state, no public URL, no embedded credential, retrieval and deletion seam, fixtures, and deterministic adapter double.
@@ -528,6 +528,21 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 29 complete: private evidence-artifact storage
+
+- Completed: Added `Delivery.ArtifactStore` with its hosted and device adapters, the `EvidenceArtifact` schema and migration, the returned `Artifact` value, and a deterministic double. Screenshots and larger approved proof are now storable as private project data instead of inline payload.
+- Digest-addressed by decision: a reference is an opaque `artifact:v1:sha256:` prefix followed by the content digest, and `put` recomputes the SHA-256 of the bytes rather than believing the caller's declared digest. A reference derived from an unchecked digest would address bytes that may never have matched it, which would make the reference decorative. Mismatch is refused before either adapter is called.
+- No public URL, by construction rather than by convention (AC-28 and the design's artifact rule): the returned `Artifact` struct uses `@enforce_keys` and has no URL, host, link, or expiry field, and the hosted table has no such column. An artifact is reachable only through an authorized fetch against the project's own storage authority. Asserted directly, including that the reference contains no scheme, host, or query string.
+- Provenance is deliberately not duplicated: run, attempt, branch, and commit live on the `Evidence` row that names the reference. Copying them onto the artifact would create a second, independently editable account of where a screenshot came from, and content-addressed bytes captured twice would then have to carry contradictory provenance.
+- Contradiction is refused, not merged: the same digest presented with a different content type or a different redaction claim returns `:artifact_conflict`. A repeat of the identical description returns the same reference and stores nothing new, so an at-least-once worker handoff is safe.
+- Encrypted at rest on both authorities. Hosted bytes use the existing `Encrypted.Binary` Cloak type marked `redact: true`, so a struct inspection, a log line, and a crash report hold ciphertext. Device bytes are sealed with `Vault.encrypt/1` before they reach the DETS file, following the device-restore precedent — the device store's own file is not encrypted. A device put was asserted to leave `evidence_artifacts` in PostgreSQL empty.
+- Non-disclosure on the evidence seam: `fetch_for_evidence/4` answers a stranger, a participant of another project, an unknown item, an item belonging elsewhere, and an item that never had an artifact all with the same `{:error, :not_found}`, because distinguishing them is itself a disclosure. It reuses `ParticipantGuard`'s existing `:read_evidence` action rather than defining a second check.
+- Discovered limit, owned by Task 51: `DeviceStore.commit_delivery/2` accepts only put writes, so device deletion replaces the record with a tombstone. The sealed bytes, content type, and size are genuinely gone and every read treats the key as absent, but the `(project_id, digest)` key itself survives. Erasing the key needs a device-store delete operation, which belongs to Task 51's `device authoritative deletion` surface rather than here.
+- Recorded defect outside this task: `test/sdd_orchestrator/delivery/answers_test.exs:14` has an unused `ActivityEntry` alias that warns on every run and would fail a `--warnings-as-errors` compile of the test tree.
+- Failed checks: None. Final proof passes with real exit status: 63 artifact-store tests across both authorities, `mix test` (1803 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 44 (conditional screenshot evidence) is next, then Task 30. After Task 30 the graph widens: Tasks 31 and 32 become independent of each other.
+- Spec updates: Marked Task 29 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Device adapter fix: a commit may end and replace an attempt atomically
 

@@ -1,9 +1,15 @@
 defmodule SddOrchestrator.DeliveryFixtures do
   @moduledoc "Test fixtures for feature delivery."
 
-  alias SddOrchestrator.Delivery.{Activity, AgentRun, Feature, RunAttempt}
+  alias SddOrchestrator.Delivery.{Activity, AgentRun, ArtifactStore, Feature, RunAttempt}
   alias SddOrchestrator.ParticipationFixtures
   alias SddOrchestrator.Repo
+
+  # One real 1x1 PNG. Small enough to keep tests fast, and genuinely a PNG so a
+  # content-type check is proven against the type it actually claims.
+  @png Base.decode64!(
+         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+       )
 
   @doc """
   Creates one hosted project with an owner profile and one active participant.
@@ -121,4 +127,37 @@ defmodule SddOrchestrator.DeliveryFixtures do
 
   @doc "A deterministic 64-character hex digest for fixture references."
   def digest(seed), do: :sha256 |> :crypto.hash(seed) |> Base.encode16(case: :lower)
+
+  @doc "One real 1x1 PNG, made distinct by trailing bytes when a suffix is given."
+  def png_bytes(suffix \\ "")
+  def png_bytes(""), do: @png
+  def png_bytes(suffix), do: @png <> suffix
+
+  @doc """
+  Builds one valid artifact for the private store, digest included.
+
+  The digest is computed from the content rather than supplied, because a
+  fixture that declared its own would prove nothing about the store's check.
+  """
+  def artifact_attrs(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    content = Map.get(attrs, :content, png_bytes())
+
+    %{
+      content: content,
+      content_type: Map.get(attrs, :content_type, "image/png"),
+      digest: Map.get(attrs, :digest, content_digest(content)),
+      redacted: Map.get(attrs, :redacted, false)
+    }
+  end
+
+  @doc "Stores one artifact through the project's own authority and returns its reference."
+  def artifact_fixture(authority, project_id, attrs \\ %{}) do
+    {:ok, ref} = ArtifactStore.put(authority, project_id, artifact_attrs(attrs))
+    ref
+  end
+
+  @doc "The digest the store will recompute for this exact content."
+  def content_digest(content),
+    do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
 end
