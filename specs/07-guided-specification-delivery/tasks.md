@@ -133,7 +133,7 @@ Prerequisite:
   - Depends on: Task 2, Task 14
   - Proof: Focused adapter, schema, blocking and non-blocking classification, missing, ambiguous, conflicting, timeout, malformed, oversized, secret, email, no-write-back, and deterministic-double tests pass.
 
-- [ ] Task 10 - Deliver guided requirements and blocking readiness.
+- [x] Task 10 - Deliver guided requirements and blocking readiness.
   - Size: Standard
   - Purpose: Explain required product information and keep unresolved blockers visible.
   - Owned surfaces: `ReadinessAssessment`, shared `ProjectSpecification` and `SpecificationRevision` consumer, exact revision binding, guided requirement structure, blocking and non-blocking finding schema, understandable finding explanations, current assessment replacement, visible blocker list, blocker non-dismissal, start-disabled result, fixtures, and feature-detail presentation without duplicate specification persistence.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 10 complete: guided requirements and blocking readiness
+
+- Completed: Added `readiness_assessments` with its migration and schema plus `Delivery.Readiness`, the consumer that asks the shared specification store for the current revision, asks the configured guidance boundary what it still needs, and records the verdict.
+- Boundary held (AC-09, AC-10, AC-11): The verdict is bound to the exact revision it judged by identity *and* digest, so editing the requirements invalidates readiness rather than silently carrying it forward — proved by appending a real revision and watching `Start development` become unavailable again. A blocking finding is never dismissible, and the blocker list ignores `dismissed_ids` entirely, so there is no code path that hides one even when a dismissal names it. Start availability requires a current assessment, bound to the revision in play, with no remaining blocker; an absent or superseded assessment is not readiness.
+- No duplicate persistence: The assessment stores the specification identity, revision identity, and digest — never the requirement text. The `readiness_evaluated` activity records only the verdict's shape (counts and whether it is ready), which was asserted to contain neither the requirements nor a finding explanation. Requirements stay in `capability:project-specification-store`, which this slice consumes and does not copy.
+- Mechanism recorded: One current assessment per feature is a unique index on `feature_id`; a new evaluation replaces the old one and bumps a version, because a feature has one readiness answer and a history of contradictory verdicts would tell a user nothing. That version is what Task 11's dismissal is checked against, so a dismissal aimed at a superseded finding list is rejected rather than applied to different findings. A guidance timeout or failure is reported as its typed reason and records no assessment at all — an absent verdict is not a passing one.
+- Failed checks: The guidance projection takes `id` and `digest` keys on the revision map, not `revision_id`/`revision_digest`; the mismatch surfaced immediately as `:invalid_revision_id` rather than silently projecting nothing. The specification-store `create/4` also takes its documents under a `documents` key, which the shared fixtures already encode. Final proof passes with real exit status: 17 readiness tests, `mix test` (1318 passing), and `mix credo --strict`.
+- Remaining: Task 11 (suggestion dismissal and development readiness) builds directly on the recorded assessment and its version.
+- Spec updates: Marked Task 10 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 3 complete: authoritative run-state transactions
 
