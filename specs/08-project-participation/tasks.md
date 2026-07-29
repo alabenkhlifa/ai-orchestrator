@@ -2,11 +2,13 @@
 
 ## Status
 
-Not Started
+In Progress
 
 The product, technical, privacy, handoff, task-sequence, and verification
-contracts are approved. Task 6 is ready to begin; Slice 07 remains a downstream
-consumer and is not an implementation prerequisite for this slice.
+contracts are approved. Implementation is running the dependency-ordered task
+sequence toward `capability:project-participation-boundary` after Task 4; Slice
+07 remains a downstream consumer and is not an implementation prerequisite for
+this slice.
 
 ## Active Slice
 
@@ -85,7 +87,7 @@ Release gates:
   - Owns: none (agreement gate)
   - Proof: Requirements, design, data contracts, task ownership, task sequence, acceptance-criterion and entity traceability, and canonical verification commands have no unresolved active-slice blockers.
 
-- [ ] Task 6 — Implement participant and project-member profile persistence.
+- [x] Task 6 — Implement participant and project-member profile persistence.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Establish the hosted authorization identity and separate project-specific presentation profile.
@@ -363,6 +365,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 6 complete: participant and member-profile persistence
+
+- Completed: Added `project_participants` and `project_member_profiles` with their hosted migration, schemas, and the `SddOrchestrator.Participation` context. Owner derivation reads the immutable hosted project ownership boundary and fails closed for a device-authoritative project. Partial unique indexes enforce one active authorization per project and hosted identity and one active display-name comparison key per project, while check constraints keep active rows identity-bound, departed rows reasoned, and anonymized profiles account-free. Display names are trimmed, rejected when blank, oversized, control-bearing, or email-shaped, compared case-insensitively through NFKC folding, and stored with their accepted spelling.
+- Boundary held: Participation authorization stays separate from presentation. Departure preserves the profile and its last accepted label, a later retention step can release the authorization-to-identity link, and anonymization removes the account link without deleting project history.
+- Remaining: Tasks 28, 7, and 8 are next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 21 participation persistence tests, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 6 complete and moved the slice status to `In Progress`; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-28 - Task-size and execution sequence refined
 
