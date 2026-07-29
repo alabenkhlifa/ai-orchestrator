@@ -30,14 +30,33 @@ defmodule SddOrchestratorWeb.ParticipationLive do
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
-    account = socket.assigns.current_account
+    account_id = acting_account_id(socket)
+    identity_id = acting_identity_id(socket)
 
-    case Participation.owned_project(account.id, project_id) do
-      {:ok, project} ->
-        {:ok, assign_project(socket, project)}
+    case Participation.visible_project(project_id, account_id, identity_id) do
+      {:ok, project, role} ->
+        {:ok, assign_project(socket, project, role, account_id)}
 
       {:error, :unauthorized} ->
         {:ok, push_navigate(socket, to: ~p"/projects")}
+    end
+  end
+
+  # Participation is a hosted-identity feature, so the acting person may arrive
+  # through the application session as the project owner or through a hosted
+  # session as a participant.
+  defp acting_account_id(socket) do
+    cond do
+      account = socket.assigns[:current_account] -> account.id
+      identity = socket.assigns[:current_hosted_identity] -> identity.account_id
+      true -> nil
+    end
+  end
+
+  defp acting_identity_id(socket) do
+    case socket.assigns[:current_hosted_identity] do
+      nil -> nil
+      identity -> identity.id
     end
   end
 
@@ -60,7 +79,8 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          |> assign(:owner_profile, profile)
          |> assign(:display_name, profile.display_name)
          |> assign(:display_name_error, nil)
-         |> assign(:saved?, true)}
+         |> assign(:saved?, true)
+         |> refresh()}
 
       {:error, :unauthorized} ->
         {:noreply, push_navigate(socket, to: ~p"/projects")}
@@ -95,7 +115,8 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          |> assign(:invite_error, nil)
          |> assign(:invite_sent?, true)
          |> assign(:invite_canceled?, false)
-         |> assign(:resendable?, false)}
+         |> assign(:resendable?, false)
+         |> refresh()}
 
       {:error, reason} ->
         {:noreply,
@@ -118,7 +139,8 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          |> assign(:invite_email, "")
          |> assign(:invite_error, nil)
          |> assign(:invite_canceled?, true)
-         |> assign(:resendable?, false)}
+         |> assign(:resendable?, false)
+         |> refresh()}
 
       {:error, reason} ->
         {:noreply,
@@ -157,12 +179,16 @@ defmodule SddOrchestratorWeb.ParticipationLive do
 
   defp invite_message(reason), do: Map.fetch!(@invite_messages, reason)
 
-  defp assign_project(socket, project) do
+  defp assign_project(socket, project, role, account_id) do
     profile = Participation.owner_profile(project.id)
 
     socket
     |> assign(:page_title, "Participation")
     |> assign(:project, project)
+    |> assign(:role, role)
+    |> assign(:acting_account_id, account_id)
+    |> assign(:members, Participation.members(project, role, account_id))
+    |> assign(:invitations, invitations_for(project, role))
     |> assign(:owner_profile, profile)
     |> assign(:display_name, (profile && profile.display_name) || "")
     |> assign(:display_name_error, nil)
@@ -172,6 +198,29 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:invite_sent?, false)
     |> assign(:invite_canceled?, false)
     |> assign(:resendable?, false)
+  end
+
+  defp role_label(:owner), do: "Runs this project"
+  defp role_label(:participant), do: "On this project"
+
+  defp invitation_label(%{status: "pending"}), do: "Waiting for a reply"
+  defp invitation_label(%{status: "accepted"}), do: "Joined"
+  defp invitation_label(%{status: "declined"}), do: "Declined"
+  defp invitation_label(%{status: "canceled"}), do: "Canceled"
+  defp invitation_label(%{status: "expired"}), do: "Expired"
+
+  defp invitations_for(project, :owner), do: Invitations.list(project.id)
+  defp invitations_for(_project, _role), do: []
+
+  defp refresh(socket) do
+    project = socket.assigns.project
+    role = socket.assigns.role
+    account_id = socket.assigns.acting_account_id
+
+    socket
+    |> assign(:members, Participation.members(project, role, account_id))
+    |> assign(:invitations, invitations_for(project, role))
+    |> assign(:owner_profile, Participation.owner_profile(project.id))
   end
 
   defp display_name_error(%Ecto.Changeset{} = changeset) do
@@ -205,7 +254,32 @@ defmodule SddOrchestratorWeb.ParticipationLive do
           </.notice>
         </div>
 
+        <section class="mt-6" data-members>
+          <h2 class="text-[13px] font-semibold text-ink">People on this project</h2>
+          <ul class="mt-3 flex flex-col gap-2">
+            <li
+              :for={member <- @members}
+              class="flex flex-col gap-1 rounded-lg border border-line bg-surface p-3.5 sm:flex-row sm:items-center sm:justify-between"
+              data-member
+              data-member-role={member.role}
+            >
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold text-ink" data-member-name>
+                  {member.display_name}
+                </p>
+                <p :if={member.email} class="truncate text-xs text-ink-muted" data-member-email>
+                  {member.email}
+                </p>
+              </div>
+              <span class="text-[13px] text-ink-muted" data-member-role-label>
+                {role_label(member.role)}
+              </span>
+            </li>
+          </ul>
+        </section>
+
         <form
+          :if={@role == :owner}
           id="owner-profile-form"
           phx-change="validate_display_name"
           phx-submit="save_display_name"
@@ -235,7 +309,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
           </div>
         </form>
 
-        <div class="mt-6 rounded-lg border border-line bg-surface p-4">
+        <div :if={@role == :owner} class="mt-6 rounded-lg border border-line bg-surface p-4">
           <p class="text-[13px] font-semibold text-ink">Invitations</p>
           <p
             :if={is_nil(@owner_profile)}
@@ -303,7 +377,29 @@ defmodule SddOrchestratorWeb.ParticipationLive do
                 </span>
               </div>
             </form>
+
+            <ul :if={@invitations != []} class="mt-4 flex flex-col gap-2" data-invitation-list>
+              <li
+                :for={invitation <- @invitations}
+                class="flex flex-col gap-1 rounded-lg border border-line p-3 sm:flex-row sm:items-center sm:justify-between"
+                data-invitation
+                data-invitation-status={invitation.status}
+              >
+                <span class="truncate text-[13px] text-ink" data-invitation-email>
+                  {invitation.delivery_email}
+                </span>
+                <span class="text-xs text-ink-muted" data-invitation-state>
+                  {invitation_label(invitation)}
+                </span>
+              </li>
+            </ul>
           </div>
+        </div>
+
+        <div :if={@role == :participant} class="mt-6" data-participant-view>
+          <.notice variant="info" icon="users">
+            You're on this project. Only the project owner can invite or remove people.
+          </.notice>
         </div>
       </div>
     </.app_shell>

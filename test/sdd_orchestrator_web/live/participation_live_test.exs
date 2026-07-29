@@ -39,7 +39,7 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       assert Participation.owner_profile_established?(project.id)
     end
 
-    test "shows the established label without the owner email", %{conn: conn} do
+    test "labels the owner by project name, never by email", %{conn: conn} do
       %{project: project, account: account, owner: owner} =
         ParticipationFixtures.hosted_project_fixture()
 
@@ -48,13 +48,19 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
         display_name: "Grace Hopper"
       })
 
-      {:ok, _view, html} =
+      {:ok, view, html} =
         conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
 
       assert html =~ "Grace Hopper"
       refute html =~ "data-owner-profile-required"
-      refute html =~ owner.external_identity.display_identifier
-      refute html =~ "@example.com"
+
+      # The label is the project display name; the address appears only in the
+      # owner's own membership-management column.
+      assert view |> element("[data-member-name]") |> render() =~ "Grace Hopper"
+      refute view |> element("[data-member-name]") |> render() =~ "@example.com"
+
+      assert view |> element("[data-member-email]") |> render() =~
+               owner.external_identity.display_identifier
     end
   end
 
@@ -164,10 +170,10 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
                conn |> log_in_account(account) |> live(~p"/projects/not-a-project/participation")
     end
 
-    test "requires an authenticated account" do
+    test "fails closed for a visitor with no session" do
       %{project: project} = ParticipationFixtures.hosted_project_fixture()
 
-      assert {:error, {:redirect, %{to: "/"}}} =
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
                build_conn() |> live(~p"/projects/#{project.id}/participation")
     end
 
@@ -202,7 +208,9 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
         |> render_submit()
 
       assert html =~ "data-invitation-sent"
-      refute html =~ "invitee@example.com"
+      # Membership management shows the owner which address was invited.
+      assert html =~ "data-invitation-list"
+      assert html =~ "invitee@example.com"
 
       invitation = Invitations.pending_for(project.id, "invitee@example.com")
       assert invitation.project_id == project.id
@@ -321,6 +329,142 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       assert html =~ ~s(data-send-invitation)
       assert html =~ "w-full sm:w-auto"
     end
+  end
+
+  describe "identity visibility" do
+    setup do
+      previous = Application.get_env(:sdd_orchestrator, :participation_email_delivery)
+
+      Application.put_env(
+        :sdd_orchestrator,
+        :participation_email_delivery,
+        SddOrchestrator.ParticipationDeliveryDouble
+      )
+
+      SddOrchestrator.ParticipationDeliveryDouble.succeed()
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:sdd_orchestrator, :participation_email_delivery, previous)
+        else
+          Application.delete_env(:sdd_orchestrator, :participation_email_delivery)
+        end
+      end)
+
+      :ok
+    end
+
+    test "the owner sees every member label and address", %{conn: conn} do
+      %{project: project, account: account, owner: owner, participants: [first, second]} =
+        project_with_participants()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      rendered = view |> element("[data-members]") |> render()
+
+      for label <- ["Owner Label", "First Member", "Second Member"] do
+        assert rendered =~ label
+      end
+
+      for address <- [
+            owner.external_identity.display_identifier,
+            first.external_identity.display_identifier,
+            second.external_identity.display_identifier
+          ] do
+        assert rendered =~ address
+      end
+
+      assert html =~ ~s(id="invitation-form")
+      assert html =~ ~s(id="owner-profile-form")
+    end
+
+    test "a participant sees labels and only their own address", %{conn: conn} do
+      %{project: project, owner: owner, participants: [first, second]} =
+        project_with_participants()
+
+      access =
+        SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: first.external_identity.display_identifier
+        })
+
+      {:ok, view, html} =
+        conn
+        |> Phoenix.ConnTest.init_test_session(%{})
+        |> Plug.Conn.put_session(
+          SddOrchestrator.HostedAccess.SessionCookie.session_key(),
+          access.session_cookie.value
+        )
+        |> live(~p"/projects/#{project.id}/participation")
+
+      rendered = view |> element("[data-members]") |> render()
+
+      for label <- ["Owner Label", "First Member", "Second Member"] do
+        assert rendered =~ label
+      end
+
+      assert rendered =~ first.external_identity.display_identifier
+      refute rendered =~ owner.external_identity.display_identifier
+      refute rendered =~ second.external_identity.display_identifier
+
+      # Management belongs to the owner alone.
+      assert html =~ "data-participant-view"
+      refute html =~ ~s(id="invitation-form")
+      refute html =~ ~s(id="owner-profile-form")
+      refute html =~ "data-invitation-list"
+    end
+
+    test "a former participant and an outsider fail closed", %{conn: conn} do
+      %{project: project, participants: [first, _second]} = project_with_participants()
+
+      participant =
+        Participation.active_participant(project.id, first.hosted_identity.id)
+
+      {:ok, _departed} =
+        participant
+        |> SddOrchestrator.Participation.ProjectParticipant.departure_changeset(%{
+          departure_reason: "removed"
+        })
+        |> Repo.update()
+
+      access =
+        SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: first.external_identity.display_identifier
+        })
+
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               conn
+               |> Phoenix.ConnTest.init_test_session(%{})
+               |> Plug.Conn.put_session(
+                 SddOrchestrator.HostedAccess.SessionCookie.session_key(),
+                 access.session_cookie.value
+               )
+               |> live(~p"/projects/#{project.id}/participation")
+    end
+  end
+
+  defp project_with_participants do
+    result = ParticipationFixtures.hosted_project_fixture()
+
+    ParticipationFixtures.member_profile_fixture(result.project, result.account, %{
+      role: "owner",
+      display_name: "Owner Label"
+    })
+
+    participants =
+      for label <- ["First Member", "Second Member"] do
+        identity = ParticipationFixtures.invited_identity_fixture()
+        ParticipationFixtures.participant_fixture(result.project, identity.hosted_identity)
+
+        ParticipationFixtures.member_profile_fixture(result.project, identity.account, %{
+          role: "participant",
+          display_name: label
+        })
+
+        identity
+      end
+
+    Map.put(result, :participants, participants)
   end
 
   describe "accessible form structure" do

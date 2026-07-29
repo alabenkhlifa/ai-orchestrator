@@ -117,13 +117,23 @@ defmodule SddOrchestratorWeb.Router do
       live "/projects/invitations/:id/accept", InvitationAcceptanceLive
     end
 
+    # Participation is a hosted-identity feature: the owner arrives through the
+    # application session and a participant through their hosted session, so both
+    # boundaries are resolved and the view itself fails closed.
+    live_session :participation,
+      on_mount: [
+        {SddOrchestratorWeb.UserAuth, :mount_current_account},
+        {SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}
+      ] do
+      live "/projects/:id/participation", ParticipationLive
+    end
+
     # Protected surfaces require a valid application session.
     live_session :authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
       live "/projects", ProjectsLive
       live "/projects/:id", ProjectDashboardLive
       live "/projects/:id/backup", ProjectBackupLive, :hosted
-      live "/projects/:id/participation", ParticipationLive
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
       live "/onboarding/storage/:attempt_id", StorageSelectionLive
       live "/onboarding/device-setup/:attempt_id", DeviceSetupLive

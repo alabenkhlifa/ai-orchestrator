@@ -12,7 +12,7 @@ defmodule SddOrchestrator.Participation do
 
   import Ecto.Query
 
-  alias SddOrchestrator.Accounts.PersonalWorkspace
+  alias SddOrchestrator.Accounts.{ExternalIdentity, HostedIdentity, PersonalWorkspace}
   alias SddOrchestrator.Participation.{ProjectMemberProfile, ProjectParticipant}
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
@@ -119,6 +119,98 @@ defmodule SddOrchestrator.Participation do
     else
       _other -> {:error, :unauthorized}
     end
+  end
+
+  @doc """
+  Resolves the role one visitor currently holds in a project.
+
+  The owner is derived from project ownership and a participant from an active
+  authorization for their stable hosted identity. Anything else fails closed.
+  """
+  @spec member_role(Project.t() | Ecto.UUID.t(), Ecto.UUID.t() | nil, Ecto.UUID.t() | nil) ::
+          {:ok, :owner | :participant} | {:error, :unauthorized}
+  def member_role(project, account_id, hosted_identity_id) do
+    cond do
+      not is_nil(account_id) and owner?(project, account_id) ->
+        {:ok, :owner}
+
+      not is_nil(hosted_identity_id) and active_participant?(project, hosted_identity_id) ->
+        {:ok, :participant}
+
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Returns the project a visitor may read as owner or active participant.
+  """
+  @spec visible_project(Ecto.UUID.t(), Ecto.UUID.t() | nil, Ecto.UUID.t() | nil) ::
+          {:ok, Project.t(), :owner | :participant} | {:error, :unauthorized}
+  def visible_project(project_id, account_id, hosted_identity_id) do
+    with project when not is_nil(project) <- get_project(project_id),
+         {:ok, role} <- member_role(project, account_id, hosted_identity_id) do
+      {:ok, project, role}
+    else
+      _other -> {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Lists the project's current members as one viewer is allowed to see them.
+
+  Every member is presented by project display name. The owner may see member
+  email addresses for membership management; a participant may see only their
+  own; nobody sees another participant's address.
+  """
+  @spec members(Project.t(), :owner | :participant, Ecto.UUID.t() | nil) :: [map()]
+  def members(%Project{} = project, viewer_role, viewer_account_id) do
+    project
+    |> member_entries()
+    |> Enum.map(&mask_email(&1, viewer_role, viewer_account_id))
+  end
+
+  defp active_participant?(%Project{id: id}, hosted_identity_id),
+    do: not is_nil(active_participant(id, hosted_identity_id))
+
+  defp active_participant?(project_id, hosted_identity_id) when is_binary(project_id),
+    do: not is_nil(active_participant(project_id, hosted_identity_id))
+
+  defp active_participant?(_project, _hosted_identity_id), do: false
+
+  defp member_entries(project) do
+    profiles =
+      ProjectMemberProfile
+      |> where([p], p.project_id == ^project.id and p.state == "active")
+      |> order_by([p], asc: p.role, asc: p.display_name)
+      |> Repo.all()
+
+    emails = verified_emails(Enum.map(profiles, & &1.account_id))
+
+    Enum.map(profiles, fn profile ->
+      %{
+        role: String.to_existing_atom(profile.role),
+        display_name: profile.display_name,
+        account_id: profile.account_id,
+        email: Map.get(emails, profile.account_id)
+      }
+    end)
+  end
+
+  defp verified_emails(account_ids) do
+    ExternalIdentity
+    |> join(:inner, [e], h in HostedIdentity, on: e.hosted_identity_id == h.id)
+    |> where([e, h], h.account_id in ^account_ids and e.provider == "email")
+    |> select([e, h], {h.account_id, e.display_identifier})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  # Membership management needs addresses; collaboration does not.
+  defp mask_email(entry, :owner, _viewer_account_id), do: entry
+
+  defp mask_email(entry, :participant, viewer_account_id) do
+    if entry.account_id == viewer_account_id, do: entry, else: %{entry | email: nil}
   end
 
   @doc """

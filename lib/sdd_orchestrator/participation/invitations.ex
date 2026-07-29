@@ -142,6 +142,23 @@ defmodule SddOrchestrator.Participation.Invitations do
     Ecto.Query.CastError -> nil
   end
 
+  @doc """
+  Lists one project's invitations for membership management, newest first.
+
+  The result carries lifecycle state and delivery address only; credential
+  material is never present because a terminal invitation has none and a
+  pending one is redacted from inspection.
+  """
+  @spec list(Ecto.UUID.t()) :: [ProjectInvitation.t()]
+  def list(project_id) do
+    ProjectInvitation
+    |> where([i], i.project_id == ^project_id)
+    |> order_by([i], desc: i.inserted_at, desc: i.id)
+    |> Repo.all()
+  rescue
+    Ecto.Query.CastError -> []
+  end
+
   @doc "Returns the current pending invitation for one project and address."
   @spec pending_for(Ecto.UUID.t(), term()) :: ProjectInvitation.t() | nil
   def pending_for(project_id, email) do

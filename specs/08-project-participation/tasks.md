@@ -202,8 +202,9 @@ Release gates:
   - Owns: AC-22
   - Proof: Focused projector, recipient matrix, replay, minimized-payload, unread, mark-read, safe-link, and negative disclosure tests pass.
 
-- [ ] Task 15 — Deliver participation management and identity visibility.
+- [x] Task 15 — Deliver participation management and identity visibility.
   - Size: Standard
+  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 3
   - Purpose: Show only the membership and invitation fields each current member is allowed to see.
   - Owned surfaces: Participation-management LiveView, current owner and participant role presentation, project display names, owner-only invitation and verified participant email visibility, participant self-email visibility, other-email non-disclosure, pending and terminal invitation list fields, owner-only management controls, fixtures, and responsive accessible browser behavior.
@@ -368,6 +369,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 15 complete: participation management and identity visibility
+
+- Completed: Participation settings now serve both current members. The page lists every current member by project display name with their role, and the owner additionally sees the project's invitation list with each invited address and its lifecycle state.
+- Mechanism recorded: Participation is a hosted-identity feature, so the route moved to a live session that resolves both boundaries — the owner arrives through the application session and a participant through their hosted session — and the view itself fails closed through `Participation.visible_project/3` rather than relying on a route-level guard.
+- Boundary held: Email visibility is decided in the domain, not the template. The owner sees member addresses for membership management; a participant sees only their own and never another member's or the owner's; every member is otherwise presented by project label, and no label is derived from an address. Owner-only controls — the owner profile form, the invitation form, and the invitation list — are absent for a participant, and a departed participant or an outsider is returned to the catalog without seeing any project content.
+- Remaining: Task 29 (member-controlled display-name editing) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: Two earlier assertions encoded the pre-Task-15 view (no address anywhere, and a route-level redirect to the entry page); both were updated to the approved visibility rule and the view's own fail-closed redirect. Final proof passes with real exit status: 19 participation LiveView tests, `mix test` (890 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 15 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 14 complete: acceptance and decline notifications
 
