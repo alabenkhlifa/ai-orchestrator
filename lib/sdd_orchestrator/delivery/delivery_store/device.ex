@@ -20,6 +20,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     AgentRun,
     BlockingQuestion,
     DeliveryStore,
+    Evidence,
     Feature,
     RunAttempt,
     RunCommand
@@ -109,6 +110,22 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   end
 
   @impl true
+  def list_evidence(_authority, project_id, opts) do
+    project_id
+    |> Devices.list_delivery(:evidence)
+    |> Enum.flat_map(fn value ->
+      case Evidence.from_value(value) do
+        {:ok, evidence} -> [evidence]
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.filter(&matches_evidence_filters?(&1, opts))
+    # Ordered by the recorded instant as a number rather than as a struct,
+    # because Erlang term order over a `DateTime` is not chronological.
+    |> Enum.sort_by(&{DateTime.to_unix(&1.recorded_at, :microsecond), &1.id})
+  end
+
+  @impl true
   def list_activity(_authority, project_id, feature_id, opts) do
     project_id
     |> Devices.list_delivery(:activity)
@@ -172,6 +189,21 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   # write reaches the worker, so a rejected batch leaves nothing behind.
   defp build(_project_id, [], results, writes), do: {:ok, results, Enum.reverse(writes)}
 
+  # Inserting an attempt is the one operation whose legality depends on what the
+  # rest of this batch is doing, so it is the one operation that gets to see the
+  # pending writes. Every continuation ends the current attempt and creates its
+  # successor in a single commit; judging that against committed state alone
+  # would reject the very pattern the hosted adapter allows.
+  defp build(project_id, [{name, {:insert_attempt, attrs}} | rest], results, writes) do
+    case insert_attempt(project_id, attrs, results, writes) do
+      {:ok, record, write} ->
+        build(project_id, rest, Map.put(results, name, record), [write | writes])
+
+      {:error, reason} ->
+        {:error, name, reason}
+    end
+  end
+
   defp build(project_id, [{name, operation} | rest], results, writes) do
     case apply_operation(project_id, operation, results) do
       {:ok, record, write} ->
@@ -179,6 +211,18 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
       {:error, reason} ->
         {:error, name, reason}
+    end
+  end
+
+  defp insert_attempt(project_id, attrs, results, writes) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
+         %{valid?: true} = changeset <- RunAttempt.create_changeset(%RunAttempt{}, resolved),
+         attempt = changeset |> Ecto.Changeset.apply_changes() |> put_id(),
+         :ok <- ensure_one_current_attempt(project_id, attempt, writes) do
+      {:ok, attempt, write(:attempt, attempt.id, RunAttempt.to_value(attempt), nil)}
+    else
+      %Ecto.Changeset{} = invalid -> {:error, invalid}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -208,18 +252,6 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp apply_operation(_project_id, {:resume_run, run, id, digest, number}, _results),
     do: run_write(run, AgentRun.resume_changeset(run, id, digest, number, run.state_version))
-
-  defp apply_operation(project_id, {:insert_attempt, attrs}, results) do
-    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
-         %{valid?: true} = changeset <- RunAttempt.create_changeset(%RunAttempt{}, resolved),
-         attempt = changeset |> Ecto.Changeset.apply_changes() |> put_id(),
-         :ok <- ensure_one_current_attempt(project_id, attempt) do
-      {:ok, attempt, write(:attempt, attempt.id, RunAttempt.to_value(attempt), nil)}
-    else
-      %Ecto.Changeset{} = invalid -> {:error, invalid}
-      {:error, reason} -> {:error, reason}
-    end
-  end
 
   defp apply_operation(_project_id, {:transition_attempt, attempt, to}, _results),
     do:
@@ -276,6 +308,26 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
         question,
         BlockingQuestion.resolve_changeset(question, to, question.state_version, revision_id)
       )
+
+  defp apply_operation(_project_id, {:insert_evidence, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
+         %{valid?: true} = changeset <- Evidence.record_changeset(%Evidence{}, resolved) do
+      evidence = changeset |> Ecto.Changeset.apply_changes() |> put_id()
+      {:ok, evidence, write(:evidence, evidence.id, Evidence.to_value(evidence), nil)}
+    else
+      %Ecto.Changeset{} = invalid -> {:error, invalid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp apply_operation(_project_id, {:supersede_evidence, evidence, replacement}, results) do
+    with {:ok, replacement_id} <- DeliveryStore.resolve(replacement, results) do
+      evidence_write(
+        evidence,
+        Evidence.supersede_changeset(evidence, replacement_id, evidence.state_version)
+      )
+    end
+  end
 
   defp apply_operation(project_id, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
@@ -364,6 +416,15 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp question_write(_question, changeset), do: {:error, changeset}
 
+  defp evidence_write(evidence, %{valid?: true} = changeset) do
+    updated = changeset |> Ecto.Changeset.apply_changes() |> bump_version()
+
+    {:ok, updated,
+     write(:evidence, updated.id, Evidence.to_value(updated), evidence.state_version)}
+  end
+
+  defp evidence_write(_evidence, changeset), do: {:error, changeset}
+
   # `optimistic_lock/2` only takes effect inside `Repo.update`, which this
   # adapter never calls, so the increment is applied here. Without it the stored
   # version would never move and a superseded write would look current.
@@ -394,11 +455,27 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     |> Enum.filter(&(&1.run_id == run_id))
   end
 
-  defp ensure_one_current_attempt(project_id, attempt) do
+  defp ensure_one_current_attempt(project_id, attempt, writes) do
     case current_attempt(nil, project_id, attempt.run_id) do
-      {:ok, _existing} -> {:error, :one_current_attempt}
-      :error -> :ok
+      {:ok, existing} ->
+        if ended_in_batch?(existing, writes), do: :ok, else: {:error, :one_current_attempt}
+
+      :error ->
+        :ok
     end
+  end
+
+  # The committed store still shows the outgoing attempt as current, because
+  # this batch has not been applied yet. An earlier step in the same batch that
+  # moves it to a terminal state is what makes room for its successor.
+  defp ended_in_batch?(%RunAttempt{id: id}, writes) do
+    Enum.any?(writes, fn
+      {:put, :attempt, ^id, value, _expected} ->
+        value["state"] not in RunAttempt.current_states()
+
+      _other ->
+        false
+    end)
   end
 
   defp ensure_one_open_question(project_id, question) do
@@ -451,4 +528,25 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp assigned_to(features, account_id),
     do: Enum.filter(features, &(&1.assigned_account_id == account_id))
+
+  # An absent narrowing option asks for everything in the project rather than
+  # for records whose field is nil, matching the hosted query.
+  defp matches_evidence_filters?(evidence, opts) do
+    Enum.all?(
+      [
+        {:run_id, evidence.run_id},
+        {:attempt_id, evidence.attempt_id},
+        {:commit_sha, evidence.commit_sha}
+      ],
+      fn {option, held} ->
+        case Keyword.get(opts, option) do
+          nil -> true
+          wanted -> held == wanted
+        end
+      end
+    ) and current_enough?(evidence, Keyword.get(opts, :current, false))
+  end
+
+  defp current_enough?(evidence, true), do: Evidence.current?(evidence)
+  defp current_enough?(_evidence, _all), do: true
 end
