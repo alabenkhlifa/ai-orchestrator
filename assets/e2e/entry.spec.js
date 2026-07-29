@@ -103,6 +103,15 @@ test.describe("entry surface", () => {
     });
   }
 
+  test("the participation settings route is protected when unauthenticated", async ({ page }) => {
+    // Participation settings expose project membership, so the route fails closed
+    // for an unauthenticated browser. The authenticated owner scenarios run
+    // deterministically in the LiveView proof until an e2e sign-in path exists.
+    await page.goto("/projects/00000000-0000-0000-0000-000000000000/participation");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
+  });
+
   test("the project dashboard route is protected when unauthenticated", async ({ page }) => {
     // A created project's dashboard is behind a valid session; the authenticated
     // end-to-end flow is carried by the integration task (Task 9).

@@ -119,6 +119,15 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
         <.button variant="secondary" size="sm" navigate={~p"/projects"}>
           <.lucide name="arrow-left" class="size-4" /> Projects
         </.button>
+        <.button
+          :if={@project.storage_mode == "hosted"}
+          variant="secondary"
+          size="sm"
+          navigate={~p"/projects/#{@project.id}/participation"}
+          data-open-participation
+        >
+          <.lucide name="users" class="size-4" /> People
+        </.button>
         <.button variant="secondary" size="sm" href={~p"/auth/sign_out"} method="delete">
           <.lucide name="log-out" class="size-4" /> Sign out
         </.button>

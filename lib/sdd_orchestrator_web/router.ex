@@ -119,6 +119,7 @@ defmodule SddOrchestratorWeb.Router do
       live "/projects", ProjectsLive
       live "/projects/:id", ProjectDashboardLive
       live "/projects/:id/backup", ProjectBackupLive, :hosted
+      live "/projects/:id/participation", ParticipationLive
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
       live "/onboarding/storage/:attempt_id", StorageSelectionLive
       live "/onboarding/device-setup/:attempt_id", DeviceSetupLive

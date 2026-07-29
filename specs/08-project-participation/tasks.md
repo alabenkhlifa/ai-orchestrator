@@ -95,8 +95,9 @@ Release gates:
   - Owns: AC-02, entity:ProjectParticipant, entity:ProjectMemberProfile
   - Proof: Focused migration, changeset, constraint, and domain tests cover owner derivation, active and inactive participation, stable identity binding, project isolation, unique display names, accepted spelling, conflicting names, invalid roles, and rollback.
 
-- [ ] Task 28 — Deliver the owner project-display profile workflow.
+- [x] Task 28 — Deliver the owner project-display profile workflow.
   - Size: Standard
+  - Status: Complete; the authenticated-owner browser matrix (keyboard, focus, mobile layout) is environment-blocked because the e2e harness has no account sign-in path. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 6
   - Purpose: Require an understandable owner label before the first invitation and let the owner maintain it safely.
   - Owned surfaces: Owner-profile prerequisite, owner self-edit action, participation-settings owner-profile form, no email-derived fallback, trimmed case-insensitive uniqueness, conflict correction, preserved spelling, authorization, fixtures, and responsive accessible browser behavior.
@@ -365,6 +366,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 28 complete: owner project-display profile workflow
+
+- Completed: Added `/projects/:id/participation` with the owner display-profile form. The immutable owner creates or corrects only their own project label; the page states that invitations stay unavailable until it is saved, then reports them available. Conflicting labels are rejected inline for correction without an automatic suffix, blank, oversized, control-bearing, and email-shaped labels are rejected, and the owner's email is never rendered. A non-owner, unknown project, malformed id, or unauthenticated request returns to the catalog without exposing project content, and the domain action denies a non-owner independently of the view.
+- Mechanism recorded: Participation management authenticates through the existing application session, matching the hosted project dashboard, because the immutable owner is derived from the project's personal-workspace account.
+- Environment blocker: The Playwright harness has no way to establish an application session (GitHub sign-in credentials are unavailable), so authenticated keyboard, focus, and mobile-layout browser scenarios cannot run. The route's fail-closed behavior is proven in the browser, and the authenticated behavior is proven deterministically at the LiveView level, including accessible labelling, `aria-invalid`, error association, and the responsive action layout.
+- Remaining: Tasks 7 and 8 are next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 32 participation LiveView and persistence tests, `mix test` (779 passing), `mix format --check-formatted`, `mix credo --strict`, and the participation route protection scenario in `assets/e2e/entry.spec.js`.
+- Spec updates: Marked Task 28 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 6 complete: participant and member-profile persistence
 
