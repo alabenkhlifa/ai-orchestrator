@@ -132,8 +132,6 @@ defmodule SddOrchestrator.Portability.RestoreConflicts do
     |> Enum.any?(&(device_repository_identity(&1) == repository))
   end
 
-  defp repository_taken?(_authority, _repository), do: false
-
   defp device_repository_identity(project) do
     %{
       provider: Map.get(project, :repository_provider) || "local",
@@ -189,6 +187,4 @@ defmodule SddOrchestrator.Portability.RestoreConflicts do
   defp name_taken?(%DeviceWorkspace{}, name_key) do
     Enum.any?(Devices.list_projects(), &(&1.name_key == name_key))
   end
-
-  defp name_taken?(_authority, _name_key), do: false
 end

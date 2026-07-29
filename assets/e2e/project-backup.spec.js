@@ -94,10 +94,14 @@ async function openDeviceProject(page) {
   await continueStorage.click();
 
   await expect(page.locator("[data-step=review]")).toBeVisible();
-  await page.locator("#project-name").fill("Portability browser proof");
+  const projectName = page.locator("#project-name");
+  await projectName.fill("Portability browser proof");
+  await projectName.blur();
+  await expect(projectName).toHaveValue("Portability browser proof");
   const disclosure = page.locator("[data-confirm-disclosure]");
   if (await disclosure.count()) {
-    await disclosure.click();
+    await disclosure.check();
+    await expect(disclosure).toBeChecked();
     await expect(page.locator("[data-create]")).toBeEnabled();
   }
 

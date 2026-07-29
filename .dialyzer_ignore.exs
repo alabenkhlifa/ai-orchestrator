@@ -10,5 +10,6 @@
   {"lib/sdd_orchestrator/hosted_access.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/hosted_access/magic_links.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/privacy/rights.ex", :call_without_opaque},
+  {"lib/sdd_orchestrator/portability/hosted_restore.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/specifications/specification_store/hosted.ex", :call_without_opaque}
 ]

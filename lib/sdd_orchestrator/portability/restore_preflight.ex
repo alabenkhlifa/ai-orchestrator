@@ -115,7 +115,6 @@ defmodule SddOrchestrator.Portability.RestorePreflight do
     case Devices.get_project(project_id) do
       {:ok, _project} -> {:ok, {:device, true}}
       {:error, :not_found} -> {:ok, {:device, false}}
-      _other -> {:error, :unavailable}
     end
   rescue
     _error -> {:error, :unavailable}

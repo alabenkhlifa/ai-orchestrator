@@ -23,6 +23,14 @@ end
 config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+if config_env() == :dev do
+  if device_store_path = System.get_env("E2E_DEVICE_STORE_PATH") do
+    config :sdd_orchestrator, SddOrchestrator.Devices.DeviceStore.Local,
+      start: true,
+      path: device_store_path
+  end
+end
+
 # A public deployment may select either a compiled delivery boundary or a
 # compiled Swoosh adapter without placing provider credentials in source.
 # Task 7's release gate still requires the matching processor, region, transfer,

@@ -290,6 +290,7 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
           id="backup-form-error"
           role="alert"
           tabindex="-1"
+          phx-hook="FocusOnMount"
           class="mt-5"
           data-backup-error
         >

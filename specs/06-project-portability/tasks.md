@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-The product, package, cryptographic, privacy, and verification agreements are approved, including the explicit minimal hosted local-worker binding, portable local repository identity, and legacy source-side upgrade contracts. Tasks 8, 2, 9, 3, 6, 4, 10, 14, 5, 11, 12, 19, 13, 20, 25, 26, 21, 27, 15, 16, 17, 22, 18, 23, and 24 are complete. Task 7 is in progress.
+All implementation tasks and the complete local verification gate pass. `capability:project-portability` is ready. Public release readiness remains separately gated on deployment-specific controller, processor, region, transfer, notice, incident, retention-enforcement, and accountable privacy or legal evidence.
 
 ## Active Slice
 
@@ -293,38 +293,46 @@ Release boundary:
   - Proof: Focused negative secondary-use, agent-access, model-provider, telemetry, analytics-identifier, cache, index, export, diagnostic, and content-routing checks pass.
   - Delivered: Added a fail-closed portability data-use policy that permits only explicit backup, restore, repository-routing, security, lifecycle, and verified-rights purposes and recipients. Analytics, advertising, model training, identity tracking, unrelated product improvement, coding agents, and model providers are rejected for every package and restoration data class. The processing inventory now records the encrypted package, import attempt, and transient restore operation alongside provenance, binding, and minimal security records. Source-dependency and database scans prove there is no portability analytics, telemetry, cache, agent, model-provider, content-index, or analytics-table route; any future analytics proposal remains prohibited until it can meet an aggregate and genuinely anonymous boundary without stable or pseudonymous identifiers.
 
-- [ ] Task 7 - Complete the backup privacy and security review.
+- [x] Task 7 - Complete the backup privacy and security review.
   - Size: Standard
-  - Status: Blocked until both governance capabilities and all preceding implementation tasks are complete.
   - Purpose: Confirm the complete portability data flow follows the approved privacy and security contract before publishing the capability.
   - Owned surfaces: Active processing inventory including `HostedLocalRepositoryBinding`, approved service and security purposes and lawful bases, authorized-user, explicitly bound worker, and operations access controls, processor and transfer configuration, audit minimization, consolidated privacy and security review, release-gate classification, and `capability:project-portability` readiness write-back.
   - Owns: AC-12
   - Depends on: Task 6, Task 15, Task 22, Task 24
   - Proof: Focused data-inventory, purpose and basis, necessity, access, processor, transfer, audit-minimization, cross-task lifecycle, required privacy, and security reviews pass before capability readiness is recorded.
+  - Delivered: Added the consolidated portability privacy review across every active processing record, lawful basis, minimized field set, approved access boundary, immediate through 35-day lifecycle controls, prohibited agent and model-provider access, and deployment-evidence classification. Removed unreachable restore and reconnection branches identified by static analysis and documented the existing Ecto transaction opaque-type boundary narrowly. Local implementation and verification are complete; incomplete deployment facts remain only in the public release gate.
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Every active acceptance criterion and data entity has one clear primary task owner.
-- [ ] Golden decrypted-payload, deterministic snapshot, explicit field-map, excluded-category, and supported-version compatibility fixtures prove the exact project, canonical repository, and current-specifications allowlist.
-- [ ] Stable project identity is preserved, and existing same-identity restoration is rejected without overwrite, merge, update, rename, or partial mutation.
-- [ ] Duplicate discovery checks only the selected destination and catalogs already accessible in the restore session; no signed-out or unavailable-device query, global registry, or background identity-presence signal occurs, and later-visible same-ID records remain separate and unchanged.
-- [ ] Passphrase-based package control and normal destination-authorization checks pass for every signed-in and accountless restore path.
-- [ ] Every backup is encrypted with its confirmed user-set recovery passphrase; every restore requires the correct passphrase; passphrase-loss confirmation, missing and incorrect input, transient key disposal, and unrecoverable-support-boundary tests pass.
-- [ ] Secret-exclusion, passphrase and derived-key non-persistence, allowlist, authenticated encryption, integrity, tampering, and forbidden-field tests pass.
-- [ ] Malformed, unsafe, unsupported, oversized, unknown-field, path, archive, and resource-limit tests pass.
-- [ ] Name-only conflicts permit an explicitly entered valid unique display name or cancellation, canonical-repository conflicts always block, and storage, atomicity, idempotency, concurrency, and rollback tests pass.
-- [ ] Repository reconnection requires normal authorization and leaves repository content and configuration unchanged; device projects create no hosted binding, while hosted local-repository projects require separate personal-workspace and device-workspace authority and persist only the approved revocable binding after exact worker validation.
+- [x] Active-slice acceptance criteria pass.
+- [x] Every active acceptance criterion and data entity has one clear primary task owner.
+- [x] Golden decrypted-payload, deterministic snapshot, explicit field-map, excluded-category, and supported-version compatibility fixtures prove the exact project, canonical repository, and current-specifications allowlist.
+- [x] Stable project identity is preserved, and existing same-identity restoration is rejected without overwrite, merge, update, rename, or partial mutation.
+- [x] Duplicate discovery checks only the selected destination and catalogs already accessible in the restore session; no signed-out or unavailable-device query, global registry, or background identity-presence signal occurs, and later-visible same-ID records remain separate and unchanged.
+- [x] Passphrase-based package control and normal destination-authorization checks pass for every signed-in and accountless restore path.
+- [x] Every backup is encrypted with its confirmed user-set recovery passphrase; every restore requires the correct passphrase; passphrase-loss confirmation, missing and incorrect input, transient key disposal, and unrecoverable-support-boundary tests pass.
+- [x] Secret-exclusion, passphrase and derived-key non-persistence, allowlist, authenticated encryption, integrity, tampering, and forbidden-field tests pass.
+- [x] Malformed, unsafe, unsupported, oversized, unknown-field, path, archive, and resource-limit tests pass.
+- [x] Name-only conflicts permit an explicitly entered valid unique display name or cancellation, canonical-repository conflicts always block, and storage, atomicity, idempotency, concurrency, and rollback tests pass.
+- [x] Repository reconnection requires normal authorization and leaves repository content and configuration unchanged; device projects create no hosted binding, while hosted local-repository projects require separate personal-workspace and device-workspace authority and persist only the approved revocable binding after exact worker validation.
 - [x] Local backup accepts only the portable versioned canonical identifier, blocks legacy workspace-scoped fingerprints before encryption, and provides the source-side upgrade handoff without mutation.
-- [ ] The approved GDPR contract passes: no completed service package; immediate passphrase, key, decrypted-content, and terminal temporary-data disposal; stranded encrypted data and attempt cleanup within 24 hours; minimal project-bound provenance; 30-day security logs; 35-day encrypted backups; verified rights and processor propagation; and no analytics, advertising, model training, identity tracking, or unrelated reuse.
-- [ ] Required LiveView and desktop and mobile browser scenarios pass without exposing cross-user exchange or create-copy behavior.
-- [ ] Approved canonical build, formatting, lint, static, security, production, and failure-log checks pass.
+- [x] The approved GDPR contract passes: no completed service package; immediate passphrase, key, decrypted-content, and terminal temporary-data disposal; stranded encrypted data and attempt cleanup within 24 hours; minimal project-bound provenance; 30-day security logs; 35-day encrypted backups; verified rights and processor propagation; and no analytics, advertising, model training, identity tracking, or unrelated reuse.
+- [x] Required LiveView and desktop and mobile browser scenarios pass without exposing cross-user exchange or create-copy behavior.
+- [x] Approved canonical build, formatting, lint, static, security, production, and failure-log checks pass.
 
 ## Blocked Decisions
 
 - None. The explicit hosted local-worker binding and both required worker capabilities are approved and available; Task 26 is executable.
 
 ## Progress Log
+
+### 2026-07-28 - Task 7 complete: project portability verified
+
+- Completed: Added the consolidated privacy and security review for all six active portability processing boundaries, confirming their purposes, lawful bases, necessity, access restrictions, processors and transfers, minimized persistent fields, rights behavior, and immediate, 24-hour, 30-day, and 35-day lifecycle controls. The review proves coding-agent and model-provider exclusion, keeps unresolved deployment facts in the public release gate, and records `capability:project-portability` as ready. Static-analysis cleanup removed unreachable catch-all branches from the restore and reconnection paths and added one narrow Ecto transaction opaque-type suppression consistent with the repository's existing transaction-boundary suppressions.
+- Proof: The focused privacy and security review set passed 41 tests. `mix check` passed 747 tests including 6 properties with 1 excluded `:live` test. The isolated Playwright runner passed all 38 desktop Chromium and 38 mobile Chromium scenarios with separate databases, device stores, ports, and build output. Formatting, compilation with warnings as errors, strict Credo, Dialyzer with 9 documented opaque-type suppressions and no unnecessary suppressions, dependency audit, Sobelow, production asset deployment, production release assembly, the Slice 06 migration reset, three-step rollback, and reapplication, validator self-tests, the Slice 06 validator, the global capability graph, shared-instruction parity, Claude skill-link integrity, and `git diff --check` passed.
+- Remaining: No implementation or local-verification work remains. Public release remains blocked until the deployment-specific controller, processors and agreements, hosting regions, transfer safeguards, privacy notice, incident path, retention enforcement, encrypted-backup configuration evidence, and accountable privacy or legal reviews are supplied and pass the release gate.
+- Failed checks: The first full browser run exposed shared durable device-store state and development live-reload races across browser projects; the runner now isolates project databases, device stores, ports, and E2E build output, disables development watchers and reloading for the E2E servers, and runs desktop and mobile projects sequentially. A backup error-focus race required focusing after the LiveView patch, and stale compressed assets required the server to use `assets.deploy`. The final 76-scenario matrix passes. The initial Dialyzer run reported 14 restore and reconnection warnings; unreachable branches were removed and the existing Ecto transaction opaque boundary was documented before the passing final run.
+- Spec updates: Marked Task 7 and every verification-gate item complete, changed the slice status to `Verified`, and published `capability:project-portability`. Requirements, design, ownership, dependencies, and capability edges are unchanged. Release readiness remains explicitly separate and incomplete.
 
 ### 2026-07-28 - Task 24 complete: portability secondary use prohibited
 

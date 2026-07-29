@@ -1,5 +1,7 @@
 import Config
 
+e2e_mode? = System.get_env("E2E_MODE") == "true"
+
 # Configure your database
 config :sdd_orchestrator, SddOrchestrator.Repo,
   username: "postgres",
@@ -22,13 +24,17 @@ config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}],
   check_origin: false,
-  code_reloader: true,
+  code_reloader: not e2e_mode?,
   debug_errors: true,
   secret_key_base: "l7822rZvIoLTNRACPJ8wDZNUoDB4kTf7aKqhaiEphCA0C8us8ZvD5A0BQ3qBGHPO",
-  watchers: [
-    esbuild: {Esbuild, :install_and_run, [:sdd_orchestrator, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:sdd_orchestrator, ~w(--watch)]}
-  ]
+  watchers:
+    if(e2e_mode?,
+      do: [],
+      else: [
+        esbuild: {Esbuild, :install_and_run, [:sdd_orchestrator, ~w(--sourcemap=inline --watch)]},
+        tailwind: {Tailwind, :install_and_run, [:sdd_orchestrator, ~w(--watch)]}
+      ]
+    )
 
 # ## SSL Support
 #

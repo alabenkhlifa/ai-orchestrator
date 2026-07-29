@@ -4,7 +4,7 @@
   "private": true,
   "description": "End-to-end browser tests for SDD Orchestrator (Playwright).",
   "scripts": {
-    "test:e2e": "playwright install chromium && playwright test",
+    "test:e2e": "playwright install chromium && node run-e2e.js",
     "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {

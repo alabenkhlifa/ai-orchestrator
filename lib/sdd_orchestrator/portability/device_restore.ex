@@ -88,7 +88,6 @@ defmodule SddOrchestrator.Portability.DeviceRestore do
       else
         false -> {:error, :destination_unavailable}
         {:error, _reason} = error -> error
-        _reason -> {:error, :invalid_restore}
       end
 
     SecurityLog.audit(result, :restore_commit)

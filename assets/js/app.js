@@ -59,31 +59,34 @@ window.addEventListener("phx:backup-download", ({detail}) => {
   URL.revokeObjectURL(url)
 })
 
-window.addEventListener("phx:backup-form-error", () => {
-  requestAnimationFrame(() => document.getElementById("backup-form-error")?.focus())
-})
+const focusAfterLivePatch = id => {
+  window.setTimeout(() => document.getElementById(id)?.focus(), 50)
+}
 
-window.addEventListener("phx:restore-form-error", () => {
-  requestAnimationFrame(() => document.getElementById("restore-form-error")?.focus())
-})
+const FocusOnMount = {
+  mounted() {
+    focusAfterLivePatch(this.el.id)
+  },
+  updated() {
+    focusAfterLivePatch(this.el.id)
+  },
+}
 
-window.addEventListener("phx:restore-name-focus", () => {
-  requestAnimationFrame(() => document.getElementById("restore-project-name")?.focus())
-})
+window.addEventListener("phx:backup-form-error", () => focusAfterLivePatch("backup-form-error"))
 
-window.addEventListener("phx:restore-conflict-focus", () => {
-  requestAnimationFrame(() => document.getElementById("restore-conflict")?.focus())
-})
+window.addEventListener("phx:restore-form-error", () => focusAfterLivePatch("restore-form-error"))
 
-window.addEventListener("phx:restore-complete-focus", () => {
-  requestAnimationFrame(() => document.getElementById("restore-complete")?.focus())
-})
+window.addEventListener("phx:restore-name-focus", () => focusAfterLivePatch("restore-project-name"))
+
+window.addEventListener("phx:restore-conflict-focus", () => focusAfterLivePatch("restore-conflict"))
+
+window.addEventListener("phx:restore-complete-focus", () => focusAfterLivePatch("restore-complete"))
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, FocusOnMount},
 })
 
 // Show progress bar on live navigation and form submits

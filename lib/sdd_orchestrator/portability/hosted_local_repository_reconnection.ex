@@ -123,9 +123,6 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryReconnection do
 
       {:error, reason} ->
         {:error, reason}
-
-      _reason ->
-        {:error, :invalid_request}
     end
   end
 
