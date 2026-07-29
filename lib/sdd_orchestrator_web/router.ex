@@ -126,6 +126,8 @@ defmodule SddOrchestratorWeb.Router do
         {SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}
       ] do
       live "/projects/:id/participation", ParticipationLive
+      live "/projects/:id/features", FeatureBoardLive
+      live "/projects/:id/features/:feature_id", FeatureDetailLive
     end
 
     # Protected surfaces require a valid application session.

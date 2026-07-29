@@ -32,6 +32,30 @@ defmodule SddOrchestrator.Delivery.Features do
     end
   end
 
+  @doc """
+  Returns the project's features grouped into the five fixed lifecycle columns.
+
+  Every column is present, including empty ones, because the board's shape is
+  part of the contract rather than a consequence of the data.
+  """
+  @spec board(Ecto.UUID.t(), actor()) ::
+          {:ok, %{String.t() => [Feature.t()]}} | {:error, :unauthorized}
+  def board(project_id, actor) do
+    with {:ok, _member} <- ParticipantGuard.authorize_action(project_id, actor, :view_board) do
+      features =
+        Feature
+        |> where([f], f.project_id == ^project_id)
+        |> order_by([f], asc: f.inserted_at, asc: f.id)
+        |> Repo.all()
+
+      grouped = Enum.group_by(features, & &1.lifecycle_column)
+
+      {:ok, Map.new(Feature.columns(), &{&1, Map.get(grouped, &1, [])})}
+    end
+  rescue
+    Ecto.Query.CastError -> {:error, :unauthorized}
+  end
+
   @doc "Fetches one feature the acting member may read."
   @spec fetch(Ecto.UUID.t(), actor(), Ecto.UUID.t()) ::
           {:ok, Feature.t()} | {:error, :unauthorized | :not_found}

@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. Task 8 established the durable feature and its lifecycle invariants, so Task 2 (the feature lifecycle board) is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. Task 8 established the durable feature and its lifecycle invariants and Task 2 delivered the board and feature detail screens, so Task 9 (project-participant assignment) is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -109,8 +109,9 @@ Prerequisite:
   - Depends on: Task 14
   - Proof: Focused migration, changeset, constraint, lifecycle value, legal and illegal transition, stale version, project isolation, device-shape, and rollback tests pass.
 
-- [ ] Task 2 - Deliver the feature lifecycle board.
+- [x] Task 2 - Deliver the feature lifecycle board.
   - Size: Standard
+  - Status: Complete; the desktop and mobile browser matrix is environment-blocked because the Playwright harness cannot establish an authenticated session. Deterministic LiveView proof covers the same behavior, including the responsive column layout and focus styling.
   - Purpose: Make the fixed lifecycle and gated movement durable and understandable before agent execution.
   - Owned surfaces: Project-scoped board and feature-detail LiveViews, five fixed columns, lifecycle card grouping, creator and assignment display seam, no-drag behavior, gated action presentation, generic status seam for later blocked and failed states, empty and populated states, fixtures, and responsive accessibility behavior.
   - Owns: AC-01, AC-03
@@ -528,6 +529,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 2 complete: feature lifecycle board
+
+- Completed: Added the project feature board at `/projects/:id/features` and the feature detail screen at `/projects/:id/features/:feature_id`, plus the grouped board query. All five lifecycle columns always render, including empty ones, so the board's shape communicates the workflow rather than following the data. Cards show the feature title, its visible status when it has one, and the creator and assignee by project display name.
+- Boundary held: There is no way to move a card from the board. It carries no drag affordance, no hook, and no click handler — a card's only interaction is a link to the feature's own screen, where the gated action for the current column is presented. Every illegal or direct transition is rejected by the lifecycle domain, and `Blocked` renders as a status on an `In development` card with no column of its own. People are labelled by project display name only; a departed member's features stay visible under a neutral label with no address exposed. A participant reaches the board through their hosted session, while an outsider, an unauthenticated visitor, and a cross-project feature identifier are all returned without disclosing project content.
+- Remaining: Task 9 (project-participant assignment and responsibility) is next, then the readiness adapter and guided requirements.
+- Failed checks: Three assertions needed correcting rather than the code: two CSS selectors were unquoted around UUID values, and the no-drag proof originally crashed the view by pushing an unhandled event; it now asserts structurally that a card carries no click handler or destination value. Final proof passes with real exit status: 11 board and detail LiveView tests, `mix test` (1024 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 2 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 8 complete: feature lifecycle domain
 
