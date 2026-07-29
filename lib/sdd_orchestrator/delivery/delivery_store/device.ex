@@ -58,13 +58,19 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   @impl true
   def current_attempt(_authority, project_id, run_id) do
     project_id
-    |> Devices.list_delivery(:attempt)
-    |> Enum.map(&RunAttempt.from_value/1)
-    |> Enum.flat_map(fn
-      {:ok, attempt} -> [attempt]
-      {:error, _reason} -> []
-    end)
-    |> Enum.find(&(&1.run_id == run_id and RunAttempt.current?(&1)))
+    |> attempts(run_id)
+    |> Enum.find(&RunAttempt.current?/1)
+    |> case do
+      nil -> :error
+      attempt -> {:ok, attempt}
+    end
+  end
+
+  @impl true
+  def latest_attempt(_authority, project_id, run_id) do
+    project_id
+    |> attempts(run_id)
+    |> Enum.max_by(& &1.attempt_number, fn -> nil end)
     |> case do
       nil -> :error
       attempt -> {:ok, attempt}
@@ -357,6 +363,18 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
       {:ok, _applied} -> {:ok, results}
       {:error, reason} -> {:error, :commit, reason}
     end
+  end
+
+  defp attempts(project_id, run_id) do
+    project_id
+    |> Devices.list_delivery(:attempt)
+    |> Enum.flat_map(fn value ->
+      case RunAttempt.from_value(value) do
+        {:ok, attempt} -> [attempt]
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.filter(&(&1.run_id == run_id))
   end
 
   defp ensure_one_current_attempt(project_id, attempt) do

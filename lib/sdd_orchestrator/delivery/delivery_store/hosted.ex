@@ -79,6 +79,21 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
   end
 
   @impl true
+  def latest_attempt(_authority, _project_id, run_id) do
+    RunAttempt
+    |> where([a], a.run_id == ^run_id)
+    |> order_by([a], desc: a.attempt_number)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> :error
+      attempt -> {:ok, attempt}
+    end
+  rescue
+    Ecto.Query.CastError -> :error
+  end
+
+  @impl true
   def open_question(_authority, _project_id, run_id) do
     BlockingQuestion
     |> where([q], q.run_id == ^run_id and q.state == "open")

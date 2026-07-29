@@ -722,6 +722,131 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     end
   end
 
+  describe "the failed run [AC-34]" do
+    setup %{project: project, account: account} do
+      previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
+
+      Application.put_env(:sdd_orchestrator, :delivery_execution,
+        approved_slice: "slice-07",
+        repository_base_revision: "a1b2c3d4e5f6a7b8",
+        required_checks: [],
+        agent_ref: %{"provider" => "configured-agent"},
+        worker_ref: %{"target" => "configured-worker"}
+      )
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
+        else
+          Application.delete_env(:sdd_orchestrator, :delivery_execution)
+        end
+      end)
+
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = DeliveryFixtures.run_fixture(project, feature, %{initiator_account_id: account.id})
+      attempt = DeliveryFixtures.attempt_fixture(run, %{fence_token: 1})
+
+      {:ok, running} =
+        run
+        |> SddOrchestrator.Delivery.AgentRun.transition_changeset("running", 1)
+        |> Repo.update()
+
+      {:ok, failed} =
+        running
+        |> SddOrchestrator.Delivery.AgentRun.transition_changeset(
+          "failed",
+          running.state_version,
+          failure_reason: "transport_lost"
+        )
+        |> Repo.update()
+
+      {:ok, stopped} =
+        feature |> Feature.status_changeset("failed", feature.state_version) |> Repo.update()
+
+      DeliveryFixtures.activity_fixture(project, feature, %{
+        run_id: run.id,
+        attempt_id: attempt.id,
+        type: "run_started",
+        payload: %{"branch" => run.branch}
+      })
+
+      %{feature: stopped, run: failed, attempt: attempt}
+    end
+
+    test "shows the visible failed status with its reason", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element("[data-feature-status]") |> render() =~ "Failed"
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+
+      assert view |> element("[data-failed-reason]") |> render() =~
+               "The connection to the worker was lost."
+
+      assert view |> element("[data-failed-branch]") |> render() =~ run.branch
+    end
+
+    test "any current participant is offered the retry action", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature
+    } do
+      # Not the initiator and not the owner: a stopped run is shared work.
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-retry-run]")
+    end
+
+    test "retrying continues the same run without leaving development", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> element("[data-retry-run]") |> render_click()
+
+      # The stopped panel clears, the feature keeps its column, and the run is
+      # the same one on the same branch.
+      refute has_element?(view, "[data-failed-run]")
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+
+      stored = Repo.get!(SddOrchestrator.Delivery.AgentRun, run.id)
+
+      assert stored.state == "running"
+      assert stored.branch == run.branch
+      assert Repo.get!(Feature, feature.id).status == "none"
+      assert Repo.get!(Feature, feature.id).lifecycle_column == "in_development"
+    end
+
+    test "a feature with no failed run shows no retry action", %{
+      conn: conn,
+      project: project,
+      account: account
+    } do
+      other = DeliveryFixtures.feature_fixture(project, account)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, other))
+
+      refute has_element?(view, "[data-failed-run]")
+      refute has_element?(view, "[data-retry-run]")
+    end
+  end
+
   defp ask(project, feature, run, attrs) do
     %BlockingQuestion{}
     |> BlockingQuestion.ask_changeset(

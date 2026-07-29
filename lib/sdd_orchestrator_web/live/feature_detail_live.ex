@@ -22,7 +22,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     Features,
     ParticipantGuard,
     ProcessingDisclosure,
-    QuestionRouting
+    QuestionRouting,
+    Retry
   }
 
   @column_labels %{
@@ -62,6 +63,28 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     no_specification: "This project has no specification to write the answer into."
   }
 
+  @retry_messages %{
+    no_failed_run: "This run is going again already.",
+    no_attempt: "There is nothing recorded to continue from.",
+    stale_state: "This changed while you were looking at it. Try again."
+  }
+
+  # A failure reason is a worker's code. It is shown as a sentence a person can
+  # act on, and an unrecognised code is reported rather than hidden.
+  @failure_messages %{
+    "agent_exit_recoverable" => "The coding agent stopped before it finished.",
+    "incompatible_protocol" => "This worker speaks a version this project cannot use.",
+    "invalid_authorization" => "The worker was not allowed to do this work.",
+    "limits_exhausted" => "This run reached a configured limit.",
+    "malformed_manifest" => "The instructions sent to the worker were not usable.",
+    "missing_configuration" => "Something this run needs is not configured.",
+    "provider_unavailable" => "The model provider was unavailable.",
+    "rate_limited" => "The provider is rate limiting this project.",
+    "transport_lost" => "The connection to the worker was lost.",
+    "unsafe_workspace" => "The workspace was not in a safe state to work in.",
+    "worker_unavailable" => "The configured worker was unavailable."
+  }
+
   @impl true
   def handle_event("answer", %{"answer" => %{"body" => body}}, socket) do
     socket
@@ -90,6 +113,33 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
          |> assign(
            :answer_error,
            Map.get(@answer_messages, reason, "That answer was not accepted.")
+         )}
+    end
+  end
+
+  def handle_event("retry", _params, socket) do
+    socket
+    |> storage_authority()
+    |> Retry.retry_now(socket.assigns.actor, %{
+      project: socket.assigns.project,
+      feature: socket.assigns.feature
+    })
+    |> case do
+      {:ok, results} ->
+        {:noreply,
+         socket
+         |> assign(:retry_error, nil)
+         |> assign_feature(socket.assigns.project_id, socket.assigns.actor, results.feature)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(
+           socket,
+           :retry_error,
+           Map.get(@retry_messages, reason, "That retry was not accepted.")
          )}
     end
   end
@@ -217,6 +267,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:question_for_me?, QuestionRouting.tagged?(project_id, feature, actor))
     |> assign(:question, open_question(project_id, actor, feature))
     |> assign(:project, SddOrchestrator.Repo.get(SddOrchestrator.Projects.Project, project_id))
+    |> assign_failed_run(actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
@@ -224,6 +275,23 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
     |> assign_disclosure()
+  end
+
+  # The stopped run this reader may restart, if any. Resolved after the project
+  # is assigned, because the storage authority is derived from it.
+  defp assign_failed_run(socket, actor, feature) do
+    failed_run =
+      case Retry.pending(storage_authority(socket), actor, %{
+             project: socket.assigns.project,
+             feature: feature
+           }) do
+        {:ok, run} -> run
+        {:error, :unauthorized} -> nil
+      end
+
+    socket
+    |> assign(:failed_run, failed_run)
+    |> assign(:retry_error, socket.assigns[:retry_error])
   end
 
   defp assign_disclosure(socket) do
@@ -281,6 +349,11 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp name(_names, nil), do: nil
   defp name(names, account_id), do: Map.get(names, account_id)
 
+  defp failure_message(nil), do: "The run stopped without recording a reason."
+
+  defp failure_message(reason),
+    do: Map.get(@failure_messages, reason, "The run stopped: #{reason}")
+
   defp column_label(column), do: Map.fetch!(@column_labels, column)
   defp status_label(status), do: Map.get(@status_labels, status)
   defp gated_action(column), do: Map.fetch!(@gated_actions, column)
@@ -321,6 +394,39 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             {status_label(@feature.status)}
           </span>
         </div>
+
+        <section
+          :if={@failed_run}
+          class="mt-6 rounded-lg border border-err-fg/40 bg-err-bg p-4"
+          aria-labelledby="failed-run-heading"
+          data-failed-run
+        >
+          <h2
+            id="failed-run-heading"
+            class="flex items-center gap-1.5 text-[13px] font-semibold text-err-fg"
+          >
+            <.lucide name="circle-alert" class="size-4 flex-none" /> Development stopped
+          </h2>
+          <p class="mt-2 text-sm text-ink" data-failed-reason>
+            {failure_message(@failed_run.failure_reason)}
+          </p>
+          <p class="mt-2 text-xs text-ink-muted" data-failed-branch>
+            The work so far is kept on {@failed_run.branch}. Retrying continues it.
+          </p>
+
+          <p
+            :if={@retry_error}
+            class="mt-2 flex items-center gap-1.5 text-xs text-err-fg"
+            data-retry-error
+          >
+            <.lucide name="circle-alert" class="size-3.5 flex-none" />
+            {@retry_error}
+          </p>
+
+          <.button type="button" phx-click="retry" class="mt-4 w-full sm:w-auto" data-retry-run>
+            <.lucide name="refresh-cw" class="size-4" /> Retry
+          </.button>
+        </section>
 
         <section
           :if={@question}

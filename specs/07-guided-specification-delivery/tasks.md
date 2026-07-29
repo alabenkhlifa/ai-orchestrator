@@ -269,7 +269,7 @@ Prerequisite:
   - Depends on: Task 10, Task 22, Task 23
   - Proof: Focused authorization, expected-head, revision, transaction, rollback, same-run, branch, workspace, checkpoint, new-thread reconstruction, duplicate answer, stale question, activity, and resume tests pass.
 
-- [ ] Task 25 - Deliver bounded automatic and manual retry.
+- [x] Task 25 - Deliver bounded automatic and manual retry.
   - Size: Standard
   - Purpose: Recover transient failures on the same run and workspace without indefinite cost or duplicate attempts.
   - Owned surfaces: Explicit retry classification, three automatic retries after the initial attempt, jittered exponential backoff from 15 seconds with five-minute cap, same worker, workspace and branch, ordered next attempt, checkpoint and evidence preservation, terminal `Failed` transition and reason, post-terminal notification event, any-current-participant manual retry, duplicate prevention, fixtures, and failed-status UI.
@@ -528,6 +528,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 25 complete: bounded automatic and manual retry
+
+- Completed: Added `Delivery.Retry` and the failed-run presentation with its retry action. A `failed` worker event is classified, retried on the same run within a bounded budget, or made terminally visible with its reason.
+- Boundary held (AC-34): Retry classification is explicit, and an unrecognised reason is `:terminal` — the product never retries a failure it does not understand. The budget is three automatic retries after the initial attempt; backoff is jittered exponential from 15 seconds capped at five minutes, with the jitter injectable so the timing is asserted deterministically. Backoff is scheduling rather than sleeping: a retry is a command that is not due yet, so a pending retry survives a control-plane restart.
+- Terminal failure: An exhausted budget or a non-retryable reason moves the run to `failed` with its reason and shows `Failed` as a status while the feature keeps its place in `In development`. No retry command is enqueued, asserted against the outbox count — a terminal failure that quietly queued more work would be the worst possible outcome.
+- Same run, same branch, same workspace: Every retry continues the same run and branch as the next ordered attempt with a higher fence, so the superseded worker cannot act and accepted work is not repeated. Manual retry is available to any current participant, matching the recorded rule that starting and retrying are collaborative while cancellation and review are not.
+- Mechanism recorded: The delivery-store contract gained `latest_attempt`, implemented by both adapters. A continuation after a *terminal* attempt has nothing current to read and still needs the ordering and fence the next attempt must advance past, which `current_attempt` cannot supply.
+- Failed checks: None. Final proof passes with real exit status: the retry suite plus the feature-detail LiveView suite, `mix test` (1599 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 26 (authorized cancellation and restart readiness) is next.
+- Spec updates: Marked Task 25 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 24 complete: accepted-answer write-back and resume
 

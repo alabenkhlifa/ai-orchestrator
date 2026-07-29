@@ -74,6 +74,15 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   @callback current_attempt(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, RunAttempt.t()} | :error
 
+  @doc """
+  Reads the run's highest-numbered attempt, current or terminal.
+
+  A continuation after a terminal attempt has nothing current to read, and still
+  needs the ordering and fence the next attempt must advance past.
+  """
+  @callback latest_attempt(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+              {:ok, RunAttempt.t()} | :error
+
   @doc "Reads the run's one open blocking question, when it has one."
   @callback open_question(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, BlockingQuestion.t()} | :error
@@ -117,6 +126,11 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           {:ok, RunAttempt.t()} | :error
   def current_attempt(authority, project_id, run_id),
     do: dispatch(authority, :current_attempt, [project_id, run_id])
+
+  @spec latest_attempt(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+          {:ok, RunAttempt.t()} | :error
+  def latest_attempt(authority, project_id, run_id),
+    do: dispatch(authority, :latest_attempt, [project_id, run_id])
 
   @spec open_question(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
           {:ok, BlockingQuestion.t()} | :error
@@ -172,6 +186,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   defp dispatch(_authority, :fetch_run, _args), do: :error
   defp dispatch(_authority, :fetch_feature, _args), do: :error
   defp dispatch(_authority, :current_attempt, _args), do: :error
+  defp dispatch(_authority, :latest_attempt, _args), do: :error
   defp dispatch(_authority, :open_question, _args), do: :error
   defp dispatch(_authority, :list_activity, _args), do: []
   defp dispatch(_authority, :claim_commands, _args), do: []
