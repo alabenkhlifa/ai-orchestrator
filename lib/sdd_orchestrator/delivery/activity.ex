@@ -86,6 +86,11 @@ defmodule SddOrchestrator.Delivery.Activity do
     Ecto.Query.CastError -> 1
   end
 
+  # Attrs with no feature have no order to take a position in. Returning the
+  # first position lets the changeset report the real problem — a missing
+  # feature — instead of this function raising over a symptom.
+  def next_sequence(_feature_id), do: 1
+
   @doc """
   Lists one feature's activity in authoritative order for an authorized member.
 

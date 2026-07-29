@@ -212,6 +212,23 @@ defmodule SddOrchestrator.Devices do
   @doc "Fetches one project-bound device-local package provenance."
   def get_package_provenance(project_id), do: adapter().get_package_provenance(project_id)
 
+  @doc """
+  Applies one all-or-nothing batch of feature-delivery writes on the device.
+
+  The worker owns the serialization boundary, so the batch is the device
+  equivalent of one hosted transaction.
+  """
+  @spec commit_delivery(String.t(), list()) :: {:ok, map()} | {:error, term()}
+  def commit_delivery(project_id, writes), do: adapter().commit_delivery(project_id, writes)
+
+  @doc "Reads one device-authoritative delivery record."
+  @spec get_delivery(String.t(), atom(), String.t()) :: {:ok, map()} | {:error, :not_found}
+  def get_delivery(project_id, kind, id), do: adapter().get_delivery(project_id, kind, id)
+
+  @doc "Lists one project's device-authoritative delivery records of one kind."
+  @spec list_delivery(String.t(), atom()) :: [map()]
+  def list_delivery(project_id, kind), do: adapter().list_delivery(project_id, kind)
+
   @doc "Commits a caller-owned transaction through the device worker boundary."
   @spec commit_transaction(DeviceTransaction.t()) :: {:ok, map()} | {:error, term()}
   def commit_transaction(%DeviceTransaction{} = transaction) do

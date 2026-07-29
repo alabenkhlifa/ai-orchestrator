@@ -121,4 +121,22 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Commits the supported contributions in one worker-owned device transaction."
   @callback commit_transaction(DeviceTransaction.t()) ::
               {:ok, map()} | {:error, term()}
+
+  @doc """
+  Applies one all-or-nothing batch of feature-delivery writes.
+
+  Each write carries the state version its author read. The worker re-checks
+  every one against what is stored and applies the whole batch or none of it,
+  which is how a device-authoritative project gets the same expected-version
+  guarantee the hosted adapter gets from PostgreSQL.
+  """
+  @callback commit_delivery(String.t(), [
+              {:put, atom(), String.t(), map(), pos_integer() | nil}
+            ]) :: {:ok, map()} | {:error, :stale_state | term()}
+
+  @doc "Reads one device-authoritative delivery record."
+  @callback get_delivery(String.t(), atom(), String.t()) :: {:ok, map()} | {:error, :not_found}
+
+  @doc "Lists one project's device-authoritative delivery records of one kind."
+  @callback list_delivery(String.t(), atom()) :: [map()]
 end

@@ -189,7 +189,7 @@ Prerequisite:
   - Depends on: Task 14, Task 17
   - Proof: Focused authorization, project isolation, display-name, email non-disclosure, content limit, redaction, duplicate, ordering, stale and removed denial, LiveView, desktop, and mobile tests pass.
 
-- [ ] Task 18 - Implement the device-authoritative delivery-store adapter.
+- [x] Task 18 - Implement the device-authoritative delivery-store adapter.
   - Size: Standard
   - Purpose: Provide equivalent feature, run, attempt, command, and activity transactions without a hosted device-project copy.
   - Owned surfaces: Shared delivery-store behaviour, hosted adapter conformance, worker-owned device persistence, state transition and activity plus command transaction, serialized command claim, attempt lease and fence, expected-version enforcement, restart behavior, protocol value shapes, fixtures, and negative hosted-copy enforcement.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 18 complete: device-authoritative delivery-store adapter
+
+- Completed: Added the shared `Delivery.DeliveryStore` contract with its hosted PostgreSQL adapter and worker-owned device adapter, and extended the device-store boundary with a serialized delivery namespace (`commit_delivery/2`, `get_delivery/3`, `list_delivery/2`).
+- Mechanism recorded: Writes are an ordered list of named steps rather than changesets, because a changeset is a hosted concept. The hosted adapter interprets the steps as one `Ecto.Multi`; the device adapter validates them in the caller, then hands the worker one all-or-nothing batch applied under its single serialized process. A step may reference an earlier step's result with `{:ref, step, field}`, which is what lets one commit create a run, its first attempt, the activity naming both, and the start command — atomically, in either authority.
+- Parity proved: Every behavioural test is written once and run against both authorities — atomic multi-step commit, cross-step references, all-or-nothing rollback on an invalid step, run and current-attempt reads, expected-version enforcement, illegal-transition rejection, one-current-attempt exclusivity, lease claim and sequence fencing, activity ordering, command replay under one ID, claim, and acknowledgement replay. Two implementations are only safe if they answer the same way, so the proof is the shared suite rather than two separate ones.
+- No hosted copy (specs/05): A full device commit leaves every hosted delivery table byte-identical while the records genuinely exist on the device, and device and hosted activity for the same feature are invisible to each other. An unsupported authority fails closed rather than guessing a store.
+- Failed checks: Two real defects surfaced. `Enum.reduce/3` passes `(element, accumulator)`, so the hosted adapter built its `Ecto.Multi` with the arguments transposed. More significantly, `optimistic_lock/2` only takes effect inside `Repo.update`, which the device adapter never calls — so `apply_changes/1` left the version unmoved and a superseded write looked current. The device adapter now applies the increment itself and compares against the version its caller read, which is what the expected-version parity test pins. `Activity.next_sequence/1` also gained a clause for attrs with no feature, so the changeset reports the missing feature rather than the helper raising over a symptom. Final proof passes with real exit status: 29 parity tests across both adapters, `mix test` (1242 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 3 (authoritative run-state transactions) composes validated transitions on top of this contract.
+- Spec updates: Marked Task 18 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 45 complete: configured readiness-guidance adapter
 

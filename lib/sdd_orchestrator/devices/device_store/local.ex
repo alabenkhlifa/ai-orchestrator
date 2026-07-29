@@ -153,6 +153,18 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     GenServer.call(__MODULE__, {:commit_transaction, transaction})
   end
 
+  @impl SddOrchestrator.Devices.DeviceStore
+  def commit_delivery(project_id, writes),
+    do: GenServer.call(__MODULE__, {:commit_delivery, project_id, writes})
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def get_delivery(project_id, kind, id),
+    do: GenServer.call(__MODULE__, {:get_delivery, project_id, kind, id})
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def list_delivery(project_id, kind),
+    do: GenServer.call(__MODULE__, {:list_delivery, project_id, kind})
+
   @impl GenServer
   # The store path is trusted application configuration — a fixed dev/config value
   # or a test-supplied temporary path — never web or user input, so `File.mkdir_p!`
@@ -304,6 +316,18 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   def handle_call({:current_specifications, project_id}, _from, state) do
     {:reply, current_specifications_from_table(state.table, project_id), state}
+  end
+
+  def handle_call({:commit_delivery, project_id, writes}, _from, state) do
+    {:reply, apply_delivery_writes(state.table, project_id, writes), state}
+  end
+
+  def handle_call({:get_delivery, project_id, kind, id}, _from, state) do
+    {:reply, fetch_delivery(state.table, project_id, kind, id), state}
+  end
+
+  def handle_call({:list_delivery, project_id, kind}, _from, state) do
+    {:reply, collect_delivery(state.table, project_id, kind), state}
   end
 
   def handle_call({:put_import_attempt, %ImportAttempt{} = attempt}, _from, state) do
@@ -1214,4 +1238,62 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   defp specification_key(project_id, specification_id),
     do: {:specification, project_id, specification_id}
+
+  # Feature-delivery records are plain values keyed by project, kind, and id.
+  # The worker process is the serialization boundary, so a batch either applies
+  # completely or leaves the store untouched — the device equivalent of one
+  # hosted transaction.
+  defp apply_delivery_writes(table, project_id, writes) do
+    with :ok <- check_expected_versions(table, project_id, writes) do
+      applied =
+        Map.new(writes, fn {:put, kind, id, value, _expected} ->
+          :ok = :dets.insert(table, {delivery_key(project_id, kind, id), value})
+          {{kind, id}, value}
+        end)
+
+      :ok = :dets.sync(table)
+      {:ok, applied}
+    end
+  end
+
+  defp check_expected_versions(table, project_id, writes) do
+    Enum.reduce_while(writes, :ok, fn {:put, kind, id, _value, expected}, :ok ->
+      case stored_version(table, project_id, kind, id) do
+        ^expected -> {:cont, :ok}
+        _mismatch -> {:halt, {:error, :stale_state}}
+      end
+    end)
+  end
+
+  # A record that does not exist yet has no version, which is what an insert
+  # declares by passing `nil`.
+  defp stored_version(table, project_id, kind, id) do
+    case :dets.lookup(table, delivery_key(project_id, kind, id)) do
+      [{_key, %{"state_version" => version}}] -> version
+      [{_key, _value}] -> nil
+      [] -> nil
+    end
+  end
+
+  defp fetch_delivery(table, project_id, kind, id) do
+    key = delivery_key(project_id, kind, id)
+
+    case :dets.lookup(table, key) do
+      [{^key, value}] -> {:ok, value}
+      [] -> {:error, :not_found}
+    end
+  end
+
+  defp collect_delivery(table, project_id, kind) do
+    :dets.foldl(
+      fn
+        {{:delivery, ^project_id, ^kind, _id}, value}, acc -> [value | acc]
+        _other, acc -> acc
+      end,
+      [],
+      table
+    )
+  end
+
+  defp delivery_key(project_id, kind, id), do: {:delivery, project_id, kind, id}
 end
