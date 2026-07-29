@@ -105,9 +105,16 @@ test.describe("feature delivery", () => {
     await expect(page.locator("[data-feature-assignee]")).toHaveText("Nobody yet");
 
     // The next step is described as one gated action, never as a column picker.
+    // The only select on the screen assigns a person; no control anywhere offers
+    // a lifecycle column as a destination.
     await expect(page.locator("[data-gated-action]")).toBeVisible();
     await expect(page.locator("[data-gated-action]")).toContainText(/Review the result/i);
-    await expect(page.locator("select")).toHaveCount(0);
+    await expect(page.locator("[data-gated-action] select")).toHaveCount(0);
+
+    const optionLabels = await page.locator("select option").allTextContents();
+    for (const [, label] of COLUMNS) {
+      expect(optionLabels).not.toContain(label);
+    }
 
     await page.getByRole("link", { name: /Features/ }).first().click();
     await expect(page.locator("[data-screen=feature-board]")).toBeVisible();
@@ -126,6 +133,60 @@ test.describe("feature delivery", () => {
     await expect(draft.locator("[data-feature-title]")).toHaveText("Search the catalog");
     await expect(draft.locator("[data-feature-creator]")).toHaveText(owner_name);
     await expect(page.locator('[data-column="done"] [data-column-empty]')).toBeVisible();
+  });
+
+  test("a feature is assigned to another current participant", async ({ page }) => {
+    const { project_id, features, owner_name, participant_name } = await bootstrap(
+      page,
+      "features",
+      { populated: "true" },
+    );
+    await openLive(page, `/projects/${project_id}/features/${features.draft}`);
+
+    const select = page.locator("[data-assignment-select]");
+
+    await expect(page.locator("[data-feature-assignee]")).toHaveText("Nobody yet");
+    await expect(page.locator("[data-feature-responsible]")).toHaveText(owner_name);
+
+    // The selector offers exactly the current members, by project display name.
+    await expect(select.locator("option")).toHaveText(["Nobody yet", owner_name, participant_name]);
+    await expect(page.locator("body")).not.toContainText("@example.com");
+
+    await select.selectOption({ label: participant_name });
+
+    await expect(page.locator("[data-feature-assignee]")).toHaveText(participant_name);
+    await expect(page.locator("[data-feature-responsible]")).toHaveText(participant_name);
+    await expect(page.locator("[data-assignment-error]")).toHaveCount(0);
+  });
+
+  test("Assign to me takes the feature for the acting participant", async ({ page }) => {
+    const { project_id, features, participant_name } = await bootstrap(page, "features", {
+      populated: "true",
+      as: "participant",
+    });
+    await openLive(page, `/projects/${project_id}/features/${features.draft}`);
+
+    await page.locator("[data-assign-to-me]").click();
+
+    await expect(page.locator("[data-feature-assignee]")).toHaveText(participant_name);
+    await expect(page.locator("[data-feature-responsible]")).toHaveText(participant_name);
+  });
+
+  test("the assignment controls are keyboard reachable and fit the viewport", async ({ page }) => {
+    const { project_id, features } = await bootstrap(page, "features", { populated: "true" });
+    await openLive(page, `/projects/${project_id}/features/${features.draft}`);
+
+    await page.locator("[data-assignment-select]").focus();
+    const ring = await tabTo(page, "[data-assign-to-me]");
+    expect(ring.style).not.toBe("none");
+
+    const viewport = page.viewportSize().width;
+    const box = await page.locator("[data-assignment]").boundingBox();
+
+    expect(box.width).toBeLessThanOrEqual(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      viewport,
+    );
   });
 
   test("the board is reachable by keyboard with a visible focus ring", async ({ page }) => {

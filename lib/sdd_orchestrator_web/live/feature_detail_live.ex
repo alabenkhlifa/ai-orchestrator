@@ -14,7 +14,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   """
   use SddOrchestratorWeb, :live_view
 
-  alias SddOrchestrator.Delivery.{Features, ParticipantGuard}
+  alias SddOrchestrator.Delivery.{Assignment, Features, ParticipantGuard}
 
   @column_labels %{
     "draft" => "Draft",
@@ -35,6 +35,43 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     "ready_for_review" => "Review the result and approve or send it back.",
     "done" => "This feature is done."
   }
+
+  @impl true
+  def handle_event("assign", %{"assignment" => %{"account_id" => account_id}}, socket) do
+    socket.assigns.project_id
+    |> Assignment.assign(socket.assigns.actor, socket.assigns.feature, blank_to_nil(account_id))
+    |> apply_assignment(socket)
+  end
+
+  def handle_event("assign_to_me", _params, socket) do
+    socket.assigns.project_id
+    |> Assignment.assign_to_me(socket.assigns.actor, socket.assigns.feature)
+    |> apply_assignment(socket)
+  end
+
+  # A rejected assignment says what went wrong without revealing whether the
+  # chosen person exists elsewhere in the product.
+  defp apply_assignment({:ok, feature}, socket) do
+    {:noreply,
+     socket
+     |> assign_feature(socket.assigns.project_id, socket.assigns.actor, feature)
+     |> assign(:assignment_error, nil)}
+  end
+
+  defp apply_assignment({:error, :unauthorized}, socket),
+    do: {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+  defp apply_assignment({:error, reason}, socket),
+    do: {:noreply, assign(socket, :assignment_error, assignment_message(reason))}
+
+  defp assignment_message(:invalid_target),
+    do: "That person is not on this project anymore. Pick someone from the list."
+
+  defp assignment_message(_reason),
+    do: "This feature changed while you were looking at it. It has been refreshed."
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(account_id), do: account_id
 
   @impl true
   def mount(%{"id" => project_id, "feature_id" => feature_id}, _session, socket) do
@@ -63,17 +100,26 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   end
 
   defp assign_feature(socket, project_id, actor, feature) do
-    names =
-      project_id
-      |> ParticipantGuard.current_members(actor)
-      |> Map.new(&{&1.account_id, &1.display_name})
+    members = ParticipantGuard.current_members(project_id, actor)
 
     socket
     |> assign(:page_title, feature.title)
     |> assign(:project_id, project_id)
     |> assign(:actor, actor)
     |> assign(:feature, feature)
-    |> assign(:names, names)
+    |> assign(:names, Map.new(members, &{&1.account_id, &1.display_name}))
+    |> assign(:members, members)
+    |> assign(:responsible, responsible_label(project_id, feature))
+    |> assign(:assignment_error, socket.assigns[:assignment_error])
+  end
+
+  # Responsibility is derived, not stored, so the screen shows who would
+  # actually be asked right now rather than a possibly stale field.
+  defp responsible_label(project_id, feature) do
+    case Assignment.responsible(project_id, feature) do
+      {:ok, member} -> member.display_name
+      {:error, :unavailable} -> nil
+    end
   end
 
   defp name(_names, nil), do: nil
@@ -127,7 +173,69 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
               {name(@names, @feature.assigned_account_id) || "Nobody yet"}
             </dd>
           </div>
+          <div class="rounded-lg border border-line bg-surface p-3.5">
+            <dt class="text-[13px] font-semibold text-ink-muted">Answers questions</dt>
+            <dd class="mt-1 text-sm text-ink" data-feature-responsible>
+              {@responsible || "The project owner"}
+            </dd>
+          </div>
         </dl>
+
+        <section class="mt-6 rounded-lg border border-line bg-surface p-4" data-assignment>
+          <h2 class="text-[13px] font-semibold text-ink">Who is working on this</h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Anyone on this project can pick who it is assigned to. Questions during development
+            go to that person, or to whoever created the feature when nobody is assigned.
+          </p>
+
+          <form id="assignment-form" phx-change="assign" class="mt-4">
+            <label for="assignment-account" class="block text-[13px] font-semibold text-ink">
+              Assigned to
+            </label>
+            <select
+              id="assignment-account"
+              name="assignment[account_id]"
+              class={[
+                "mt-1.5 w-full h-10 rounded-lg border bg-surface px-3 text-sm text-ink outline-none",
+                "focus:outline focus:outline-2 focus:outline-offset-0 focus:outline-focus",
+                (@assignment_error && "border-err-fg") || "border-line-strong focus:border-focus"
+              ]}
+              aria-invalid={(@assignment_error && "true") || nil}
+              aria-describedby={(@assignment_error && "assignment-error") || nil}
+              data-assignment-select
+            >
+              <option value="" selected={is_nil(@feature.assigned_account_id)}>Nobody yet</option>
+              <option
+                :for={member <- @members}
+                value={member.account_id}
+                selected={member.account_id == @feature.assigned_account_id}
+              >
+                {member.display_name}
+              </option>
+            </select>
+            <p
+              :if={@assignment_error}
+              id="assignment-error"
+              class="mt-2 flex items-center gap-1.5 text-xs text-err-fg"
+              data-assignment-error
+            >
+              <.lucide name="circle-alert" class="size-3.5 flex-none" />
+              {@assignment_error}
+            </p>
+          </form>
+
+          <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <.button
+              type="button"
+              variant="secondary"
+              phx-click="assign_to_me"
+              class="w-full sm:w-auto"
+              data-assign-to-me
+            >
+              <.lucide name="user-round-pen" class="size-4" /> Assign to me
+            </.button>
+          </div>
+        </section>
 
         <div class="mt-6 rounded-lg border border-line bg-surface p-4" data-gated-action>
           <p class="text-[13px] font-semibold text-ink">What happens next</p>

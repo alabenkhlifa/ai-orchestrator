@@ -132,21 +132,22 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     end
 
     # One hosted project whose board is either empty or holds one feature in each
-    # of the five columns, with a visible status on the in-development card.
+    # of the five columns, with a visible status on the in-development card. The
+    # project always has a second member so the assignment selector has a real
+    # choice to make.
     defp run(conn, "features", params) do
-      owner = new_owner()
-      project = new_project(owner)
-      save_owner_profile(project, owner)
+      %{project: project, owner: owner, participant: participant} = member_graph()
       actor = %{account_id: owner.account.id, hosted_identity_id: nil}
 
       features = if params["populated"] == "true", do: seed_features(project, actor), else: %{}
 
       conn
-      |> sign_in_account(owner.account)
+      |> sign_in(params["as"] || "owner", owner, participant)
       |> json(%{
         project_id: project.id,
         project_name: project.name,
         owner_name: @owner_name,
+        participant_name: @participant_name,
         features: features
       })
     end

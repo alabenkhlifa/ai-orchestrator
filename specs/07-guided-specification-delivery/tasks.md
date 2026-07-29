@@ -117,7 +117,7 @@ Prerequisite:
   - Depends on: Task 8
   - Proof: Focused query, authorization, LiveView, desktop, and mobile browser tests cover five columns, empty and populated boards, direct and drag rejection, cross-project isolation, creator labels, keyboard, and focus.
 
-- [ ] Task 9 - Deliver project-participant assignment and responsibility.
+- [x] Task 9 - Deliver project-participant assignment and responsibility.
   - Size: Standard
   - Purpose: Keep current story responsibility explicit without exposing participant email.
   - Owned surfaces: Creator and optional `Assigned` presentation, current-participant selector, assignment to another current participant, `Assign to me`, responsible-participant resolution, creator and owner fallback, project display names, stale target rejection, assignment activity, fixtures, and responsive accessible controls.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 9 complete: project-participant assignment and responsibility
+
+- Completed: Added `Delivery.Assignment` and the feature-detail assignment controls. Any current participant may set `Assigned` to any current participant of the same project or take it themselves, and the screen shows the creator, the assignee, and — separately — who would actually be asked a question right now.
+- Boundary held: Responsibility is derived rather than stored: the current assignee if they are still a participant, otherwise the current creator if they still are, otherwise the immutable owner. Both fallbacks are proved with a real removal, including the case where the assignee and the creator have both left, so a question can never route to someone whose access ended. The selector is exactly the project's current members, so a departed person cannot be chosen; a target who leaves between render and submit is rejected as `:invalid_target` with nothing changed. An outsider, an unauthenticated visitor, and a departed participant all fail closed, and a feature from another project is unreachable.
+- Presentation (AC-31): Every identity is a project display name. The selector, the labels, the derived responsibility line, and the activity payload were each asserted to contain no address, and a departed member has no label at all rather than an invented one — the caller renders its own neutral historical text.
+- Mechanism recorded: The assignment and its `assignment_changed` activity commit in one `Ecto.Multi`, so history cannot disagree with the field, and a rejected assignment records nothing. The activity payload names accounts only; display names resolve at render from current participation, so a later rename or departure is reflected instead of frozen into history. Writes carry the caller's expected state version, so a stale board tab is rejected rather than overwriting a newer assignment.
+- Failed checks: One pre-existing browser assertion proved "no direct column choice" by counting every `select` on the screen, which the new assignment control legitimately breaks. It was narrowed to what it actually meant — the gated-action area has no select, and no option anywhere offers a lifecycle column — which is a stronger check than the count it replaced. Final proof passes with real exit status: 24 assignment tests, 11 feature-detail LiveView tests, 13 `chromium` feature-delivery browser scenarios, `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 45 (readiness-guidance adapter) is next on the readiness path; Task 18 and Task 3 continue the orchestration path.
+- Spec updates: Marked Task 9 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 16 complete: durable command outbox and dispatcher
 
