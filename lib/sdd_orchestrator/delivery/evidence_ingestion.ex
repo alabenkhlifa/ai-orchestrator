@@ -17,12 +17,13 @@ defmodule SddOrchestrator.Delivery.EvidenceIngestion do
   visible as the thing that was superseded rather than disappearing.
   """
 
-  alias SddOrchestrator.Delivery.{DeliveryStore, EventIngestion, Evidence}
+  alias SddOrchestrator.Delivery.{DeliveryStore, EventIngestion, Evidence, ScreenshotEvidence}
 
   @type authority :: DeliveryStore.authority()
 
   @type error ::
           EventIngestion.error()
+          | ScreenshotEvidence.error()
           | :agent_evidence_refused
           | :invalid_evidence
 
@@ -48,7 +49,7 @@ defmodule SddOrchestrator.Delivery.EvidenceIngestion do
     with :ok <- worker_derived?(envelope),
          {:ok, %{run: run, attempt: attempt}} <-
            EventIngestion.accept(authority, project_id, envelope, [@event_type]),
-         {:ok, attrs} <- evidence_attrs(run, attempt, envelope) do
+         {:ok, attrs} <- evidence_attrs(authority, project_id, run, attempt, envelope) do
       commit(authority, project_id, run, attrs, envelope, attempt)
     end
   end
@@ -149,7 +150,12 @@ defmodule SddOrchestrator.Delivery.EvidenceIngestion do
   # branch for its whole lifetime, so evidence cannot claim work happened
   # somewhere the run does not own. The recorded instant is the control plane's,
   # because a worker clock must not decide the order of the record.
-  defp evidence_attrs(run, attempt, envelope) do
+  #
+  # Whether a screenshot applies at all is decided by `ScreenshotEvidence`
+  # before the shared record contract is checked, because the reported capture
+  # result is what fixes the outcome. Every other kind passes through it
+  # unchanged.
+  defp evidence_attrs(authority, project_id, run, attempt, envelope) do
     payload = Map.get(envelope, "payload", %{})
 
     attrs = %{
@@ -173,6 +179,13 @@ defmodule SddOrchestrator.Delivery.EvidenceIngestion do
       artifact_ref: payload["artifact_ref"]
     }
 
+    case ScreenshotEvidence.bind(authority, project_id, attrs, payload) do
+      {:ok, bound} -> recordable(bound)
+      {:error, _reason} = refusal -> refusal
+    end
+  end
+
+  defp recordable(attrs) do
     case Evidence.record_changeset(%Evidence{}, attrs) do
       %{valid?: true} -> {:ok, attrs}
       %{valid?: false} -> {:error, :invalid_evidence}

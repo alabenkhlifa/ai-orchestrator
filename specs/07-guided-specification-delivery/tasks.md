@@ -325,7 +325,7 @@ Prerequisite:
   - Depends on: Task 19, Task 29
   - Proof: Focused authentication, attempt and fence scoping, digest verification, content-type, size-limit, duplicate-upload, cross-project denial, stale-attempt denial, device no-upload, artifact handoff, and failure-result tests pass.
 
-- [ ] Task 44 - Deliver conditional screenshot evidence.
+- [x] Task 44 - Deliver conditional screenshot evidence.
   - Size: Standard
   - Purpose: Capture meaningful visual proof when supported and report inapplicability without fabricating evidence.
   - Owned surfaces: Visual-result applicability decision, configured capture capability, worker screenshot command result, exact attempt, branch and commit binding, uploaded-artifact reference binding, redaction state, unsupported and inapplicable result, capture failure, fixtures, and presentation metadata.
@@ -538,6 +538,19 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 44 complete: conditional screenshot evidence
+
+- Completed: Added `Delivery.ScreenshotEvidence` and one narrow delegation from `EvidenceIngestion`. A screenshot is now a typed, bounded claim rather than an attachment the product hopes is real.
+- Applicability is worker-reported (AC-20): the event carries a `capture_result` and the stored `outcome` is derived from it, so a screenshot event carries no outcome on the wire at all and the two can never disagree in the row. `captured` becomes `passed`, `inapplicable` becomes `missing`, `unsupported` stays `unsupported`, and `failed` stays `failed`. An absent or unknown capture result is refused.
+- The refusal this task exists for: a `passed` screenshot naming bytes the project's store does not hold is refused outright, never downgraded. Artifact existence is the primary gate because it is durable and cannot be faked — the bytes had to survive the Task 52 upload first. A mismatched digest, a redaction claim disagreeing with the stored artifact, and a `passed` from a worker whose contract lacks `evidence.screenshot` are refused the same way. With no contract attached the artifact gate alone carries the proof, and both branches are proved.
+- Absence cannot smuggle content: a `missing`, `unsupported`, or `failed` result carrying an artifact reference is refused. An absence claim that could ship bytes would defeat the point of classifying it.
+- Absence still names its commit. `evidence.commit_sha` is already `NOT NULL`, so no schema change was needed and every absence record says which commit had nothing to show.
+- Presentation reads availability rather than assuming it: `presentation/2` asks the store now, so an artifact removed by retention shows as unavailable while the immutable row keeps its recorded outcome. It exposes no reference, no URL, and no bytes.
+- One existing test changed, not weakened: `evidence_test.exs` asserted a `passed` screenshot with the fabricated reference `artifact:board-mobile`, which is not even a valid reference shape and is exactly what this task now refuses. Its assertion — that a screenshot needs no command provenance — is intact; only its fixture became a real stored artifact.
+- Failed checks: None. Final proof passes with real exit status: 61 screenshot tests across both authorities, `mix test` (1917 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 30 (same-commit verification completion) is next. After it, Tasks 31 and 32 become independent of each other and can run in parallel.
+- Spec updates: Marked Task 44 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 52 complete: authenticated worker artifact-upload transport
 

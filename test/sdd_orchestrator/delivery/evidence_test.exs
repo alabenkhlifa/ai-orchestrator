@@ -140,12 +140,19 @@ defmodule SddOrchestrator.Delivery.EvidenceTest do
         assert results.evidence.branch == run.branch
       end
 
+      # A screenshot is not a command result, so the command provenance a
+      # required check must carry does not apply to it. What it must carry
+      # instead — a reported capture result and bytes the project's own store
+      # actually holds — belongs to `ScreenshotEvidenceTest`.
       test "accepts a screenshot without command provenance", %{
         authority: authority,
         project: project,
         run: run,
         attempt: attempt
       } do
+        content = DeliveryFixtures.png_bytes("board-mobile")
+        ref = DeliveryFixtures.artifact_fixture(authority, project.id, content: content)
+
         {:ok, results} =
           EvidenceIngestion.ingest(
             authority,
@@ -156,12 +163,14 @@ defmodule SddOrchestrator.Delivery.EvidenceTest do
               name: "board on mobile",
               command: nil,
               exit_code: nil,
-              artifact_ref: "artifact:board-mobile"
+              capture_result: "captured",
+              digest: DeliveryFixtures.content_digest(content),
+              artifact_ref: ref
             )
           )
 
         assert results.evidence.kind == "screenshot"
-        assert results.evidence.artifact_ref == "artifact:board-mobile"
+        assert results.evidence.artifact_ref == ref
         refute results.evidence.exit_code
       end
 
@@ -897,7 +906,8 @@ defmodule SddOrchestrator.Delivery.EvidenceTest do
       "commit_sha" => Keyword.get(opts, :commit_sha, @commit),
       "digest" => Keyword.get(opts, :digest, DeliveryFixtures.digest("mix test")),
       "redacted" => Keyword.get(opts, :redacted, false),
-      "artifact_ref" => Keyword.get(opts, :artifact_ref)
+      "artifact_ref" => Keyword.get(opts, :artifact_ref),
+      "capture_result" => Keyword.get(opts, :capture_result)
     }
 
     %{
