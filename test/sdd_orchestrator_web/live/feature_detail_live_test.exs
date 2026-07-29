@@ -320,6 +320,111 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     end
   end
 
+  describe "the start disclosure [AC-36]" do
+    setup %{project: project, account: account} do
+      previous = Application.get_env(:sdd_orchestrator, :processing_boundary)
+
+      Application.put_env(:sdd_orchestrator, :processing_boundary,
+        execution_location: "this computer",
+        agent_provider: "configured-agent",
+        model_provider: "configured-model",
+        transfers: []
+      )
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:sdd_orchestrator, :processing_boundary, previous)
+        else
+          Application.delete_env(:sdd_orchestrator, :processing_boundary)
+        end
+      end)
+
+      ready = DeliveryFixtures.feature_fixture(project, account)
+
+      {:ok, ready} =
+        ready
+        |> Feature.transition_changeset("ready_for_development", ready.state_version)
+        |> Repo.update()
+
+      %{ready: ready}
+    end
+
+    test "is absent until the feature is ready for development", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      refute has_element?(view, "[data-start-disclosure]")
+    end
+
+    test "shows where the work runs and whether content leaves its store", %{
+      conn: conn,
+      project: project,
+      ready: ready,
+      account: account
+    } do
+      {:ok, view, _html} = conn |> log_in_account(account) |> live(feature_path(project, ready))
+
+      assert view |> element("[data-disclosure-location]") |> render() =~ "this computer"
+      assert view |> element("[data-disclosure-agent]") |> render() =~ "configured-agent"
+      assert view |> element("[data-disclosure-model]") |> render() =~ "configured-model"
+
+      assert view |> element("[data-disclosure-preview]") |> render() =~
+               "No preview is configured"
+
+      assert view |> element("[data-disclosure-transfer]") |> render() =~ "Stays in this project"
+    end
+
+    test "a participant confirms once and is not asked again", %{
+      conn: conn,
+      project: project,
+      ready: ready,
+      account: account
+    } do
+      {:ok, view, _html} = conn |> log_in_account(account) |> live(feature_path(project, ready))
+
+      assert has_element?(view, "[data-confirm-boundary]")
+      refute has_element?(view, "[data-disclosure-acknowledged]")
+
+      view |> element("[data-confirm-boundary]") |> render_click()
+
+      assert has_element?(view, "[data-disclosure-acknowledged]")
+      refute has_element?(view, "[data-confirm-boundary]")
+
+      {:ok, revisited, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, ready))
+
+      assert has_element?(revisited, "[data-disclosure-acknowledged]")
+    end
+
+    test "a boundary that changed while the dialog was open is re-shown", %{
+      conn: conn,
+      project: project,
+      ready: ready,
+      account: account
+    } do
+      {:ok, view, _html} = conn |> log_in_account(account) |> live(feature_path(project, ready))
+
+      Application.put_env(:sdd_orchestrator, :processing_boundary,
+        execution_location: "remote worker",
+        agent_provider: "configured-agent",
+        model_provider: "configured-model",
+        transfers: ["specifications"]
+      )
+
+      view |> element("[data-confirm-boundary]") |> render_click()
+
+      assert has_element?(view, "[data-disclosure-changed]")
+      refute has_element?(view, "[data-disclosure-acknowledged]")
+      assert view |> element("[data-disclosure-location]") |> render() =~ "remote worker"
+      assert view |> element("[data-disclosure-transfer]") |> render() =~ "Leaves this project"
+    end
+  end
+
   defp feature_path(project, feature), do: ~p"/projects/#{project.id}/features/#{feature.id}"
 
   defp log_in_hosted(conn, hosted_identity) do

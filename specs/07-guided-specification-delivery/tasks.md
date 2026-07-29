@@ -149,7 +149,7 @@ Prerequisite:
   - Depends on: Task 10
   - Proof: Focused suggestion, blocker, readiness, concurrency, stale-version, authorization, activity, and LiveView tests pass without automatically starting execution.
 
-- [ ] Task 12 - Deliver start-time processing-boundary disclosure.
+- [x] Task 12 - Deliver start-time processing-boundary disclosure.
   - Size: Standard
   - Purpose: Make execution, provider, preview, and data-transfer boundaries visible before consequential processing starts.
   - Owned surfaces: Configured execution location, agent or model provider, preview provider, authoritative-store transfer summary, disclosure version and digest, first-start confirmation, unchanged-boundary reuse, changed-boundary invalidation and reconfirmation, confirmation time, fixtures, and accessible start dialog.
@@ -528,6 +528,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 12 complete: start-time processing-boundary disclosure
+
+- Completed: Added `Delivery.ProcessingDisclosure` with `processing_confirmations` and the accessible start dialog on the feature detail screen. Before development can start, the screen names where the work runs, which coding agent and model provider it uses, whether a preview provider is configured, and whether project content leaves its authoritative store.
+- Boundary held (AC-36): The agreement is stored as the digest of exactly what was shown, not a boolean. That is what makes a configuration change invalidate it — the person did not agree to a boundary that did not exist yet — while an unchanged boundary reuses the earlier confirmation so a routine run is not interrupted. Changing any single disclosed field was asserted to change the agreement, and reordering the transfer list was asserted not to. Each person confirms for themselves, confirmations are scoped to one project, and a departed participant's confirmation stops counting.
+- Failed checks: The LiveView caught a real defect. The confirm handler validated the clicked digest against the disclosure assigned at mount, so a configuration change while the dialog was open would have been confirmed anyway — precisely the case the disclosure exists to prevent. It now checks against the boundary in force at that moment and re-shows the changed one instead. Strict Credo also flagged a single-clause `with`. Final proof passes with real exit status: 16 disclosure tests, 19 feature-detail LiveView tests, `mix test` (1355 passing), and `mix credo --strict`.
+- Remaining: Task 13 (explicit development start) consumes this confirmation and is unblocked once Task 43 lands; Task 20 (worker isolation) is in progress.
+- Spec updates: Marked Task 12 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 11 complete: suggestion dismissal and development readiness
 

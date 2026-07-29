@@ -14,7 +14,13 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   """
   use SddOrchestratorWeb, :live_view
 
-  alias SddOrchestrator.Delivery.{Assignment, Comments, Features, ParticipantGuard}
+  alias SddOrchestrator.Delivery.{
+    Assignment,
+    Comments,
+    Features,
+    ParticipantGuard,
+    ProcessingDisclosure
+  }
 
   @column_labels %{
     "draft" => "Draft",
@@ -45,6 +51,27 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   }
 
   @impl true
+  def handle_event("confirm_boundary", %{"digest" => digest}, socket) do
+    # Deliberately not the mounted assign: the agreement must be checked against
+    # the boundary in force right now, or a configuration change during the
+    # dialog would be confirmed anyway.
+    socket.assigns.project_id
+    |> ProcessingDisclosure.confirm(socket.assigns.actor, digest)
+    |> case do
+      {:ok, _confirmation} ->
+        {:noreply, assign_disclosure(socket)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      # The configuration moved while the dialog was open, so the person is
+      # shown the boundary that is actually in force rather than agreeing to
+      # one that no longer exists.
+      {:error, _reason} ->
+        {:noreply, socket |> assign_disclosure() |> assign(:boundary_changed?, true)}
+    end
+  end
+
   def handle_event("comment", %{"comment" => %{"body" => body}}, socket) do
     socket.assigns.project_id
     |> Comments.add(socket.assigns.actor, socket.assigns.feature.id, body)
@@ -148,6 +175,19 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
+    |> assign_disclosure()
+  end
+
+  defp assign_disclosure(socket) do
+    disclosure = ProcessingDisclosure.describe()
+
+    socket
+    |> assign(:disclosure, disclosure)
+    |> assign(
+      :disclosure_confirmed?,
+      ProcessingDisclosure.confirmed?(socket.assigns.project_id, socket.assigns.actor, disclosure)
+    )
+    |> assign(:boundary_changed?, socket.assigns[:boundary_changed?] || false)
   end
 
   defp load_activity(socket, project_id, actor, feature) do
@@ -181,6 +221,12 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp column_label(column), do: Map.fetch!(@column_labels, column)
   defp status_label(status), do: Map.get(@status_labels, status)
   defp gated_action(column), do: Map.fetch!(@gated_actions, column)
+
+  defp transfer_summary(%{leaves_authoritative_store: false}),
+    do: "Stays in this project's own store"
+
+  defp transfer_summary(%{transfers: transfers}),
+    do: "Leaves this project's store: " <> Enum.join(transfers, ", ")
 
   @impl true
   def render(assigns) do
@@ -296,6 +342,74 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             {gated_action(@feature.lifecycle_column)}
           </p>
         </div>
+
+        <section
+          :if={@feature.lifecycle_column == "ready_for_development"}
+          class="mt-6 rounded-lg border border-line bg-surface p-4"
+          aria-labelledby="start-disclosure-heading"
+          data-start-disclosure
+          data-disclosure-confirmed={to_string(@disclosure_confirmed?)}
+        >
+          <h2 id="start-disclosure-heading" class="text-[13px] font-semibold text-ink">
+            Before development starts
+          </h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Starting development runs a coding agent against this project. Here is where that
+            happens and what it can see.
+          </p>
+
+          <dl class="mt-3 flex flex-col gap-2 text-[13px]">
+            <div class="flex flex-wrap gap-1.5">
+              <dt class="text-ink-muted">Runs on</dt>
+              <dd class="text-ink" data-disclosure-location>{@disclosure.execution_location}</dd>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <dt class="text-ink-muted">Coding agent</dt>
+              <dd class="text-ink" data-disclosure-agent>{@disclosure.agent_provider}</dd>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <dt class="text-ink-muted">Model provider</dt>
+              <dd class="text-ink" data-disclosure-model>{@disclosure.model_provider}</dd>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <dt class="text-ink-muted">Preview</dt>
+              <dd class="text-ink" data-disclosure-preview>
+                {@disclosure.preview_provider || "No preview is configured"}
+              </dd>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <dt class="text-ink-muted">Project content</dt>
+              <dd class="text-ink" data-disclosure-transfer>
+                {transfer_summary(@disclosure)}
+              </dd>
+            </div>
+          </dl>
+
+          <div :if={@boundary_changed?} class="mt-3" data-disclosure-changed>
+            <.notice variant="warn" icon="triangle-alert">
+              This changed while you were reading it. Check it again before confirming.
+            </.notice>
+          </div>
+
+          <p
+            :if={@disclosure_confirmed?}
+            class="mt-3 inline-flex items-center gap-1.5 text-[13px] text-ok-fg"
+            data-disclosure-acknowledged
+          >
+            <.lucide name="circle-check" class="size-4" /> You confirmed this boundary.
+          </p>
+
+          <.button
+            :if={not @disclosure_confirmed?}
+            type="button"
+            phx-click="confirm_boundary"
+            phx-value-digest={@disclosure.digest}
+            class="mt-3 w-full sm:w-auto"
+            data-confirm-boundary
+          >
+            <.lucide name="check" class="size-4" /> I understand, continue
+          </.button>
+        </section>
 
         <section class="mt-6" data-comments>
           <h2 class="text-[13px] font-semibold text-ink">Comments</h2>
