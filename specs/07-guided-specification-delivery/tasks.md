@@ -285,7 +285,7 @@ Prerequisite:
   - Depends on: Task 11, Task 13, Task 25
   - Proof: Focused initiator, owner, other, former, cancel command, repeat, worker response, history, readiness outcomes, no-resume, new-run, new-branch, and browser tests pass.
 
-- [ ] Task 27 - Consume participation revocation.
+- [x] Task 27 - Consume participation revocation.
   - Size: Standard
   - Purpose: End former-participant responsibility and access without canceling active work.
   - Owned surfaces: Versioned `ParticipationRevocation` claim, payload validation, idempotent authoritative transaction, current assignment clearing, pending question and review owner fallback, last display-name historical attribution, active-run owner control, former-participant denial, acknowledgement after commit, replay, fixtures, and absence of participation mutation.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 27 complete: participation revocation consumed
+
+- Completed: Added `Delivery.RevocationConsumer`. It claims the versioned `ParticipationRevocation` handoffs Slice 08 produces, applies each one to this slice's own records, and acknowledges only after that transaction commits.
+- Boundary held (AC-30): This slice mutates no participation record — the negative proof compares the participation rows before and after the handoff. It consumes the producer contract through `Participation.Boundary` and owns only the feature-delivery consequences of someone leaving.
+- What changes and what does not: Current assignment clears on every affected feature. Pending blocking-question and review responsibility then route to the immutable owner on their own, because `Assignment.responsible/2` and `QuestionRouting` derive responsibility from *current* participation rather than a stored field — proved by test rather than reimplemented. Prior activity keeps its actor reference untouched, so historical contribution survives the departure. The active run is deliberately not cancelled: it stays live under owner control, because a membership action must not silently destroy work in progress.
+- Replay safety: Acknowledgement happens only after commit, so a crash in between is safe — the same handoff is claimed again and its application is a no-op. That ordering is what makes at-least-once delivery from the producer harmless.
+- Failed checks: None. Final proof passes with real exit status: the revocation-consumer suite, `mix test` (1638 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 28 (reconcile authoritative state and worker execution) is next; it is the last task before the evidence chain opens up.
+- Spec updates: Marked Task 27 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 26 complete: authorized cancellation and restart readiness
 

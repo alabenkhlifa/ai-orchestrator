@@ -56,6 +56,20 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   end
 
   @impl true
+  def list_features(_authority, project_id, opts) do
+    project_id
+    |> Devices.list_delivery(:feature)
+    |> Enum.flat_map(fn value ->
+      case Feature.from_value(value) do
+        {:ok, feature} -> [feature]
+        {:error, _reason} -> []
+      end
+    end)
+    |> assigned_to(Keyword.get(opts, :assigned_account_id))
+    |> Enum.sort_by(& &1.id)
+  end
+
+  @impl true
   def current_attempt(_authority, project_id, run_id) do
     project_id
     |> attempts(run_id)
@@ -237,6 +251,9 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp apply_operation(_project_id, {:set_feature_status, feature, status}, _results),
     do: feature_write(feature, Feature.status_changeset(feature, status, feature.state_version))
+
+  defp apply_operation(_project_id, {:clear_assignment, feature}, _results),
+    do: feature_write(feature, Feature.assignment_changeset(feature, nil, feature.state_version))
 
   # The device store has no partial unique index, so the invariant the hosted
   # one gets from the database is checked here before any write is applied.
@@ -427,4 +444,11 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp put_id(%{id: nil} = record), do: %{record | id: Ecto.UUID.generate()}
   defp put_id(record), do: record
+
+  # An absent option means every feature in the project, which is not the same
+  # question as "assigned to nobody" and must not silently answer it.
+  defp assigned_to(features, nil), do: features
+
+  defp assigned_to(features, account_id),
+    do: Enum.filter(features, &(&1.assigned_account_id == account_id))
 end

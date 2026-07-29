@@ -66,6 +66,17 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
   end
 
   @impl true
+  def list_features(_authority, project_id, opts) do
+    Feature
+    |> where([f], f.project_id == ^project_id)
+    |> assigned_to(Keyword.get(opts, :assigned_account_id))
+    |> order_by([f], asc: f.inserted_at, asc: f.id)
+    |> Repo.all()
+  rescue
+    Ecto.Query.CastError -> []
+  end
+
+  @impl true
   def current_attempt(_authority, _project_id, run_id) do
     RunAttempt
     |> where([a], a.run_id == ^run_id and a.state in ^RunAttempt.current_states())
@@ -197,6 +208,12 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     |> repo.update()
   end
 
+  defp apply_operation(repo, {:clear_assignment, feature}, _results) do
+    feature
+    |> Feature.assignment_changeset(nil, feature.state_version)
+    |> repo.update()
+  end
+
   defp apply_operation(repo, {:insert_blocking_question, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
       %BlockingQuestion{} |> BlockingQuestion.ask_changeset(resolved) |> repo.insert()
@@ -248,4 +265,11 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
   end
 
   defp normalize(reason), do: reason
+
+  # An absent option means every feature in the project, which is not the same
+  # question as "assigned to nobody" and must not silently answer it.
+  defp assigned_to(query, nil), do: query
+
+  defp assigned_to(query, account_id),
+    do: where(query, [f], f.assigned_account_id == ^account_id)
 end

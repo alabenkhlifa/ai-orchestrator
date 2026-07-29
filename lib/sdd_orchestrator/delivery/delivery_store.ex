@@ -48,6 +48,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:observe_sequence, RunAttempt.t(), non_neg_integer()}
           | {:transition_feature, Feature.t(), String.t(), keyword()}
           | {:set_feature_status, Feature.t(), String.t()}
+          | {:clear_assignment, Feature.t()}
           | {:insert_blocking_question, map()}
           | {:resolve_question, BlockingQuestion.t(), String.t(), String.t() | nil}
           | {:append_activity, map()}
@@ -69,6 +70,15 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   @doc "Reads one feature."
   @callback fetch_feature(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, Feature.t()} | :error
+
+  @doc """
+  Lists one project's features, optionally narrowed to one assignee.
+
+  A departure has to find every feature the former participant still holds
+  without knowing which ones they are, and that question belongs to whichever
+  store is authoritative for the project rather than to the hosted database.
+  """
+  @callback list_features(authority(), Ecto.UUID.t(), keyword()) :: [Feature.t()]
 
   @doc "Reads the run's one current attempt, when it has one."
   @callback current_attempt(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
@@ -104,10 +114,22 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
     ~w(
       insert_run transition_run set_effective_revision advance_attempt_number
       resume_run insert_attempt transition_attempt claim_lease observe_sequence
-      transition_feature set_feature_status insert_blocking_question
-      resolve_question append_activity enqueue_command
+      transition_feature set_feature_status clear_assignment
+      insert_blocking_question resolve_question append_activity enqueue_command
     )a
   end
+
+  @doc """
+  Reports whether one authority resolves to an adapter at all.
+
+  Every read answers an unusable authority with the same empty result it would
+  give a project that genuinely has nothing, so a caller that must not treat
+  "could not ask" as "nothing to do" has to be able to tell them apart first.
+  """
+  @spec supported?(term()) :: boolean()
+  def supported?(%PersonalWorkspace{}), do: true
+  def supported?(%DeviceWorkspace{}), do: true
+  def supported?(_authority), do: false
 
   @spec commit(authority(), Ecto.UUID.t(), [step()]) ::
           {:ok, result()} | {:error, atom(), error()}
@@ -121,6 +143,10 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   @spec fetch_feature(authority(), Ecto.UUID.t(), Ecto.UUID.t()) :: {:ok, Feature.t()} | :error
   def fetch_feature(authority, project_id, feature_id),
     do: dispatch(authority, :fetch_feature, [project_id, feature_id])
+
+  @spec list_features(authority(), Ecto.UUID.t(), keyword()) :: [Feature.t()]
+  def list_features(authority, project_id, opts \\ []),
+    do: dispatch(authority, :list_features, [project_id, opts])
 
   @spec current_attempt(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
           {:ok, RunAttempt.t()} | :error
@@ -185,6 +211,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   defp dispatch(_authority, :commit, _args), do: {:error, :authority, :unsupported_authority}
   defp dispatch(_authority, :fetch_run, _args), do: :error
   defp dispatch(_authority, :fetch_feature, _args), do: :error
+  defp dispatch(_authority, :list_features, _args), do: []
   defp dispatch(_authority, :current_attempt, _args), do: :error
   defp dispatch(_authority, :latest_attempt, _args), do: :error
   defp dispatch(_authority, :open_question, _args), do: :error
