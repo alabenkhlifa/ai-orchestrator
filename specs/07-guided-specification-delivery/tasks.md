@@ -173,7 +173,7 @@ Prerequisite:
   - Depends on: Task 15
   - Proof: Focused transaction, claim, lock, lease, stable-ID, duplicate, acknowledgement, replay, restart, concurrency, and rollback tests pass.
 
-- [ ] Task 17 - Implement ordered feature activity.
+- [x] Task 17 - Implement ordered feature activity.
   - Size: Standard
   - Purpose: Preserve user-visible comments, progress, questions, answers, evidence references, and outcomes in authoritative order.
   - Owned surfaces: `ActivityEntry`, hosted migration and schema, project, feature, run, attempt, actor, type, occurrence order, minimized normalized payload, append transaction contribution, immutable history, pagination seam, authorization, fixtures, and no raw provider-event field.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 17 complete: ordered feature activity
+
+- Completed: Added `activity_entries` with its migration and schema plus the `Delivery.Activity` append and read surface. Every entry belongs to one project and feature, optionally names its run and attempt, records who acted, and carries a minimized normalized payload at an authoritative position.
+- Boundary held: History is append-only at the database, not by convention — a `BEFORE UPDATE` trigger rejects any rewrite, including `Repo.update_all` and a console session, while deletion stays available so project deletion and retention still work. Ordering comes from a per-feature sequence assigned inside the appending transaction, so a clock skew cannot reorder a feature's story and two concurrent appends can never share a position. Machine output can never be attributed to a person: only a `participant` entry may carry an account, and an `agent` or `system` entry with one is rejected by both the changeset and a check constraint.
+- Minimization proved: A payload carrying a raw provider stream, transcript, or credential-shaped field (`raw_event`, `stdout`, `prompt`, `messages`, `api_key`, `email`, and the rest of the rejected list) is refused at the changeset at any nesting depth, as is an oversized payload. A stream that is never stored cannot leak, so this is enforced on the way in rather than redacted on the way out.
+- Mechanism recorded: `Activity.append_multi/3` contributes the append to the caller's own `Ecto.Multi` and accepts a function of the transaction's changes, which is what lets every later state-changing action commit its transition and its history together or not at all. Reads authorize through `ParticipantGuard` on every call and page by sequence.
+- Remaining: Task 16 (durable command outbox) is next, then Task 9 can record its assignment activity here.
+- Failed checks: None. Focused proof passes with real exit status: 26 activity tests, `mix format --check-formatted`, and `mix credo --strict`.
+- Spec updates: Marked Task 17 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 15 complete: hosted run and attempt persistence
 

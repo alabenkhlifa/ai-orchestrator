@@ -1,7 +1,7 @@
 defmodule SddOrchestrator.DeliveryFixtures do
   @moduledoc "Test fixtures for feature delivery."
 
-  alias SddOrchestrator.Delivery.{AgentRun, Feature, RunAttempt}
+  alias SddOrchestrator.Delivery.{Activity, AgentRun, Feature, RunAttempt}
   alias SddOrchestrator.ParticipationFixtures
   alias SddOrchestrator.Repo
 
@@ -96,6 +96,27 @@ defmodule SddOrchestrator.DeliveryFixtures do
       manifest_digest: Map.get(attrs, :manifest_digest, digest("manifest-#{run.id}-#{number}")),
       fence_token: Map.get(attrs, :fence_token, number)
     })
+  end
+
+  @doc "Appends one ordered activity entry to a feature."
+  def activity_fixture(project, feature, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    {:ok, entry} =
+      Activity.append(
+        Map.merge(
+          %{
+            project_id: project.id,
+            feature_id: feature.id,
+            actor_kind: "system",
+            type: "progress",
+            payload: %{"step" => "fixture"}
+          },
+          attrs
+        )
+      )
+
+    entry
   end
 
   @doc "A deterministic 64-character hex digest for fixture references."
