@@ -128,6 +128,15 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     end
   end
 
+  def handle_event("leave_project", _params, socket) do
+    socket.assigns.project
+    |> Revocations.leave(socket.assigns.acting_account_id, acting_identity_id(socket))
+    |> case do
+      {:ok, _left} -> {:noreply, push_navigate(socket, to: ~p"/projects")}
+      {:error, _reason} -> {:noreply, socket |> assign(:removed?, false) |> refresh()}
+    end
+  end
+
   def handle_event("remove_member", %{"account" => account_id}, socket) do
     socket.assigns.project
     |> Revocations.remove(
@@ -525,6 +534,23 @@ defmodule SddOrchestratorWeb.ParticipationLive do
             <.notice variant="info" icon="users">
               You're on this project. Only the project owner can invite or remove people.
             </.notice>
+          </div>
+
+          <div class="mt-6 rounded-lg border border-line bg-surface p-4">
+            <p class="text-[13px] font-semibold text-ink">Leave this project</p>
+            <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+              You keep your account and your other projects. Your past contributions stay on this
+              project under your current name.
+            </p>
+            <.button
+              type="button"
+              variant="secondary"
+              phx-click="leave_project"
+              class="mt-3 w-full sm:w-auto"
+              data-leave-project
+            >
+              <.lucide name="log-out" class="size-4" /> Leave project
+            </.button>
           </div>
         </div>
       </div>

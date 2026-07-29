@@ -127,6 +127,63 @@ defmodule SddOrchestrator.Participation.RevocationsTest do
     end
   end
 
+  describe "leave/4" do
+    test "a participant ends only their own access and records the same handoff" do
+      %{project: project, account: owner_account, identity: identity, actor: actor} = joined()
+      other = joined_into(project)
+
+      assert {:ok, %{participant: departed, revocation: revocation}} =
+               Revocations.leave(project, identity.account.id, identity.hosted_identity.id)
+
+      assert departed.state == "departed"
+      assert departed.departure_reason == "left"
+      assert revocation.reason == "left"
+      assert revocation.owner_account_id == owner_account.id
+      assert revocation.last_display_name == "Member Label"
+
+      refute Participation.active_participant(project.id, identity.hosted_identity.id)
+      assert Capabilities.capabilities(project, actor) == []
+
+      # Another participant and the owner are unaffected.
+      assert Participation.active_participant(project.id, other.hosted_identity.id)
+      assert {:ok, owner} = Participation.owner(project)
+      assert owner.account_id == owner_account.id
+    end
+
+    test "the immutable owner cannot leave their own project" do
+      %{project: project, account: owner_account, identity: identity} = joined()
+
+      assert {:error, :owner_cannot_leave} =
+               Revocations.leave(project, owner_account.id, nil)
+
+      assert {:error, :owner_cannot_leave} =
+               Revocations.leave(project, owner_account.id, identity.hosted_identity.id)
+
+      assert {:ok, owner} = Participation.owner(project)
+      assert owner.account_id == owner_account.id
+      assert Participation.active_participant(project.id, identity.hosted_identity.id)
+      assert Repo.aggregate(ParticipationRevocation, :count) == 0
+    end
+
+    test "cannot end another member's participation or repeat itself" do
+      %{project: project, identity: identity} = joined()
+      outsider = ParticipationFixtures.invited_identity_fixture()
+
+      assert {:error, :not_a_participant} =
+               Revocations.leave(project, outsider.account.id, outsider.hosted_identity.id)
+
+      assert {:error, :not_a_participant} = Revocations.leave(project, nil, nil)
+      assert Participation.active_participant(project.id, identity.hosted_identity.id)
+
+      {:ok, _left} = Revocations.leave(project, identity.account.id, identity.hosted_identity.id)
+
+      assert {:error, :not_a_participant} =
+               Revocations.leave(project, identity.account.id, identity.hosted_identity.id)
+
+      assert Repo.aggregate(ParticipationRevocation, :count) == 1
+    end
+  end
+
   describe "claim and acknowledge" do
     test "a handoff stays pending until a consumer acknowledges it" do
       %{project: project, account: owner_account, identity: identity} = joined()
@@ -211,6 +268,18 @@ defmodule SddOrchestrator.Participation.RevocationsTest do
         hosted_identity_id: identity.hosted_identity.id
       }
     })
+  end
+
+  defp joined_into(project) do
+    identity = ParticipationFixtures.invited_identity_fixture()
+    ParticipationFixtures.participant_fixture(project, identity.hosted_identity)
+
+    ParticipationFixtures.member_profile_fixture(project, identity.account, %{
+      role: "participant",
+      display_name: ParticipationFixtures.unique_display_name("Other")
+    })
+
+    identity
   end
 
   defp table_counts do

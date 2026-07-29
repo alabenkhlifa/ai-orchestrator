@@ -484,6 +484,42 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
                "Renamed Member"
     end
 
+    test "a participant can leave and immediately loses access", %{conn: conn} do
+      %{project: project, participants: [first, second]} = project_with_participants()
+
+      access =
+        SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: first.external_identity.display_identifier
+        })
+
+      conn = hosted_conn(conn, access)
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/participation")
+      assert html =~ "data-leave-project"
+
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               view |> element("[data-leave-project]") |> render_click()
+
+      refute Participation.active_participant(project.id, first.hosted_identity.id)
+      assert Participation.active_participant(project.id, second.hosted_identity.id)
+
+      assert [revocation] = SddOrchestrator.Participation.Revocations.pending()
+      assert revocation.reason == "left"
+
+      # Returning is fail-closed, not a resumed session.
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               live(hosted_conn(build_conn(), access), ~p"/projects/#{project.id}/participation")
+    end
+
+    test "the owner has no leave control", %{conn: conn} do
+      %{project: project, account: account} = project_with_participants()
+
+      {:ok, _view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      refute html =~ "data-leave-project"
+    end
+
     test "a former participant and an outsider fail closed", %{conn: conn} do
       %{project: project, participants: [first, _second]} = project_with_participants()
 
@@ -511,6 +547,15 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
                )
                |> live(~p"/projects/#{project.id}/participation")
     end
+  end
+
+  defp hosted_conn(conn, access) do
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> Plug.Conn.put_session(
+      SddOrchestrator.HostedAccess.SessionCookie.session_key(),
+      access.session_cookie.value
+    )
   end
 
   defp project_with_participants do

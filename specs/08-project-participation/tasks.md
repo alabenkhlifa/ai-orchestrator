@@ -237,8 +237,9 @@ Release gates:
   - Owns: AC-07, AC-17, entity:ParticipationRevocation
   - Proof: Focused transaction, authorization, concurrency, repeat, rollback, fail-closed access, exactly-one handoff, payload-minimization, claim, acknowledgement, replay, and negative Slice 07 mutation tests pass.
 
-- [ ] Task 18 — Deliver participant self-leave and immutable-owner denial.
+- [x] Task 18 — Deliver participant self-leave and immutable-owner denial.
   - Size: Standard
+  - Status: Complete; the authenticated browser matrix for the leave control is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 16, Task 17
   - Purpose: Let a participant end only their own access while keeping project ownership unchanged.
   - Owned surfaces: Participant self-leave command, owner and other-participant denial, atomic inactive transition and versioned revocation insertion reuse, immediate authorization invalidation, immutable-owner invariant, idempotency, concurrency, fixtures, and leave result.
@@ -371,6 +372,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 18 complete: participant self-leave and immutable-owner denial
+
+- Completed: Added `Revocations.leave/4` and the participant's own leave control. Leaving reuses the removal transaction, so it ends the authorization, preserves the last accepted label, and inserts the same versioned handoff with reason `left`.
+- Boundary held: A participant ends only their own participation — another member and the owner are untouched — and access is gone immediately: the leave action redirects to the catalog and a fresh visit with the same hosted session fails closed. The immutable owner cannot leave their own project, with or without a participant identity, and the attempt creates no handoff. Ending someone else's participation, acting with no identity, and repeating a completed leave are all rejected without a second handoff. The owner's screen shows no leave control.
+- Remaining: Task 19 (removal and leave in-product notifications) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 12 revocation tests, 23 participation LiveView tests, `mix test` (923 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 18 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 17 complete: owner removal and the revocation handoff
 
