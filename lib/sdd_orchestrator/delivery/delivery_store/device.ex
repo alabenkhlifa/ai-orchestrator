@@ -18,6 +18,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     Activity,
     ActivityEntry,
     AgentRun,
+    BlockingQuestion,
     DeliveryStore,
     Feature,
     RunAttempt,
@@ -45,6 +46,16 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   end
 
   @impl true
+  def fetch_feature(_authority, project_id, feature_id) do
+    with {:ok, value} <- Devices.get_delivery(project_id, :feature, feature_id),
+         {:ok, feature} <- Feature.from_value(value) do
+      {:ok, feature}
+    else
+      _missing -> :error
+    end
+  end
+
+  @impl true
   def current_attempt(_authority, project_id, run_id) do
     project_id
     |> Devices.list_delivery(:attempt)
@@ -57,6 +68,23 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     |> case do
       nil -> :error
       attempt -> {:ok, attempt}
+    end
+  end
+
+  @impl true
+  def open_question(_authority, project_id, run_id) do
+    project_id
+    |> Devices.list_delivery(:question)
+    |> Enum.flat_map(fn value ->
+      case BlockingQuestion.from_value(value) do
+        {:ok, question} -> [question]
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.find(&(&1.run_id == run_id and BlockingQuestion.open?(&1)))
+    |> case do
+      nil -> :error
+      question -> {:ok, question}
     end
   end
 
@@ -201,6 +229,21 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   defp apply_operation(_project_id, {:set_feature_status, feature, status}, _results),
     do: feature_write(feature, Feature.status_changeset(feature, status, feature.state_version))
 
+  # The device store has no partial unique index, so the invariant the hosted
+  # one gets from the database is checked here before any write is applied.
+  defp apply_operation(project_id, {:insert_blocking_question, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
+         %{valid?: true} = changeset <-
+           BlockingQuestion.ask_changeset(%BlockingQuestion{}, resolved),
+         question = changeset |> Ecto.Changeset.apply_changes() |> put_id(),
+         :ok <- ensure_one_open_question(project_id, question) do
+      {:ok, question, write(:question, question.id, BlockingQuestion.to_value(question), nil)}
+    else
+      %Ecto.Changeset{} = invalid -> {:error, invalid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp apply_operation(project_id, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
          sequence = next_sequence(project_id, resolved),
@@ -300,6 +343,13 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   defp ensure_one_current_attempt(project_id, attempt) do
     case current_attempt(nil, project_id, attempt.run_id) do
       {:ok, _existing} -> {:error, :one_current_attempt}
+      :error -> :ok
+    end
+  end
+
+  defp ensure_one_open_question(project_id, question) do
+    case open_question(nil, project_id, question.run_id) do
+      {:ok, _existing} -> {:error, :one_open_question}
       :error -> :ok
     end
   end

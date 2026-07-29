@@ -17,6 +17,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     Activity,
     ActivityEntry,
     AgentRun,
+    BlockingQuestion,
     CommandOutbox,
     DeliveryStore,
     Feature,
@@ -52,6 +53,19 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
   end
 
   @impl true
+  def fetch_feature(_authority, project_id, feature_id) do
+    Feature
+    |> where([f], f.project_id == ^project_id and f.id == ^feature_id)
+    |> Repo.one()
+    |> case do
+      nil -> :error
+      feature -> {:ok, feature}
+    end
+  rescue
+    Ecto.Query.CastError -> :error
+  end
+
+  @impl true
   def current_attempt(_authority, _project_id, run_id) do
     RunAttempt
     |> where([a], a.run_id == ^run_id and a.state in ^RunAttempt.current_states())
@@ -59,6 +73,19 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     |> case do
       nil -> :error
       attempt -> {:ok, attempt}
+    end
+  rescue
+    Ecto.Query.CastError -> :error
+  end
+
+  @impl true
+  def open_question(_authority, _project_id, run_id) do
+    BlockingQuestion
+    |> where([q], q.run_id == ^run_id and q.state == "open")
+    |> Repo.one()
+    |> case do
+      nil -> :error
+      question -> {:ok, question}
     end
   rescue
     Ecto.Query.CastError -> :error
@@ -147,6 +174,12 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     feature
     |> Feature.status_changeset(status, feature.state_version)
     |> repo.update()
+  end
+
+  defp apply_operation(repo, {:insert_blocking_question, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      %BlockingQuestion{} |> BlockingQuestion.ask_changeset(resolved) |> repo.insert()
+    end
   end
 
   defp apply_operation(repo, {:append_activity, attrs}, results) do

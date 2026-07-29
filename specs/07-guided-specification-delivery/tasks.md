@@ -245,7 +245,7 @@ Prerequisite:
   - Depends on: Task 3, Task 13, Task 17, Task 19
   - Proof: Focused valid, duplicate, stale-fence, out-of-order, oversized, unauthorized, redacted, raw-provider-event, activity, status, and LiveView tests pass.
 
-- [ ] Task 22 - Deliver durable blocked-run and question state.
+- [x] Task 22 - Deliver durable blocked-run and question state.
   - Size: Standard
   - Purpose: Pause one current attempt on one focused product question while preserving accepted work.
   - Owned surfaces: `BlockingQuestion`, hosted schema and migration, device-adapter value shape, question text and context limits, run, attempt, branch, workspace, checkpoint and pending state, atomic blocked transition and activity, no blocked column, one-open-question invariant, visible reason, fixtures, and blocked UI.
@@ -528,6 +528,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 22 complete: durable blocked-run and question state
+
+- Completed: Added `blocking_questions` with its migration and schema, the `Delivery.Blocking` domain, and the blocked presentation on the feature detail screen. A `blocked` worker event pauses the run, records one focused question with its context, and preserves the branch, workspace, and checkpoint so accepted work is not repeated.
+- Boundary held (AC-02): The feature keeps its place in `In development` and shows `Blocked` as a status; it never moves to a column of its own, which is asserted directly. A blocked run is paused, not failed, and its history says which.
+- One question invariant (AC-17): At most one open question exists per run, enforced by a partial unique index in the same shape as the one-current-attempt index. A second `blocked` event for a run that already has an open question records no second question.
+- Trust checks unchanged: A blocked event proves the same three things every worker event must — protocol schema, current fence, advancing sequence — so a superseded worker cannot block a run it no longer owns.
+- Mechanism recorded: Those three checks were extracted from `EventIngestion` into a shared public `accept/4`. Each event type is owned by a different task, but what makes a worker's word trustworthy is identical for all of them, so the checks live in one place instead of being restated per owner — and cannot drift apart. The delivery-store contract gained `insert_blocking_question`, `fetch_feature`, and `open_question`, implemented by both adapters.
+- Failed checks: None. Final proof passes with real exit status: 26 blocking tests plus the feature-detail LiveView suite, `mix test` (1518 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 23 (routing blocking-question responsibility) is next and consumes the question this task records.
+- Spec updates: Marked Task 22 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 21 complete: normalized progress and run-status presentation
 

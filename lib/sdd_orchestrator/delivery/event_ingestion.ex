@@ -50,13 +50,29 @@ defmodule SddOrchestrator.Delivery.EventIngestion do
   """
   @spec ingest(authority(), Ecto.UUID.t(), map()) :: {:ok, map()} | {:error, error()}
   def ingest(authority, project_id, envelope) do
+    with {:ok, %{run: run, attempt: attempt}} <- accept(authority, project_id, envelope, @handled) do
+      apply_event(authority, project_id, run, attempt, envelope)
+    end
+  end
+
+  @doc """
+  Proves one event belongs to the current attempt of the run it names.
+
+  Each event type is owned by a different task, but the three checks that make
+  a worker's word trustworthy are the same for all of them, so they live here
+  once instead of being restated per owner. `handled` is the caller's own event
+  vocabulary; anything else is refused rather than half-applied.
+  """
+  @spec accept(authority(), Ecto.UUID.t(), map(), [String.t()]) ::
+          {:ok, %{run: AgentRun.t(), attempt: RunAttempt.t()}} | {:error, error()}
+  def accept(authority, project_id, envelope, handled) do
     with :ok <- ProtocolCodec.validate(envelope),
-         :ok <- handled?(envelope),
+         :ok <- handled?(envelope, handled),
          {:ok, run} <- fetch_run(authority, project_id, envelope),
          {:ok, attempt} <- current_attempt(authority, project_id, run),
          :ok <- current_fence?(attempt, envelope),
          :ok <- sequence_advances?(attempt, envelope) do
-      apply_event(authority, project_id, run, attempt, envelope)
+      {:ok, %{run: run, attempt: attempt}}
     end
   end
 
@@ -67,18 +83,8 @@ defmodule SddOrchestrator.Delivery.EventIngestion do
   needs to replay.
   """
   @spec acceptable?(authority(), Ecto.UUID.t(), map()) :: boolean()
-  def acceptable?(authority, project_id, envelope) do
-    with :ok <- ProtocolCodec.validate(envelope),
-         :ok <- handled?(envelope),
-         {:ok, run} <- fetch_run(authority, project_id, envelope),
-         {:ok, attempt} <- current_attempt(authority, project_id, run),
-         :ok <- current_fence?(attempt, envelope),
-         :ok <- sequence_advances?(attempt, envelope) do
-      true
-    else
-      _rejected -> false
-    end
-  end
+  def acceptable?(authority, project_id, envelope),
+    do: match?({:ok, _accepted}, accept(authority, project_id, envelope, @handled))
 
   defp apply_event(authority, project_id, run, attempt, envelope) do
     authority
@@ -135,8 +141,11 @@ defmodule SddOrchestrator.Delivery.EventIngestion do
 
   defp put_summary(payload, _envelope), do: payload
 
-  defp handled?(%{"event_type" => type}) when type in @handled, do: :ok
-  defp handled?(_envelope), do: {:error, :unsupported_event}
+  defp handled?(%{"event_type" => type}, handled) do
+    if type in handled, do: :ok, else: {:error, :unsupported_event}
+  end
+
+  defp handled?(_envelope, _handled), do: {:error, :unsupported_event}
 
   defp fetch_run(authority, project_id, %{"run_id" => run_id}) do
     case DeliveryStore.fetch_run(authority, project_id, run_id) do

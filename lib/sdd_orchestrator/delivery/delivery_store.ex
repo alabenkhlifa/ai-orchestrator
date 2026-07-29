@@ -22,7 +22,16 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   """
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
-  alias SddOrchestrator.Delivery.{ActivityEntry, AgentRun, Feature, RunAttempt, RunCommand}
+
+  alias SddOrchestrator.Delivery.{
+    ActivityEntry,
+    AgentRun,
+    BlockingQuestion,
+    Feature,
+    RunAttempt,
+    RunCommand
+  }
+
   alias SddOrchestrator.Delivery.DeliveryStore.{Device, Hosted}
 
   @type authority :: PersonalWorkspace.t() | DeviceWorkspace.t()
@@ -38,6 +47,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:observe_sequence, RunAttempt.t(), non_neg_integer()}
           | {:transition_feature, Feature.t(), String.t(), keyword()}
           | {:set_feature_status, Feature.t(), String.t()}
+          | {:insert_blocking_question, map()}
           | {:append_activity, map()}
           | {:enqueue_command, map()}
 
@@ -54,9 +64,17 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   @callback fetch_run(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, AgentRun.t()} | :error
 
+  @doc "Reads one feature."
+  @callback fetch_feature(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+              {:ok, Feature.t()} | :error
+
   @doc "Reads the run's one current attempt, when it has one."
   @callback current_attempt(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, RunAttempt.t()} | :error
+
+  @doc "Reads the run's one open blocking question, when it has one."
+  @callback open_question(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+              {:ok, BlockingQuestion.t()} | :error
 
   @doc "Lists one feature's activity in authoritative order."
   @callback list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
@@ -75,7 +93,8 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
     ~w(
       insert_run transition_run set_effective_revision advance_attempt_number
       insert_attempt transition_attempt claim_lease observe_sequence
-      transition_feature set_feature_status append_activity enqueue_command
+      transition_feature set_feature_status insert_blocking_question
+      append_activity enqueue_command
     )a
   end
 
@@ -88,10 +107,19 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   def fetch_run(authority, project_id, run_id),
     do: dispatch(authority, :fetch_run, [project_id, run_id])
 
+  @spec fetch_feature(authority(), Ecto.UUID.t(), Ecto.UUID.t()) :: {:ok, Feature.t()} | :error
+  def fetch_feature(authority, project_id, feature_id),
+    do: dispatch(authority, :fetch_feature, [project_id, feature_id])
+
   @spec current_attempt(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
           {:ok, RunAttempt.t()} | :error
   def current_attempt(authority, project_id, run_id),
     do: dispatch(authority, :current_attempt, [project_id, run_id])
+
+  @spec open_question(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+          {:ok, BlockingQuestion.t()} | :error
+  def open_question(authority, project_id, run_id),
+    do: dispatch(authority, :open_question, [project_id, run_id])
 
   @spec list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) :: [ActivityEntry.t()]
   def list_activity(authority, project_id, feature_id, opts \\ []),
@@ -140,7 +168,9 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
 
   defp dispatch(_authority, :commit, _args), do: {:error, :authority, :unsupported_authority}
   defp dispatch(_authority, :fetch_run, _args), do: :error
+  defp dispatch(_authority, :fetch_feature, _args), do: :error
   defp dispatch(_authority, :current_attempt, _args), do: :error
+  defp dispatch(_authority, :open_question, _args), do: :error
   defp dispatch(_authority, :list_activity, _args), do: []
   defp dispatch(_authority, :claim_commands, _args), do: []
   defp dispatch(_authority, :acknowledge_command, _args), do: {:error, :not_found}

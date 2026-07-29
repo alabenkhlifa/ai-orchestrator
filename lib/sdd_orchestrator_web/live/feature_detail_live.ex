@@ -16,6 +16,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   alias SddOrchestrator.Delivery.{
     Assignment,
+    Blocking,
     Comments,
     Features,
     ParticipantGuard,
@@ -171,6 +172,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:names, Map.new(members, &{&1.account_id, &1.display_name}))
     |> assign(:members, members)
     |> assign(:responsible, responsible_label(project_id, feature))
+    |> assign(:question, open_question(project_id, actor, feature))
     |> assign(:assignment_error, socket.assigns[:assignment_error])
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
@@ -204,6 +206,16 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       socket.assigns.actor,
       socket.assigns.feature
     )
+  end
+
+  # The question the run is waiting on, if any. A blocked feature keeps its
+  # place in `In development`, so the question is what tells a reader why the
+  # column stopped moving.
+  defp open_question(project_id, actor, feature) do
+    case Blocking.for_feature(project_id, actor, feature.id) do
+      {:ok, question} -> question
+      {:error, :unauthorized} -> nil
+    end
   end
 
   # Responsibility is derived, not stored, so the screen shows who would
@@ -258,6 +270,31 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             {status_label(@feature.status)}
           </span>
         </div>
+
+        <section
+          :if={@question}
+          class="mt-6 rounded-lg border border-err-fg/40 bg-err-bg p-4"
+          aria-labelledby="blocking-question-heading"
+          data-blocking-question
+        >
+          <h2
+            id="blocking-question-heading"
+            class="flex items-center gap-1.5 text-[13px] font-semibold text-err-fg"
+          >
+            <.lucide name="circle-alert" class="size-4 flex-none" /> Waiting on your decision
+          </h2>
+          <p class="mt-2 text-sm text-ink" data-question-text>{@question.question}</p>
+          <p
+            :if={@question.context}
+            class="mt-2 text-[13px] leading-relaxed text-ink-muted"
+            data-question-context
+          >
+            {@question.context}
+          </p>
+          <p class="mt-2 text-xs text-ink-muted" data-question-branch>
+            The work so far is kept on {@question.branch}.
+          </p>
+        </section>
 
         <dl class="mt-6 flex flex-col gap-3">
           <div class="rounded-lg border border-line bg-surface p-3.5">

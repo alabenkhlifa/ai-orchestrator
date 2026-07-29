@@ -11,7 +11,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias SddOrchestrator.Delivery.{Assignment, Feature}
+  alias SddOrchestrator.Delivery.{Assignment, BlockingQuestion, Feature}
   alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.HostedAccess.{SessionCookie, Sessions}
   alias SddOrchestrator.Participation
@@ -423,6 +423,107 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       assert view |> element("[data-disclosure-location]") |> render() =~ "remote worker"
       assert view |> element("[data-disclosure-transfer]") |> render() =~ "Leaves this project"
     end
+  end
+
+  describe "the blocking question [AC-02] [AC-17]" do
+    setup %{project: project, account: account} do
+      blocked = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = DeliveryFixtures.run_fixture(project, blocked)
+
+      %{blocked: blocked, run: run}
+    end
+
+    test "is absent while nothing is waiting on a decision", %{
+      conn: conn,
+      project: project,
+      blocked: blocked,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, blocked))
+
+      refute has_element?(view, "[data-blocking-question]")
+      refute has_element?(view, "[data-feature-status]")
+    end
+
+    test "shows the question and its context without moving the feature", %{
+      conn: conn,
+      project: project,
+      blocked: blocked,
+      run: run,
+      account: account
+    } do
+      ask(project, blocked, run, %{
+        question: "Should a departed member's comments stay visible?",
+        context: "The retention rule says active project lifetime."
+      })
+
+      {:ok, updated} =
+        blocked |> Feature.status_changeset("blocked", blocked.state_version) |> Repo.update()
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, updated))
+
+      assert view |> element("[data-feature-status]") |> render() =~ "Blocked"
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+
+      assert view |> element("[data-question-text]") |> render() =~
+               "Should a departed member&#39;s comments stay visible?"
+
+      assert view |> element("[data-question-context]") |> render() =~ "active project lifetime"
+      assert view |> element("[data-question-branch]") |> render() =~ run.branch
+    end
+
+    test "an answered question stops waiting on the screen", %{
+      conn: conn,
+      project: project,
+      blocked: blocked,
+      run: run,
+      account: account
+    } do
+      question = ask(project, blocked, run, %{question: "Which retention window applies?"})
+
+      {:ok, _answered} =
+        question
+        |> BlockingQuestion.resolve_changeset("answered", question.state_version)
+        |> Repo.update()
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, blocked))
+
+      refute has_element?(view, "[data-blocking-question]")
+    end
+  end
+
+  defp in_development(feature) do
+    {:ok, ready} =
+      feature
+      |> Feature.transition_changeset("ready_for_development", feature.state_version)
+      |> Repo.update()
+
+    {:ok, developing} =
+      ready
+      |> Feature.transition_changeset("in_development", ready.state_version)
+      |> Repo.update()
+
+    developing
+  end
+
+  defp ask(project, feature, run, attrs) do
+    %BlockingQuestion{}
+    |> BlockingQuestion.ask_changeset(
+      Map.merge(
+        %{
+          project_id: project.id,
+          feature_id: feature.id,
+          run_id: run.id,
+          branch: run.branch,
+          workspace_path: "/var/sdd/workspaces/#{run.id}"
+        },
+        attrs
+      )
+    )
+    |> Repo.insert!()
   end
 
   defp feature_path(project, feature), do: ~p"/projects/#{project.id}/features/#{feature.id}"
