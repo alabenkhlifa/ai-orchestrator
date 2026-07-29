@@ -1,7 +1,7 @@
 defmodule SddOrchestrator.DeliveryFixtures do
   @moduledoc "Test fixtures for feature delivery."
 
-  alias SddOrchestrator.Delivery.Feature
+  alias SddOrchestrator.Delivery.{AgentRun, Feature, RunAttempt}
   alias SddOrchestrator.ParticipationFixtures
   alias SddOrchestrator.Repo
 
@@ -53,4 +53,51 @@ defmodule SddOrchestrator.DeliveryFixtures do
 
   def unique_title(prefix \\ "Feature"),
     do: "#{prefix} #{System.unique_integer([:positive])}"
+
+  @doc "Creates one run in `pending` for a feature, on its own isolated branch."
+  def run_fixture(project, feature, attrs \\ %{}) do
+    project |> run_changeset(feature, attrs) |> Repo.insert!()
+  end
+
+  @doc "The same run changeset, for proving a constraint without raising."
+  def run_changeset(project, feature, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    unique = System.unique_integer([:positive])
+
+    AgentRun.create_changeset(%AgentRun{}, %{
+      project_id: project.id,
+      feature_id: feature.id,
+      initiator_account_id: Map.get(attrs, :initiator_account_id),
+      starting_revision_id: Map.get(attrs, :starting_revision_id, "rev-#{unique}"),
+      starting_revision_digest:
+        Map.get(attrs, :starting_revision_digest, digest("rev-#{unique}")),
+      approved_slice: Map.get(attrs, :approved_slice, "slice-07"),
+      branch: Map.get(attrs, :branch, "sdd/feature-#{unique}")
+    })
+  end
+
+  @doc "Creates one ordered attempt of a run."
+  def attempt_fixture(run, attrs \\ %{}) do
+    run |> attempt_changeset(attrs) |> Repo.insert!()
+  end
+
+  @doc "The same attempt changeset, for proving a constraint without raising."
+  def attempt_changeset(run, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    number = Map.get(attrs, :attempt_number, run.current_attempt_number + 1)
+
+    RunAttempt.create_changeset(%RunAttempt{}, %{
+      run_id: run.id,
+      attempt_number: number,
+      continuation_reason: Map.get(attrs, :continuation_reason, "initial"),
+      effective_revision_id: Map.get(attrs, :effective_revision_id, run.effective_revision_id),
+      effective_revision_digest:
+        Map.get(attrs, :effective_revision_digest, run.effective_revision_digest),
+      manifest_digest: Map.get(attrs, :manifest_digest, digest("manifest-#{run.id}-#{number}")),
+      fence_token: Map.get(attrs, :fence_token, number)
+    })
+  end
+
+  @doc "A deterministic 64-character hex digest for fixture references."
+  def digest(seed), do: :sha256 |> :crypto.hash(seed) |> Base.encode16(case: :lower)
 end

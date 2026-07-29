@@ -157,7 +157,7 @@ Prerequisite:
   - Depends on: Task 11, Task 14
   - Proof: Focused configuration, version, digest, first, unchanged, changed, transfer-summary, authorization, and desktop and mobile dialog tests pass.
 
-- [ ] Task 15 - Implement hosted run and attempt persistence.
+- [x] Task 15 - Implement hosted run and attempt persistence.
   - Size: Standard
   - Purpose: Establish one branch-preserving run with ordered exclusive attempts in hosted authoritative storage.
   - Owned surfaces: `AgentRun`, `RunAttempt`, hosted migrations and schemas, project and feature scope, initiator, starting and effective revision references, isolated branch identity, lifecycle and status, ordered attempt number, one-current-attempt uniqueness, execution-manifest digest, lease and fence fields, expected-state version, constraints, and fixtures.
@@ -528,6 +528,15 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 15 complete: hosted run and attempt persistence
+
+- Completed: Added `agent_runs` and `run_attempts` with their migration and schemas. A run is created once per feature, owns one isolated branch for its whole lifetime, and records its immutable starting revision plus a separately movable effective revision; an attempt is one ordered exclusive execution bound to its execution-manifest digest.
+- Boundary held: Specification revisions are referenced by identity and digest, never by foreign key, so a device-authoritative project's revisions cannot become a second copy in this database. Exclusivity is enforced in three independent layers: the attempt number is unique per run so an ordering gap is visible rather than overwritten, a partial unique index permits at most one attempt in a non-terminal state, and a unique monotonic fence token per run lets a superseded worker's late events fail closed. Two concurrent inserts leave exactly one current attempt. A lease is stored as an owner/expiry pair, cannot be claimed on a terminal attempt, and is released on every terminal transition, so an expired worker never looks current during reconciliation. A failure reason exists only while the run is failed, and the observed event sequence and attempt counter move forward only.
+- Mechanism recorded: Run and attempt writes carry the caller's expected state version and an optimistic lock, matching the `Feature` contract from Task 8, so a stale board tab or replayed action is rejected rather than applied. Both schemas expose `to_value/1` and `from_value/1` so Task 18's device adapter holds the same shapes without Ecto.
+- Remaining: Task 17 (ordered feature activity) and Task 16 (durable command outbox) build directly on this; the run-state transaction that composes them is Task 3.
+- Failed checks: None. Focused proof passes with real exit status: 28 run-persistence tests, `mix format --check-formatted`, and `mix credo --strict`.
+- Spec updates: Marked Task 15 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 2 browser matrix unblocked
 
