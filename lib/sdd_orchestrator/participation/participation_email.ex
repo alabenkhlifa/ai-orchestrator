@@ -16,7 +16,8 @@ defmodule SddOrchestrator.Participation.ParticipationEmail do
   @type context :: %{
           required(:recipient) => String.t(),
           required(:project_label) => String.t(),
-          optional(:url) => String.t()
+          optional(:url) => String.t(),
+          optional(atom()) => term()
         }
 
   @spec events() :: [atom()]

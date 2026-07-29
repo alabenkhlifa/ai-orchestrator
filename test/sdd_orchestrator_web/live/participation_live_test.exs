@@ -2,9 +2,12 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
   use SddOrchestratorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Swoosh.TestAssertions
 
   alias SddOrchestrator.Participation
+  alias SddOrchestrator.Participation.{Invitations, ProjectInvitation}
   alias SddOrchestrator.ParticipationFixtures
+  alias SddOrchestrator.Repo
 
   describe "owner profile prerequisite" do
     test "blocks invitations until the owner saves a project display name", %{conn: conn} do
@@ -177,6 +180,81 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
 
       assert {:error, :unauthorized} = Participation.save_owner_profile(project, nil, "Label")
       refute Participation.owner_profile_established?(project.id)
+    end
+  end
+
+  describe "invitation form" do
+    test "appears only after the owner profile exists and sends one invitation", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      refute html =~ ~s(id="invitation-form")
+
+      view
+      |> form("#owner-profile-form", owner: %{display_name: "Ada Lovelace"})
+      |> render_submit()
+
+      html =
+        view
+        |> form("#invitation-form", invite: %{email: "invitee@example.com"})
+        |> render_submit()
+
+      assert html =~ "data-invitation-sent"
+      refute html =~ "invitee@example.com"
+
+      invitation = Invitations.pending_for(project.id, "invitee@example.com")
+      assert invitation.project_id == project.id
+      assert invitation.status == "pending"
+      assert_email_sent(fn email -> email.to == [{"", "invitee@example.com"}] end)
+    end
+
+    test "returns an inline result for an invalid or duplicate address", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "Ada Lovelace"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      html = view |> form("#invitation-form", invite: %{email: "invitee"}) |> render_submit()
+
+      assert html =~ "Enter a complete email address."
+      assert html =~ ~s(aria-invalid="true")
+      refute html =~ "data-invitation-sent"
+      refute Invitations.pending_for(project.id, "invitee")
+
+      view
+      |> form("#invitation-form", invite: %{email: "invitee@example.com"})
+      |> render_submit()
+
+      duplicate =
+        view
+        |> form("#invitation-form", invite: %{email: "INVITEE@example.com"})
+        |> render_submit()
+
+      assert duplicate =~ "already has a pending invitation"
+      assert Repo.aggregate(ProjectInvitation, :count) == 1
+    end
+
+    test "keeps the invitation control full width on small screens", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "Ada Lovelace"
+      })
+
+      {:ok, _view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      assert html =~ ~s(<label for="invite-email")
+      assert html =~ ~s(data-send-invitation)
+      assert html =~ "w-full sm:w-auto"
     end
   end
 

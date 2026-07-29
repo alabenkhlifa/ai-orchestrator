@@ -120,7 +120,7 @@ Release gates:
   - Owns: entity:ParticipationEmailDelivery
   - Proof: Focused adapter, builder, idempotency, success, failure, retry, encryption, diagnostic-minimization, and log-redaction tests pass without exposing invitation credentials or project content.
 
-- [ ] Task 2 — Deliver account-neutral hosted-project invitation creation.
+- [x] Task 2 — Deliver account-neutral hosted-project invitation creation.
   - Size: Standard
   - Depends on: Task 8, Task 28
   - Purpose: Let the owner invite one email without granting access or exposing whether an account exists.
@@ -366,6 +366,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 2 complete: account-neutral invitation creation
+
+- Completed: Added `project_invitations` with its migration and schema, the runtime-keyed `EmailDigest` derived from the deployment field-encryption key, the `Participation.Invitations` domain, and the participation-settings invitation form. Creation authorizes the immutable owner, requires a hosted project and an established owner display profile, normalizes the address through `ExternalIdentity.normalize_email/1`, stores it encrypted beside its comparison digest, issues one salted single-use credential with a seven-day expiry, and sends the invitation through the participation delivery boundary after the record commits.
+- Boundary held: The invitation grants no authorization — an invited identity is still not an active participant and cannot open the project. The raw credential is never stored, only its salted digest; the address, digest, and credential are excluded from struct inspection and from the structured log, which names the project and invitation only. A partial unique index allows one pending invitation per project and normalized address, terminal invitations never block a fresh one, and a check constraint keeps a pending row credential-bearing while every terminal transition erases it. Creation resolves and creates no account or identity, and an address that already has an identity produces the same result shape and the same message wording as an unknown address.
+- Failure behavior: A non-owner, unknown project, malformed id, device-authoritative project, missing owner profile, invalid address, or already-pending address is rejected without creating invitation state or sending mail; a provider failure leaves the pending invitation recoverable with a recorded failed delivery.
+- Remaining: Task 9 (existing project-role detection) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: Strict Credo flagged one single-clause `with`, and Dialyzer flagged a closed email-context type plus an `Ecto.Multi` opaqueness mismatch on the single-step transaction; the lookup became a `case`, the context type accepts caller routing fields, and the one-step Multi became a direct insert whose pending uniqueness index still resolves concurrent creation. Final proof passes with real exit status: 13 invitation tests, 14 participation LiveView tests, `mix test` (819 passing), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 2 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 8 complete: participation email delivery
 

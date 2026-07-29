@@ -14,6 +14,15 @@ defmodule SddOrchestratorWeb.ParticipationLive do
   use SddOrchestratorWeb, :live_view
 
   alias SddOrchestrator.Participation
+  alias SddOrchestrator.Participation.Invitations
+
+  @invite_messages %{
+    unauthorized: "Only the project owner can invite people to this project.",
+    not_hosted_project: "This project is stored on your device, so it can't be shared yet.",
+    owner_profile_required: "Save your project name before inviting anyone.",
+    invalid_email: "Enter a complete email address.",
+    invitation_already_pending: "That address already has a pending invitation."
+  }
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
@@ -61,6 +70,36 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     end
   end
 
+  def handle_event("validate_invite", %{"invite" => %{"email" => email}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:invite_email, email)
+     |> assign(:invite_error, nil)
+     |> assign(:invite_sent?, false)}
+  end
+
+  def handle_event("invite", %{"invite" => %{"email" => email}}, socket) do
+    socket.assigns.project
+    |> Invitations.create(socket.assigns.current_account.id, email)
+    |> case do
+      {:ok, _result} ->
+        {:noreply,
+         socket
+         |> assign(:invite_email, "")
+         |> assign(:invite_error, nil)
+         |> assign(:invite_sent?, true)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:invite_email, email)
+         |> assign(:invite_error, invite_message(reason))
+         |> assign(:invite_sent?, false)}
+    end
+  end
+
+  defp invite_message(reason), do: Map.fetch!(@invite_messages, reason)
+
   defp assign_project(socket, project) do
     profile = Participation.owner_profile(project.id)
 
@@ -71,6 +110,9 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:display_name, (profile && profile.display_name) || "")
     |> assign(:display_name_error, nil)
     |> assign(:saved?, false)
+    |> assign(:invite_email, "")
+    |> assign(:invite_error, nil)
+    |> assign(:invite_sent?, false)
   end
 
   defp display_name_error(%Ecto.Changeset{} = changeset) do
@@ -143,13 +185,39 @@ defmodule SddOrchestratorWeb.ParticipationLive do
           >
             Save your project name first. Invitations become available right after.
           </p>
-          <p
-            :if={@owner_profile}
-            class="mt-1 text-[13px] leading-relaxed text-ink-muted"
-            data-invitations-available
-          >
-            You can invite people to this project by email.
-          </p>
+
+          <div :if={@owner_profile} data-invitations-available>
+            <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+              Enter the email address of the person you want to invite. They join only after
+              they confirm that address and accept.
+            </p>
+
+            <form id="invitation-form" phx-change="validate_invite" phx-submit="invite" class="mt-4">
+              <.text_field
+                id="invite-email"
+                name="invite[email]"
+                type="email"
+                label="Email address"
+                value={@invite_email}
+                error={@invite_error}
+                hint="We send one invitation link to this address. It expires in 7 days."
+                autocomplete="off"
+                phx-debounce="200"
+              />
+              <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <.button type="submit" class="w-full sm:w-auto" data-send-invitation>
+                  <.lucide name="users" class="size-4" /> Send invitation
+                </.button>
+                <span
+                  :if={@invite_sent?}
+                  class="inline-flex items-center gap-1.5 text-[13px] text-ok-fg"
+                  data-invitation-sent
+                >
+                  <.lucide name="circle-check" class="size-4" /> Invitation sent
+                </span>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </.app_shell>
