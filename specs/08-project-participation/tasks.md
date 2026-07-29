@@ -112,7 +112,7 @@ Release gates:
   - Owns: entity:AccountNotification
   - Proof: Focused migration, constraint, authorization, idempotency, replay, list, mark-read, restart, and PubSub-independent delivery tests pass without storing project content.
 
-- [ ] Task 8 — Implement participation email delivery.
+- [x] Task 8 — Implement participation email delivery.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Reuse one delivery adapter while keeping participation credentials and diagnostics isolated.
@@ -366,6 +366,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 8 complete: participation email delivery
+
+- Completed: Added `participation_email_deliveries` with its migration and schema, the four approved message builders (invitation, replacement, cancellation, removal), and the `Participation.EmailDelivery` boundary. The transport module and provider configuration are shared with passwordless access through a separate `:participation_email_delivery` config key, so a deterministic double can replace participation delivery alone.
+- Boundary held: The delivery record stores only the event, subject, subject version, encrypted recipient address, status, short failure code, and timestamps — no credential, message body, or provider response column — and the address is excluded from struct inspection and stored as ciphertext. One event, subject, and version keeps one outcome across retries, a provider failure or crash records a minimized failure code, and the failure log carries neither the address, the invitation credential, nor the provider message. Messages name only the project label, the action, and one safe link, with identical wording whether or not the address already has an account.
+- Remaining: Task 2 (account-neutral invitation creation) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 31 participation tests including the delivery suite, `mix test` (803 passing), `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix credo --strict`.
+- Spec updates: Marked Task 8 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 7 complete: shared account-level notification foundation
 
