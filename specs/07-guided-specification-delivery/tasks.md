@@ -221,7 +221,7 @@ Prerequisite:
   - Depends on: Task 7, Task 19
   - Proof: Focused workspace, traversal, symlink, working-directory, branch, base-revision, process-lock, stale-process, cancellation-seam, and repository fixture tests pass.
 
-- [ ] Task 43 - Implement the configured coding-agent adapter.
+- [x] Task 43 - Implement the configured coding-agent adapter.
   - Size: Standard
   - Purpose: Launch and observe one configured agent without passing worker, repository, or unrelated provider credentials into agent input.
   - Owned surfaces: Agent-adapter behaviour, installed protocol version, configured executable and model reference, manifest input projection, worker-side provider and repository secret resolution, minimized environment, process launch and observation, compatible provider-thread create or resume, normalized progress and terminal events, secret stripping, fixtures, and deterministic agent double.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 43 complete: configured coding-agent adapter
+
+- Completed: Added `Delivery.AgentAdapter` with its behaviour, minimum input projection, launch and observation surface, event normalization, and a scriptable double. The agent is launched only inside the validated run workspace working directory from Task 20; a directory that fails containment refuses to launch.
+- Boundary held: The projected agent input carries identities, digests, the approved slice, the target branch, the required-check contract, and the continuation reason — never a worker, control-plane, repository, or unrelated provider credential. The subprocess receives only an explicit environment allowlist, so the worker's own environment does not survive into it. Adapter events are normalized into the existing protocol envelope with secret stripping applied on the way; an event that cannot be normalized is dropped with a typed reason rather than passed through raw.
+- Thread handling recorded: A provider thread is an optimization, never the checkpoint. A refused, expired, or unknown thread is a warm-start loss rather than an attempt failure — the same projected input starts a new thread instead — and the launch result reports `:new` or `:resumed` so a caller can tell which happened. Only those specific start errors fall back; a genuine launch failure is still a failure.
+- Compatibility: The installed agent protocol version is checked before launch, so an incompatible agent is refused rather than started and abandoned.
+- Failed checks: None. Focused proof passes with real exit status: 47 agent-adapter tests, `mix test` (1455 passing), `mix credo --strict`, `mix sobelow --config`, `mix format --check-formatted`, and `mix compile --warnings-as-errors`.
+- Remaining: Task 13 (explicit development start) is now unblocked — every one of its prerequisites is complete.
+- Spec updates: Marked Task 43 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 20 complete: worker workspace and branch isolation
 
