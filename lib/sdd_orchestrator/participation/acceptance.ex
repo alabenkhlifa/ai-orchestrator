@@ -60,6 +60,45 @@ defmodule SddOrchestrator.Participation.Acceptance do
 
   def accept(_invitation_id, _identity, _display_name, _now), do: {:error, :invalid_or_expired}
 
+  @doc """
+  Declines one invitation for the identity that proved its address.
+
+  Declining is terminal and creates no access. The owner is told the outcome,
+  and a later invitation requires a fresh flow.
+  """
+  @spec decline(term(), HostedIdentity.t() | nil, DateTime.t()) ::
+          {:ok, ProjectInvitation.t()} | {:error, :invalid_or_expired}
+  def decline(invitation_id, identity, now \\ DateTime.utc_now())
+
+  def decline(invitation_id, %HostedIdentity{} = identity, now) when is_binary(invitation_id) do
+    now = DateTime.truncate(now, :second)
+
+    Multi.new()
+    |> Multi.run(:invitation, fn repo, _changes ->
+      claim(repo, invitation_id, identity, now)
+    end)
+    |> Multi.run(:project, fn repo, %{invitation: invitation} ->
+      fetch_project(repo, invitation.project_id)
+    end)
+    |> Multi.update(:declined, fn %{invitation: invitation} ->
+      ProjectInvitation.terminal_changeset(invitation, "declined", "declined", now)
+    end)
+    |> Multi.insert(
+      :owner_notification,
+      fn %{project: project, declined: declined} ->
+        Notifications.changeset(decline_event(project, declined))
+      end,
+      Notifications.insert_options()
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{declined: declined}} -> {:ok, declined}
+      {:error, _step, _reason, _changes} -> {:error, :invalid_or_expired}
+    end
+  end
+
+  def decline(_invitation_id, _identity, _now), do: {:error, :invalid_or_expired}
+
   defp run_acceptance(invitation_id, identity, display_name, now) do
     Multi.new()
     |> Multi.run(:invitation, fn repo, _changes ->
@@ -114,6 +153,11 @@ defmodule SddOrchestrator.Participation.Acceptance do
   defp owner_event(project, profile) do
     {:ok, owner} = Participation.owner(project)
     ProjectNotifications.acceptance_owner_event(project, profile, owner)
+  end
+
+  defp decline_event(project, invitation) do
+    {:ok, owner} = Participation.owner(project)
+    ProjectNotifications.decline_owner_event(project, invitation, owner)
   end
 
   # The invitation must still be pending, unexpired, and proven by this identity

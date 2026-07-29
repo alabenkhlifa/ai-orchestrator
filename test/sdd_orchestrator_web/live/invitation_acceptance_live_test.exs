@@ -105,6 +105,124 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLiveTest do
     end
   end
 
+  describe "accepting and declining" do
+    test "explains the project, collects a label, and joins on acceptance", %{conn: conn} do
+      %{project: project, account: owner_account, invitation: invitation, invitee: invitee} =
+        invited()
+
+      owner_profile = Participation.owner_profile(project.id)
+      access = proven_session(invitation)
+
+      {:ok, view, html} =
+        conn
+        |> put_hosted_session(access.session_cookie)
+        |> live("/projects/invitations/#{invitation.id}/accept")
+
+      assert html =~ project.name
+      assert html =~ owner_profile.display_name
+      assert html =~ ~s(id="acceptance-form")
+      assert html =~ "data-accept-invitation"
+      assert html =~ "data-decline-invitation"
+
+      # The owner is presented by project label only, never by email address.
+      owner_email =
+        SddOrchestrator.Repo.get_by!(SddOrchestrator.Accounts.HostedIdentity,
+          account_id: owner_account.id
+        )
+        |> SddOrchestrator.Repo.preload(:external_identities)
+        |> Map.fetch!(:external_identities)
+        |> hd()
+        |> Map.fetch!(:display_identifier)
+
+      refute html =~ owner_email
+
+      joined =
+        view
+        |> form("#acceptance-form", member: %{display_name: "  New Member  "})
+        |> render_submit()
+
+      assert joined =~ "data-joined"
+      assert joined =~ "data-open-project"
+      refute joined =~ "data-accept-invitation"
+
+      participant = Participation.active_participant(project.id, invitee.hosted_identity.id)
+      assert participant
+
+      assert Participation.member_profile(project.id, invitee.account.id).display_name ==
+               "New Member"
+    end
+
+    test "returns an unavailable label inline without joining", %{conn: conn} do
+      %{project: project, invitation: invitation, invitee: invitee} = invited()
+      owner_profile = Participation.owner_profile(project.id)
+      access = proven_session(invitation)
+
+      {:ok, view, _html} =
+        conn
+        |> put_hosted_session(access.session_cookie)
+        |> live("/projects/invitations/#{invitation.id}/accept")
+
+      taken =
+        view
+        |> form("#acceptance-form",
+          member: %{display_name: String.upcase(owner_profile.display_name)}
+        )
+        |> render_submit()
+
+      assert taken =~ "already used on this project"
+      refute taken =~ "data-joined"
+      refute Participation.active_participant(project.id, invitee.hosted_identity.id)
+
+      invalid =
+        view
+        |> form("#acceptance-form", member: %{display_name: "member@example.com"})
+        |> render_submit()
+
+      assert invalid =~ "Choose a name people on this project will recognize."
+      refute Participation.active_participant(project.id, invitee.hosted_identity.id)
+    end
+
+    test "declining is terminal and requires a fresh invitation", %{conn: conn} do
+      %{project: project, account: account, invitation: invitation, invitee: invitee} = invited()
+      access = proven_session(invitation)
+
+      {:ok, view, _html} =
+        conn
+        |> put_hosted_session(access.session_cookie)
+        |> live("/projects/invitations/#{invitation.id}/accept")
+
+      declined = view |> element("[data-decline-invitation]") |> render_click()
+
+      assert declined =~ "data-declined"
+      refute declined =~ "data-acceptance-form"
+      refute Participation.active_participant(project.id, invitee.hosted_identity.id)
+
+      ended = Repo.get!(SddOrchestrator.Participation.ProjectInvitation, invitation.id)
+      assert ended.status == "declined"
+      assert is_nil(ended.token_digest)
+
+      assert [owner_notification] =
+               Enum.filter(
+                 SddOrchestrator.Notifications.list(account.id),
+                 &(&1.event_type == "participation.invitation_declined")
+               )
+
+      refute owner_notification.body =~ invitation.delivery_email
+
+      # A later invitation is a fresh flow, not a resumed one.
+      assert {:ok, %{invitation: fresh}} =
+               Invitations.create(project, account.id, invitation.delivery_email)
+
+      assert fresh.id != invitation.id
+    end
+  end
+
+  defp proven_session(invitation) do
+    SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+      email: invitation.delivery_email
+    })
+  end
+
   defp invited do
     result = ParticipationFixtures.hosted_project_fixture()
 

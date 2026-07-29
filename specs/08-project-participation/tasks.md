@@ -185,8 +185,9 @@ Release gates:
   - Owns: AC-03, AC-04, AC-12
   - Proof: Focused transaction, constraint, concurrency, replay, already-consumed, invalid, canceled, expired, different-email, conflict, retry, rollback, and exactly-one-active-participant tests pass.
 
-- [ ] Task 13 — Deliver acceptance and decline interface.
+- [x] Task 13 — Deliver acceptance and decline interface.
   - Size: Standard
+  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 3
   - Purpose: Explain the identified project and consequence, collect the participant label, and require an explicit outcome.
   - Owned surfaces: Post-proof project and owner-display-name presentation, participant display-name form, availability validation, explicit accept and decline actions, safe invalid result, declined terminal state, fresh-flow requirement, no other-participant email, fixtures, and responsive accessible browser behavior.
@@ -367,6 +368,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 13 complete: acceptance and decline interface
+
+- Completed: Added `Acceptance.decline/3` and the post-proof acceptance step on the invitation screen. Once the invited address is proven, the screen names the project, states who runs it by project label, asks for the participant's own project display name, and offers explicit `Join` and `No thanks` actions. Accepting shows the joined state and a link into the project; declining shows a terminal result and notifies the owner in-product.
+- Boundary held: The screen presents display names only — the owner's email address never appears. An unavailable label is rejected inline as taken, and an invalid or email-shaped label is rejected as unusable; neither creates a participant. Declining erases the invitation credential, creates no access, and leaves a later invitation to start a fresh flow, which the test proves by creating one afterwards. The owner's decline notification names the project and the action only.
+- Remaining: Task 14 (acceptance and decline notifications) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 7 acceptance-screen LiveView tests, `mix test` (881 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 13 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 3 complete: atomic participation acceptance
 

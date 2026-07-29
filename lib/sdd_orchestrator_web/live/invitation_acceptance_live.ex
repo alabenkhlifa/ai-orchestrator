@@ -12,7 +12,14 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
   """
   use SddOrchestratorWeb, :live_view
 
-  alias SddOrchestrator.Participation.InvitationProof
+  alias SddOrchestrator.Participation
+  alias SddOrchestrator.Participation.{Acceptance, InvitationProof}
+
+  @accept_messages %{
+    invalid_or_expired: "This invitation can't be used anymore.",
+    invalid_display_name: "Choose a name people on this project will recognize.",
+    display_name_taken: "That name is already used on this project. Pick another one."
+  }
 
   @impl true
   def mount(%{"id" => invitation_id} = params, _session, socket) do
@@ -42,6 +49,37 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
     {:noreply, assign(socket, :proof_requested?, true)}
   end
 
+  def handle_event("validate_name", %{"member" => %{"display_name" => name}}, socket) do
+    {:noreply, socket |> assign(:display_name, name) |> assign(:accept_error, nil)}
+  end
+
+  def handle_event("accept", %{"member" => %{"display_name" => name}}, socket) do
+    socket.assigns.opened.invitation.id
+    |> Acceptance.accept(socket.assigns.current_hosted_identity, name)
+    |> case do
+      {:ok, accepted} ->
+        {:noreply, assign(socket, :outcome, {:joined, accepted.project})}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:display_name, name)
+         |> assign(:accept_error, Map.fetch!(@accept_messages, reason))}
+    end
+  end
+
+  def handle_event("decline", _params, socket) do
+    socket.assigns.opened.invitation.id
+    |> Acceptance.decline(socket.assigns.current_hosted_identity)
+    |> case do
+      {:ok, _declined} ->
+        {:noreply, assign(socket, :outcome, :declined)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :accept_error, Map.fetch!(@accept_messages, reason))}
+    end
+  end
+
   defp assign_invitation(socket, opened, token) do
     identity = socket.assigns[:current_hosted_identity]
 
@@ -54,6 +92,17 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
     |> assign(:invited_email, opened.invited_email)
     |> assign(:proof_state, InvitationProof.proof_state(opened.invitation, identity))
     |> assign(:proof_requested?, false)
+    |> assign(:owner_label, owner_label(opened.project))
+    |> assign(:display_name, "")
+    |> assign(:accept_error, nil)
+    |> assign(:outcome, nil)
+  end
+
+  defp owner_label(project) do
+    case Participation.owner_profile(project.id) do
+      nil -> nil
+      profile -> profile.display_name
+    end
   end
 
   defp assign_unavailable(socket) do
@@ -66,6 +115,10 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
     |> assign(:invited_email, nil)
     |> assign(:proof_state, :unavailable)
     |> assign(:proof_requested?, false)
+    |> assign(:owner_label, nil)
+    |> assign(:display_name, "")
+    |> assign(:accept_error, nil)
+    |> assign(:outcome, nil)
   end
 
   @impl true
@@ -96,14 +149,76 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
             </.notice>
           </div>
 
-          <div :if={@proof_state == :proven} class="mt-4" data-proof-complete>
+          <div
+            :if={@proof_state == :proven and is_nil(@outcome)}
+            class="mt-4"
+            data-proof-complete
+          >
             <.notice variant="info" icon="circle-check">
-              Your email address is confirmed. You are not on this project yet — the next step is
-              to accept or decline.
+              Your email address is confirmed. You are not on this project yet — choose how your
+              name appears, then accept or decline.
             </.notice>
           </div>
 
-          <div :if={@proof_state != :proven} class="mt-6">
+          <div :if={@proof_state == :proven and is_nil(@outcome)} class="mt-6">
+            <p :if={@owner_label} class="text-[13px] text-ink-muted" data-owner-label>
+              {@owner_label} runs this project.
+            </p>
+
+            <form
+              id="acceptance-form"
+              phx-change="validate_name"
+              phx-submit="accept"
+              class="mt-3"
+            >
+              <.text_field
+                id="member-display-name"
+                name="member[display_name]"
+                label="Your name on this project"
+                value={@display_name}
+                error={@accept_error}
+                hint="People on this project see this name. It has to be different from every other name on the project."
+                autocomplete="off"
+                phx-debounce="200"
+              />
+              <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <.button type="submit" class="w-full sm:w-auto" data-accept-invitation>
+                  <.lucide name="check" class="size-4" /> Join {@project_name}
+                </.button>
+                <.button
+                  type="button"
+                  variant="secondary"
+                  phx-click="decline"
+                  class="w-full sm:w-auto"
+                  data-decline-invitation
+                >
+                  <.lucide name="x" class="size-4" /> No thanks
+                </.button>
+              </div>
+            </form>
+          </div>
+
+          <div :if={match?({:joined, _project}, @outcome)} class="mt-6" data-joined>
+            <.notice variant="info" icon="circle-check">
+              You joined {@project_name}.
+            </.notice>
+            <.button
+              navigate={~p"/projects/#{elem(@outcome, 1).id}"}
+              class="mt-4 w-full sm:w-auto"
+              data-open-project
+            >
+              <.lucide name="arrow-right" class="size-4" /> Open {@project_name}
+            </.button>
+          </div>
+
+          <div :if={@outcome == :declined} class="mt-6" data-declined>
+            <.notice variant="info" icon="check">
+              You declined this invitation. Nothing was shared with you, and you can be invited
+              again later.
+            </.notice>
+          </div>
+
+          <div :if={@proof_state != :proven and is_nil(@outcome)} class="mt-6">
             <.button
               :if={not @proof_requested?}
               phx-click="request_proof"
