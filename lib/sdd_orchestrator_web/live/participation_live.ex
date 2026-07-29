@@ -24,7 +24,8 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     invitation_already_pending: "That address already has a pending invitation.",
     existing_owner: "That address is the project owner.",
     existing_participant: "That person is already on this project.",
-    no_pending_invitation: "There is no pending invitation for that address."
+    no_pending_invitation: "There is no pending invitation for that address.",
+    not_cancelable: "That invitation has already finished and can't be canceled."
   }
 
   @impl true
@@ -79,6 +80,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
      |> assign(:invite_email, email)
      |> assign(:invite_error, nil)
      |> assign(:invite_sent?, false)
+     |> assign(:invite_canceled?, false)
      |> assign(:resendable?, false)}
   end
 
@@ -92,6 +94,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          |> assign(:invite_email, "")
          |> assign(:invite_error, nil)
          |> assign(:invite_sent?, true)
+         |> assign(:invite_canceled?, false)
          |> assign(:resendable?, false)}
 
       {:error, reason} ->
@@ -100,7 +103,29 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          |> assign(:invite_email, email)
          |> assign(:invite_error, invite_message(reason))
          |> assign(:invite_sent?, false)
+         |> assign(:invite_canceled?, false)
          |> assign(:resendable?, reason == :invitation_already_pending)}
+    end
+  end
+
+  def handle_event("cancel_invitation", _params, socket) do
+    socket.assigns.project
+    |> Invitations.cancel(socket.assigns.current_account.id, socket.assigns.invite_email)
+    |> case do
+      {:ok, _invitation} ->
+        {:noreply,
+         socket
+         |> assign(:invite_email, "")
+         |> assign(:invite_error, nil)
+         |> assign(:invite_canceled?, true)
+         |> assign(:resendable?, false)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:invite_error, invite_message(reason))
+         |> assign(:invite_canceled?, false)
+         |> assign(:resendable?, false)}
     end
   end
 
@@ -145,6 +170,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:invite_email, "")
     |> assign(:invite_error, nil)
     |> assign(:invite_sent?, false)
+    |> assign(:invite_canceled?, false)
     |> assign(:resendable?, false)
   end
 
@@ -251,6 +277,23 @@ defmodule SddOrchestratorWeb.ParticipationLive do
                 >
                   <.lucide name="refresh-cw" class="size-4" /> Send a new link instead
                 </.button>
+                <.button
+                  :if={@resendable?}
+                  type="button"
+                  variant="secondary"
+                  phx-click="cancel_invitation"
+                  class="w-full sm:w-auto"
+                  data-cancel-invitation
+                >
+                  <.lucide name="x" class="size-4" /> Cancel that invitation
+                </.button>
+                <span
+                  :if={@invite_canceled?}
+                  class="inline-flex items-center gap-1.5 text-[13px] text-ok-fg"
+                  data-invitation-canceled
+                >
+                  <.lucide name="circle-check" class="size-4" /> Invitation canceled
+                </span>
                 <span
                   :if={@invite_sent?}
                   class="inline-flex items-center gap-1.5 text-[13px] text-ok-fg"

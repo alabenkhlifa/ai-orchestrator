@@ -144,7 +144,7 @@ Release gates:
   - Owns: AC-18
   - Proof: Focused state-machine, transaction, concurrency, replay, expiry, credential-rotation, one-pending, fresh-acceptance, delivery-outbox, and LiveView tests pass.
 
-- [ ] Task 25 — Deliver invitation cancellation and expiry.
+- [x] Task 25 — Deliver invitation cancellation and expiry.
   - Size: Standard
   - Depends on: Task 10
   - Purpose: End an invitation without creating access and require a fresh flow afterward.
@@ -366,6 +366,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 25 complete: invitation cancellation and expiry
+
+- Completed: Added owner cancellation, the seven-day expiry transition, and the `usable/2` read used by later acceptance. Both transitions lock the row, move it to a terminal state, and erase the credential digest and salt in the same update, so the delivered link stops working immediately. Cancellation sends the approved message once and is idempotent when repeated; expiry is a bulk idempotent sweep that returns how many invitations it ended. Participation settings expose an inline `Cancel that invitation` action beside the replacement action.
+- Boundary held: Neither transition creates access or touches a participant record — an active participant is unchanged across an expiry sweep. A terminal invitation cannot be resent and cannot be canceled again from another terminal state; a later invitation for the same address is a fresh row with credential version 1, so acceptance always requires a fresh flow.
+- Seam recorded: `Invitations.expire_due/1` is the callable transition. Wiring it, and terminal-row cleanup, into `Privacy.Retention.prune_all/1` belongs to Task 20, which owns those pruner rules.
+- Remaining: Task 11 (invitation lifecycle emails) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 8 lifecycle tests, 85 participation and LiveView tests, `mix test` (846 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 25 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 10 complete: invitation resend and fresh re-invitation
 

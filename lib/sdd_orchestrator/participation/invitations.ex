@@ -89,6 +89,58 @@ defmodule SddOrchestrator.Participation.Invitations do
     end
   end
 
+  @doc """
+  Cancels the pending invitation for one address.
+
+  Cancellation is terminal and immediate: the credential digest and salt are
+  erased in the same update, so the delivered link stops working and a later
+  invitation requires a fresh flow. Repeating the action on an already canceled
+  invitation succeeds without sending a second message.
+  """
+  @spec cancel(Project.t() | Ecto.UUID.t(), Ecto.UUID.t() | nil, term()) ::
+          {:ok, ProjectInvitation.t()}
+          | {:error, create_error() | :no_pending_invitation | :not_cancelable}
+  def cancel(project, account_id, email) do
+    with {:ok, project, _owner} <- authorize(project, account_id),
+         {:ok, normalized} <- ExternalIdentity.normalize_email(email),
+         digest = EmailDigest.from_subject_key(normalized.subject_key),
+         {:ok, {invitation, transitioned?}} <- terminate(project, digest, "canceled", "canceled") do
+      if transitioned?, do: send_cancellation(project, invitation)
+      {:ok, invitation}
+    end
+  end
+
+  @doc """
+  Ends every pending invitation whose seven-day lifetime has passed.
+
+  The transition is idempotent and changes no participant record; it only makes
+  the credential unusable and records the terminal state for the owner.
+  """
+  @spec expire_due(DateTime.t()) :: non_neg_integer()
+  def expire_due(now \\ DateTime.utc_now()) do
+    now = DateTime.truncate(now, :second)
+
+    ProjectInvitation
+    |> where([i], i.status == "pending" and i.expires_at <= ^now)
+    |> select([i], i.id)
+    |> Repo.all()
+    |> Enum.count(&expire_one(&1, now))
+  end
+
+  @doc "Returns the pending invitation that is still usable at `now`."
+  @spec usable(Ecto.UUID.t(), DateTime.t()) :: ProjectInvitation.t() | nil
+  def usable(invitation_id, now \\ DateTime.utc_now()) do
+    case Repo.get(ProjectInvitation, invitation_id) do
+      %ProjectInvitation{status: "pending"} = invitation ->
+        if ProjectInvitation.expired?(invitation, now), do: nil, else: invitation
+
+      _other ->
+        nil
+    end
+  rescue
+    Ecto.Query.CastError -> nil
+  end
+
   @doc "Returns the current pending invitation for one project and address."
   @spec pending_for(Ecto.UUID.t(), term()) :: ProjectInvitation.t() | nil
   def pending_for(project_id, email) do
@@ -161,6 +213,88 @@ defmodule SddOrchestrator.Participation.Invitations do
       nil -> :ok
       role -> {:error, {:existing_role, role}}
     end
+  end
+
+  defp terminate(project, digest, status, reason) do
+    Repo.transaction(fn ->
+      case lock_current(project.id, digest) do
+        nil -> Repo.rollback(:no_pending_invitation)
+        invitation -> apply_termination(project, invitation, status, reason)
+      end
+    end)
+  end
+
+  defp apply_termination(
+         _project,
+         %ProjectInvitation{status: status} = invitation,
+         status,
+         _reason
+       ),
+       do: {invitation, false}
+
+  defp apply_termination(
+         project,
+         %ProjectInvitation{status: "pending"} = invitation,
+         status,
+         reason
+       ) do
+    invitation
+    |> ProjectInvitation.terminal_changeset(status, reason)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        log(project, updated, "ended_#{reason}")
+        {updated, true}
+
+      {:error, changeset} ->
+        Repo.rollback(insert_error(changeset))
+    end
+  end
+
+  defp apply_termination(_project, _invitation, _status, _reason),
+    do: Repo.rollback(:not_cancelable)
+
+  defp expire_one(invitation_id, now) do
+    Repo.transaction(fn ->
+      ProjectInvitation
+      |> where([i], i.id == ^invitation_id and i.status == "pending")
+      |> lock("FOR UPDATE")
+      |> Repo.one()
+      |> case do
+        nil ->
+          false
+
+        invitation ->
+          {:ok, _expired} =
+            invitation
+            |> ProjectInvitation.terminal_changeset("expired", "expired", now)
+            |> Repo.update()
+
+          true
+      end
+    end)
+    |> case do
+      {:ok, expired?} -> expired?
+      {:error, _reason} -> false
+    end
+  end
+
+  defp lock_current(project_id, digest) do
+    ProjectInvitation
+    |> where([i], i.project_id == ^project_id and i.email_digest == ^digest)
+    |> order_by([i], desc: i.inserted_at, desc: i.id)
+    |> limit(1)
+    |> lock("FOR UPDATE")
+    |> Repo.one()
+  end
+
+  defp send_cancellation(project, invitation) do
+    EmailDelivery.deliver(:invitation_canceled, %{
+      subject_ref: invitation.id,
+      event_version: invitation.credential_version,
+      recipient: invitation.delivery_email,
+      project_label: project.name
+    })
   end
 
   defp rotate(project, digest) do

@@ -274,6 +274,38 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       assert Repo.aggregate(ProjectInvitation, :count) == 1
     end
 
+    test "cancels the pending invitation inline and requires a fresh flow", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "Ada Lovelace"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      view |> form("#invitation-form", invite: %{email: "invitee@example.com"}) |> render_submit()
+
+      duplicate =
+        view
+        |> form("#invitation-form", invite: %{email: "invitee@example.com"})
+        |> render_submit()
+
+      assert duplicate =~ "data-cancel-invitation"
+      original = Invitations.pending_for(project.id, "invitee@example.com")
+
+      canceled = view |> element("[data-cancel-invitation]") |> render_click()
+
+      assert canceled =~ "data-invitation-canceled"
+      refute canceled =~ "data-cancel-invitation"
+      refute Invitations.pending_for(project.id, "invitee@example.com")
+
+      ended = Repo.get!(ProjectInvitation, original.id)
+      assert ended.status == "canceled"
+      assert is_nil(ended.token_digest)
+    end
+
     test "keeps the invitation control full width on small screens", %{conn: conn} do
       %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
 
