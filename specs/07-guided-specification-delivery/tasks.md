@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 is complete, so the protocol and execution-manifest foundation exists. The next executable task, Task 1, requires `capability:project-participation-boundary` from `specs/08-project-participation#Task 4`, which is not yet delivered; the storage-authority, storage-governance, specification-store, and specification-governance provider capabilities are already available. Every remaining Slice 07 task depends transitively on Task 1, so implementation stays blocked until the participation boundary is ready.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, and Task 1 has confirmed the three delivered provider contracts, so provider-consuming implementation is unblocked and Task 14 is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -85,9 +85,8 @@ Prerequisite:
   - Depends on: none
   - Proof: Focused codec, version, capability, deterministic digest, round-trip, malformed, oversized, unknown-version, missing-field, and secret-field rejection tests pass without project persistence.
 
-- [ ] Task 1 - Approve the feature-delivery product, technical, privacy, and verification contracts.
+- [x] Task 1 - Approve the feature-delivery product, technical, privacy, and verification contracts.
   - Size: Standard
-  - Status: Blocked by the three operational cross-specification capability prerequisites.
   - Purpose: Confirm the approved feature-delivery contracts against the delivered storage-authority, current-participant, and shared specification-store boundaries before provider-consuming implementation begins.
   - Owned surfaces: Active-slice outcome and scope, delivered capability consumer contracts, participant action and notification rules, lifecycle and state agreement, orchestration and worker contracts, specification write-back and resume contract, evidence and preview contracts, privacy data contract, release gate, task ownership, task sequence, traceability, and canonical verification agreement.
   - Owns: none (agreement gate)
@@ -529,6 +528,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 1 complete: delivered provider contracts confirmed
+
+- Completed: Confirmed the approved feature-delivery contracts against the three now-delivered provider boundaries. `capability:project-storage-authority` supplies the hosted and device storage-mode authority this slice binds feature, run, command, activity, and evidence records to. `capability:project-specification-store` supplies stable specification identity, immutable complete revisions, current reads, consistent snapshots, and restoration participation through `SddOrchestrator.SpecificationStore`, which matches the specification-store consumer interface: this slice appends revisions through it and defines no second store. `capability:project-participation-boundary` supplies `Participation.Boundary` — current owner and active participants as stable identity, role, and project display name with no email, fail-closed denial for stale, removed, left, absent, and cross-project identities, direct reads with no cache, the versioned `ParticipationRevocation` claim and acknowledgement contract, and the shared account-level notification store with this slice's own `delivery.` event namespace reserved.
+- Boundary confirmed: Each consumer contract this slice recorded is satisfied by the delivered interface. No provider contract needed to change, and this slice redefines none of them.
+- Remaining: Task 14 (the current-participant authorization guard) is the next executable task. `capability:project-participation-governance` from `specs/08-project-participation#Task 5` is still unavailable, which blocks Task 40 only; `capability:project-storage-governance` is available for Task 39.
+- Failed checks: None. The individual specification validator and the global cross-specification graph pass, and the merged branch's `mix test` passes with 988 tests.
+- Spec updates: Marked Task 1 complete, removed its capability-prerequisite blocker, and moved the slice status to `In Progress`; requirements, design, ownership, acceptance criteria, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 7 complete: worker protocol and execution-manifest codec
 
