@@ -237,7 +237,7 @@ Prerequisite:
   - Depends on: Task 3, Task 9, Task 12, Task 43
   - Proof: Focused hosted and device transaction, authorization, revision, disclosure, duplicate, concurrency, branch, command, activity, rollback, and no-automatic-start tests pass.
 
-- [ ] Task 21 - Deliver normalized progress and run-status presentation.
+- [x] Task 21 - Deliver normalized progress and run-status presentation.
   - Size: Standard
   - Purpose: Convert approved worker progress into durable activity and visible lifecycle status.
   - Owned surfaces: Normalized progress event validation, current fence and sequence check, idempotent activity append, run progress state, visible `In development`, `Blocked`, and `Failed` status seam, raw-provider-event exclusion, redaction, feature-detail activity stream, fixtures, and responsive status UI.
@@ -528,6 +528,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 21 complete: normalized progress and run-status presentation
+
+- Completed: Added `Delivery.EventIngestion`, the only path by which a worker event becomes durable project state, and `Delivery.RunStatus`, the visible-status seam. An accepted event appends one normalized activity entry, advances the attempt's observed sequence, and moves a pending run to running.
+- Boundary held (AC-16): A worker is the least trusted thing in the system, so every event proves three things before it can change anything — the envelope against the protocol schema, the fence token against the run's *current* attempt, and the sequence against what that attempt has already seen. A superseded worker holding the old fence can keep talking and move nothing: the run, the attempt, and the history were each asserted unchanged. A replayed sequence is a duplicate rather than a second entry, and an out-of-order one is refused.
+- Raw events excluded: What survives is a minimized projection of approved fields — event type, source, sequence, attempt number, and a bounded summary — never the provider's own shape, which was asserted absent from the stored payload. A malformed envelope, an unknown field, an unsupported protocol version, an oversized payload, and a credential-shaped field are each refused before storage rather than redacted after.
+- Scope held: An event type this task does not own (`blocked`, `failed`, `evidence`, `verification_completed`, `canceled`) is refused as `:unsupported_event` rather than half-applied, so the tasks that own those transitions still own them. An event for an unknown run, a run with no current attempt, or another project's run is refused.
+- Mechanism recorded: An attempt reaches `running` only from `dispatched`, so progress ingestion no longer moves the attempt's own lifecycle — that belongs to the acknowledgement path. This also keeps one commit writing each record exactly once, which matters because a second write in the same commit would see the version its sibling step just bumped and fail as stale.
+- Failed checks: Both of the above were real defects the tests found: ingestion first assumed a direct `pending → running` attempt transition, which is not in the transition table, and then wrote the attempt twice in one commit. Final proof passes with real exit status: 17 ingestion and status tests, `mix test` (1489 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 22 (durable blocked-run and question state) is next and owns the `blocked` event this task deliberately refuses.
+- Spec updates: Marked Task 21 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 13 complete: explicit development start
 
