@@ -847,6 +847,100 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     end
   end
 
+  describe "canceling a run [AC-32]" do
+    setup %{project: project, account: account} do
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = DeliveryFixtures.run_fixture(project, feature, %{initiator_account_id: account.id})
+      attempt = DeliveryFixtures.attempt_fixture(run, %{fence_token: 1})
+
+      {:ok, running} =
+        run
+        |> SddOrchestrator.Delivery.AgentRun.transition_changeset("running", run.state_version)
+        |> Repo.update()
+
+      DeliveryFixtures.activity_fixture(project, feature, %{
+        run_id: run.id,
+        attempt_id: attempt.id,
+        type: "run_started",
+        payload: %{"branch" => run.branch}
+      })
+
+      %{feature: feature, run: running, attempt: attempt}
+    end
+
+    test "the initiator is offered the action and the run's branch", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-cancel-run]")
+      assert view |> element("[data-run-branch]") |> render() =~ run.branch
+    end
+
+    test "another current participant is not offered it", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature
+    } do
+      # Neither the initiator nor the owner: cancelling is narrower than the
+      # shared actions this screen offers everyone.
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-screen=\"feature-detail\"]")
+      refute has_element?(view, "[data-cancel-run]")
+    end
+
+    test "canceling ends the run and queues the worker's stop", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> element("[data-cancel-run]") |> render_click()
+
+      # Terminal, so the action it came from is gone rather than repeatable.
+      refute has_element?(view, "[data-cancel-run]")
+
+      assert Repo.get!(SddOrchestrator.Delivery.AgentRun, run.id).state == "canceled"
+
+      assert SddOrchestrator.Delivery.RunCommand
+             |> Repo.all()
+             |> Enum.count(&(&1.operation == "cancel")) == 1
+
+      # This screen's project has no readiness verdict, so the feature goes back
+      # to where its requirements actually leave it.
+      assert view |> element("[data-feature-column]") |> render() =~ "Draft"
+      assert Repo.get!(Feature, feature.id).lifecycle_column == "draft"
+    end
+
+    test "a feature with no run shows no cancel action", %{
+      conn: conn,
+      project: project,
+      account: account
+    } do
+      other = DeliveryFixtures.feature_fixture(project, account)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, other))
+
+      refute has_element?(view, "[data-run-control]")
+      refute has_element?(view, "[data-cancel-run]")
+    end
+  end
+
   defp ask(project, feature, run, attrs) do
     %BlockingQuestion{}
     |> BlockingQuestion.ask_changeset(

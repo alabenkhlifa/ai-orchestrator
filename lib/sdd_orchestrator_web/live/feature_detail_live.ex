@@ -18,6 +18,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     Answers,
     Assignment,
     Blocking,
+    Cancellation,
     Comments,
     Features,
     ParticipantGuard,
@@ -66,6 +67,12 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   @retry_messages %{
     no_failed_run: "This run is going again already.",
     no_attempt: "There is nothing recorded to continue from.",
+    stale_state: "This changed while you were looking at it. Try again."
+  }
+
+  @cancel_messages %{
+    already_canceled: "This run was already canceled.",
+    no_active_run: "There is no run to cancel.",
     stale_state: "This changed while you were looking at it. Try again."
   }
 
@@ -140,6 +147,33 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
            socket,
            :retry_error,
            Map.get(@retry_messages, reason, "That retry was not accepted.")
+         )}
+    end
+  end
+
+  def handle_event("cancel", _params, socket) do
+    socket
+    |> storage_authority()
+    |> Cancellation.cancel(socket.assigns.actor, %{
+      project: socket.assigns.project,
+      feature: socket.assigns.feature
+    })
+    |> case do
+      {:ok, results} ->
+        {:noreply,
+         socket
+         |> assign(:cancel_error, nil)
+         |> assign_feature(socket.assigns.project_id, socket.assigns.actor, results.feature)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(
+           socket,
+           :cancel_error,
+           Map.get(@cancel_messages, reason, "That cancellation was not accepted.")
          )}
     end
   end
@@ -268,6 +302,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:question, open_question(project_id, actor, feature))
     |> assign(:project, SddOrchestrator.Repo.get(SddOrchestrator.Projects.Project, project_id))
     |> assign_failed_run(actor, feature)
+    |> assign_cancelable_run(actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
@@ -292,6 +327,24 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     socket
     |> assign(:failed_run, failed_run)
     |> assign(:retry_error, socket.assigns[:retry_error])
+  end
+
+  # The run this reader may end, if any. The domain applies the narrow
+  # initiator-or-owner rule, so the action is absent for a participant whose
+  # press would be refused rather than shown and then denied.
+  defp assign_cancelable_run(socket, actor, feature) do
+    cancelable_run =
+      case Cancellation.cancelable(storage_authority(socket), actor, %{
+             project: socket.assigns.project,
+             feature: feature
+           }) do
+        {:ok, run} -> run
+        {:error, :unauthorized} -> nil
+      end
+
+    socket
+    |> assign(:cancelable_run, cancelable_run)
+    |> assign(:cancel_error, socket.assigns[:cancel_error])
   end
 
   defp assign_disclosure(socket) do
@@ -425,6 +478,41 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
           <.button type="button" phx-click="retry" class="mt-4 w-full sm:w-auto" data-retry-run>
             <.lucide name="refresh-cw" class="size-4" /> Retry
+          </.button>
+        </section>
+
+        <section
+          :if={@cancelable_run}
+          class="mt-6 rounded-lg border border-line p-4"
+          aria-labelledby="run-control-heading"
+          data-run-control
+        >
+          <h2 id="run-control-heading" class="text-[13px] font-semibold text-ink">This run</h2>
+          <p class="mt-2 text-xs text-ink-muted" data-run-branch>
+            The work is on {@cancelable_run.branch}.
+          </p>
+          <p class="mt-2 text-xs text-ink-muted">
+            Canceling is final. Everything recorded so far is kept, and picking this feature up again
+            starts a new run on a new branch.
+          </p>
+
+          <p
+            :if={@cancel_error}
+            class="mt-2 flex items-center gap-1.5 text-xs text-err-fg"
+            data-cancel-error
+          >
+            <.lucide name="circle-alert" class="size-3.5 flex-none" />
+            {@cancel_error}
+          </p>
+
+          <.button
+            variant="secondary"
+            type="button"
+            phx-click="cancel"
+            class="mt-4 w-full sm:w-auto"
+            data-cancel-run
+          >
+            <.lucide name="x" class="size-4" /> Cancel run
           </.button>
         </section>
 

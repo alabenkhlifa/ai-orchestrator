@@ -277,7 +277,7 @@ Prerequisite:
   - Depends on: Task 21, Task 24
   - Proof: Focused classification, timing, retry budget, same-worker, same-workspace, attempt ordering, checkpoint, terminal state, manual authorization, duplicate, concurrency, activity, and status UI tests pass.
 
-- [ ] Task 26 - Deliver authorized cancellation and restart readiness.
+- [x] Task 26 - Deliver authorized cancellation and restart readiness.
   - Size: Standard
   - Purpose: Make cancellation terminal while preserving governed history and requiring a new run for later development.
   - Owned surfaces: Current initiator and owner authorization, other and former-participant denial, cancel command, worker stop acknowledgement seam, terminal canceled state, activity and evidence preservation, current-revision readiness reevaluation, `Ready for development` or `Draft` transition, no resume, later new-run and new-branch requirement, fixtures, and cancellation UI.
@@ -528,6 +528,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 26 complete: authorized cancellation and restart readiness
+
+- Completed: Added `Delivery.Cancellation` and the cancel action on the feature detail screen. Cancelling supersedes the current attempt, ends the run, tells the worker to stop, records the outcome, and returns the feature to the readiness state of its current revision.
+- Authority is narrow and deliberate (AC-32): Only the run's current initiator or the project owner may cancel. Another fully authorized current participant is refused, and a former initiator loses the authority when their participation ends while the owner keeps it. All four cases are proved, because the point of the rule is that cancelling active work is not the same collaborative act as starting it.
+- Terminal with governed history (AC-33): The canceled run, its branch identity, its activity, and its evidence remain as records; there is no resume. The feature returns to `Ready for development` when its current revision still satisfies readiness and to `Draft` otherwise, decided through `Readiness.start_available?/4` rather than a stored flag. A later start creates a different run on a different branch, asserted end to end — a canceled run must never block or silently continue into the next one.
+- Repeating a cancel on an already-canceled run is refused without enqueuing a second stop command.
+- Recorded inconsistency: `start.ex` sets a command's `expected_state_version` from the post-commit run version while `answers.ex` and `retry.ex` use the pre-commit one. Nothing consumes the field yet, so it changes no behaviour today; it must be settled before `CommandTransport.EnvelopeSource` is installed and a worker begins acting on it.
+- Failed checks: None. Final proof passes with real exit status: the cancellation suite plus the feature-detail LiveView suite, `mix test` (1622 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 27 (consume participation revocation) is next, then Task 28 reconciles authoritative state with worker execution.
+- Spec updates: Marked Task 26 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 25 complete: bounded automatic and manual retry
 
