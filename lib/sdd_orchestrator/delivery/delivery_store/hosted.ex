@@ -20,6 +20,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     BlockingQuestion,
     CommandOutbox,
     DeliveryStore,
+    Evidence,
     Feature,
     RunAttempt
   }
@@ -115,6 +116,20 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     end
   rescue
     Ecto.Query.CastError -> :error
+  end
+
+  @impl true
+  def list_evidence(_authority, project_id, opts) do
+    Evidence
+    |> where([e], e.project_id == ^project_id)
+    |> narrow(:run_id, Keyword.get(opts, :run_id))
+    |> narrow(:attempt_id, Keyword.get(opts, :attempt_id))
+    |> narrow(:commit_sha, Keyword.get(opts, :commit_sha))
+    |> only_current(Keyword.get(opts, :current, false))
+    |> order_by([e], asc: e.recorded_at, asc: e.id)
+    |> Repo.all()
+  rescue
+    Ecto.Query.CastError -> []
   end
 
   @impl true
@@ -226,6 +241,20 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     |> repo.update()
   end
 
+  defp apply_operation(repo, {:insert_evidence, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      %Evidence{} |> Evidence.record_changeset(resolved) |> repo.insert()
+    end
+  end
+
+  defp apply_operation(repo, {:supersede_evidence, evidence, replacement}, results) do
+    with {:ok, replacement_id} <- DeliveryStore.resolve(replacement, results) do
+      evidence
+      |> Evidence.supersede_changeset(replacement_id, evidence.state_version)
+      |> repo.update()
+    end
+  end
+
   defp apply_operation(repo, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
       %ActivityEntry{}
@@ -272,4 +301,12 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
 
   defp assigned_to(query, account_id),
     do: where(query, [f], f.assigned_account_id == ^account_id)
+
+  # An absent narrowing option asks for everything in the project rather than
+  # for rows whose column is null.
+  defp narrow(query, _field, nil), do: query
+  defp narrow(query, field, value), do: where(query, [e], field(e, ^field) == ^value)
+
+  defp only_current(query, true), do: where(query, [e], is_nil(e.superseded_by_id))
+  defp only_current(query, _all), do: query
 end

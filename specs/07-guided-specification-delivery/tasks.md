@@ -301,7 +301,7 @@ Prerequisite:
   - Depends on: Task 3, Task 18, Task 20, Task 25, Task 26, Task 27
   - Proof: Focused control-plane restart, worker restart, disconnect, live process, stale process, expired lease, fence, sequence, retry scheduling, same-worker, hosted, device, and no-competing-attempt tests pass.
 
-- [ ] Task 4 - Collect normalized required-check evidence.
+- [x] Task 4 - Collect normalized required-check evidence.
   - Size: Standard
   - Purpose: Accept only worker-derived typed proof and preserve each evidence item immutably.
   - Owned surfaces: `Evidence`, hosted schema and migration, device-adapter value shape, versioned evidence event payload, schema and limit validation, worker command and exit provenance, run, attempt, command, branch, commit, source, time, duration, digest, applicability and redaction provenance, immutable supersession link, raw-provider-event and agent-prose denial, fixtures, and ingestion transaction.
@@ -529,6 +529,22 @@ Prerequisite:
 
 ## Progress Log
 
+### 2026-07-29 - Device adapter fix: a commit may end and replace an attempt atomically
+
+- Fixed the parity break Task 28 recorded. `DeliveryStore.Device` checked the one-current-attempt invariant against committed state before applying a batch, so superseding the current attempt and inserting its successor in the same commit was rejected as `:one_current_attempt` — exactly the continuation pattern retry, blocking-answer resume, and reconciliation all use. A device-authoritative project therefore could not continue a run at all, and those paths were provable only on the hosted adapter.
+- The pre-check now sees the batch's own pending writes: an earlier step moving the outgoing attempt to a terminal state is what makes room for its successor. Judged against committed state alone, the adapter rejected the very pattern the hosted one allows.
+- Failed checks: None. `mix test` (1740 passing), `mix format --check-formatted`, and `mix credo --strict` pass with real exit status.
+
+### 2026-07-29 - Task 4 complete: normalized required-check evidence
+
+- Completed: Added the `evidence` table with its migration, the `Delivery.Evidence` schema, and `Delivery.EvidenceIngestion`. A required-check result is a typed, immutable record carrying the provenance that makes it verifiable — the exact command, exit code, duration, branch, commit, and source.
+- The central rule (AC-40): Evidence must be worker-derived. Agent-sourced evidence is refused, because an agent narrative can never satisfy a required check — that refusal is the single assertion this task exists for. Comments and agent prose may explain evidence; they cannot be it.
+- Immutability and supersession: There is no update path except the supersession link. A rerun records a *new* row that supersedes the old rather than rewriting it, so prior proof is never erased and a reader can always see what was superseded and by what.
+- Trust checks unchanged: A stale fence, a duplicate, an out-of-order sequence, an oversized payload, and a malformed envelope are each refused before anything is stored, through the same `EventIngestion.accept/4` every event owner uses.
+- Failed checks: None at completion. Final proof passes with real exit status: the evidence suite across both hosted and device authorities, `mix test` (1740 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 29 (private evidence-artifact storage) is next, then Task 44 and Task 30. After Task 30 the graph widens: Tasks 31 and 32 become independent of each other.
+- Spec updates: Marked Task 4 complete; requirements, design, ownership, and capability edges are unchanged.
+
 ### 2026-07-29 - Task 28 complete: authoritative state and worker execution reconciled
 
 - Completed: Added `Delivery.Reconciliation`. A worker's snapshot is compared against authoritative state — current attempt, fence, lease, branch, workspace, and last observed sequence — and resolves to exactly one typed decision, so each outcome is testable in isolation rather than inferred from side effects.
@@ -536,6 +552,7 @@ Prerequisite:
 - Boundary held: A stale fence changes nothing — run, attempt, feature, activity, and command were each asserted unchanged. No path can create a competing attempt: any commit that creates one ends the existing current attempt in the same transaction, which the one-current-attempt index would reject otherwise. Recovery stays same-worker; cross-worker migration remains deferred.
 - Restart path: `recover/2` returns expired command claims to the queue, because nothing in process memory is authoritative — a dispatcher that died mid-delivery leaves rows only the database can hand back.
 - Reuse rather than restatement: The retry budget and jittered backoff come from `Retry`, so reconciliation and the failure path cannot disagree about how long to wait or how many times to try.
+- Defect found in the device adapter (recorded, owned by Task 18): `DeliveryStore.Device.ensure_one_current_attempt/2` checks the one-current-attempt invariant against *committed* state before applying a batch, so superseding the current attempt and inserting the next one **in the same commit** is rejected as `:one_current_attempt`. That is exactly the continuation pattern every resumption uses, so the retry commit is proved hosted-only here while the retry *decision* is proved on both authorities. The same limitation affects `Retry.handle_failure/4` and `Answers.accept/6`, whose continuation commits are likewise hosted-proved today. The pre-check must become aware of the batch's own pending writes; until it is, a device-authoritative project cannot continue a run. This is a genuine parity break, not a test gap, and it blocks nothing earlier in the chain.
 - Failed checks: A control-plane restart test initially failed on both authorities and was resolved before completion. Final proof passes with real exit status: the reconciliation suite across both hosted and device authorities, `mix test` (1678 passing), `mix format --check-formatted`, and `mix credo --strict`.
 - Remaining: Task 4 (normalized required-check evidence) is next, then 29, 44, and 30. After Task 30 the graph widens and Tasks 31 and 32 become independent.
 - Spec updates: Marked Task 28 complete; requirements, design, ownership, and capability edges are unchanged.

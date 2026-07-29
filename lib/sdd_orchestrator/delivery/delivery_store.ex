@@ -27,6 +27,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
     ActivityEntry,
     AgentRun,
     BlockingQuestion,
+    Evidence,
     Feature,
     RunAttempt,
     RunCommand
@@ -51,6 +52,8 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:clear_assignment, Feature.t()}
           | {:insert_blocking_question, map()}
           | {:resolve_question, BlockingQuestion.t(), String.t(), String.t() | nil}
+          | {:insert_evidence, map()}
+          | {:supersede_evidence, Evidence.t(), Ecto.UUID.t() | {:ref, atom(), atom()}}
           | {:append_activity, map()}
           | {:enqueue_command, map()}
 
@@ -97,6 +100,16 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   @callback open_question(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, BlockingQuestion.t()} | :error
 
+  @doc """
+  Lists one project's evidence in recorded order.
+
+  Options narrow it to one run, attempt, or commit, and `:current` drops rows a
+  later item superseded. Which items still count as proof is a question about
+  the project's own records, so it belongs to whichever store is authoritative
+  for that project rather than to the hosted database.
+  """
+  @callback list_evidence(authority(), Ecto.UUID.t(), keyword()) :: [Evidence.t()]
+
   @doc "Lists one feature's activity in authoritative order."
   @callback list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
               [ActivityEntry.t()]
@@ -115,7 +128,8 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
       insert_run transition_run set_effective_revision advance_attempt_number
       resume_run insert_attempt transition_attempt claim_lease observe_sequence
       transition_feature set_feature_status clear_assignment
-      insert_blocking_question resolve_question append_activity enqueue_command
+      insert_blocking_question resolve_question insert_evidence supersede_evidence
+      append_activity enqueue_command
     )a
   end
 
@@ -162,6 +176,10 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           {:ok, BlockingQuestion.t()} | :error
   def open_question(authority, project_id, run_id),
     do: dispatch(authority, :open_question, [project_id, run_id])
+
+  @spec list_evidence(authority(), Ecto.UUID.t(), keyword()) :: [Evidence.t()]
+  def list_evidence(authority, project_id, opts \\ []),
+    do: dispatch(authority, :list_evidence, [project_id, opts])
 
   @spec list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) :: [ActivityEntry.t()]
   def list_activity(authority, project_id, feature_id, opts \\ []),
@@ -215,6 +233,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   defp dispatch(_authority, :current_attempt, _args), do: :error
   defp dispatch(_authority, :latest_attempt, _args), do: :error
   defp dispatch(_authority, :open_question, _args), do: :error
+  defp dispatch(_authority, :list_evidence, _args), do: []
   defp dispatch(_authority, :list_activity, _args), do: []
   defp dispatch(_authority, :claim_commands, _args), do: []
   defp dispatch(_authority, :acknowledge_command, _args), do: {:error, :not_found}
