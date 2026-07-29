@@ -9,8 +9,9 @@ defmodule SddOrchestrator.Participation.EmailDelivery do
   code.
 
   Delivery is attempted after the authoritative state commits. One event,
-  subject, and subject version records one outcome, so a retried lifecycle
-  action updates that outcome instead of creating a second record.
+  subject, and subject version records one outcome: a replayed lifecycle action
+  whose message was already sent returns that record without sending a second
+  message, while a failed attempt is retried in place.
   """
 
   require Logger
@@ -32,20 +33,28 @@ defmodule SddOrchestrator.Participation.EmailDelivery do
   """
   @spec deliver(atom(), map()) :: outcome()
   def deliver(event, %{subject_ref: subject_ref} = context) do
-    with {:ok, email} <- ParticipationEmail.build(event, context) do
-      record =
-        upsert(%{
-          event_type: Atom.to_string(event),
-          subject_ref: subject_ref,
-          event_version: Map.get(context, :event_version, 1),
-          recipient_address: context.recipient,
-          status: "pending",
-          failure_code: nil,
-          delivered_at: nil,
-          attempted_at: now()
-        })
+    version = Map.get(context, :event_version, 1)
 
-      send_and_record(record, email, event)
+    with {:ok, email} <- ParticipationEmail.build(event, context) do
+      case existing(event, subject_ref, version) do
+        %ParticipationEmailDelivery{status: "sent"} = sent ->
+          {:ok, sent}
+
+        _unsent ->
+          record =
+            upsert(%{
+              event_type: Atom.to_string(event),
+              subject_ref: subject_ref,
+              event_version: version,
+              recipient_address: context.recipient,
+              status: "pending",
+              failure_code: nil,
+              delivered_at: nil,
+              attempted_at: now()
+            })
+
+          send_and_record(record, email, event)
+      end
     end
   end
 
@@ -90,15 +99,23 @@ defmodule SddOrchestrator.Participation.EmailDelivery do
     _kind, _reason -> {:error, :provider_unavailable}
   end
 
+  defp existing(event, subject_ref, event_version) do
+    Repo.get_by(ParticipationEmailDelivery,
+      event_type: Atom.to_string(event),
+      subject_ref: subject_ref,
+      event_version: event_version
+    )
+  end
+
   defp upsert(attrs) do
-    existing =
+    record =
       Repo.get_by(ParticipationEmailDelivery,
         event_type: attrs.event_type,
         subject_ref: attrs.subject_ref,
         event_version: attrs.event_version
       )
 
-    (existing || %ParticipationEmailDelivery{})
+    (record || %ParticipationEmailDelivery{})
     |> ParticipationEmailDelivery.changeset(attrs)
     |> Repo.insert_or_update!()
   end

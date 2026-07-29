@@ -152,7 +152,7 @@ Release gates:
   - Owns: AC-34
   - Proof: Focused time-boundary, cancellation, expiry, repeat, concurrency, invalid credential, fresh-invitation, no-access, and LiveView tests pass.
 
-- [ ] Task 11 — Deliver invitation lifecycle email notifications.
+- [x] Task 11 — Deliver invitation lifecycle email notifications.
   - Size: Standard
   - Depends on: Task 8, Task 25
   - Purpose: Notify the invitee of invitation, replacement, and cancellation through the approved email channel.
@@ -366,6 +366,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 11 complete: invitation lifecycle email notifications
+
+- Completed: Completed the invitation, replacement, and cancellation email channel and made delivery replay-safe. `EmailDelivery.deliver/2` now returns an already-sent record without sending a second message, while a failed attempt is still retried in place on the same record.
+- Boundary held: Each message carries the credential current at its own version — the replacement link matches the rotated digest and the superseded link does not — and each version records its own delivery outcome. The cancellation message contains no link, no credential, and no invitation identifier. Every message names the project label and the action only: no specification, evidence, repository, owner label, address digest, or account-existence signal appears. A known address and an unknown address produce the same delivery status, failure code, and event type, and a provider outage leaves the invitation pending and still usable with a recorded failure.
+- Remaining: Task 26 (owner invitation-expiry notification) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 7 invitation-email tests, `mix test` (853 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 11 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 25 complete: invitation cancellation and expiry
 
