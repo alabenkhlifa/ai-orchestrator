@@ -19,6 +19,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     AgentRun,
     CommandOutbox,
     DeliveryStore,
+    Feature,
     RunAttempt
   }
 
@@ -136,6 +137,18 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     |> repo.update()
   end
 
+  defp apply_operation(repo, {:transition_feature, feature, to, opts}, _results) do
+    feature
+    |> Feature.transition_changeset(to, feature.state_version, opts)
+    |> repo.update()
+  end
+
+  defp apply_operation(repo, {:set_feature_status, feature, status}, _results) do
+    feature
+    |> Feature.status_changeset(status, feature.state_version)
+    |> repo.update()
+  end
+
   defp apply_operation(repo, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
       %ActivityEntry{}
@@ -161,7 +174,9 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
   defp apply_operation(_repo, _unknown, _results), do: {:error, :invalid_step}
 
   # A rejected expected-version check reaches the caller as one reason whatever
-  # schema produced it, so a caller can retry without inspecting changesets.
+  # schema produced it, so a caller can retry without inspecting changesets. An
+  # illegal transition is deliberately not folded in here: retrying it would
+  # never help, and a caller must be able to tell the two apart.
   defp normalize(%Ecto.Changeset{} = changeset) do
     if Keyword.has_key?(changeset.errors, :state_version) or
          Keyword.has_key?(changeset.errors, :last_sequence) or

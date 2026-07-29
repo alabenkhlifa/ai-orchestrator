@@ -22,7 +22,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   """
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
-  alias SddOrchestrator.Delivery.{ActivityEntry, AgentRun, RunAttempt, RunCommand}
+  alias SddOrchestrator.Delivery.{ActivityEntry, AgentRun, Feature, RunAttempt, RunCommand}
   alias SddOrchestrator.Delivery.DeliveryStore.{Device, Hosted}
 
   @type authority :: PersonalWorkspace.t() | DeviceWorkspace.t()
@@ -36,6 +36,8 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:transition_attempt, RunAttempt.t(), String.t()}
           | {:claim_lease, RunAttempt.t(), String.t(), DateTime.t()}
           | {:observe_sequence, RunAttempt.t(), non_neg_integer()}
+          | {:transition_feature, Feature.t(), String.t(), keyword()}
+          | {:set_feature_status, Feature.t(), String.t()}
           | {:append_activity, map()}
           | {:enqueue_command, map()}
 
@@ -73,7 +75,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
     ~w(
       insert_run transition_run set_effective_revision advance_attempt_number
       insert_attempt transition_attempt claim_lease observe_sequence
-      append_activity enqueue_command
+      transition_feature set_feature_status append_activity enqueue_command
     )a
   end
 

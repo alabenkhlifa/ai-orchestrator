@@ -19,6 +19,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     ActivityEntry,
     AgentRun,
     DeliveryStore,
+    Feature,
     RunAttempt,
     RunCommand
   }
@@ -190,6 +191,16 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
         RunAttempt.observe_sequence_changeset(attempt, sequence, attempt.state_version)
       )
 
+  defp apply_operation(_project_id, {:transition_feature, feature, to, opts}, _results),
+    do:
+      feature_write(
+        feature,
+        Feature.transition_changeset(feature, to, feature.state_version, opts)
+      )
+
+  defp apply_operation(_project_id, {:set_feature_status, feature, status}, _results),
+    do: feature_write(feature, Feature.status_changeset(feature, status, feature.state_version))
+
   defp apply_operation(project_id, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
          sequence = next_sequence(project_id, resolved),
@@ -259,6 +270,14 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
   end
 
   defp attempt_write(_attempt, changeset), do: {:error, changeset}
+
+  defp feature_write(feature, %{valid?: true} = changeset) do
+    updated = changeset |> Ecto.Changeset.apply_changes() |> bump_version()
+
+    {:ok, updated, write(:feature, updated.id, Feature.to_value(updated), feature.state_version)}
+  end
+
+  defp feature_write(_feature, changeset), do: {:error, changeset}
 
   # `optimistic_lock/2` only takes effect inside `Repo.update`, which this
   # adapter never calls, so the increment is applied here. Without it the stored

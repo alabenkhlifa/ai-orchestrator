@@ -197,7 +197,7 @@ Prerequisite:
   - Depends on: Task 16, Task 17
   - Proof: Focused shared-contract, device persistence, transaction, claim, restart, concurrency, idempotency, failure, isolation, and no-hosted-copy tests prove parity with the hosted adapter.
 
-- [ ] Task 3 - Implement authoritative run-state transactions.
+- [x] Task 3 - Implement authoritative run-state transactions.
   - Size: Standard
   - Purpose: Apply one validated run transition, activity append, and resulting command atomically in either authoritative storage adapter.
   - Owned surfaces: Shared run-transition service, expected feature and run state versions, legal run and attempt transitions, atomic feature and run update, ordered `ActivityEntry` append, optional `RunCommand` insertion, hosted `Ecto.Multi` contribution, device transaction contribution, idempotent operation key, rollback, fixtures, and adapter-contract tests.
@@ -528,6 +528,15 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 3 complete: authoritative run-state transactions
+
+- Completed: Added `Delivery.RunTransitions`, the one place a feature's column, its run's state, its attempt, its history, and its next worker instruction change together. Each request commits exactly one authoritative transaction through the shared `DeliveryStore` step list, so a hosted and a device-authoritative project apply identical rules. Added the `transition_feature` and `set_feature_status` operations both adapters needed for it.
+- Boundary held: An illegal feature transition, an illegal run transition, and a request built from a superseded record each leave the store exactly as it was — no column moved, no history appended, no command enqueued. A visible status is recorded without moving the feature out of `In development`, which is what keeps `Blocked` and `Failed` statuses rather than columns.
+- Idempotency recorded: Requests carry an operation key stamped into the activity payload, so the append-only history is itself the ledger. A retried request, a double-clicked button, and a redelivered worker event find their own earlier effect and return `applied?: false` with the original entry instead of applying twice; two different keys on one feature remain two transitions. This is what makes it safe for a caller to retry a transition it is unsure committed.
+- Failed checks: Three real defects. The hosted adapter had been folding `:lifecycle_column` errors into `:stale_state`, which conflated an illegal transition with a superseded one — retrying the first can never help, so a caller must be able to tell them apart; the check now covers version errors only. The parity tests then exposed that a device-authoritative project's feature has to exist in the device store, which the hosted fixture alone does not arrange, so each authority now seeds its own world. One count assertion also included the readiness transition from setup and was made specific to the retried key. Final proof passes with real exit status: 21 transition tests across both authorities, `mix test` (1263 passing), and `mix credo --strict`.
+- Remaining: Task 19 (worker gateway) is in progress; Task 13 (explicit development start) is the first task to compose this service into a product action.
+- Spec updates: Marked Task 3 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 18 complete: device-authoritative delivery-store adapter
 
