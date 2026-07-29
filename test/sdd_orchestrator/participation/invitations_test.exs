@@ -52,7 +52,7 @@ defmodule SddOrchestrator.Participation.InvitationsTest do
       assert delivery.status == "sent"
       assert_received {:participation_email, email}
       assert email.to == [{"", "Invitee@Example.com"}]
-      assert email.text_body =~ "/projects/invitations/accept?invitation=#{invitation.id}"
+      assert email.text_body =~ "/projects/invitations/#{invitation.id}/accept?token="
     end
 
     test "grants no project authorization before acceptance" do
@@ -261,7 +261,10 @@ defmodule SddOrchestrator.Participation.InvitationsTest do
   # identical wording regardless of which address they were sent to.
   defp normalize_body(body) do
     body
-    |> String.replace(~r/invitation=[0-9a-f-]+/, "invitation=ID")
+    |> String.replace(
+      ~r{/projects/invitations/[0-9a-f-]+/accept},
+      "/projects/invitations/ID/accept"
+    )
     |> String.replace(~r/token=[A-Za-z0-9_-]+/, "token=TOKEN")
   end
 end

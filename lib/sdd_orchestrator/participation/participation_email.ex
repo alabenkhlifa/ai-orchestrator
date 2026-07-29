@@ -40,8 +40,8 @@ defmodule SddOrchestrator.Participation.ParticipationEmail do
   @doc "Builds the invited person's acceptance link for one invitation credential."
   @spec invitation_url(Ecto.UUID.t(), String.t()) :: String.t()
   def invitation_url(invitation_id, raw_token) do
-    query = URI.encode_query(%{"invitation" => invitation_id, "token" => raw_token})
-    "#{config(:app_origin)}/projects/invitations/accept?#{query}"
+    query = URI.encode_query(%{"token" => raw_token})
+    "#{config(:app_origin)}/projects/invitations/#{invitation_id}/accept?#{query}"
   end
 
   defp validate_context(event, %{recipient: recipient, project_label: label} = context)

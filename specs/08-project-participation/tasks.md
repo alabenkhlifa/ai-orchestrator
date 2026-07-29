@@ -168,8 +168,9 @@ Release gates:
   - Owns: AC-35
   - Proof: Focused projector, recipient, replay, minimized-payload, unread, mark-read, link-authorization, and negative invitee-notification tests pass.
 
-- [ ] Task 12 — Deliver invitation-bound fresh email proof.
+- [x] Task 12 — Deliver invitation-bound fresh email proof.
   - Size: Standard
+  - Status: Complete; the authenticated browser matrix for this screen is environment-blocked with the rest of the participation UI. Deterministic LiveView proof covers the same behavior.
   - Depends on: Task 25
   - Purpose: Establish the invited stable hosted identity in the browser without treating an unrelated session as proof.
   - Owned surfaces: Invitation-bound proof token handoff, normalized invited-email binding, fresh passwordless verification reuse, different-email denial, active-other-identity warning, browser-cookie identity transition, unrelated server-side session preservation, proven-identity session establishment, pre-acceptance authorization denial, invalid and replay-safe result, fixtures, and responsive accessible browser behavior.
@@ -366,6 +367,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 12 complete: invitation-bound fresh email proof
+
+- Completed: Added `Participation.InvitationProof` and the invited person's entry screen at `/projects/invitations/:id/accept`. Opening the link resolves the invitation from its delivered credential; requesting proof issues a passwordless link for the address stored on the invitation, never for typed input, and returns to the same screen.
+- Boundary held: An active session for another identity is never treated as proof — the screen warns that continuing signs this browser in as the invited address and that other sign-ins are unaffected — and a real verification round trip proves the other identity's server-side session survives. Every unusable case (wrong credential, unknown or malformed id, expired, canceled, replaced credential) returns one safe result that does not name the invited address or the project. Proof alone creates no participant authorization: the invitee is still not an active participant, the project stays inaccessible, and the invitation stays pending until an explicit acceptance step.
+- Mechanism recorded: The delivered credential is not carried through the proof round trip, so it never enters the passwordless attempt's return path. The return visit is authorized by the proven identity's own verified-address digest instead.
+- Remaining: Task 3 (atomic participation acceptance) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: Changing the invitation URL shape to a routable path broke two Task 2 assertions that pinned the old query-string form; both now assert the routed path. Strict Credo flagged one unordered alias group. Final proof passes with real exit status: 9 proof-domain tests, 4 acceptance-screen LiveView tests, `mix test` (871 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 12 complete and recorded its environment-blocked browser modality; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 26 complete: owner invitation-expiry notification
 

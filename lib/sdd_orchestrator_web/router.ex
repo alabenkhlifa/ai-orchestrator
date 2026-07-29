@@ -111,6 +111,10 @@ defmodule SddOrchestratorWeb.Router do
       on_mount: [{SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}] do
       live "/hosted/access", HostedAccessLive
       live "/hosted/access/result", HostedAccessResultLive
+
+      # An invitation link is opened by someone who has no project access yet, so
+      # it resolves hosted identity without requiring one.
+      live "/projects/invitations/:id/accept", InvitationAcceptanceLive
     end
 
     # Protected surfaces require a valid application session.
