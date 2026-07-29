@@ -120,7 +120,8 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - Preview failure must remain visible with its reason but must not prevent an otherwise successfully verified feature from reaching `Ready for review`.
 - In-product notifications are the only notification channel in the first release. Email, chat, mobile, and webhook delivery are deferred.
 - Every run must present the configured required-check results and the identity of the isolated branch and exact verified revision. Missing or failed required checks, or missing branch and revision identity, prevent a successful completion claim.
-- Screenshots are mandatory evidence only when the feature has a visual result and the configured environment can capture a meaningful view. A preview link is evidence only when the project has the authorized preview path.
+- Screenshots are mandatory evidence only when the feature has a visual result and the configured environment can capture a meaningful view. The configured worker capture step reports which case applies as one typed result — captured, inapplicable, unsupported, or failed — and neither an agent narrative nor a stored feature flag decides it. A preview link is evidence only when the project has the authorized preview path.
+- Evidence artifacts a worker captures reach a hosted project's authoritative store through a worker-initiated authenticated upload bound to that run attempt, after which the worker's normalized event carries only the digest and metadata. A device-authoritative project's artifacts stay in the worker-owned store and are never uploaded.
 - A blocked notification goes to the current responsible participant.
 - A ready-for-review notification goes to the current responsible participant and project owner.
 - A failed-run notification goes to the current run initiator, current responsible participant, and project owner.

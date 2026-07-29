@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. The readiness path (Tasks 45, 10, 11, 12), the orchestration foundation (Tasks 15, 16, 17, 18, 3), the worker path (Tasks 19, 20, 43), and assignment and comments (Tasks 9, 46) are complete, and Task 13 now starts one run end to end. The evidence path (Tasks 4, 29) now records typed proof and stores its private artifacts. Task 44 (conditional screenshot evidence) is the next executable task. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. The readiness path (Tasks 45, 10, 11, 12), the orchestration foundation (Tasks 15, 16, 17, 18, 3), the worker path (Tasks 19, 20, 43), and assignment and comments (Tasks 9, 46) are complete, and Task 13 now starts one run end to end. The evidence path (Tasks 4, 29) now records typed proof and stores its private artifacts. Task 52 (authenticated worker artifact-upload transport) is the next executable task; it was split out of Task 44 when the artifact-transport and capture-applicability decisions were resolved. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -317,12 +317,20 @@ Prerequisite:
   - Depends on: Task 4
   - Proof: Focused adapter-contract, authorization, content type, size, digest, storage, retrieval, deletion, public-link denial, credential scan, hosted, and device tests pass.
 
+- [ ] Task 52 - Deliver the authenticated worker artifact-upload transport.
+  - Size: Standard
+  - Purpose: Move captured artifact bytes from a worker into a hosted project's authoritative artifact store without putting them inside a normalized event.
+  - Owned surfaces: Worker-initiated authenticated upload endpoint, run, attempt and current-fence scoping, declared content-type, size and digest verification before storage, artifact-store handoff, idempotent duplicate upload, unauthorized, cross-project, stale-attempt and device-authoritative denial, upload failure result, worker-side upload client, and fixtures.
+  - Owns: none (upload transport)
+  - Depends on: Task 19, Task 29
+  - Proof: Focused authentication, attempt and fence scoping, digest verification, content-type, size-limit, duplicate-upload, cross-project denial, stale-attempt denial, device no-upload, artifact handoff, and failure-result tests pass.
+
 - [ ] Task 44 - Deliver conditional screenshot evidence.
   - Size: Standard
   - Purpose: Capture meaningful visual proof when supported and report inapplicability without fabricating evidence.
-  - Owned surfaces: Visual-result applicability decision, configured capture capability, worker screenshot command result, exact attempt, branch and commit binding, private artifact handoff, redaction state, unsupported and inapplicable result, capture failure, fixtures, and presentation metadata.
+  - Owned surfaces: Visual-result applicability decision, configured capture capability, worker screenshot command result, exact attempt, branch and commit binding, uploaded-artifact reference binding, redaction state, unsupported and inapplicable result, capture failure, fixtures, and presentation metadata.
   - Owns: AC-20
-  - Depends on: Task 29, Task 43
+  - Depends on: Task 29, Task 43, Task 52
   - Proof: Focused visual and non-visual work, supported, unsupported, inapplicable, failed capture, same-commit, artifact, redaction, and no-invented-evidence tests pass.
 
 - [ ] Task 30 - Enforce same-commit verification completion.
@@ -402,7 +410,7 @@ Prerequisite:
   - Purpose: Limit feature-delivery data to the approved service and security purposes and authorized recipients.
   - Owned surfaces: `DataProcessingRecord`, complete processing inventory and field-purpose map, contract-necessity and security legitimate-interest basis, current-participant project access, cross-project isolation, content-free default support, verified least-privilege time-bounded audited elevation, credential and project-content redaction, audit minimization, fixtures, and no raw-provider-event persistence.
   - Owns: AC-28, entity:DataProcessingRecord
-  - Depends on: Task 14, Task 31, Task 33, Task 35, Task 37, Task 46
+  - Depends on: Task 14, Task 31, Task 33, Task 35, Task 37, Task 46, Task 52
   - Proof: Focused inventory, purpose and basis, current and removed access, cross-project isolation, support elevation, credential, project-content, raw-event, and audit-minimization tests pass.
 
 - [ ] Task 39 - Enforce temporary execution-data retention.
@@ -501,6 +509,8 @@ Prerequisite:
 - [ ] Current participant presentation uses project display names without exposing other participant emails, and former-participant history preserves the last accepted project display name.
 - [ ] Configured required checks, branch and exact verified-revision identity, evidence provenance, conditional screenshot, missing or failed proof, and secret-redaction tests pass.
 - [ ] Normalized event schema, stale and invalid event rejection, worker-derived check results, same-commit completion, immutable supersession, private artifact authorization, size, digest, redaction, and agent-prose negative-proof tests pass.
+- [ ] Worker artifact upload authenticates one exact run, attempt, and current fence, verifies the declared content type, size, and digest before storage, answers a duplicate digest idempotently, denies unauthorized, cross-project, stale-attempt, and device-authoritative uploads, and no artifact byte travels inside a normalized event.
+- [ ] Capture applicability is a worker-reported typed result; a `passed` screenshot with no stored artifact, or one from a worker without the capture capability, is refused rather than downgraded.
 - [ ] Automatic configured preview, unavailable-preview, and failed-preview scenarios pass without production deployment or preview success becoming a review-readiness gate.
 - [ ] Preview idempotency, exact-commit binding, timeout, expiry, supersession, safe-link, credential-isolation, cleanup, and provider-failure tests pass against the configured adapter double.
 - [ ] `Ready for review`, unauthorized-transition rejection, responsible-participant-or-owner approval to `Done`, and responsible-participant-or-owner feedback-based rejection to the same run and branch as a new `In development` attempt pass.
@@ -528,6 +538,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Artifact transport and capture applicability resolved; Task 52 split from Task 44
+
+- Two decisions Task 44 needed were missing from the agreement rather than from the code, so implementation stopped before them. Both are now recorded in the current requirements, design decisions, and task plan; this entry records only the scope movement.
+- Artifact bytes have no route to a hosted project's store. A meaningful screenshot exceeds `max_payload_bytes`, and the worker's only surface is the `/worker` socket, so nothing in the slice could carry the bytes the artifact store was built to hold. Resolved as a worker-initiated authenticated upload fenced to one run attempt.
+- Nothing carried the "has a visual result" signal AC-20 depends on — not `Feature`, not the execution manifest, not the protocol. Resolved as a worker-reported typed capture result, which keeps the judgment out of agent self-assessment.
+- Scope movement: the upload transport is a second adapter integration with its own authentication and independently failing proof, so under the Task Size Gate it is `Task 52` rather than more surface on Task 44. Task 44 now depends on it, and Task 38 inventories the new inbound processing surface.
+- Scope health: `focused specification`. The transport has no useful outcome independent of evidence delivery, so it stays in this slice.
 
 ### 2026-07-29 - Task 29 complete: private evidence-artifact storage
 
