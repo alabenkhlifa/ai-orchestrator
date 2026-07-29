@@ -317,7 +317,7 @@ Prerequisite:
   - Depends on: Task 4
   - Proof: Focused adapter-contract, authorization, content type, size, digest, storage, retrieval, deletion, public-link denial, credential scan, hosted, and device tests pass.
 
-- [ ] Task 52 - Deliver the authenticated worker artifact-upload transport.
+- [x] Task 52 - Deliver the authenticated worker artifact-upload transport.
   - Size: Standard
   - Purpose: Move captured artifact bytes from a worker into a hosted project's authoritative artifact store without putting them inside a normalized event.
   - Owned surfaces: Worker-initiated authenticated upload endpoint, run, attempt and current-fence scoping, declared content-type, size and digest verification before storage, artifact-store handoff, idempotent duplicate upload, unauthorized, cross-project, stale-attempt and device-authoritative denial, upload failure result, worker-side upload client, and fixtures.
@@ -538,6 +538,20 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 52 complete: authenticated worker artifact-upload transport
+
+- Completed: Added `Delivery.ArtifactUpload`, the `POST /worker/artifacts` controller on its own session-free and CSRF-free router pipeline, and `Delivery.Worker.ArtifactUpload` as the worker-side client. Captured bytes now reach a hosted project's store beside the socket rather than inside an event.
+- Credential reuse rather than a second scheme: the upload presents the same signed worker token the socket already verifies, so a leaked credential has one bounded lifetime and one revocation story instead of two.
+- The credential names the project, and a `project_id` in the request cannot widen it. The run is read through that project's own authority, the attempt must be the run's current one, and the fence must be that attempt's — the same three proofs `EventIngestion` applies, reused rather than restated, so a superseded worker can keep talking without being able to write.
+- Device-authoritative projects are refused as a typed decision, not as an accident of an unreachable store. Accepting one would create exactly the hosted copy `specs/05` forbids, so the refusal holds even when the device store cannot be reached at all.
+- One answer for every existence question: an absent, malformed, expired, or tampered credential, an unknown project or run, a non-current attempt, a stale fence, and a device project all return byte-identical `403`. The distinct reasons still exist and are asserted at the domain layer through `ArtifactUpload.undisclosed?/1`; only the transport collapses them. Named statuses are reserved for refusals about the caller's own bytes, reachable only after it has proved it may upload at all.
+- Idempotent by digest: a repeat upload answers with the same ref and writes nothing new, which is what makes an at-least-once worker retry safe.
+- Mechanism recorded: nothing in the repository resolved a project's storage authority from a bare project id — every existing caller is handed one. `ArtifactUpload` added a private resolver. If Task 44 or the evidence path needs the same resolution it must be promoted to one shared function rather than copied.
+- Trap recorded for future tests: `Phoenix.Token` signatures are unpadded Base64, so flipping the final character yields a different string that still verifies. A tamper test must alter an earlier character or it silently asserts nothing.
+- Failed checks: None. Final proof passes with real exit status: 53 upload tests across the domain, HTTP contract, and client, `mix test` (1856 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 44 (conditional screenshot evidence) is next, then Task 30. After Task 30, Tasks 31 and 32 become independent of each other.
+- Spec updates: Marked Task 52 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Artifact transport and capture applicability resolved; Task 52 split from Task 44
 

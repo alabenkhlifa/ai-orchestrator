@@ -104,6 +104,37 @@ defmodule SddOrchestrator.DeliveryFixtures do
     })
   end
 
+  @doc """
+  Creates one run together with the current attempt a worker would be executing.
+
+  Almost every worker-initiated path needs both, and needs them consistent: the
+  attempt is the run's current one and carries the fence the worker must present.
+  """
+  def run_with_attempt_fixture(project, feature, attrs \\ %{}) do
+    run = run_fixture(project, feature, attrs)
+    %{run: run, attempt: attempt_fixture(run, attrs)}
+  end
+
+  @doc """
+  The metadata one worker artifact upload declares for an attempt.
+
+  The digest describes the content rather than being chosen, so a test that
+  wants a mismatch has to say so explicitly instead of getting one by accident.
+  """
+  def artifact_upload_params(run, attempt, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    content = Map.get(attrs, :content, png_bytes())
+
+    %{
+      "run_id" => Map.get(attrs, :run_id, run.id),
+      "attempt_id" => Map.get(attrs, :attempt_id, attempt.id),
+      "fence" => to_string(Map.get(attrs, :fence, attempt.fence_token)),
+      "digest" => Map.get(attrs, :digest, content_digest(content)),
+      "content_type" => Map.get(attrs, :content_type, "image/png"),
+      "redacted" => to_string(Map.get(attrs, :redacted, false))
+    }
+  end
+
   @doc "Appends one ordered activity entry to a feature."
   def activity_fixture(project, feature, attrs \\ %{}) do
     attrs = Map.new(attrs)

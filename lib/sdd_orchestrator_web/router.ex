@@ -54,6 +54,14 @@ defmodule SddOrchestratorWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # A configured worker uploads captured artifact bytes over its own credential,
+  # never a browser session. No session is fetched, no cookie is read or set, and
+  # no CSRF token exists to forge, because the only thing that authorizes this
+  # request is the signed worker token the socket already verifies.
+  pipeline :worker do
+    plug :accepts, ["json"]
+  end
+
   # Requires a valid application session for full-page controller routes.
   pipeline :require_account do
     plug :require_authenticated
@@ -63,6 +71,16 @@ defmodule SddOrchestratorWeb.Router do
   # session as a substitute for a verified hosted identity.
   pipeline :require_hosted do
     plug :require_hosted_authenticated
+  end
+
+  # Artifact bytes exceed the worker protocol's payload limit, so they arrive
+  # beside the socket rather than inside an event. The upload is bound to one
+  # run, attempt, and fence, and verified against its declared digest before
+  # anything is stored.
+  scope "/worker", SddOrchestratorWeb do
+    pipe_through :worker
+
+    post "/artifacts", WorkerArtifactController, :create
   end
 
   scope "/", SddOrchestratorWeb do
