@@ -125,7 +125,7 @@ Prerequisite:
   - Depends on: Task 2
   - Proof: Focused domain, authorization, participant-selector, stale-target, assignment, self-assignment, fallback, display-name, email non-disclosure, activity, and browser tests pass.
 
-- [ ] Task 45 - Implement the configured readiness-guidance adapter.
+- [x] Task 45 - Implement the configured readiness-guidance adapter.
   - Size: Standard
   - Purpose: Ask one configured model boundary for structured missing, ambiguous, conflicting, blocking, and non-blocking findings without allowing it to mutate requirements.
   - Owned surfaces: Readiness-guidance behaviour, configured provider and model reference, minimum specification and feature input projection, structured finding schema, blocking classification, explanation field, versioned response, timeout and failure result, prompt and output limits, secret and participant-email exclusion, no automatic write-back, fixtures, and deterministic adapter double.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 45 complete: configured readiness-guidance adapter
+
+- Completed: Added `Delivery.ReadinessGuidance` — the one configured model boundary that reports what a specification still needs — with its behaviour, minimum input projection, strict response validation, blocking classification, and a scriptable double.
+- Boundary held: What leaves the control plane is a minimum projection of the feature title, the exact revision identity and digest, and the requirement text. Participant email addresses, credentials, and repository content cannot reach a provider by construction rather than by filtering: an unknown input field is rejected outright, and both directions are scanned for secret- and email-shaped content. What comes back is validated before it can influence readiness — unknown response or input version, unknown category, non-boolean blocking flag, duplicate or malformed finding, an answer bound to a different revision, and an oversized payload are each rejected with their own typed reason.
+- Guidance is advice, never authority: the adapter performs no persistence at all, which is proved by reading the compiled module's BEAM import chunk and asserting it calls nothing under `Ecto` or the repository. Task 10 owns the durable assessment.
+- Decision recorded: The default adapter returns `{:error, :guidance_unavailable}` rather than an empty finding list, and a timeout and a provider failure are distinct typed reasons. An empty finding list is exactly the shape of "nothing blocks this feature", so returning one from a boundary that failed would mark features development-ready without anything having assessed them. This matches how `CommandTransport.Unavailable` fails closed for an absent worker.
+- Failed checks: None. Focused proof passes with real exit status: 37 readiness-guidance tests, `mix format --check-formatted`, `mix credo --strict`, and `mix compile --warnings-as-errors`.
+- Remaining: Task 10 (guided requirements and blocking readiness) consumes this next.
+- Spec updates: Marked Task 45 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 46 complete: participant feature comments
 
