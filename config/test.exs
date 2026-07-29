@@ -25,6 +25,11 @@ config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
 # presentation-foundation LiveView and browser proofs can render it.
 config :sdd_orchestrator, :ui_preview, true
 
+# The dev/test-only browser-harness bootstrap is compiled in here so its own
+# behavior — the sessions it establishes and its absence when disabled — is
+# proven deterministically.
+config :sdd_orchestrator, :e2e_bootstrap, true
+
 # Field-encryption vault (fixed non-production test key).
 config :sdd_orchestrator, SddOrchestrator.Vault,
   ciphers: [

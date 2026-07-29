@@ -65,6 +65,13 @@ config :sdd_orchestrator, dev_routes: true
 # Expose the non-product design-system preview at /_ui in development.
 config :sdd_orchestrator, :ui_preview, true
 
+# Dev/test-only session and fixture bootstrap for the Playwright browser suite.
+# The router compiles its route only when this flag is set, so a production
+# build has no such route at all. In development it is tied to E2E_MODE, so an
+# ordinary `mix phx.server` never exposes it either — only the isolated e2e
+# server, which sets E2E_MODE for both its compile and its run.
+config :sdd_orchestrator, :e2e_bootstrap, e2e_mode?
+
 # Field-encryption vault. This non-production key is intentionally checked in for
 # local development only; production supplies CLOAK_KEY at runtime.
 config :sdd_orchestrator, SddOrchestrator.Vault,

@@ -167,6 +167,22 @@ defmodule SddOrchestratorWeb.Router do
     delete "/hosted/sessions", HostedSessionController, :delete_all
   end
 
+  # Non-product browser-harness bootstrap. It establishes the application and
+  # hosted sessions a Playwright run cannot obtain on its own, so the
+  # authenticated participation and feature screens can be proven in a real
+  # browser. It is a genuine attack surface, so it is excluded from production
+  # by construction rather than by a runtime check: no production configuration
+  # sets `:e2e_bootstrap`, so this `if` is false at compile time and the route
+  # does not exist in a production build. The action re-checks the same flag at
+  # runtime as a second, independent guard.
+  if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
+    scope "/", SddOrchestratorWeb do
+      pipe_through :browser
+
+      get "/_e2e/session", E2EBootstrapController, :create
+    end
+  end
+
   # Non-product design-system preview. Available only in dev and test as the
   # render surface for the shared presentation-foundation proofs.
   if Application.compile_env(:sdd_orchestrator, :ui_preview, false) do
