@@ -269,10 +269,21 @@ defmodule SddOrchestrator.Delivery.ProtocolCodecTest do
 
   describe "persistence boundary" do
     test "the protocol modules depend on no repository, schema, or migration" do
+      # Named explicitly: this is a claim about the protocol foundation, not
+      # about every module that later lands in the delivery namespace.
+      protocol_modules = ~w(
+        canonical_json
+        execution_manifest
+        protocol_codec
+        protocol_limits
+        secret_boundary
+        worker_protocol
+      )
+
       sources =
-        "lib/sdd_orchestrator/delivery/*.ex"
-        |> Path.wildcard()
-        |> Enum.map(&File.read!/1)
+        Enum.map(protocol_modules, fn name ->
+          File.read!("lib/sdd_orchestrator/delivery/#{name}.ex")
+        end)
 
       assert length(sources) == 6
 

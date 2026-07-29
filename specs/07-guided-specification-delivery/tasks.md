@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, and Task 1 has confirmed the three delivered provider contracts, so provider-consuming implementation is unblocked and Task 14 is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. Task 8 (the feature lifecycle domain) is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -93,7 +93,7 @@ Prerequisite:
   - Depends on: Task 7
   - Proof: Requirements, design, provider contracts, data boundaries, task ownership, task sequence, traceability, and canonical verification commands have no unresolved active-slice blocker.
 
-- [ ] Task 14 - Implement the current-participant authorization guard.
+- [x] Task 14 - Implement the current-participant authorization guard.
   - Size: Standard
   - Purpose: Give every Slice 07 action and project-content read one fail-closed participant and project-display-name check.
   - Owned surfaces: `capability:project-participation-boundary` consumer, current owner and participant identity, project display name, participant-email non-disclosure, project scoping, stale, removed, left, absent, and cross-project denial, protected action guard, content-existence non-disclosure, and fixtures.
@@ -528,6 +528,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 14 complete: current-participant authorization guard
+
+- Completed: Added `Delivery.ParticipantGuard`, the single fail-closed check every feature-delivery action and project-content read uses. It consumes `capability:project-participation-boundary` and adds nothing to it: `authorize/2` resolves the acting person as a current member, `authorize_action/3` maps each protected Slice 07 action to the project capability it requires, `current_members/2` lists members only for a caller who may read the project, and `owner/1` resolves the deterministic responsibility fallback.
+- Boundary held: A member result carries stable identity, role, and project display name only — no participant email reaches this slice, in the result or in its inspection. An absent identity, a stale or removed participant, a person who left, and a cross-project identity all receive the identical `:unauthorized` result, and an unknown or malformed project is indistinguishable from an unauthorized one, so content existence is never disclosed. An unknown action name is denied rather than allowed. Removal takes effect on the next call for every protected action, and a sequence of guard calls leaves participation and profile rows byte-identical.
+- Remaining: Task 8 (the feature lifecycle domain) is next, followed by the dependency-ordered board, orchestration, evidence, review, notification, and privacy tasks.
+- Failed checks: The full run exposed that Task 7's persistence scan counted every file in the delivery namespace, so the new guard broke its expected count; the scan now names the six protocol modules explicitly, which is the claim it was actually making. Final proof passes with real exit status: 10 guard tests, `mix test` (998 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 14 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 1 complete: delivered provider contracts confirmed
 
