@@ -220,7 +220,7 @@ Release gates:
   - Owns: AC-20
   - Proof: Focused authorization, uniqueness, case, trimming, conflict, stable-identity, owner and participant self-edit, cross-member denial, historical-label seam, and LiveView tests pass.
 
-- [ ] Task 16 — Enforce participant project capabilities.
+- [x] Task 16 — Enforce participant project capabilities.
   - Size: Standard
   - Depends on: Task 15
   - Purpose: Grant only the approved project-content capabilities and deny management, destructive, and credential authority.
@@ -370,6 +370,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 16 complete: participant project capabilities
+
+- Completed: Added `Participation.Capabilities` as the project-scoped decision surface. A participant receives the approved project-content capabilities — read and edit specifications, read and edit feature content, comment, and read run evidence — and the owner adds membership management, project deletion, and storage and repository settings.
+- Boundary held: No role reaches any credential capability, including the owner: repository, worker, agent, invitation, and session secrets stay with their own boundaries. An unknown capability name is denied rather than ignored. Participation in one project grants nothing in another, and owning one project grants nothing in a second. Every decision re-reads current participation, so capabilities end on the next action after removal without any cache invalidation step. A member reads only the approved project fields; workspace and repository identifiers are absent from the result rather than nulled.
+- Remaining: Task 17 (owner removal and the revocation handoff) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 9 capability tests, `mix test` (907 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 16 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 29 complete: member-controlled display-name editing
 
