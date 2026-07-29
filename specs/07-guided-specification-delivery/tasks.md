@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. Task 8 (the feature lifecycle domain) is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. Task 8 established the durable feature and its lifecycle invariants, so Task 2 (the feature lifecycle board) is the next executable task. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -101,7 +101,7 @@ Prerequisite:
   - Depends on: Task 1
   - Proof: Focused owner, participant, stale, removed, left, absent, project-isolation, display-name, email non-disclosure, action, and content-existence tests pass without participation mutation.
 
-- [ ] Task 8 - Implement the feature lifecycle domain.
+- [x] Task 8 - Implement the feature lifecycle domain.
   - Size: Standard
   - Purpose: Establish one durable project-scoped feature with explicit lifecycle and state-version invariants.
   - Owned surfaces: `Feature`, hosted schema and migration, stable project scope, creator reference, optional assigned reference, lifecycle column, visible status field, expected-state version, legal transition table, stale-state rejection, constraints, fixtures, and device-adapter value shape.
@@ -528,6 +528,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 8 complete: feature lifecycle domain
+
+- Completed: Added the `features` table with its migration, the `Delivery.Feature` schema, and the `Delivery.Features` domain. A feature is project-scoped, records its creator and an optional assigned participant as account references, starts in `Draft`, and carries a state version. The complete legal transition table is declared in one place, and `Done` has no exit.
+- Boundary held: There is no column setter — only a transition against the table — so a dragged card or a direct state change cannot bypass a gate; every move outside the table is rejected and leaves the committed column and version untouched. The state version is enforced twice: the caller's expected version must match the loaded record, and the update is filtered on that version, so a row that moved between load and write is reported stale rather than overwritten. `Blocked` and `Failed` are statuses that keep the feature in `In development`, enforced by the changeset and by a database check constraint. Reads and writes go through the participation guard, so a removed participant immediately loses both. The device-adapter value shape round trips without Ecto and rejects malformed values.
+- Remaining: Task 2 (the feature lifecycle board) is next, followed by assignment, the readiness adapter, and guided requirements.
+- Failed checks: The first stale-version proof exposed that comparing the in-memory struct alone still let a superseded write land, because the update was keyed only by primary key; the changesets now use `optimistic_lock/2` and the domain converts the resulting stale-entry error into `:stale_state`. Final proof passes with real exit status: 15 lifecycle tests, `mix test` (1013 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 8 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 14 complete: current-participant authorization guard
 
