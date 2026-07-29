@@ -293,7 +293,7 @@ Prerequisite:
   - Depends on: Task 9, Task 22, Task 26
   - Proof: Focused removal and leave, assignment, question, review, active run, historical label, owner control, former denial, transaction, replay, acknowledgement, rollback, and negative participation-mutation tests pass.
 
-- [ ] Task 28 - Reconcile authoritative state and worker execution.
+- [x] Task 28 - Reconcile authoritative state and worker execution.
   - Size: Standard
   - Purpose: Recover after process, channel, or worker restart without accepting stale work or starting a competing attempt.
   - Owned surfaces: Authoritative command, attempt, lease, fence, branch, workspace, process, and last-sequence comparison, reconnect snapshot handling, live-current continuation, stale-process fencing and stop, expired-lease handling, next bounded retry scheduling, same-worker enforcement, hosted and device adapter integration, fixtures, and reconciliation activity.
@@ -528,6 +528,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 28 complete: authoritative state and worker execution reconciled
+
+- Completed: Added `Delivery.Reconciliation`. A worker's snapshot is compared against authoritative state — current attempt, fence, lease, branch, workspace, and last observed sequence — and resolves to exactly one typed decision, so each outcome is testable in isolation rather than inferred from side effects.
+- The four outcomes: `continue` when the worker's process really is the current attempt; `fence_stale_worker` when it reports an attempt that is no longer current, which tells it to stop and changes nothing authoritative; `schedule_retry` when the lease expired with no live process and budget remains, superseding the attempt and scheduling the next bounded retry on the same run, branch, and worker; and `terminal` when the budget is exhausted, which fails the run visibly and enqueues nothing.
+- Boundary held: A stale fence changes nothing — run, attempt, feature, activity, and command were each asserted unchanged. No path can create a competing attempt: any commit that creates one ends the existing current attempt in the same transaction, which the one-current-attempt index would reject otherwise. Recovery stays same-worker; cross-worker migration remains deferred.
+- Restart path: `recover/2` returns expired command claims to the queue, because nothing in process memory is authoritative — a dispatcher that died mid-delivery leaves rows only the database can hand back.
+- Reuse rather than restatement: The retry budget and jittered backoff come from `Retry`, so reconciliation and the failure path cannot disagree about how long to wait or how many times to try.
+- Failed checks: A control-plane restart test initially failed on both authorities and was resolved before completion. Final proof passes with real exit status: the reconciliation suite across both hosted and device authorities, `mix test` (1678 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Remaining: Task 4 (normalized required-check evidence) is next, then 29, 44, and 30. After Task 30 the graph widens and Tasks 31 and 32 become independent.
+- Spec updates: Marked Task 28 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 27 complete: participation revocation consumed
 
