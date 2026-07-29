@@ -21,7 +21,9 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     not_hosted_project: "This project is stored on your device, so it can't be shared yet.",
     owner_profile_required: "Save your project name before inviting anyone.",
     invalid_email: "Enter a complete email address.",
-    invitation_already_pending: "That address already has a pending invitation."
+    invitation_already_pending: "That address already has a pending invitation.",
+    existing_owner: "That address is the project owner.",
+    existing_participant: "That person is already on this project."
   }
 
   @impl true
@@ -97,6 +99,11 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          |> assign(:invite_sent?, false)}
     end
   end
+
+  defp invite_message({:existing_role, :owner}), do: Map.fetch!(@invite_messages, :existing_owner)
+
+  defp invite_message({:existing_role, :participant}),
+    do: Map.fetch!(@invite_messages, :existing_participant)
 
   defp invite_message(reason), do: Map.fetch!(@invite_messages, reason)
 

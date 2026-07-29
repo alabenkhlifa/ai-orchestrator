@@ -23,7 +23,8 @@ defmodule SddOrchestrator.Participation.Invitations do
     EmailDelivery,
     EmailDigest,
     ParticipationEmail,
-    ProjectInvitation
+    ProjectInvitation,
+    ProjectRoles
   }
 
   alias SddOrchestrator.Projects.Project
@@ -38,6 +39,7 @@ defmodule SddOrchestrator.Participation.Invitations do
           | :owner_profile_required
           | :invalid_email
           | :invitation_already_pending
+          | {:existing_role, ProjectRoles.role()}
 
   @doc """
   Creates one pending invitation for an owned hosted project and sends its email.
@@ -51,8 +53,10 @@ defmodule SddOrchestrator.Participation.Invitations do
     with {:ok, project, owner} <- authorize(project, account_id),
          :ok <- require_owner_profile(project),
          {:ok, normalized} <- ExternalIdentity.normalize_email(email),
+         digest = EmailDigest.from_subject_key(normalized.subject_key),
+         :ok <- reject_existing_member(project, digest),
          {:ok, %{invitation: invitation, raw_token: raw_token}} <-
-           insert(project, owner, normalized) do
+           insert(project, owner, normalized, digest) do
       {:ok, %{invitation: invitation, delivery: send_invitation(project, invitation, raw_token)}}
     end
   end
@@ -121,7 +125,17 @@ defmodule SddOrchestrator.Participation.Invitations do
       else: {:error, :owner_profile_required}
   end
 
-  defp insert(project, owner, normalized) do
+  # An address that already belongs to the immutable owner or an active
+  # participant creates no invitation and no credential. The owner sees the
+  # existing project role because it is membership state they already hold.
+  defp reject_existing_member(project, digest) do
+    case ProjectRoles.existing_role(project, digest) do
+      nil -> :ok
+      role -> {:error, {:existing_role, role}}
+    end
+  end
+
+  defp insert(project, owner, normalized, digest) do
     credential = new_credential()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -129,7 +143,7 @@ defmodule SddOrchestrator.Participation.Invitations do
     |> ProjectInvitation.changeset(%{
       project_id: project.id,
       invited_by_account_id: owner.account_id,
-      email_digest: EmailDigest.from_subject_key(normalized.subject_key),
+      email_digest: digest,
       delivery_email: normalized.display_identifier,
       token_digest: credential.token_digest,
       token_salt: credential.token_salt,

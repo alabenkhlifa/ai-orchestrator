@@ -128,7 +128,7 @@ Release gates:
   - Owns: AC-01, AC-06, AC-10, entity:ProjectInvitation
   - Proof: Focused domain, persistence, authorization, constraint, delivery-outbox, security, and browser tests cover owner and non-owner requests, hosted and device projects, existing and unknown accounts with identical responses, protected email and credential fields, one pending invitation, delivery failure, and unchanged project authorization.
 
-- [ ] Task 9 — Detect existing project roles without account disclosure.
+- [x] Task 9 — Detect existing project roles without account disclosure.
   - Size: Standard
   - Depends on: Task 2, Task 6
   - Purpose: Avoid creating credentials for the immutable owner or a current participant while exposing only already-authorized membership state.
@@ -366,6 +366,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 9 complete: existing project-role detection
+
+- Completed: Added `Participation.ProjectRoles` and wired it into invitation creation. The check compares the submitted address, as its runtime-keyed digest, against the digests of identities that are already members of that project — the immutable owner and its active participants — using constant-time comparison across every candidate.
+- Boundary held: Detection reads no unrelated account and exposes no directory: an unrelated identity that already has an account is invited exactly like an unknown address. A detected owner or current participant returns the existing project role to the authorized owner and creates no invitation row and no credential material, so nothing can later be replayed. Detection is project-scoped, case-insensitive through the established normalization, and forgets a departed participant. The rejection path writes no log line at all, so neither the address, its digest, nor the outcome becomes an enumeration signal.
+- Remaining: Task 10 (resend and fresh re-invitation) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: One test exposed that an unsaved project struct reached the membership query with a nil id; the entry point now requires a persisted project id and returns no role instead. Final proof passes with real exit status: 10 role-detection tests, 68 participation and LiveView tests, `mix test` (829 passing), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 9 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 2 complete: account-neutral invitation creation
 
