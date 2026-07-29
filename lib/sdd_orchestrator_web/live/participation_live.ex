@@ -23,7 +23,8 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     invalid_email: "Enter a complete email address.",
     invitation_already_pending: "That address already has a pending invitation.",
     existing_owner: "That address is the project owner.",
-    existing_participant: "That person is already on this project."
+    existing_participant: "That person is already on this project.",
+    no_pending_invitation: "There is no pending invitation for that address."
   }
 
   @impl true
@@ -77,7 +78,8 @@ defmodule SddOrchestratorWeb.ParticipationLive do
      socket
      |> assign(:invite_email, email)
      |> assign(:invite_error, nil)
-     |> assign(:invite_sent?, false)}
+     |> assign(:invite_sent?, false)
+     |> assign(:resendable?, false)}
   end
 
   def handle_event("invite", %{"invite" => %{"email" => email}}, socket) do
@@ -89,14 +91,37 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          socket
          |> assign(:invite_email, "")
          |> assign(:invite_error, nil)
-         |> assign(:invite_sent?, true)}
+         |> assign(:invite_sent?, true)
+         |> assign(:resendable?, false)}
 
       {:error, reason} ->
         {:noreply,
          socket
          |> assign(:invite_email, email)
          |> assign(:invite_error, invite_message(reason))
-         |> assign(:invite_sent?, false)}
+         |> assign(:invite_sent?, false)
+         |> assign(:resendable?, reason == :invitation_already_pending)}
+    end
+  end
+
+  def handle_event("resend", _params, socket) do
+    socket.assigns.project
+    |> Invitations.resend(socket.assigns.current_account.id, socket.assigns.invite_email)
+    |> case do
+      {:ok, _result} ->
+        {:noreply,
+         socket
+         |> assign(:invite_email, "")
+         |> assign(:invite_error, nil)
+         |> assign(:invite_sent?, true)
+         |> assign(:resendable?, false)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:invite_error, invite_message(reason))
+         |> assign(:invite_sent?, false)
+         |> assign(:resendable?, false)}
     end
   end
 
@@ -120,6 +145,7 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:invite_email, "")
     |> assign(:invite_error, nil)
     |> assign(:invite_sent?, false)
+    |> assign(:resendable?, false)
   end
 
   defp display_name_error(%Ecto.Changeset{} = changeset) do
@@ -214,6 +240,16 @@ defmodule SddOrchestratorWeb.ParticipationLive do
               <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <.button type="submit" class="w-full sm:w-auto" data-send-invitation>
                   <.lucide name="users" class="size-4" /> Send invitation
+                </.button>
+                <.button
+                  :if={@resendable?}
+                  type="button"
+                  variant="secondary"
+                  phx-click="resend"
+                  class="w-full sm:w-auto"
+                  data-resend-invitation
+                >
+                  <.lucide name="refresh-cw" class="size-4" /> Send a new link instead
                 </.button>
                 <span
                   :if={@invite_sent?}

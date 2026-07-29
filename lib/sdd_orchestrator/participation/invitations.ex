@@ -14,6 +14,8 @@ defmodule SddOrchestrator.Participation.Invitations do
   no result reveals whether the address already has an account.
   """
 
+  import Ecto.Query
+
   require Logger
 
   alias SddOrchestrator.Accounts.ExternalIdentity
@@ -58,6 +60,32 @@ defmodule SddOrchestrator.Participation.Invitations do
          {:ok, %{invitation: invitation, raw_token: raw_token}} <-
            insert(project, owner, normalized, digest) do
       {:ok, %{invitation: invitation, delivery: send_invitation(project, invitation, raw_token)}}
+    end
+  end
+
+  @doc """
+  Replaces the credential of the current pending invitation for one address.
+
+  The prior link stops working immediately: the row keeps its identity and its
+  one-pending position while its salted digest, salt, credential version, and
+  seven-day expiry are all replaced under a row lock, so two concurrent resends
+  cannot produce two usable links.
+  """
+  @spec resend(Project.t() | Ecto.UUID.t(), Ecto.UUID.t() | nil, term()) ::
+          {:ok, %{invitation: ProjectInvitation.t(), delivery: term()}}
+          | {:error, create_error() | :no_pending_invitation}
+  def resend(project, account_id, email) do
+    with {:ok, project, _owner} <- authorize(project, account_id),
+         :ok <- require_owner_profile(project),
+         {:ok, normalized} <- ExternalIdentity.normalize_email(email),
+         digest = EmailDigest.from_subject_key(normalized.subject_key),
+         :ok <- reject_existing_member(project, digest),
+         {:ok, %{invitation: invitation, raw_token: raw_token}} <- rotate(project, digest) do
+      {:ok,
+       %{
+         invitation: invitation,
+         delivery: send_invitation(:invitation_resent, project, invitation, raw_token)
+       }}
     end
   end
 
@@ -135,6 +163,46 @@ defmodule SddOrchestrator.Participation.Invitations do
     end
   end
 
+  defp rotate(project, digest) do
+    credential = new_credential()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Repo.transaction(fn ->
+      case lock_pending(project.id, digest) do
+        nil -> Repo.rollback(:no_pending_invitation)
+        invitation -> replace_credential(project, invitation, credential, now)
+      end
+    end)
+  end
+
+  defp replace_credential(project, invitation, credential, now) do
+    invitation
+    |> ProjectInvitation.credential_changeset(%{
+      token_digest: credential.token_digest,
+      token_salt: credential.token_salt,
+      expires_at: ProjectInvitation.default_expiry(now)
+    })
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        log(project, updated, "credential_replaced")
+        %{invitation: updated, raw_token: credential.raw_token}
+
+      {:error, changeset} ->
+        Repo.rollback(insert_error(changeset))
+    end
+  end
+
+  defp lock_pending(project_id, digest) do
+    ProjectInvitation
+    |> where(
+      [i],
+      i.project_id == ^project_id and i.email_digest == ^digest and i.status == "pending"
+    )
+    |> lock("FOR UPDATE")
+    |> Repo.one()
+  end
+
   defp insert(project, owner, normalized, digest) do
     credential = new_credential()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -166,8 +234,8 @@ defmodule SddOrchestrator.Participation.Invitations do
       else: :invalid_email
   end
 
-  defp send_invitation(project, invitation, raw_token) do
-    EmailDelivery.deliver(:invitation, %{
+  defp send_invitation(event \\ :invitation, project, invitation, raw_token) do
+    EmailDelivery.deliver(event, %{
       subject_ref: invitation.id,
       event_version: invitation.credential_version,
       recipient: invitation.delivery_email,

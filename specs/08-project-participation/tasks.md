@@ -136,7 +136,7 @@ Release gates:
   - Owns: AC-29
   - Proof: Focused owner, current participant, unrelated existing identity, unknown email, normalization, timing-shape, persistence, and log tests prove no invitation or unrelated account disclosure.
 
-- [ ] Task 10 — Deliver invitation resend and fresh re-invitation.
+- [x] Task 10 — Deliver invitation resend and fresh re-invitation.
   - Size: Standard
   - Depends on: Task 9
   - Purpose: Replace rather than duplicate the current invitation credential.
@@ -366,6 +366,15 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 10 complete: invitation resend and fresh re-invitation
+
+- Completed: Added `Invitations.resend/3` and the inline replacement control in participation settings. Resending locks the pending row `FOR UPDATE`, replaces its salted credential and salt, bumps the credential version, restarts the seven-day expiry, and sends the replacement message, which states that any earlier link no longer works. The invitation form now offers `Send a new link instead` when the address already has a pending invitation.
+- Mechanism recorded: A resend rotates the credential on the existing pending row rather than inserting a second row. That keeps the one-pending invariant structural instead of racing two rows through the partial unique index, and the prior link stops working immediately because its digest no longer matches. A re-invitation after a terminal invitation still inserts a fresh row with credential version 1, since the uniqueness index covers pending invitations only.
+- Boundary held: Resend applies the same owner authorization, hosted-project, owner-profile, address-validity, and existing-member rules as creation; a rejected resend leaves the current credential untouched. Each credential version records its own delivery outcome, so the first invitation and its replacement are separately provable.
+- Remaining: Task 25 (cancellation and expiry) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: Strict Credo flagged a three-level nested transaction body; the credential replacement moved into its own function. Final proof passes with real exit status: 7 resend tests, 76 participation and LiveView tests, `mix test` (837 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 10 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 9 complete: existing project-role detection
 

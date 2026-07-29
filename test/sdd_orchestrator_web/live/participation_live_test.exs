@@ -241,6 +241,39 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       assert Repo.aggregate(ProjectInvitation, :count) == 1
     end
 
+    test "offers an inline replacement link when one is already pending", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "Ada Lovelace"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      view |> form("#invitation-form", invite: %{email: "invitee@example.com"}) |> render_submit()
+
+      duplicate =
+        view
+        |> form("#invitation-form", invite: %{email: "invitee@example.com"})
+        |> render_submit()
+
+      assert duplicate =~ "data-resend-invitation"
+      original = Invitations.pending_for(project.id, "invitee@example.com")
+
+      replaced = view |> element("[data-resend-invitation]") |> render_click()
+
+      assert replaced =~ "data-invitation-sent"
+      refute replaced =~ "data-resend-invitation"
+
+      rotated = Invitations.pending_for(project.id, "invitee@example.com")
+      assert rotated.id == original.id
+      assert rotated.credential_version == 2
+      assert rotated.token_digest != original.token_digest
+      assert Repo.aggregate(ProjectInvitation, :count) == 1
+    end
+
     test "keeps the invitation control full width on small screens", %{conn: conn} do
       %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
 
