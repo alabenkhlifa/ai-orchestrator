@@ -15,7 +15,12 @@ defmodule SddOrchestrator.Application do
         SddOrchestrator.HostedAccess.RateLimiter,
         {DNSCluster,
          query: Application.get_env(:sdd_orchestrator, :dns_cluster_query) || :ignore},
-        {Phoenix.PubSub, name: SddOrchestrator.PubSub}
+        {Phoenix.PubSub, name: SddOrchestrator.PubSub},
+        # Attached workers are looked up, never dialled. Losing every
+        # registration on restart is correct: each worker reconnects, and the
+        # command queue was never in this process anyway.
+        {Registry,
+         keys: :duplicate, name: SddOrchestrator.Delivery.CommandTransport.Channel.registry()}
       ] ++
         retention_children() ++
         dispatcher_children() ++

@@ -205,7 +205,7 @@ Prerequisite:
   - Depends on: Task 15, Task 16, Task 17, Task 18
   - Proof: Focused hosted and device transition, expected-version, activity ordering, command insertion, idempotency, concurrency, injected failure, rollback, and no-partial-state tests pass.
 
-- [ ] Task 19 - Implement the authenticated worker gateway.
+- [x] Task 19 - Implement the authenticated worker gateway.
   - Size: Standard
   - Purpose: Deliver versioned commands and receive normalized worker state through a worker-initiated channel.
   - Owned surfaces: Outbound Phoenix Channel topic, workspace or execution-target authentication, capability negotiation, command delivery, acknowledgement, heartbeat, normalized-event and reconciliation-snapshot intake, connection state, incompatible-version denial, cross-workspace denial, reconnect seam, fixtures, and worker double.
@@ -528,6 +528,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-29 - Task 19 complete: authenticated worker gateway
+
+- Completed: Added `SddOrchestratorWeb.WorkerSocket`, `WorkerChannel`, and `Delivery.CommandTransport.Channel`, plus a worker double. Workers dial in over TLS to `/worker`, so a local or user-managed worker needs no inbound port, and command delivery is a server push rather than a poll.
+- Boundary held: The socket token is signed with `Phoenix.Token` under its own salt, mirroring the hosted session cookie, and its claims are revalidated before they become socket assigns. A join is checked against the token's project *before* negotiation, so a cross-workspace join is refused before any contract exists; every other topic hits the fallback and is refused as unknown. Protocol negotiation rejects an unsupported version or a missing capability at join time, so an incompatible worker is never registered and no command can reach it. Malformed, oversized, and stale inbound payloads are rejected by the existing codec and change no state — the channel writes no project state itself, publishing events on PubSub for the ingestion tasks instead.
+- Mechanism recorded: Attached workers register in a duplicate-key `Registry` keyed by project. Duplicate keys are deliberate — a reconnect may overlap its predecessor, and at-least-once delivery with idempotent command IDs makes that overlap a redelivery rather than a second run. Losing every registration on restart is correct: each worker reconnects, and the queue was never in that process. `:no_worker` and `:incompatible_worker` stay distinguishable, and both leave the command claimed rather than failed.
+- Decision recorded: `RunCommand` stores identities, a manifest digest, and a due time — never the manifest body or a cancellation reason — so a claimed row alone cannot rebuild the protocol envelope its worker must receive. Rather than widen the outbox schema, the gateway added a `CommandTransport.EnvelopeSource` seam configured through `:command_envelope_source`, mirroring the transport's own default-to-unavailable pattern. With no source installed, delivery returns an error and the command stays queued and due again. The enqueueing tasks that own that content install the real source; Task 13 is the first.
+- Failed checks: None. Focused proof passes with real exit status: 38 worker-gateway tests, `mix credo --strict`, and `mix compile --warnings-as-errors`.
+- Remaining: Task 20 (worker workspace and branch isolation) is unblocked by this and is next on the worker path.
+- Spec updates: Marked Task 19 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 10 complete: guided requirements and blocking readiness
 

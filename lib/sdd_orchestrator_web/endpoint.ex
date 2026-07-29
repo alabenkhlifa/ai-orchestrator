@@ -18,6 +18,13 @@ defmodule SddOrchestratorWeb.Endpoint do
     websocket: [connect_info: [:peer_data, session: @session_options]],
     longpoll: [connect_info: [:peer_data, session: @session_options]]
 
+  # Workers dial in over TLS, so a local or user-managed worker needs no inbound
+  # port. Long polling is not offered: command delivery is a server push and a
+  # worker holds its connection open for as long as it can execute.
+  socket "/worker", SddOrchestratorWeb.WorkerSocket,
+    websocket: [connect_info: [:peer_data]],
+    longpoll: false
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),
