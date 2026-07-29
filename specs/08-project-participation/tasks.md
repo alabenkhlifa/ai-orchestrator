@@ -160,7 +160,7 @@ Release gates:
   - Owns: AC-21
   - Proof: Focused recipient, template, credential-version, safe-link, cancellation, replay, failure, minimization, and account-neutral delivery tests pass.
 
-- [ ] Task 26 — Deliver owner invitation-expiry notification.
+- [x] Task 26 — Deliver owner invitation-expiry notification.
   - Size: Standard
   - Depends on: Task 7, Task 25
   - Purpose: Tell the owner that one pending invitation expired without notifying an unauthorized invitee inside the product.
@@ -366,6 +366,14 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-29 - Task 26 complete: owner invitation-expiry notification
+
+- Completed: Added `Participation.ProjectNotifications` and wired the expiry sweep to it. Expiring a pending invitation now resolves the current project owner and creates one minimized `AccountNotification` keyed by event type, invitation, credential version, and recipient, carrying the project label, what happened, the expiry time, and the participation link.
+- Boundary held: The invited person receives no project notification, because they never held project access. The notification body names the project and the action only — never the invited address, the invitation identifier, or a credential. Replaying the sweep or the projector creates no second record, unread state is durable, and mark-read is idempotent and denied for another account. A canceled or accepted invitation is never expired and never notified, and a replaced invitation notifies against its own credential version.
+- Remaining: Task 12 (invitation-bound fresh email proof) is next; the participation boundary capability becomes available only after Task 4.
+- Failed checks: None. Focused proof passes with real exit status: 5 expiry-notification tests, `mix test` (858 passing), `mix format --check-formatted`, `mix credo --strict`, and `mix dialyzer`.
+- Spec updates: Marked Task 26 complete; requirements, design, ownership, and dependency edges are unchanged.
 
 ### 2026-07-29 - Task 11 complete: invitation lifecycle email notifications
 

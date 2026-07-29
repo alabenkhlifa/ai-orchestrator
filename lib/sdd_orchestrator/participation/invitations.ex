@@ -26,6 +26,7 @@ defmodule SddOrchestrator.Participation.Invitations do
     EmailDigest,
     ParticipationEmail,
     ProjectInvitation,
+    ProjectNotifications,
     ProjectRoles
   }
 
@@ -261,21 +262,35 @@ defmodule SddOrchestrator.Participation.Invitations do
       |> lock("FOR UPDATE")
       |> Repo.one()
       |> case do
-        nil ->
-          false
-
-        invitation ->
-          {:ok, _expired} =
-            invitation
-            |> ProjectInvitation.terminal_changeset("expired", "expired", now)
-            |> Repo.update()
-
-          true
+        nil -> nil
+        invitation -> apply_expiry(invitation, now)
       end
     end)
     |> case do
-      {:ok, expired?} -> expired?
+      {:ok, nil} -> false
+      {:ok, expired} -> notify_expiry(expired)
       {:error, _reason} -> false
+    end
+  end
+
+  defp apply_expiry(invitation, now) do
+    {:ok, expired} =
+      invitation
+      |> ProjectInvitation.terminal_changeset("expired", "expired", now)
+      |> Repo.update()
+
+    expired
+  end
+
+  # The owner learns that a pending invitation lapsed; the invited person never
+  # had project access and receives no project notification.
+  defp notify_expiry(expired) do
+    case Repo.get(Project, expired.project_id) do
+      nil ->
+        true
+
+      project ->
+        project |> ProjectNotifications.invitation_expired(expired) |> then(fn _ -> true end)
     end
   end
 
