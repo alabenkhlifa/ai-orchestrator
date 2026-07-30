@@ -269,4 +269,68 @@ test.describe("feature delivery", () => {
 
     await expectNoSeriousAxeViolations(page);
   });
+
+  // Verification evidence (specs/07 Task 31, AC-40). These scenarios run under
+  // both the desktop and the mobile Playwright project, which is what makes the
+  // responsive claim a claim about two real viewports rather than about a
+  // breakpoint class.
+  test("the evidence section is present and says when nothing has been proved", async ({
+    page,
+  }) => {
+    const { project_id, features } = await bootstrap(page, "features", { populated: "true" });
+    await openLive(page, `/projects/${project_id}/features/${features.in_development}`);
+
+    const evidence = page.locator("[data-evidence]");
+
+    await expect(evidence).toBeVisible();
+    await expect(page.locator("#evidence-heading")).toHaveText("Verification evidence");
+    await expect(evidence).toHaveAttribute("aria-labelledby", "evidence-heading");
+
+    // An untouched feature has proved nothing, and says so rather than
+    // presenting an empty list that could be read as "everything passed".
+    await expect(page.locator("[data-evidence-empty]")).toBeVisible();
+    await expect(page.locator("[data-evidence-item]")).toHaveCount(0);
+    await expect(page.locator("[data-verification]")).toHaveCount(0);
+  });
+
+  test("the evidence section fits this device without scrolling the page sideways", async ({
+    page,
+  }) => {
+    const { project_id, features } = await bootstrap(page, "features", { populated: "true" });
+    await openLive(page, `/projects/${project_id}/features/${features.in_development}`);
+
+    const viewport = page.viewportSize().width;
+    const box = await page.locator("[data-evidence]").boundingBox();
+
+    expect(box.width).toBeLessThanOrEqual(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      viewport,
+    );
+  });
+
+  test("the evidence section keeps the detail screen keyboard reachable", async ({ page }) => {
+    const { project_id, features } = await bootstrap(page, "features", { populated: "true" });
+    await openLive(page, `/projects/${project_id}/features/${features.in_development}`);
+
+    // The evidence section sits between the assignment controls and the comment
+    // form. Tabbing from before it to the control after it is what proves the
+    // section introduces no keyboard trap, and that control still shows a ring.
+    await page.locator("[data-assignment-select]").focus();
+
+    const postRing = await tabTo(page, "[data-post-comment]");
+    expect(postRing.style).not.toBe("none");
+  });
+
+  for (const colorScheme of ["light", "dark"]) {
+    test(`the feature detail with its evidence section is accessible (${colorScheme})`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme });
+      const { project_id, features } = await bootstrap(page, "features", { populated: "true" });
+      await openLive(page, `/projects/${project_id}/features/${features.in_development}`);
+
+      await expect(page.locator("[data-evidence]")).toBeVisible();
+      await expectNoSeriousAxeViolations(page);
+    });
+  }
 });

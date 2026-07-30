@@ -341,7 +341,7 @@ Prerequisite:
   - Depends on: Task 4, Task 44
   - Proof: Focused complete, failed, missing, wrong-branch, wrong-revision, wrong-commit, later-commit, superseded, conditional screenshot, duplicate, and false-success tests pass.
 
-- [ ] Task 31 - Present verification evidence in feature activity.
+- [x] Task 31 - Present verification evidence in feature activity.
   - Size: Standard
   - Purpose: Let authorized participants inspect required checks, screenshots, provenance, failures, and superseded proof.
   - Owned surfaces: Evidence activity entries, typed check and screenshot presentation, attempt, branch, commit, source, time, duration, digest and redaction metadata, passed, failed, missing, unsupported and superseded states, private artifact authorization, fixtures, and responsive accessible evidence UI.
@@ -359,6 +359,7 @@ Prerequisite:
 
 - [ ] Task 32 - Implement the configured preview adapter and deployment lifecycle.
   - Size: Standard
+  - Status: In Progress
   - Purpose: Start one authorized non-production preview for the exact verified commit without making it verification truth.
   - Owned surfaces: `PreviewDeployment`, hosted schema and migration, device-adapter value shape, configured preview-adapter behaviour, path and provider-reference authorization, external credential isolation, idempotent request, run, attempt, branch and verified-commit binding, status, timeout, expiry, supersession, cleanup command seam, safe link, fixtures, and adapter double.
   - Owns: AC-21, entity:PreviewDeployment
@@ -538,6 +539,18 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-30 - Task 31 complete: verification evidence presented in feature activity
+
+- Completed: Added `Delivery.EvidencePresentation` and the evidence section of the feature detail screen. Required checks, screenshots, and their provenance are now inspectable by an authorized participant.
+- Every item shows what it is and what it proves (AC-40): branch, commit, and digest render in full, because those are what a reader checks the work against. Attempt and run identity render as a short reference rather than an invented ordinal — `DeliveryStore` exposes no read for an arbitrary historical attempt, and a display number that disagreed with the stored one would be worse than a truncated identifier.
+- All five states stay distinguishable, and nothing is hidden. `superseded` is a flag beside the outcome rather than a fifth outcome, because a replaced item still passed or failed and collapsing the two would erase which. Missing and superseded proof both remain on screen; filtering either away would defeat the criterion.
+- Private artifacts never become links: an image is delivered inline as a `data:` URI over the LiveView socket, which the existing content-security policy already allows. The `artifact:v1:sha256:` reference never appears in markup, asserted at both the domain and screen level. Access goes through `ArtifactStore.fetch_for_evidence/4`, so a stranger, another project's participant, an unknown item, and an item with no bytes all get one identical refusal.
+- The screen reads the completion verdict from the recorded activity rather than re-deriving it, so presentation cannot disagree with the gate that produced it.
+- Recorded gap, needs an owner: the browser matrix does not yet exercise a seeded evidence item, because `/_e2e/session?scenario=features` seeds no runs or evidence and the bootstrap controller was outside this task's ownership. Desktop and mobile do prove the section renders, labels itself, shows its empty state, fits both viewports, traps no keyboard focus, and passes axe in light and dark. Typed states, provenance, supersession, and the private-artifact path are proved at the LiveView and domain levels against both authorities, but not yet in a real browser.
+- Defect found in shared UI, not owned here: `text_field/1` in `components/ui.ex` combines `outline-none` with `focus:outline-2`, so the focus ring resolves to `outline-style: none` and never renders — confirmed empirically in a browser. Every text field in the product is affected. The `focus:border-focus` border change still fires, so some indication remains.
+- Failed checks: None. Final proof passes with real exit status: 98 presentation and screen tests, `mix test` (2122 passing), `mix format --check-formatted`, `mix credo --strict`, and the desktop and mobile browser matrix (79 passing each).
+- Spec updates: Marked Task 31 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-30 - Task 30 complete: same-commit verification completion
 

@@ -20,6 +20,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     Blocking,
     Cancellation,
     Comments,
+    EvidencePresentation,
     Features,
     ParticipantGuard,
     ProcessingDisclosure,
@@ -74,6 +75,69 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     already_canceled: "This run was already canceled.",
     no_active_run: "There is no run to cancel.",
     stale_state: "This changed while you were looking at it. Try again."
+  }
+
+  # Every refused artifact read says exactly this, whether the item never had
+  # bytes, belongs to another project, was removed by retention, or is being
+  # asked for by someone who is no longer a participant. Distinguishing them
+  # would be the disclosure the fetch seam exists to prevent.
+  @artifact_unavailable "That proof is not available."
+
+  @evidence_kind_labels %{
+    "required_check" => "Required check",
+    "screenshot" => "Screenshot",
+    "preview" => "Preview"
+  }
+
+  # The four recorded outcomes. `superseded` is deliberately not one of them: an
+  # item that was replaced still passed or failed, and flattening the two into a
+  # single state would hide which.
+  @evidence_state_labels %{
+    "passed" => "Passed",
+    "failed" => "Failed",
+    "missing" => "Missing",
+    "unsupported" => "Unsupported"
+  }
+
+  @evidence_state_variants %{
+    "passed" => "ok",
+    "failed" => "err",
+    "missing" => "err",
+    "unsupported" => "warn"
+  }
+
+  @evidence_state_icons %{
+    "passed" => "circle-check",
+    "failed" => "circle-alert",
+    "missing" => "circle-alert",
+    "unsupported" => "triangle-alert"
+  }
+
+  # Where the result came from. An agent's account of its own work is not an
+  # allowed source at all, so there is nothing here for one.
+  @evidence_source_labels %{
+    "check" => "The check's own command",
+    "worker" => "The worker that ran it"
+  }
+
+  @capture_reason_messages %{
+    "no_visual_result" => "This work produced nothing to capture.",
+    "capture_unsupported" => "This environment could not capture a screenshot.",
+    "capture_failed" => "The capture itself broke."
+  }
+
+  @verification_reasons %{
+    "required_check_contract_unknown" =>
+      "This attempt has no recorded list of required checks, so there was nothing to verify against.",
+    "commit_identity_missing" => "The claim named no commit to verify.",
+    "branch_identity_missing" => "The claim named no branch to verify.",
+    "branch_mismatch" => "The claim named a branch this run does not own.",
+    "revision_identity_missing" => "The claim named no specification revision.",
+    "revision_mismatch" => "The claim named a revision this attempt is not working from.",
+    "required_check_failed" => "A required check failed.",
+    "required_check_missing" => "A required check has no result for this commit.",
+    "required_check_unsupported" => "A required check could not run in this environment.",
+    "screenshot_capture_failed" => "A screenshot capture broke."
   }
 
   # A failure reason is a worker's code. It is shown as a sentence a person can
@@ -225,6 +289,36 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     {:noreply, socket |> assign(:comment_body, body) |> assign(:comment_error, nil)}
   end
 
+  # The bytes are read now rather than at render, because participation is
+  # re-checked on every read and the person pressing this may have left the
+  # project since the list was drawn.
+  def handle_event("view_evidence", %{"id" => evidence_id}, socket) do
+    socket
+    |> storage_authority()
+    |> EvidencePresentation.inline_artifact(
+      socket.assigns.project_id,
+      evidence_id,
+      socket.assigns.actor
+    )
+    |> case do
+      {:ok, artifact} ->
+        {:noreply,
+         socket
+         |> assign(:evidence_artifact, artifact)
+         |> assign(:evidence_artifact_error, nil)}
+
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> assign(:evidence_artifact, nil)
+         |> assign(:evidence_artifact_error, @artifact_unavailable)}
+    end
+  end
+
+  def handle_event("hide_evidence", _params, socket) do
+    {:noreply, socket |> assign(:evidence_artifact, nil) |> assign(:evidence_artifact_error, nil)}
+  end
+
   def handle_event("assign", %{"assignment" => %{"account_id" => account_id}}, socket) do
     socket.assigns.project_id
     |> Assignment.assign(socket.assigns.actor, socket.assigns.feature, blank_to_nil(account_id))
@@ -303,6 +397,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:project, SddOrchestrator.Repo.get(SddOrchestrator.Projects.Project, project_id))
     |> assign_failed_run(actor, feature)
     |> assign_cancelable_run(actor, feature)
+    |> assign_evidence(actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
@@ -345,6 +440,33 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     socket
     |> assign(:cancelable_run, cancelable_run)
     |> assign(:cancel_error, socket.assigns[:cancel_error])
+  end
+
+  # Everything this feature ever proved, superseded and absent results included,
+  # beside the completion gate's own conclusion. A reader who cannot read
+  # evidence sees no evidence rather than an error, which is the same answer the
+  # rest of this screen gives someone outside the project.
+  defp assign_evidence(socket, actor, feature) do
+    authority = storage_authority(socket)
+    project_id = socket.assigns.project_id
+
+    evidence =
+      case EvidencePresentation.list(authority, project_id, actor, feature.id) do
+        {:ok, items} -> items
+        {:error, :unauthorized} -> []
+      end
+
+    verification =
+      case EvidencePresentation.verification(authority, project_id, actor, feature.id) do
+        {:ok, verdict} -> verdict
+        {:error, :unauthorized} -> nil
+      end
+
+    socket
+    |> assign(:evidence, evidence)
+    |> assign(:verification, verification)
+    |> assign(:evidence_artifact, socket.assigns[:evidence_artifact])
+    |> assign(:evidence_artifact_error, socket.assigns[:evidence_artifact_error])
   end
 
   defp assign_disclosure(socket) do
@@ -416,6 +538,69 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   defp transfer_summary(%{transfers: transfers}),
     do: "Leaves this project's store: " <> Enum.join(transfers, ", ")
+
+  ## Verification evidence
+
+  defp evidence_kind_label(kind), do: Map.get(@evidence_kind_labels, kind, "Evidence")
+  defp evidence_state_label(outcome), do: Map.get(@evidence_state_labels, outcome, outcome)
+  defp evidence_state_variant(outcome), do: Map.get(@evidence_state_variants, outcome, "neutral")
+  defp evidence_state_icon(outcome), do: Map.get(@evidence_state_icons, outcome, "info")
+
+  defp evidence_source_label(source),
+    do: Map.get(@evidence_source_labels, source, "Recorded by #{source}")
+
+  defp capture_reason_message(nil), do: nil
+  defp capture_reason_message(reason), do: Map.get(@capture_reason_messages, reason)
+
+  defp verification_reason_message(nil), do: "The run did not say why."
+
+  defp verification_reason_message(reason),
+    do: Map.get(@verification_reasons, reason, "The run refused completion: #{reason}")
+
+  defp redaction_label(true), do: "Redacted before it was stored"
+  defp redaction_label(_redacted), do: "Not redacted"
+
+  # A duration is proof of how long the command actually took, so a sub-second
+  # result keeps its milliseconds instead of rounding to a reassuring `0 s`.
+  defp duration_label(nil), do: "Not recorded"
+  defp duration_label(milliseconds) when milliseconds < 1_000, do: "#{milliseconds} ms"
+
+  defp duration_label(milliseconds),
+    do: "#{Float.round(milliseconds / 1_000, 1)} s"
+
+  defp byte_size_label(nil), do: nil
+  defp byte_size_label(bytes) when bytes < 1_024, do: "#{bytes} bytes"
+  defp byte_size_label(bytes), do: "#{Float.round(bytes / 1_024, 1)} KB"
+
+  defp recorded_label(nil), do: "Not recorded"
+
+  defp recorded_label(%DateTime{} = recorded_at),
+    do: Calendar.strftime(recorded_at, "%Y-%m-%d %H:%M UTC")
+
+  defp exit_code_label(nil), do: "Not recorded"
+  defp exit_code_label(exit_code), do: to_string(exit_code)
+
+  defp check_names(names), do: Enum.join(names, ", ")
+
+  defp viewing?(%{evidence_id: evidence_id}, %{id: evidence_id}), do: true
+  defp viewing?(_artifact, _item), do: false
+
+  # One labelled provenance value. The label never wraps and the value may,
+  # because a broken label reads as a different field while a broken commit or
+  # digest is still the same value.
+  attr :label, :string, required: true
+  attr :test, :string, required: true
+  attr :value, :string, default: nil
+  attr :class, :any, default: nil
+
+  defp evidence_fact(assigns) do
+    ~H"""
+    <div class={["flex flex-wrap items-baseline gap-x-2 gap-y-0.5", @class]}>
+      <dt class="whitespace-nowrap text-ink-muted">{@label}</dt>
+      <dd class="min-w-0 break-all text-ink" data-evidence-fact={@test}>{@value}</dd>
+    </div>
+    """
+  end
 
   @impl true
   def render(assigns) do
@@ -716,6 +901,266 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           >
             <.lucide name="check" class="size-4" /> I understand, continue
           </.button>
+        </section>
+
+        <section class="mt-6" aria-labelledby="evidence-heading" data-evidence>
+          <h2 id="evidence-heading" class="text-[13px] font-semibold text-ink">
+            Verification evidence
+          </h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Every item here is a command that ran, kept exactly as it was recorded. A result a later
+            run replaced stays visible, and so does a check that reported nothing.
+          </p>
+
+          <div
+            :if={@verification}
+            class={[
+              "mt-3 rounded-lg border p-4",
+              (@verification.verified? && "border-ok-fg/40 bg-ok-bg") || "border-err-fg/40 bg-err-bg"
+            ]}
+            data-verification
+            data-verification-outcome={(@verification.verified? && "verified") || "refused"}
+          >
+            <h3 class={[
+              "flex items-center gap-1.5 text-[13px] font-semibold",
+              (@verification.verified? && "text-ok-fg") || "text-err-fg"
+            ]}>
+              <.lucide
+                name={(@verification.verified? && "circle-check") || "circle-alert"}
+                class="size-4 flex-none"
+              />
+              <span class="whitespace-nowrap" data-verification-label>
+                {(@verification.verified? && "Verified") || "Not verified"}
+              </span>
+            </h3>
+
+            <p
+              :if={not @verification.verified?}
+              class="mt-2 text-sm text-ink"
+              data-verification-reason
+            >
+              {verification_reason_message(@verification.reason)}
+            </p>
+
+            <p class="mt-2 text-xs text-ink-muted" data-verification-counts>
+              {@verification.passed_count} of {@verification.required_count} required checks passed
+              for this commit.
+            </p>
+
+            <dl class="mt-2 flex flex-col gap-1.5 text-xs">
+              <.evidence_fact
+                :if={@verification.failed != []}
+                label="Failed"
+                test="verification-failed"
+                value={check_names(@verification.failed)}
+              />
+              <.evidence_fact
+                :if={@verification.missing != []}
+                label="No result"
+                test="verification-missing"
+                value={check_names(@verification.missing)}
+              />
+              <.evidence_fact
+                :if={@verification.unsupported != []}
+                label="Could not run"
+                test="verification-unsupported"
+                value={check_names(@verification.unsupported)}
+              />
+              <.evidence_fact
+                :if={@verification.screenshot_failed != []}
+                label="Capture broke"
+                test="verification-screenshot-failed"
+                value={check_names(@verification.screenshot_failed)}
+              />
+              <.evidence_fact
+                :if={@verification.branch}
+                label="Branch"
+                test="verification-branch"
+                value={@verification.branch}
+              />
+              <.evidence_fact
+                :if={@verification.commit_sha}
+                label="Commit"
+                test="verification-commit"
+                value={@verification.commit_sha}
+              />
+            </dl>
+          </div>
+
+          <p
+            :if={@evidence_artifact_error}
+            class="mt-3 flex items-center gap-1.5 text-xs text-err-fg"
+            role="alert"
+            data-evidence-artifact-error
+          >
+            <.lucide name="circle-alert" class="size-3.5 flex-none" />
+            {@evidence_artifact_error}
+          </p>
+
+          <ul :if={@evidence != []} class="mt-3 flex flex-col gap-3" data-evidence-list>
+            <li
+              :for={item <- @evidence}
+              class="rounded-lg border border-line bg-surface p-3.5"
+              data-evidence-item
+              data-evidence-id={item.id}
+              data-evidence-kind={item.kind}
+              data-evidence-state={item.outcome}
+              data-evidence-superseded={to_string(item.superseded?)}
+            >
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="min-w-0 break-words text-sm font-semibold text-ink" data-evidence-name>
+                  {item.name}
+                </h3>
+                <span class="whitespace-nowrap" data-evidence-type>
+                  <.badge variant="neutral" icon="shield">{evidence_kind_label(item.kind)}</.badge>
+                </span>
+                <span class="whitespace-nowrap" data-evidence-state-label>
+                  <.badge
+                    variant={evidence_state_variant(item.outcome)}
+                    icon={evidence_state_icon(item.outcome)}
+                  >
+                    {evidence_state_label(item.outcome)}
+                  </.badge>
+                </span>
+                <span
+                  :if={item.superseded?}
+                  class="whitespace-nowrap"
+                  data-evidence-superseded-label
+                >
+                  <.badge variant="neutral" icon="refresh-cw">Replaced</.badge>
+                </span>
+              </div>
+
+              <p
+                :if={item.superseded?}
+                class="mt-2 text-xs text-ink-muted"
+                data-evidence-replacement
+              >
+                A later result replaced this one. It stays here because what was proved before is
+                part of how this commit was reached. Replaced by {item.replaced_by_ref}.
+              </p>
+
+              <p
+                :if={capture_reason_message(item.capture_reason)}
+                class="mt-2 text-xs text-ink-muted"
+                data-evidence-capture-reason
+              >
+                {capture_reason_message(item.capture_reason)}
+              </p>
+
+              <dl class="mt-3 grid grid-cols-1 gap-x-5 gap-y-1.5 text-xs sm:grid-cols-2">
+                <.evidence_fact label="Run" test="run" value={item.run_ref} />
+                <.evidence_fact
+                  label="Attempt"
+                  test="attempt"
+                  value={item.attempt_ref || "Not recorded"}
+                />
+                <.evidence_fact label="Branch" test="branch" value={item.branch} />
+                <.evidence_fact
+                  label="Source"
+                  test="source"
+                  value={evidence_source_label(item.source)}
+                />
+                <.evidence_fact
+                  label="Recorded"
+                  test="recorded"
+                  value={recorded_label(item.recorded_at)}
+                />
+                <.evidence_fact
+                  label="Duration"
+                  test="duration"
+                  value={duration_label(item.duration_ms)}
+                />
+                <.evidence_fact
+                  :if={item.kind == "required_check"}
+                  label="Exit code"
+                  test="exit-code"
+                  value={exit_code_label(item.exit_code)}
+                />
+                <.evidence_fact
+                  label="Redaction"
+                  test="redaction"
+                  value={redaction_label(item.redacted)}
+                />
+                <.evidence_fact
+                  :if={item.content_type}
+                  label="Stored proof"
+                  test="artifact"
+                  value={"#{item.content_type}, #{byte_size_label(item.byte_size)}"}
+                />
+                <.evidence_fact
+                  :if={item.command}
+                  label="Command"
+                  test="command"
+                  value={item.command}
+                  class="sm:col-span-2"
+                />
+                <.evidence_fact
+                  label="Commit"
+                  test="commit"
+                  value={item.commit_sha}
+                  class="sm:col-span-2"
+                />
+                <.evidence_fact
+                  label="Digest"
+                  test="digest"
+                  value={item.digest}
+                  class="sm:col-span-2"
+                />
+              </dl>
+
+              <.button
+                :if={item.artifact_available? and not viewing?(@evidence_artifact, item)}
+                type="button"
+                variant="secondary"
+                phx-click="view_evidence"
+                phx-value-id={item.id}
+                class="mt-3 w-full sm:w-auto"
+                data-view-evidence
+              >
+                <.lucide name="search" class="size-4" /> View this proof
+              </.button>
+
+              <div
+                :if={viewing?(@evidence_artifact, item)}
+                class="mt-3 rounded-lg border border-line bg-canvas p-3"
+                data-evidence-artifact
+              >
+                <img
+                  :if={@evidence_artifact.inline?}
+                  src={@evidence_artifact.data}
+                  alt={"The stored proof recorded for #{item.name}"}
+                  class="max-w-full rounded border border-line"
+                  data-evidence-image
+                />
+                <p
+                  :if={not @evidence_artifact.inline?}
+                  class="text-xs text-ink-muted"
+                  data-evidence-not-viewable
+                >
+                  This proof is {@evidence_artifact.content_type}, which cannot be shown here.
+                </p>
+                <p class="mt-2 text-xs text-ink-muted" data-evidence-artifact-note>
+                  {redaction_label(@evidence_artifact.redacted)}. It is read from this project's own
+                  private store each time it is opened and has no address of its own.
+                </p>
+
+                <.button
+                  type="button"
+                  variant="secondary"
+                  phx-click="hide_evidence"
+                  class="mt-3 w-full sm:w-auto"
+                  data-hide-evidence
+                >
+                  <.lucide name="x" class="size-4" /> Hide
+                </.button>
+              </div>
+            </li>
+          </ul>
+
+          <p :if={@evidence == []} class="mt-3 text-xs text-ink-muted" data-evidence-empty>
+            Nothing has been proved about this feature yet.
+          </p>
         </section>
 
         <section class="mt-6" data-comments>

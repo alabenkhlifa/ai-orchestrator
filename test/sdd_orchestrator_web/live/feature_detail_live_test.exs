@@ -11,8 +11,17 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias SddOrchestrator.Delivery.{Assignment, BlockingQuestion, Feature}
+  alias SddOrchestrator.Delivery.{
+    ArtifactStore,
+    Assignment,
+    BlockingQuestion,
+    EvidencePresentation,
+    Feature
+  }
+
+  alias SddOrchestrator.Delivery.VerificationCompletion.Verdict
   alias SddOrchestrator.DeliveryFixtures
+  alias SddOrchestrator.EvidencePresentationFixtures, as: EvidenceFixtures
   alias SddOrchestrator.HostedAccess.{SessionCookie, Sessions}
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.Revocations
@@ -939,6 +948,423 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       refute has_element?(view, "[data-run-control]")
       refute has_element?(view, "[data-cancel-run]")
     end
+  end
+
+  describe "the verification evidence [AC-40]" do
+    setup %{project: project, account: account, context: context} do
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = EvidenceFixtures.run_fixture(context.workspace, project, feature)
+
+      %{feature: feature, run: run, authority: context.workspace}
+    end
+
+    test "a feature that has proved nothing says so", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-evidence]")
+      assert has_element?(view, "[data-evidence-empty]")
+      refute has_element?(view, "[data-evidence-item]")
+    end
+
+    test "each recorded outcome renders as its own distinguishable state", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      for {name, outcome} <- [
+            {"mix test", "passed"},
+            {"mix credo", "failed"},
+            {"mix dialyzer", "missing"},
+            {"mix sobelow", "unsupported"}
+          ] do
+        EvidenceFixtures.evidence_fixture(authority, run,
+          name: name,
+          outcome: outcome,
+          exit_code: if(outcome == "passed", do: 0, else: 1)
+        )
+      end
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      refute has_element?(view, "[data-evidence-empty]")
+
+      for {name, outcome, label} <- [
+            {"mix test", "passed", "Passed"},
+            {"mix credo", "failed", "Failed"},
+            {"mix dialyzer", "missing", "Missing"},
+            {"mix sobelow", "unsupported", "Unsupported"}
+          ] do
+        item = "[data-evidence-item][data-evidence-state=\"#{outcome}\"]"
+
+        assert view |> element("#{item} [data-evidence-name]") |> render() =~ name
+        assert view |> element("#{item} [data-evidence-state-label]") |> render() =~ label
+        assert view |> element("#{item} [data-evidence-type]") |> render() =~ "Required check"
+      end
+    end
+
+    test "a negative state is not carried by colour alone", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      for outcome <- ~w(failed missing) do
+        EvidenceFixtures.evidence_fixture(authority, run,
+          name: "mix #{outcome}",
+          outcome: outcome,
+          exit_code: 1
+        )
+      end
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      for outcome <- ~w(failed missing) do
+        badge =
+          view
+          |> element("[data-evidence-state=\"#{outcome}\"] [data-evidence-state-label]")
+          |> render()
+
+        # An error-red pill that also carries an icon and a word, so the state
+        # survives a reader who cannot tell the colours apart.
+        assert badge =~ "text-err-fg"
+        assert badge =~ "<svg"
+      end
+    end
+
+    test "every item shows the provenance it was recorded with", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      evidence =
+        EvidenceFixtures.evidence_fixture(authority, run,
+          name: "mix test",
+          source: "worker",
+          duration_ms: 12_500,
+          redacted: true,
+          recorded_at: ~U[2026-07-30 09:15:00.000000Z]
+        )
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      item = "[data-evidence-item]"
+
+      assert fact(view, item, "attempt") =~
+               EvidencePresentation.short_reference(run.attempt.id)
+
+      assert fact(view, item, "run") =~ EvidencePresentation.short_reference(run.run.id)
+      assert fact(view, item, "branch") =~ run.run.branch
+      assert fact(view, item, "commit") =~ EvidenceFixtures.commit()
+      assert fact(view, item, "source") =~ "The worker that ran it"
+      assert fact(view, item, "recorded") =~ "2026-07-30 09:15 UTC"
+      assert fact(view, item, "duration") =~ "12.5 s"
+      assert fact(view, item, "digest") =~ evidence.digest
+      assert fact(view, item, "redaction") =~ "Redacted"
+      assert fact(view, item, "command") =~ "mix test"
+      assert fact(view, item, "exit-code") =~ "0"
+    end
+
+    test "a replaced result stays visible and names its replacement", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      failed =
+        EvidenceFixtures.evidence_fixture(authority, run,
+          name: "mix test",
+          outcome: "failed",
+          exit_code: 1
+        )
+
+      passed = EvidenceFixtures.evidence_fixture(authority, run, name: "mix test")
+      :ok = EvidenceFixtures.supersede_fixture(authority, failed, passed)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      # Both are on the screen: the replaced result is not filtered away, and it
+      # keeps the failure it recorded rather than inheriting the rerun's pass.
+      assert view |> render() |> then(&Regex.scan(~r/data-evidence-item/, &1)) |> length() == 2
+
+      replaced = "[data-evidence-item][data-evidence-superseded=\"true\"]"
+
+      assert has_element?(view, replaced)
+
+      assert view |> element("#{replaced}[data-evidence-state=\"failed\"]") |> render() =~
+               "Failed"
+
+      assert view |> element("#{replaced} [data-evidence-superseded-label]") |> render() =~
+               "Replaced"
+
+      assert view |> element("#{replaced} [data-evidence-replacement]") |> render() =~
+               EvidencePresentation.short_reference(passed.id)
+
+      assert has_element?(view, "[data-evidence-item][data-evidence-superseded=\"false\"]")
+    end
+
+    test "a refused verification names the checks behind the refusal", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      EvidenceFixtures.verdict_fixture(
+        authority,
+        run,
+        EvidenceFixtures.refused_verdict(run,
+          reason: :required_check_failed,
+          required: ["mix test", "mix credo", "mix dialyzer"],
+          passed: ["mix test"],
+          failed: ["mix credo"],
+          missing: ["mix dialyzer"]
+        )
+      )
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element("[data-verification]") |> render() =~ "data-verification-outcome"
+      assert view |> element("[data-verification-label]") |> render() =~ "Not verified"
+
+      assert view |> element("[data-verification-reason]") |> render() =~
+               "A required check failed"
+
+      assert view |> element("[data-verification-counts]") |> render() =~ "1 of 3"
+
+      assert view
+             |> element("[data-verification] [data-evidence-fact=\"verification-failed\"]")
+             |> render() =~ "mix credo"
+
+      assert view
+             |> element("[data-verification] [data-evidence-fact=\"verification-missing\"]")
+             |> render() =~ "mix dialyzer"
+    end
+
+    test "a verified completion is shown as verified", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      EvidenceFixtures.verdict_fixture(authority, run, %Verdict{
+        outcome: :verified,
+        run_id: run.run.id,
+        attempt_id: run.attempt.id,
+        attempt_number: 1,
+        branch: run.run.branch,
+        commit_sha: EvidenceFixtures.commit(),
+        required: ["mix test"],
+        passed: ["mix test"]
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element("[data-verification]") |> render() =~ "verified"
+      assert view |> element("[data-verification-label]") |> render() =~ "Verified"
+      refute has_element?(view, "[data-verification-reason]")
+    end
+
+    test "a stored screenshot is shown to a participant without ever being addressable", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      content = DeliveryFixtures.png_bytes("detail")
+
+      EvidenceFixtures.screenshot_fixture(authority, run,
+        name: "feature screen",
+        content: content
+      )
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view
+             |> element("[data-evidence-item][data-evidence-kind=\"screenshot\"]")
+             |> render() =~
+               "Screenshot"
+
+      assert view |> element("[data-evidence-fact=\"artifact\"]") |> render() =~ "image/png"
+
+      # The list itself carries no reference and no way to reach the bytes.
+      refute html =~ ArtifactStore.ref_prefix()
+      refute has_element?(view, "[data-evidence-artifact]")
+
+      view |> element("[data-view-evidence]") |> render_click()
+
+      shown = view |> element("[data-evidence-artifact]") |> render()
+
+      assert shown =~ "data:image/png;base64,#{Base.encode64(content)}"
+      assert shown =~ "alt="
+      refute shown =~ ArtifactStore.ref_prefix()
+      refute view |> render() =~ ArtifactStore.ref_prefix()
+
+      view |> element("[data-hide-evidence]") |> render_click()
+      refute has_element?(view, "[data-evidence-artifact]")
+    end
+
+    test "an item that never held bytes offers nothing to view and refuses the request", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      evidence = EvidenceFixtures.evidence_fixture(authority, run, name: "mix test")
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      refute has_element?(view, "[data-view-evidence]")
+
+      # A pushed request is answered by the server rather than by the absence of
+      # a button, because the button is only a suggestion.
+      render_click(view, "view_evidence", %{"id" => evidence.id})
+
+      assert view |> element("[data-evidence-artifact-error]") |> render() =~
+               "That proof is not available."
+
+      refute has_element?(view, "[data-evidence-artifact]")
+    end
+
+    test "another project's item is refused in exactly the same words", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      EvidenceFixtures.evidence_fixture(authority, run, name: "mix test")
+
+      other = DeliveryFixtures.delivery_project_fixture()
+      other_feature = DeliveryFixtures.feature_fixture(other.project, other.account)
+      other_run = EvidenceFixtures.run_fixture(other.workspace, other.project, other_feature)
+
+      theirs =
+        EvidenceFixtures.screenshot_fixture(other.workspace, other_run, name: "their screen")
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      render_click(view, "view_evidence", %{"id" => theirs.id})
+
+      assert view |> element("[data-evidence-artifact-error]") |> render() =~
+               "That proof is not available."
+
+      refute view |> render() =~ "their screen"
+    end
+
+    test "a participant who has left loses the bytes on the next request", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      evidence = EvidenceFixtures.screenshot_fixture(authority, run, name: "feature screen")
+
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      view |> element("[data-view-evidence]") |> render_click()
+      assert has_element?(view, "[data-evidence-artifact]")
+
+      {:ok, _removed} =
+        Revocations.remove(project, account.id, context.identity.hosted_identity.id)
+
+      render_click(view, "view_evidence", %{"id" => evidence.id})
+
+      assert view |> element("[data-evidence-artifact-error]") |> render() =~
+               "That proof is not available."
+
+      refute has_element?(view, "[data-evidence-artifact]")
+    end
+
+    test "no participant's address appears anywhere on the evidence screen", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      EvidenceFixtures.evidence_fixture(authority, run, name: "mix test")
+      EvidenceFixtures.screenshot_fixture(authority, run, name: "feature screen")
+
+      EvidenceFixtures.verdict_fixture(
+        authority,
+        run,
+        EvidenceFixtures.refused_verdict(run, required: ["mix test"], failed: ["mix test"])
+      )
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      refute html =~ "@example.com"
+      view |> element("[data-view-evidence]") |> render_click()
+      refute view |> render() =~ "@example.com"
+    end
+
+    test "the evidence section labels itself for a screen reader", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority,
+      run: run
+    } do
+      EvidenceFixtures.evidence_fixture(authority, run, name: "mix test")
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      section = view |> element("[data-evidence]") |> render()
+
+      assert section =~ "aria-labelledby=\"evidence-heading\""
+      assert section =~ "id=\"evidence-heading\""
+      assert section =~ "Verification evidence"
+
+      # The control a keyboard user reaches is a real button, not a clickable div.
+      assert view |> element("[data-evidence] h3[data-evidence-name]") |> render() =~ "mix test"
+    end
+  end
+
+  defp fact(view, scope, name) do
+    view |> element("#{scope} [data-evidence-fact=\"#{name}\"]") |> render()
   end
 
   defp ask(project, feature, run, attrs) do
