@@ -4,13 +4,19 @@ defmodule SddOrchestratorWeb.Endpoint do
   # Browser authorization lives in one signed, persistent, HttpOnly, Secure
   # session cookie. Server-side session records still enforce their own absolute
   # expiry and revocation before protected data is returned.
+  #
+  # `secure` defaults to true and stays true everywhere the app is served over
+  # HTTPS. Local development serves plain HTTP, and a browser that enforces the
+  # Secure attribute strictly on `http://localhost` — Safari does — never sends
+  # the cookie back, which silently breaks the OAuth callback: the nonce stored
+  # before the redirect is simply absent when GitHub returns.
   @session_options [
     store: :cookie,
     key: "_sdd_orchestrator_key",
     signing_salt: "Rb9qupER",
     same_site: "Lax",
     http_only: true,
-    secure: true,
+    secure: Application.compile_env(:sdd_orchestrator, :session_cookie_secure, true),
     max_age: 30 * 24 * 60 * 60
   ]
 

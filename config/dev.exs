@@ -19,6 +19,12 @@ config :sdd_orchestrator, SddOrchestrator.Repo,
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
+# Development serves plain HTTP, so the session cookie cannot be Secure: a
+# browser that enforces that attribute on `http://localhost` would never send it
+# back, and the GitHub callback would fail on a missing nonce rather than on
+# anything to do with credentials. Production keeps the default of `true`.
+config :sdd_orchestrator, session_cookie_secure: false
+
 config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
