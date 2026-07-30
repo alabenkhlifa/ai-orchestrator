@@ -357,9 +357,8 @@ Prerequisite:
   - Depends on: Task 30, Task 31
   - Proof: Focused verified, unverified, agent-denial, preview absent, preview failed, responsibility, transition, activity, and LiveView tests pass.
 
-- [ ] Task 32 - Implement the configured preview adapter and deployment lifecycle.
+- [x] Task 32 - Implement the configured preview adapter and deployment lifecycle.
   - Size: Standard
-  - Status: In Progress
   - Purpose: Start one authorized non-production preview for the exact verified commit without making it verification truth.
   - Owned surfaces: `PreviewDeployment`, hosted schema and migration, device-adapter value shape, configured preview-adapter behaviour, path and provider-reference authorization, external credential isolation, idempotent request, run, attempt, branch and verified-commit binding, status, timeout, expiry, supersession, cleanup command seam, safe link, fixtures, and adapter double.
   - Owns: AC-21, entity:PreviewDeployment
@@ -539,6 +538,22 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-30 - Task 32 complete: configured preview adapter and deployment lifecycle
+
+- Completed: Added `PreviewDeployment` with its migration, the `PreviewAdapter` behaviour and its deterministic double, and `Delivery.Previews`. One authorized non-production preview can now be requested, observed, superseded, and cleaned up.
+- A preview is never verification truth (AC-21, AC-22): `Previews.start/4` reads `VerificationCompletion.verified_completion/4` itself and refuses an unverified attempt, and four tests compare run, feature, attempt, and verdict state whole before and after a ready, failed, timed-out, and absent preview to prove none of them moves. Preview cannot cause, block, or alter a verification result.
+- Statuses stay distinct rather than folded: `pending`, `ready`, `failed`, `timed_out`, `expired`, and `superseded`. Task 33 owns presenting all of them, and a timeout collapsed into failure would leave it nothing to distinguish. `failed?/1` still reports a timeout as a failure so the design's wording holds.
+- Failure reasons are atoms only. A provider's prose reason is discarded rather than sanitized, because sanitizing text is how an embedded token survives into a record a participant can read.
+- Safe links are enforced in three places — changeset, device value decode, and a database check constraint — as `https` with no userinfo, query, or fragment, or `http` restricted to loopback, since a device-authoritative worker serves previews on the machine that owns the data.
+- Deadlines belong to the control plane: a provider stuck on pending past its timeout is timed out regardless of what it reports, and expiry applies even after the preview configuration is withdrawn.
+- Closed by default: an unlisted project, an unknown path, and an absent adapter each refuse, and each refusal was proved to reach no provider at all.
+- Mechanism recorded — the cleanup seam does not use `RunCommand`. Its operation list is mirrored in `WorkerProtocol` and in a database check constraint, so a preview-cleanup operation would require changing the protocol owned by Task 7. Cleanup is instead durable on the deployment itself through `cleanup_state` and a stable `cleanup_command_id` written before the provider is called. If Task 51 or a cancellation path needs a worker-delivered cleanup, that protocol change is owed to Task 7.
+- Shared surfaces touched additively and deliberately: `DeliveryStore` and both adapters gained four operations and one read, because the deployment record and its activity entry must commit together and `commit/3` is the only mechanism giving both authorities that atomicity. Each record is still written once per commit.
+- The `artifact_upload.ex` private authority resolver was not copied — `Previews` receives an already-resolved authority like every other delivery module. It remains the only copy and should be promoted before a second caller appears.
+- Failed checks: None. One CLI rollback deadlocked against the concurrent Task 31 agent's test run holding locks on the same test database; the retry and the in-suite rollback test both pass. Final proof passes with real exit status: 77 preview tests across both authorities, `mix test` (2122 passing), `mix format --check-formatted`, `mix credo --strict`, and the migration's `up` and `down`.
+- Remaining: Task 33 (preview presentation) and Task 5 (ready-for-review handoff) are next; Task 5 also consumes the verified-completion marker Task 30 records.
+- Spec updates: Marked Task 32 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-30 - Task 31 complete: verification evidence presented in feature activity
 

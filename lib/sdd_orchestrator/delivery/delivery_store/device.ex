@@ -22,6 +22,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     DeliveryStore,
     Evidence,
     Feature,
+    PreviewDeployment,
     RunAttempt,
     RunCommand
   }
@@ -123,6 +124,22 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     # Ordered by the recorded instant as a number rather than as a struct,
     # because Erlang term order over a `DateTime` is not chronological.
     |> Enum.sort_by(&{DateTime.to_unix(&1.recorded_at, :microsecond), &1.id})
+  end
+
+  @impl true
+  def list_preview_deployments(_authority, project_id, opts) do
+    project_id
+    |> Devices.list_delivery(:preview)
+    |> Enum.flat_map(fn value ->
+      case PreviewDeployment.from_value(value) do
+        {:ok, deployment} -> [deployment]
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.filter(&matches_preview_filters?(&1, opts))
+    # Ordered by the requested instant as a number rather than as a struct,
+    # because Erlang term order over a `DateTime` is not chronological.
+    |> Enum.sort_by(&{DateTime.to_unix(&1.requested_at, :microsecond), &1.id})
   end
 
   @impl true
@@ -329,6 +346,58 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     end
   end
 
+  # The device store has no unique index, so the binding uniqueness the hosted
+  # adapter gets from the database is checked here before any write is applied.
+  # One run, attempt, and commit have one deployment in either authority.
+  defp apply_operation(project_id, {:insert_preview_deployment, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
+         %{valid?: true} = changeset <-
+           PreviewDeployment.request_changeset(%PreviewDeployment{}, resolved),
+         deployment = changeset |> Ecto.Changeset.apply_changes() |> put_id(),
+         :ok <- ensure_one_deployment_per_binding(project_id, deployment) do
+      {:ok, deployment,
+       write(:preview, deployment.id, PreviewDeployment.to_value(deployment), nil)}
+    else
+      %Ecto.Changeset{} = invalid -> {:error, invalid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp apply_operation(_project_id, {:observe_preview_deployment, deployment, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      preview_write(
+        deployment,
+        PreviewDeployment.observe_changeset(deployment, resolved, deployment.state_version)
+      )
+    end
+  end
+
+  defp apply_operation(
+         _project_id,
+         {:supersede_preview_deployment, deployment, replacement},
+         results
+       ) do
+    with {:ok, replacement_id} <- DeliveryStore.resolve(replacement, results) do
+      preview_write(
+        deployment,
+        PreviewDeployment.supersede_changeset(
+          deployment,
+          replacement_id,
+          deployment.state_version
+        )
+      )
+    end
+  end
+
+  defp apply_operation(_project_id, {:record_preview_cleanup, deployment, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      preview_write(
+        deployment,
+        PreviewDeployment.cleanup_changeset(deployment, resolved, deployment.state_version)
+      )
+    end
+  end
+
   defp apply_operation(project_id, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
          sequence = next_sequence(project_id, resolved),
@@ -425,6 +494,15 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp evidence_write(_evidence, changeset), do: {:error, changeset}
 
+  defp preview_write(deployment, %{valid?: true} = changeset) do
+    updated = changeset |> Ecto.Changeset.apply_changes() |> bump_version()
+
+    {:ok, updated,
+     write(:preview, updated.id, PreviewDeployment.to_value(updated), deployment.state_version)}
+  end
+
+  defp preview_write(_deployment, changeset), do: {:error, changeset}
+
   # `optimistic_lock/2` only takes effect inside `Repo.update`, which this
   # adapter never calls, so the increment is applied here. Without it the stored
   # version would never move and a superseded write would look current.
@@ -476,6 +554,19 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
       _other ->
         false
     end)
+  end
+
+  defp ensure_one_deployment_per_binding(project_id, deployment) do
+    nil
+    |> list_preview_deployments(project_id,
+      run_id: deployment.run_id,
+      attempt_id: deployment.attempt_id,
+      commit_sha: deployment.commit_sha
+    )
+    |> case do
+      [] -> :ok
+      _held -> {:error, :one_preview_per_binding}
+    end
   end
 
   defp ensure_one_open_question(project_id, question) do
@@ -549,4 +640,25 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp current_enough?(evidence, true), do: Evidence.current?(evidence)
   defp current_enough?(_evidence, _all), do: true
+
+  # The same narrowing the hosted query applies to preview deployments: an
+  # absent option asks for everything, never for records whose field is nil.
+  defp matches_preview_filters?(deployment, opts) do
+    Enum.all?(
+      [
+        {:run_id, deployment.run_id},
+        {:attempt_id, deployment.attempt_id},
+        {:commit_sha, deployment.commit_sha}
+      ],
+      fn {option, held} ->
+        case Keyword.get(opts, option) do
+          nil -> true
+          wanted -> held == wanted
+        end
+      end
+    ) and current_preview_enough?(deployment, Keyword.get(opts, :current, false))
+  end
+
+  defp current_preview_enough?(deployment, true), do: PreviewDeployment.current?(deployment)
+  defp current_preview_enough?(_deployment, _all), do: true
 end

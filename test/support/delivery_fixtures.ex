@@ -1,7 +1,17 @@
 defmodule SddOrchestrator.DeliveryFixtures do
   @moduledoc "Test fixtures for feature delivery."
 
-  alias SddOrchestrator.Delivery.{Activity, AgentRun, ArtifactStore, Feature, RunAttempt}
+  alias SddOrchestrator.Delivery.{
+    Activity,
+    AgentRun,
+    ArtifactStore,
+    EvidenceIngestion,
+    Feature,
+    RunAttempt,
+    VerificationCompletion,
+    WorkerProtocol
+  }
+
   alias SddOrchestrator.ParticipationFixtures
   alias SddOrchestrator.Repo
 
@@ -202,4 +212,88 @@ defmodule SddOrchestrator.DeliveryFixtures do
   @doc "The digest the store will recompute for this exact content."
   def content_digest(content),
     do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+
+  @doc """
+  Records a genuine verified completion for one attempt on one exact commit.
+
+  Everything downstream of verification — a preview above all — must start from
+  what the completion gate actually recorded rather than from a hand-written
+  activity row, or the test proves the fixture instead of the behaviour. Every
+  check the attempt's own contract names is passed against `commit_sha` and the
+  worker's completion event is ingested exactly as a real worker would send it.
+
+  `checks: :skip` records no evidence, which is how a caller gets a genuine
+  *refused* completion rather than a verified one it then has to pretend about.
+  """
+  def verified_completion_fixture(authority, project, run, attempt, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    commit = Map.get(attrs, :commit_sha, "a1b2c3d4e5f6a7b8c9d0")
+    contract = passed_checks(attempt, attrs)
+
+    contract
+    |> Enum.with_index(1)
+    |> Enum.each(fn {name, index} ->
+      {:ok, _recorded} =
+        EvidenceIngestion.ingest(
+          authority,
+          project.id,
+          check_event(run, attempt, name, commit, index)
+        )
+    end)
+
+    {:ok, results} =
+      VerificationCompletion.ingest(
+        authority,
+        project.id,
+        completion_event(run, attempt, commit, length(contract) + 1)
+      )
+
+    Map.put(results, :commit_sha, commit)
+  end
+
+  defp passed_checks(_attempt, %{checks: :skip}), do: []
+
+  defp passed_checks(attempt, _attrs),
+    do: Enum.map(attempt.required_checks || [], &Map.get(&1, "name"))
+
+  defp check_event(run, attempt, name, commit, sequence) do
+    worker_event(run, attempt, sequence, "evidence", "check", %{
+      "kind" => "required_check",
+      "name" => name,
+      "outcome" => "passed",
+      "command" => name,
+      "exit_code" => 0,
+      "duration_ms" => 1_000,
+      "commit_sha" => commit,
+      "digest" => digest(name),
+      "redacted" => false
+    })
+  end
+
+  defp completion_event(run, attempt, commit, sequence) do
+    worker_event(run, attempt, sequence, "verification_completed", "worker", %{
+      "branch" => run.branch,
+      "revision_id" => attempt.effective_revision_id,
+      "commit_sha" => commit
+    })
+  end
+
+  defp worker_event(run, attempt, sequence, event_type, source, payload) do
+    unique = System.unique_integer([:positive])
+
+    %{
+      "type" => "event",
+      "protocol_version" => WorkerProtocol.version(),
+      "event_id" => "evt-#{unique}",
+      "run_id" => run.id,
+      "command_id" => "cmd-#{unique}",
+      "attempt_number" => attempt.attempt_number,
+      "fence_token" => attempt.fence_token,
+      "sequence" => sequence,
+      "event_type" => event_type,
+      "source" => source,
+      "occurred_at" => DateTime.to_iso8601(DateTime.utc_now()),
+      "payload" => payload
+    }
+  end
 end

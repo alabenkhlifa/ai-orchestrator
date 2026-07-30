@@ -29,6 +29,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
     BlockingQuestion,
     Evidence,
     Feature,
+    PreviewDeployment,
     RunAttempt,
     RunCommand
   }
@@ -54,6 +55,11 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:resolve_question, BlockingQuestion.t(), String.t(), String.t() | nil}
           | {:insert_evidence, map()}
           | {:supersede_evidence, Evidence.t(), Ecto.UUID.t() | {:ref, atom(), atom()}}
+          | {:insert_preview_deployment, map()}
+          | {:observe_preview_deployment, PreviewDeployment.t(), map()}
+          | {:supersede_preview_deployment, PreviewDeployment.t(),
+             Ecto.UUID.t() | {:ref, atom(), atom()}}
+          | {:record_preview_cleanup, PreviewDeployment.t(), map()}
           | {:append_activity, map()}
           | {:enqueue_command, map()}
 
@@ -110,6 +116,18 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   """
   @callback list_evidence(authority(), Ecto.UUID.t(), keyword()) :: [Evidence.t()]
 
+  @doc """
+  Lists one project's preview deployments in requested order.
+
+  The same options narrow it as for evidence — run, attempt, commit, and
+  `:current` — because a preview answers the same question about the same
+  binding: which deployment belongs to the commit under review, and which one a
+  later attempt has already replaced.
+  """
+  @callback list_preview_deployments(authority(), Ecto.UUID.t(), keyword()) :: [
+              PreviewDeployment.t()
+            ]
+
   @doc "Lists one feature's activity in authoritative order."
   @callback list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
               [ActivityEntry.t()]
@@ -129,7 +147,8 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
       resume_run insert_attempt transition_attempt claim_lease observe_sequence
       transition_feature set_feature_status clear_assignment
       insert_blocking_question resolve_question insert_evidence supersede_evidence
-      append_activity enqueue_command
+      insert_preview_deployment observe_preview_deployment supersede_preview_deployment
+      record_preview_cleanup append_activity enqueue_command
     )a
   end
 
@@ -180,6 +199,10 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   @spec list_evidence(authority(), Ecto.UUID.t(), keyword()) :: [Evidence.t()]
   def list_evidence(authority, project_id, opts \\ []),
     do: dispatch(authority, :list_evidence, [project_id, opts])
+
+  @spec list_preview_deployments(authority(), Ecto.UUID.t(), keyword()) :: [PreviewDeployment.t()]
+  def list_preview_deployments(authority, project_id, opts \\ []),
+    do: dispatch(authority, :list_preview_deployments, [project_id, opts])
 
   @spec list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) :: [ActivityEntry.t()]
   def list_activity(authority, project_id, feature_id, opts \\ []),
@@ -234,6 +257,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   defp dispatch(_authority, :latest_attempt, _args), do: :error
   defp dispatch(_authority, :open_question, _args), do: :error
   defp dispatch(_authority, :list_evidence, _args), do: []
+  defp dispatch(_authority, :list_preview_deployments, _args), do: []
   defp dispatch(_authority, :list_activity, _args), do: []
   defp dispatch(_authority, :claim_commands, _args), do: []
   defp dispatch(_authority, :acknowledge_command, _args), do: {:error, :not_found}

@@ -22,6 +22,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     DeliveryStore,
     Evidence,
     Feature,
+    PreviewDeployment,
     RunAttempt
   }
 
@@ -127,6 +128,20 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     |> narrow(:commit_sha, Keyword.get(opts, :commit_sha))
     |> only_current(Keyword.get(opts, :current, false))
     |> order_by([e], asc: e.recorded_at, asc: e.id)
+    |> Repo.all()
+  rescue
+    Ecto.Query.CastError -> []
+  end
+
+  @impl true
+  def list_preview_deployments(_authority, project_id, opts) do
+    PreviewDeployment
+    |> where([d], d.project_id == ^project_id)
+    |> narrow(:run_id, Keyword.get(opts, :run_id))
+    |> narrow(:attempt_id, Keyword.get(opts, :attempt_id))
+    |> narrow(:commit_sha, Keyword.get(opts, :commit_sha))
+    |> only_current(Keyword.get(opts, :current, false))
+    |> order_by([d], asc: d.requested_at, asc: d.id)
     |> Repo.all()
   rescue
     Ecto.Query.CastError -> []
@@ -251,6 +266,36 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     with {:ok, replacement_id} <- DeliveryStore.resolve(replacement, results) do
       evidence
       |> Evidence.supersede_changeset(replacement_id, evidence.state_version)
+      |> repo.update()
+    end
+  end
+
+  defp apply_operation(repo, {:insert_preview_deployment, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      %PreviewDeployment{} |> PreviewDeployment.request_changeset(resolved) |> repo.insert()
+    end
+  end
+
+  defp apply_operation(repo, {:observe_preview_deployment, deployment, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      deployment
+      |> PreviewDeployment.observe_changeset(resolved, deployment.state_version)
+      |> repo.update()
+    end
+  end
+
+  defp apply_operation(repo, {:supersede_preview_deployment, deployment, replacement}, results) do
+    with {:ok, replacement_id} <- DeliveryStore.resolve(replacement, results) do
+      deployment
+      |> PreviewDeployment.supersede_changeset(replacement_id, deployment.state_version)
+      |> repo.update()
+    end
+  end
+
+  defp apply_operation(repo, {:record_preview_cleanup, deployment, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      deployment
+      |> PreviewDeployment.cleanup_changeset(resolved, deployment.state_version)
       |> repo.update()
     end
   end
