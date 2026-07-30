@@ -634,6 +634,33 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
         </div>
 
         <section
+          :if={@feature.lifecycle_column == "ready_for_review"}
+          class="mt-6 rounded-lg border border-ok-fg/40 bg-ok-bg p-4"
+          aria-labelledby="review-handoff-heading"
+          data-review-handoff
+        >
+          <h2
+            id="review-handoff-heading"
+            class="flex items-center gap-1.5 text-[13px] font-semibold text-ok-fg"
+          >
+            <.lucide name="circle-check" class="size-4 flex-none" /> Ready for review
+          </h2>
+          <p class="mt-2 text-[13px] leading-relaxed text-ink">
+            Development finished and every required check passed for the commit below. Nothing is
+            done until a person says so.
+          </p>
+          <p class="mt-2 text-sm text-ink" data-review-responsible>
+            Waiting on {@responsible || "the project owner"}.
+          </p>
+          <p :if={@verification} class="mt-2 text-xs text-ink-muted" data-review-branch>
+            The work is on {@verification.branch}.
+          </p>
+          <p :if={@verification} class="mt-1 text-xs text-ink-muted" data-review-commit>
+            Reviewing commit {@verification.commit_sha}.
+          </p>
+        </section>
+
+        <section
           :if={@failed_run}
           class="mt-6 rounded-lg border border-err-fg/40 bg-err-bg p-4"
           aria-labelledby="failed-run-heading"

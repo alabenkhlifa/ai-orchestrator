@@ -349,7 +349,7 @@ Prerequisite:
   - Depends on: Task 17, Task 30
   - Proof: Focused query, authorization, typed state, provenance, failure, missing, unsupported, supersession, private artifact, desktop, mobile, keyboard, and focus tests pass.
 
-- [ ] Task 5 - Deliver the ready-for-review handoff.
+- [x] Task 5 - Deliver the ready-for-review handoff.
   - Size: Standard
   - Purpose: Move verified work to human review without allowing the agent to complete the feature.
   - Owned surfaces: Verified-completion consumption, `Ready for review` transition, agent-to-`Done` denial, current responsible participant and owner review responsibility, review-ready activity, preview-independent readiness, fixtures, and feature-detail state.
@@ -538,6 +538,18 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-30 - Task 5 complete: ready-for-review handoff
+
+- Completed: Added `Delivery.ReviewHandoff` and the handoff section of the feature detail screen. Verified work now reaches human review, and only human review.
+- The denial is the point (AC-23): an agent can never reach `Done`. It is refused twice over — `Feature.legal_transition?("in_development", "done")` is false, and an agent-shaped transition to `done` is rejected by the store itself. Both are proved, because a single guard is one edit away from being bypassed.
+- Preview independence proved rather than assumed: an absent preview (`:preview_not_configured`, no deployments) and a failed one both still reach `Ready for review`, and the failure stays readable afterwards. A preview can neither gate review nor hide its own failure.
+- Only the feature moves. The run and attempt are deliberately untouched: `AgentRun` `completed` is terminal with no outgoing transitions, so completing the run here would make Task 35's "continue the same run and branch as a new attempt" impossible after a rejection.
+- Responsibility resolves through `Assignment.responsible/2` at handoff time and is recorded as an account reference only — no name, no address. When a project has no owner at all the handoff still proceeds with a nil reference, because verified work must not get stuck behind an unrenderable name.
+- Idempotent on the verified-completion activity id, checked against the append-only ledger, so a worker's resent completion replays instead of transitioning twice. One commit, feature written once and activity written once.
+- Discovered and recorded for Tasks 34 and 35: the current attempt is left non-terminal when work reaches review. Two consequences follow. `RunAttempt`'s partial unique index allows only one non-terminal attempt per run, so a rejection must end this attempt in the same commit that creates its successor. And `Reconciliation` can still watch that attempt's lease expire and schedule a retry for work already sitting in review. Closing it is legal only from `running`, so a blind transition would fail closed for an attempt still `pending` or `dispatched`.
+- Failed checks: None. Final proof passes with real exit status: 91 handoff and screen tests across both authorities, `mix test` (2163 passing), `mix format --check-formatted`, and `mix credo --strict`.
+- Spec updates: Marked Task 5 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-30 - Task 32 complete: configured preview adapter and deployment lifecycle
 

@@ -15,8 +15,10 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     ArtifactStore,
     Assignment,
     BlockingQuestion,
+    DeliveryStore,
     EvidencePresentation,
-    Feature
+    Feature,
+    ReviewHandoff
   }
 
   alias SddOrchestrator.Delivery.VerificationCompletion.Verdict
@@ -1361,6 +1363,141 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       # The control a keyboard user reaches is a real button, not a clickable div.
       assert view |> element("[data-evidence] h3[data-evidence-name]") |> render() =~ "mix test"
     end
+  end
+
+  describe "the ready-for-review handoff [AC-23]" do
+    setup %{project: project, account: account, context: context} do
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+
+      %{feature: feature, run: proven_run(context.workspace, project, feature)}
+    end
+
+    test "a feature still in development offers no review handoff", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+      refute has_element?(view, "[data-review-handoff]")
+    end
+
+    test "a verified run shows the review state and who it waits on [AC-23]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account,
+      run: run
+    } do
+      owner_label = Participation.owner_profile(project.id).display_name
+
+      {:ok, %{applied?: true}} = ReviewHandoff.deliver(context.workspace, project.id, run.run)
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element("[data-feature-column]") |> render() =~ "Ready for review"
+      assert has_element?(view, "[data-review-handoff]")
+      assert view |> element("[data-review-responsible]") |> render() =~ owner_label
+      assert view |> element("[data-review-branch]") |> render() =~ run.run.branch
+      assert view |> element("[data-review-commit]") |> render() =~ EvidenceFixtures.commit()
+
+      # Nobody is offered a way to finish the feature from here yet, and the
+      # agent certainly is not.
+      refute html =~ "Done"
+      refute html =~ "@example.com"
+      refute html =~ context.identity.hosted_identity.id
+    end
+
+    test "the current assignee is the person the review waits on", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account,
+      run: run
+    } do
+      target = context.identity.account
+      assignee_label = Participation.member_profile(project.id, target.id).display_name
+
+      {:ok, _assigned} =
+        Assignment.assign(project.id, context.owner_actor, feature, target.id)
+
+      {:ok, %{applied?: true}} = ReviewHandoff.deliver(context.workspace, project.id, run.run)
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      responsible = view |> element("[data-review-responsible]") |> render()
+
+      assert responsible =~ assignee_label
+      refute responsible =~ Participation.owner_profile(project.id).display_name
+      refute html =~ "@example.com"
+    end
+
+    test "the review section labels itself for a screen reader", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account,
+      run: run
+    } do
+      {:ok, %{applied?: true}} = ReviewHandoff.deliver(context.workspace, project.id, run.run)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      section = view |> element("[data-review-handoff]") |> render()
+
+      assert section =~ "aria-labelledby=\"review-handoff-heading\""
+      assert section =~ "id=\"review-handoff-heading\""
+      assert section =~ "Ready for review"
+
+      # The state is not carried by colour alone: it has an icon and a word.
+      assert section =~ "<svg"
+    end
+  end
+
+  # One run whose contracted checks all passed for the commit under review, so
+  # the screen is proved against a completion the gate genuinely recorded.
+  defp proven_run(authority, project, feature) do
+    unique = System.unique_integer([:positive])
+    digest = DeliveryFixtures.digest("rev-#{unique}")
+
+    {:ok, %{run: run, attempt: attempt}} =
+      DeliveryStore.commit(authority, project.id, [
+        {:run,
+         {:insert_run,
+          %{
+            project_id: project.id,
+            feature_id: feature.id,
+            starting_revision_id: "rev-#{unique}",
+            starting_revision_digest: digest,
+            approved_slice: "slice-07",
+            branch: "sdd/feature-#{unique}"
+          }}},
+        {:attempt,
+         {:insert_attempt,
+          %{
+            run_id: {:ref, :run, :id},
+            attempt_number: 1,
+            continuation_reason: "initial",
+            effective_revision_id: "rev-#{unique}",
+            effective_revision_digest: digest,
+            manifest_digest: DeliveryFixtures.digest("manifest-#{unique}"),
+            required_checks: DeliveryFixtures.required_check_contract(["mix test"]),
+            fence_token: 1
+          }}}
+      ])
+
+    DeliveryFixtures.verified_completion_fixture(authority, project, run, attempt)
+
+    %{run: run, attempt: attempt}
   end
 
   defp fact(view, scope, name) do
