@@ -382,6 +382,7 @@ defmodule SddOrchestrator.Delivery.Reconciliation do
       effective_revision_id: run.effective_revision_id,
       effective_revision_digest: run.effective_revision_digest,
       manifest_digest: ExecutionManifest.digest(manifest),
+      required_checks: manifest.required_checks,
       fence_token: attempt.fence_token + 1
     }
   end

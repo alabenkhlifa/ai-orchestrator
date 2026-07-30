@@ -50,6 +50,13 @@ defmodule SddOrchestrator.Delivery.RunAttempt do
     field :effective_revision_id, :string
     field :effective_revision_digest, :string
     field :manifest_digest, :string
+
+    # The required-check contract this attempt was bound to, snapshotted from
+    # its manifest at creation. The digest alone cannot be read, and the project
+    # configuration can change mid-run, so the completion gate needs the
+    # contract the attempt actually started under rather than today's.
+    field :required_checks, {:array, :map}, default: []
+
     field :lease_owner, :string
     field :lease_expires_at, :utc_datetime
     field :fence_token, :integer
@@ -91,6 +98,11 @@ defmodule SddOrchestrator.Delivery.RunAttempt do
 
   The fence token is supplied by the caller because it must be monotonic across
   the whole run, which only the run-level transaction can know.
+
+  `:required_checks` is the contract snapshot taken from that same manifest. It
+  is deliberately not required: an attempt created without one records an empty
+  contract, which the completion gate reads as unknown and refuses, rather than
+  as permission to complete with nothing proved.
   """
   def create_changeset(attempt, attrs) do
     attempt
@@ -101,11 +113,14 @@ defmodule SddOrchestrator.Delivery.RunAttempt do
       :effective_revision_id,
       :effective_revision_digest,
       :manifest_digest,
+      :required_checks,
       :fence_token
     ])
     |> put_change(:state, "pending")
     |> put_change(:last_sequence, 0)
     |> put_change(:state_version, 1)
+    |> put_default_required_checks()
+    |> validate_required_checks()
     |> validate_required([
       :run_id,
       :attempt_number,
@@ -180,6 +195,7 @@ defmodule SddOrchestrator.Delivery.RunAttempt do
       "effective_revision_id" => attempt.effective_revision_id,
       "effective_revision_digest" => attempt.effective_revision_digest,
       "manifest_digest" => attempt.manifest_digest,
+      "required_checks" => attempt.required_checks || [],
       "lease_owner" => attempt.lease_owner,
       "lease_expires_at" =>
         attempt.lease_expires_at && DateTime.to_iso8601(attempt.lease_expires_at),
@@ -197,6 +213,7 @@ defmodule SddOrchestrator.Delivery.RunAttempt do
          true <- is_integer(value["last_sequence"]) and value["last_sequence"] >= 0,
          true <- is_integer(value["state_version"]) and value["state_version"] > 0,
          true <- is_binary(value["id"]) and is_binary(value["run_id"]),
+         {:ok, required_checks} <- decode_required_checks(value["required_checks"]),
          {:ok, expires_at} <- decode_expiry(value["lease_expires_at"]) do
       {:ok,
        %__MODULE__{
@@ -208,6 +225,7 @@ defmodule SddOrchestrator.Delivery.RunAttempt do
          effective_revision_id: value["effective_revision_id"],
          effective_revision_digest: value["effective_revision_digest"],
          manifest_digest: value["manifest_digest"],
+         required_checks: required_checks,
          lease_owner: value["lease_owner"],
          lease_expires_at: expires_at,
          fence_token: value["fence_token"],
@@ -220,6 +238,47 @@ defmodule SddOrchestrator.Delivery.RunAttempt do
   end
 
   def from_value(_value), do: {:error, :invalid_attempt_value}
+
+  # An absent snapshot decodes to an empty contract rather than to a failure,
+  # because a device record written before this field existed is not corrupt.
+  # It is unproven, and the completion gate already refuses an empty contract.
+  # A snapshot that is present but not a list of checks is a different thing —
+  # a value the device store could not have written — and is refused.
+  defp decode_required_checks(nil), do: {:ok, []}
+
+  defp decode_required_checks(checks) when is_list(checks) do
+    if Enum.all?(checks, &named_check?/1), do: {:ok, checks}, else: :error
+  end
+
+  defp decode_required_checks(_checks), do: :error
+
+  defp named_check?(check) when is_map(check) do
+    case Map.get(check, "name") do
+      name when is_binary(name) and name != "" -> true
+      _unnamed -> false
+    end
+  end
+
+  defp named_check?(_check), do: false
+
+  defp put_default_required_checks(changeset) do
+    case get_field(changeset, :required_checks) do
+      nil -> put_change(changeset, :required_checks, [])
+      _present -> changeset
+    end
+  end
+
+  # A check the gate cannot name is a check the gate cannot look for, so an
+  # unnamed entry is rejected at creation rather than silently ignored later.
+  defp validate_required_checks(changeset) do
+    checks = get_field(changeset, :required_checks) || []
+
+    if is_list(checks) and Enum.all?(checks, &named_check?/1) do
+      changeset
+    else
+      add_error(changeset, :required_checks, "must each carry a name")
+    end
+  end
 
   defp decode_expiry(nil), do: {:ok, nil}
 

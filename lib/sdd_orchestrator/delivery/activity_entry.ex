@@ -43,6 +43,8 @@ defmodule SddOrchestrator.Delivery.ActivityEntry do
     run_failed
     run_started
     suggestion_dismissed
+    verification_completed
+    verification_refused
   )
 
   # Payload keys that would carry a raw provider stream, a transcript, or a

@@ -123,6 +123,7 @@ defmodule SddOrchestrator.Delivery.Start do
           effective_revision_id: manifest.effective_revision_id,
           effective_revision_digest: manifest.effective_revision_digest,
           manifest_digest: digest,
+          required_checks: manifest.required_checks,
           fence_token: 1
         }}},
       {:activity,

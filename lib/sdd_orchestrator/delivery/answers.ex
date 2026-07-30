@@ -176,6 +176,7 @@ defmodule SddOrchestrator.Delivery.Answers do
           effective_revision_id: revision.id,
           effective_revision_digest: revision.content_digest,
           manifest_digest: digest,
+          required_checks: manifest.required_checks,
           fence_token: attempt.fence_token + 1
         }}},
       {:activity,

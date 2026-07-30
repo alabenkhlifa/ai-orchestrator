@@ -333,7 +333,7 @@ Prerequisite:
   - Depends on: Task 29, Task 43, Task 52
   - Proof: Focused visual and non-visual work, supported, unsupported, inapplicable, failed capture, same-commit, artifact, redaction, and no-invented-evidence tests pass.
 
-- [ ] Task 30 - Enforce same-commit verification completion.
+- [x] Task 30 - Enforce same-commit verification completion.
   - Size: Standard
   - Purpose: Permit a successful claim only when every configured required check proves the exact commit offered for review.
   - Owned surfaces: Required-check contract snapshot, complete result set, exact branch, revision and commit binding, passed, failed, missing and superseded evaluation, commit-change invalidation, screenshot applicability integration, success-claim gate, verified completion event, fixtures, and failure reason.
@@ -538,6 +538,21 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-30 - Task 30 complete: same-commit verification completion
+
+- Completed: Added `Delivery.VerificationCompletion`, the `run_attempts.required_checks` snapshot, and the `verification_completed` and `verification_refused` activity types. A successful claim is now something the run has to earn against its own recorded contract.
+- The contract was unreachable before this task. An attempt stored only its `manifest_digest`, never the manifest body, so nothing could say what the required checks even were. The attempt now snapshots the contract at creation, and all four attempt-creation sites — start, answers, retry, and reconciliation — pass it through from the manifest they already hold.
+- The false-success guard (AC-19): an empty snapshot is `:required_check_contract_unknown`, never "nothing was required". A default that silently means "no checks apply" would turn a missing contract into an automatic pass, which is the exact failure this task exists to prevent. It is first in the refusal precedence and directly proved.
+- Same commit or nothing: evidence for another commit does not count even when it passed, and results from an earlier commit are not carried forward — a later commit invalidates them until the checks rerun. Superseded items never count; the item that replaced them is what is evaluated. Branch and revision identity must be present and must match the run's own.
+- Screenshots stay conditional: a `failed` capture refuses completion, while `missing` and `unsupported` do not. Requiring a screenshot universally is what the requirement forbids, so the gate reads what `ScreenshotEvidence` already recorded rather than re-deriving applicability.
+- A refused claim is visible, not silent: it records `verification_refused` with the failing and missing check names and changes nothing else. A worker claiming completion it has not earned leaves a trace a reader can find.
+- Mechanism recorded: verified completion changes no run or attempt state. The commit already writes the attempt once for its sequence, so a second write would hit the stale-state trap, and moving the feature belongs to Task 5 and Task 34. The durable marker is one activity entry that `verified_completion/4` reads back.
+- Idempotency is two-layered: a byte-identical redelivery stops at the attempt's sequence gate, and a resend under a later sequence finds its own operation key in the activity ledger and applies nothing. Both are proved.
+- Recorded log noise, not a failure: `artifact_store_test.exs` rolls its own migration down and up inside its transaction, so now that a higher-versioned migration exists Ecto prints an out-of-order migration notice during that test. It still passes, and every future migration will print the same line.
+- Failed checks: None. Final proof passes with real exit status: 67 verification tests across both authorities, `mix test` (1984 passing), `mix format --check-formatted`, `mix credo --strict`, and the migration's `up` and `down`.
+- Remaining: Tasks 31 and 32 are now independent of each other and run in parallel, with Task 31 owning the feature-detail web surface and Task 32 confined to domain and adapter files.
+- Spec updates: Marked Task 30 complete; requirements, design, ownership, and capability edges are unchanged.
 
 ### 2026-07-29 - Task 44 complete: conditional screenshot evidence
 

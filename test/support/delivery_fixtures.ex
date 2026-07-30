@@ -100,8 +100,19 @@ defmodule SddOrchestrator.DeliveryFixtures do
       effective_revision_digest:
         Map.get(attrs, :effective_revision_digest, run.effective_revision_digest),
       manifest_digest: Map.get(attrs, :manifest_digest, digest("manifest-#{run.id}-#{number}")),
+      required_checks: Map.get(attrs, :required_checks, []),
       fence_token: Map.get(attrs, :fence_token, number)
     })
+  end
+
+  @doc """
+  The required-check contract an attempt snapshots from its manifest.
+
+  Names are what the completion gate looks evidence up by, so a fixture that
+  invented its own shape would prove nothing about the manifest it stands in for.
+  """
+  def required_check_contract(names) do
+    Enum.map(names, &%{"name" => &1, "command" => &1})
   end
 
   @doc """
