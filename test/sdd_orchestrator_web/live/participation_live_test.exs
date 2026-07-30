@@ -611,4 +611,68 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       assert html =~ "flex flex-col gap-3 sm:flex-row"
     end
   end
+
+  describe "project navigation (AC-48)" do
+    test "marks People as the current destination for the owner", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      assert has_element?(view, "nav[aria-label='Project'][data-project-nav]")
+      assert has_element?(view, ~s([data-nav-destination="people"][data-nav-current]))
+      assert has_element?(view, ~s([data-nav-destination="people"][aria-current="page"]))
+
+      assert has_element?(
+               view,
+               ~s([data-nav-destination="overview"][href="/projects/#{project.id}/overview"])
+             )
+
+      assert has_element?(
+               view,
+               ~s([data-nav-destination="features"][href="/projects/#{project.id}/features"])
+             )
+
+      # The `Project` back button the navigation replaced is gone.
+      assert count(html, ~s(href="/projects/#{project.id}/overview")) == 1
+    end
+
+    test "hides the owner-only overview from a participant", %{conn: conn} do
+      %{project: project, participants: [first, _second]} = project_with_participants()
+
+      access =
+        SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: first.external_identity.display_identifier
+        })
+
+      {:ok, view, _html} =
+        conn |> hosted_conn(access) |> live(~p"/projects/#{project.id}/participation")
+
+      refute has_element?(view, ~s([data-nav-destination="overview"]))
+      assert has_element?(view, ~s([data-nav-destination="features"]))
+      assert has_element?(view, ~s([data-nav-destination="people"][data-nav-current]))
+    end
+
+    test "builds every destination from this project only", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+      %{project: other_project} = ParticipationFixtures.hosted_project_fixture()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      refute html =~ other_project.id
+
+      hrefs =
+        view
+        |> element("[data-project-nav]")
+        |> render()
+        |> then(&Regex.scan(~r/href="([^"]+)"/, &1, capture: :all_but_first))
+        |> List.flatten()
+
+      assert length(hrefs) == 3
+      assert Enum.all?(hrefs, &String.starts_with?(&1, "/projects/#{project.id}/"))
+    end
+  end
+
+  defp count(html, needle), do: html |> String.split(needle) |> length() |> Kernel.-(1)
 end

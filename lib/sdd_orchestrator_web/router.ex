@@ -100,6 +100,12 @@ defmodule SddOrchestratorWeb.Router do
     # required so the proof is recorded even if opened outside the GitHub session.
     get "/identity/link/verify", IdentityLinkController, :verify
 
+    # A project's address is a landing decision, not a screen: a configured
+    # project opens on its board and one that still needs setup on its overview.
+    # It requires no session of its own because it renders nothing — both
+    # outcomes are a redirect to a destination that authorizes itself.
+    get "/projects/:id", ProjectLandingController, :show
+
     # Unauthenticated entry chooser; a valid session is sent to the catalog.
     live_session :redirect_if_authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :redirect_if_authenticated}] do
@@ -152,7 +158,7 @@ defmodule SddOrchestratorWeb.Router do
     live_session :authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
       live "/projects", ProjectsLive
-      live "/projects/:id", ProjectDashboardLive
+      live "/projects/:id/overview", ProjectDashboardLive
       live "/projects/:id/backup", ProjectBackupLive, :hosted
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
       live "/onboarding/storage/:attempt_id", StorageSelectionLive

@@ -158,7 +158,9 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
 
     case Projects.get_project(workspace, project_id) do
       nil -> {:error, ~p"/projects"}
-      project -> {:ok, workspace, project, ~p"/projects/#{project.id}"}
+      # Cancel returns to the screen this was opened from, not through the
+      # project's landing decision, which would re-route to the board instead.
+      project -> {:ok, workspace, project, ~p"/projects/#{project.id}/overview"}
     end
   end
 
@@ -207,6 +209,18 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
       </:actions>
 
       <div data-screen="project-backup" data-backup-readiness={@backup_readiness}>
+        <%!-- Backup is reached from the hosted project's overview and belongs
+        under it, so the overview destination is current but not exact. A
+        device-authoritative project has no project-scoped destinations. --%>
+        <.project_nav
+          :if={@project.storage_mode == "hosted"}
+          project_id={@project.id}
+          current={:overview}
+          exact?={false}
+          owner?={true}
+          class="mb-6"
+        />
+
         <h1 class="text-xl font-bold text-ink">Back up {@project.name}</h1>
         <p class="mt-1.5 text-sm leading-relaxed text-ink-muted text-pretty">
           Create one encrypted backup of this project. You will need its recovery passphrase every

@@ -119,21 +119,23 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
         <.button variant="secondary" size="sm" navigate={~p"/projects"}>
           <.lucide name="arrow-left" class="size-4" /> Projects
         </.button>
-        <.button
-          :if={@project.storage_mode == "hosted"}
-          variant="secondary"
-          size="sm"
-          navigate={~p"/projects/#{@project.id}/participation"}
-          data-open-participation
-        >
-          <.lucide name="users" class="size-4" /> People
-        </.button>
         <.button variant="secondary" size="sm" href={~p"/auth/sign_out"} method="delete">
           <.lucide name="log-out" class="size-4" /> Sign out
         </.button>
       </:actions>
 
       <div data-screen="project-dashboard">
+        <%!-- Mount is workspace-scoped, so reaching this screen already proves
+        ownership. A device-authoritative project has no participation and no
+        feature board, so it is offered no project navigation. --%>
+        <.project_nav
+          :if={@project.storage_mode == "hosted"}
+          project_id={@project.id}
+          current={:overview}
+          owner?={true}
+          class="mb-6"
+        />
+
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <h1 class="text-xl font-bold text-ink truncate" data-project-name>{@project.name}</h1>

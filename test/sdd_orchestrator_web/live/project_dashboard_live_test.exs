@@ -29,7 +29,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
       project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
 
-      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}")
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
 
       assert html =~ ~s(data-screen="project-dashboard")
       assert html =~ "Roadmap"
@@ -42,7 +42,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       %{conn: conn, account: account, workspace: workspace} = log_in_scenario(conn, "octo")
       project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
 
-      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}")
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
       credential = Accounts.get_github_credential(account.id)
 
       refute html =~ credential.access_token
@@ -55,7 +55,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       project = ProjectsFixtures.registered_project(workspace, name: "Original")
       repo_id = project.repository_connection.provider_repository_id
 
-      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}")
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}/overview")
 
       html =
         view |> form("#project-rename-form", project: %{name: "Renamed"}) |> render_submit()
@@ -81,7 +81,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
           repository: ProjectsFixtures.repository_metadata(id: 2)
         )
 
-      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}")
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}/overview")
 
       html = view |> form("#project-rename-form", project: %{name: "taken"}) |> render_submit()
 
@@ -98,7 +98,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       %{conn: conn, workspace: workspace} = log_in_scenario(conn, "noinstall-x")
       project = ProjectsFixtures.registered_project(workspace, name: "Orphaned")
 
-      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}")
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
 
       assert html =~ "Orphaned"
       assert html =~ "Disconnected"
@@ -110,7 +110,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       %{conn: conn, workspace: workspace} = log_in_scenario(conn, "noinstall-x")
       project = ProjectsFixtures.registered_project(workspace, name: "Orphaned")
 
-      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}")
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}/overview")
 
       html = view |> element("button[data-recheck]") |> render_click()
       # Access is still unavailable in this scenario, so it stays disconnected.
@@ -126,7 +126,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
 
     test "routes an unknown project id back to the catalog", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/projects"}}} =
-               live(conn, ~p"/projects/#{Ecto.UUID.generate()}")
+               live(conn, ~p"/projects/#{Ecto.UUID.generate()}/overview")
     end
 
     test "never resolves another workspace's project", %{conn: conn} do
@@ -134,12 +134,67 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       foreign_project = ProjectsFixtures.registered_project(foreign, name: "Theirs")
 
       assert {:error, {:live_redirect, %{to: "/projects"}}} =
-               live(conn, ~p"/projects/#{foreign_project.id}")
+               live(conn, ~p"/projects/#{foreign_project.id}/overview")
+    end
+  end
+
+  describe "project navigation (AC-48)" do
+    test "marks the overview as current and offers the project's other screens", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert has_element?(view, "nav[aria-label='Project'][data-project-nav]")
+      assert has_element?(view, ~s([data-nav-destination="overview"][data-nav-current]))
+      assert has_element?(view, ~s([data-nav-destination="overview"][aria-current="page"]))
+
+      assert has_element?(
+               view,
+               ~s([data-nav-destination="features"][href="/projects/#{project.id}/features"])
+             )
+
+      assert has_element?(
+               view,
+               ~s([data-nav-destination="people"][href="/projects/#{project.id}/participation"])
+             )
+
+      refute has_element?(view, ~s([data-nav-destination="features"][data-nav-current]))
+
+      # The `People` top-bar button the navigation replaced is gone; `Projects`
+      # and `Sign out` are not project navigation and stay.
+      assert count(html, ~s(href="/projects/#{project.id}/participation")) == 1
+      assert has_element?(view, ~s(a[href="/projects"]))
+      assert has_element?(view, ~s(a[href="/auth/sign_out"]))
+    end
+
+    test "builds every destination from this project only", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
+
+      foreign = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      foreign_project = ProjectsFixtures.registered_project(foreign, name: "Theirs")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      refute html =~ foreign_project.id
+
+      hrefs =
+        view
+        |> element("[data-project-nav]")
+        |> render()
+        |> then(&Regex.scan(~r/href="([^"]+)"/, &1, capture: :all_but_first))
+        |> List.flatten()
+
+      assert length(hrefs) == 3
+      assert Enum.all?(hrefs, &String.starts_with?(&1, "/projects/#{project.id}/"))
     end
   end
 
   test "requires an authenticated session", %{conn: conn} do
     assert {:error, {:redirect, %{to: "/"}}} =
-             live(conn, ~p"/projects/#{Ecto.UUID.generate()}")
+             live(conn, ~p"/projects/#{Ecto.UUID.generate()}/overview")
   end
+
+  defp count(html, needle), do: html |> String.split(needle) |> length() |> Kernel.-(1)
 end

@@ -264,6 +264,125 @@ defmodule SddOrchestratorWeb.FeatureBoardLiveTest do
     end
   end
 
+  describe "project navigation (AC-48)" do
+    test "offers the project's destinations and marks the board as current", %{conn: conn} do
+      %{project: project, account: account} = DeliveryFixtures.delivery_project_fixture()
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/features")
+
+      assert has_element?(view, "nav[aria-label='Project'][data-project-nav]")
+
+      for {destination, path} <- [
+            {"overview", "/projects/#{project.id}/overview"},
+            {"features", "/projects/#{project.id}/features"},
+            {"people", "/projects/#{project.id}/participation"}
+          ] do
+        assert has_element?(view, ~s([data-nav-destination="#{destination}"][href="#{path}"]))
+      end
+
+      # The board is the exact page, so it is the only current destination.
+      assert has_element?(view, ~s([data-nav-current][data-nav-destination="features"]))
+      assert has_element?(view, ~s([data-nav-destination="features"][aria-current="page"]))
+      refute has_element?(view, ~s([data-nav-destination="overview"][data-nav-current]))
+      refute has_element?(view, ~s([data-nav-destination="people"][aria-current]))
+    end
+
+    test "replaces the old back buttons rather than adding to them", %{conn: conn} do
+      %{project: project, account: account} = DeliveryFixtures.delivery_project_fixture()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/features")
+
+      assert has_element?(view, "[data-screen=feature-board]")
+
+      # The navigation row is the only path to each destination; the top-bar
+      # `Project` and `People` buttons it replaced are gone.
+      assert count(html, ~s(href="/projects/#{project.id}/overview")) == 1
+      assert count(html, ~s(href="/projects/#{project.id}/participation")) == 1
+    end
+
+    test "never builds a destination from anything but the current project", %{conn: conn} do
+      %{project: project, account: account} = DeliveryFixtures.delivery_project_fixture()
+      %{project: other_project} = DeliveryFixtures.delivery_project_fixture()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/features")
+
+      refute html =~ other_project.id
+
+      hrefs = view |> element("[data-project-nav]") |> render() |> nav_hrefs()
+
+      assert length(hrefs) == 3
+
+      for href <- hrefs do
+        assert String.starts_with?(href, "/projects/#{project.id}/")
+      end
+    end
+
+    test "hides the owner-only overview from a participant", %{conn: conn} do
+      %{project: project, identity: identity} = DeliveryFixtures.delivery_project_fixture()
+
+      access =
+        SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: identity.external_identity.display_identifier
+        })
+
+      {:ok, view, _html} =
+        conn |> hosted(access) |> live(~p"/projects/#{project.id}/features")
+
+      # A participant has no application session, so the overview would only
+      # bounce them to sign-in; it is left out rather than shown and refused.
+      refute has_element?(view, ~s([data-nav-destination="overview"]))
+      assert has_element?(view, ~s([data-nav-destination="features"][data-nav-current]))
+      assert has_element?(view, ~s([data-nav-destination="people"]))
+    end
+
+    test "every destination revalidates authorization on its own mount", %{conn: conn} do
+      %{project: project, account: account} = DeliveryFixtures.delivery_project_fixture()
+      %{account: outsider} = DeliveryFixtures.delivery_project_fixture()
+
+      # The board and people destinations fail closed for a non-member.
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               conn |> log_in_account(outsider) |> live(~p"/projects/#{project.id}/features")
+
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               build_conn()
+               |> log_in_account(outsider)
+               |> live(~p"/projects/#{project.id}/participation")
+
+      # The overview is workspace-scoped, so it fails closed for a non-owner.
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               build_conn()
+               |> log_in_account(outsider)
+               |> live(~p"/projects/#{project.id}/overview")
+
+      # The same three destinations open for the project's own owner.
+      assert {:ok, _board, _} =
+               build_conn()
+               |> log_in_account(account)
+               |> live(~p"/projects/#{project.id}/features")
+
+      assert {:ok, _people, _} =
+               build_conn()
+               |> log_in_account(account)
+               |> live(~p"/projects/#{project.id}/participation")
+
+      assert {:ok, _overview, _} =
+               build_conn()
+               |> log_in_account(account)
+               |> live(~p"/projects/#{project.id}/overview")
+    end
+  end
+
+  defp nav_hrefs(nav_html) do
+    ~r/href="([^"]+)"/
+    |> Regex.scan(nav_html, capture: :all_but_first)
+    |> List.flatten()
+  end
+
+  defp count(html, needle), do: html |> String.split(needle) |> length() |> Kernel.-(1)
+
   defp hosted(conn, access) do
     conn
     |> Phoenix.ConnTest.init_test_session(%{})

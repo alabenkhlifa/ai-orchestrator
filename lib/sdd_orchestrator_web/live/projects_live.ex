@@ -111,8 +111,12 @@ defmodule SddOrchestratorWeb.ProjectsLive do
 
       <ul id="project-catalog" class="mt-6 flex flex-col gap-2.5">
         <li :for={entry <- @entries} id={"project-#{entry.id}"} data-storage-mode={entry.storage_mode}>
+          <%!-- A hosted row opens the project's landing decision, which is a
+          plain request rather than a LiveView, and a device row crosses into
+          another live session. Both are a full page load either way, so this
+          asks for one directly instead of letting live navigation discover it. --%>
           <.link
-            navigate={entry.route}
+            href={entry.route}
             class="flex items-center gap-3 rounded-lg border border-line bg-surface p-4 hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             <span class="flex-none w-9 h-9 rounded-lg bg-raised text-ink-muted flex items-center justify-center">

@@ -64,9 +64,11 @@ defmodule SddOrchestratorWeb.ProjectConfirmationLive do
     |> assign(:transaction_error, nil)
   end
 
+  # A created project hands off to its landing decision, which is a plain
+  # request rather than a LiveView, so this redirects instead of navigating.
   defp route_to_created_project(socket, workspace, attempt) do
     case Projects.register_project(workspace, attempt, []) do
-      {:ok, project} -> push_navigate(socket, to: ~p"/projects/#{project.id}")
+      {:ok, project} -> redirect(socket, to: ~p"/projects/#{project.id}")
       _ -> push_navigate(socket, to: ~p"/projects")
     end
   end
@@ -87,7 +89,7 @@ defmodule SddOrchestratorWeb.ProjectConfirmationLive do
 
     case Projects.register_project(socket.assigns.workspace, socket.assigns.attempt, opts) do
       {:ok, project} ->
-        {:noreply, push_navigate(socket, to: ~p"/projects/#{project.id}")}
+        {:noreply, redirect(socket, to: ~p"/projects/#{project.id}")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, name: name, name_error: name_error_message(changeset))}
@@ -193,7 +195,7 @@ defmodule SddOrchestratorWeb.ProjectConfirmationLive do
               <.button
                 variant="secondary"
                 size="sm"
-                navigate={~p"/projects/#{@repo_conflict.id}"}
+                href={~p"/projects/#{@repo_conflict.id}"}
                 class="flex-none"
               >
                 Open {@repo_conflict.name}

@@ -67,7 +67,18 @@ defmodule SddOrchestratorWeb.FeatureBoardLive do
     |> assign(:board, board)
     |> assign(:columns, Feature.columns())
     |> assign(:names, member_names(project_id, actor))
+    |> assign(:owner?, owner?(project_id, actor))
     |> assign(:title, "")
+  end
+
+  # The same fail-closed check the board already passed, re-asked for its role
+  # so the owner-only navigation destination is offered to the owner alone. It
+  # adds no second authorization concept.
+  defp owner?(project_id, actor) do
+    case ParticipantGuard.authorize(project_id, actor) do
+      {:ok, %{role: :owner}} -> true
+      _other -> false
+    end
   end
 
   defp refresh(socket) do
@@ -92,16 +103,14 @@ defmodule SddOrchestratorWeb.FeatureBoardLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
     <.app_shell max_width="max-w-6xl">
-      <:actions>
-        <.button variant="secondary" size="sm" navigate={~p"/projects/#{@project_id}"}>
-          <.lucide name="arrow-left" class="size-4" /> Project
-        </.button>
-        <.button variant="secondary" size="sm" navigate={~p"/projects/#{@project_id}/participation"}>
-          <.lucide name="users" class="size-4" /> People
-        </.button>
-      </:actions>
-
       <div data-screen="feature-board">
+        <.project_nav
+          project_id={@project_id}
+          current={:features}
+          owner?={@owner?}
+          class="mb-6"
+        />
+
         <h1 class="text-xl font-bold text-ink">Features</h1>
         <p class="mt-1 text-sm text-ink-muted">
           A feature moves between columns through the workflow actions on its own screen, not by

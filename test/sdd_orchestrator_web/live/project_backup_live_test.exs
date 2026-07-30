@@ -161,7 +161,7 @@ defmodule SddOrchestratorWeb.ProjectBackupLiveTest do
       conn: conn,
       project: project
     } do
-      {:ok, dashboard, _html} = live(conn, ~p"/projects/#{project.id}")
+      {:ok, dashboard, _html} = live(conn, ~p"/projects/#{project.id}/overview")
 
       assert has_element?(
                dashboard,
@@ -170,10 +170,32 @@ defmodule SddOrchestratorWeb.ProjectBackupLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}/backup")
 
-      assert {:error, {:live_redirect, %{to: "/projects/" <> id}}} =
+      # Cancel returns to the overview it was opened from rather than to the
+      # project's landing decision, which would re-route to the board.
+      assert {:error, {:live_redirect, %{to: to}}} =
                view |> element("main [data-cancel-backup]") |> render_click()
 
-      assert id == project.id
+      assert to == "/projects/#{project.id}/overview"
+    end
+
+    test "carries the project's navigation with the overview current but not exact", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}/backup")
+
+      assert has_element?(view, "nav[aria-label='Project'][data-project-nav]")
+      assert has_element?(view, ~s([data-nav-destination="overview"][data-nav-current]))
+      assert has_element?(view, ~s([data-nav-destination="overview"][aria-current="true"]))
+      refute has_element?(view, ~s([data-nav-destination="overview"][aria-current="page"]))
+
+      assert has_element?(
+               view,
+               ~s([data-nav-destination="features"][href="/projects/#{project.id}/features"])
+             )
+
+      # Cancel is a task action, not navigation, so it stays.
+      assert has_element?(view, "main [data-cancel-backup]")
     end
 
     test "does not render an unknown or another workspace's project", %{
@@ -212,6 +234,11 @@ defmodule SddOrchestratorWeb.ProjectBackupLiveTest do
              )
 
       {:ok, view, _html} = live(conn, ~p"/local/projects/#{project.id}/backup")
+
+      # A device-authoritative project has no participation and no feature
+      # board, so it is offered no project-scoped navigation.
+      refute has_element?(view, "[data-project-nav]")
+
       passphrase = "device recovery phrase"
 
       view

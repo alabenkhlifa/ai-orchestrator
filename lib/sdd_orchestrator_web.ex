@@ -88,6 +88,7 @@ defmodule SddOrchestratorWeb do
       import SddOrchestratorWeb.CoreComponents
       import SddOrchestratorWeb.UI
       import SddOrchestratorWeb.Icons
+      import SddOrchestratorWeb.ProjectNav
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

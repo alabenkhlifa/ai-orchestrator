@@ -391,6 +391,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:feature, feature)
     |> assign(:names, Map.new(members, &{&1.account_id, &1.display_name}))
     |> assign(:members, members)
+    |> assign(:owner?, owner?(project_id, actor))
     |> assign(:responsible, QuestionRouting.responder_label(project_id, feature))
     |> assign(:question_for_me?, QuestionRouting.tagged?(project_id, feature, actor))
     |> assign(:question, open_question(project_id, actor, feature))
@@ -405,6 +406,16 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
     |> assign_disclosure()
+  end
+
+  # The same fail-closed check this screen already passed, re-asked for its role
+  # so the owner-only navigation destination is offered to the owner alone. It
+  # adds no second authorization concept.
+  defp owner?(project_id, actor) do
+    case ParticipantGuard.authorize(project_id, actor) do
+      {:ok, %{role: :owner}} -> true
+      _other -> false
+    end
   end
 
   # The stopped run this reader may restart, if any. Resolved after the project
@@ -607,13 +618,17 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
     <.app_shell max_width="max-w-2xl">
-      <:actions>
-        <.button variant="secondary" size="sm" navigate={~p"/projects/#{@project_id}/features"}>
-          <.lucide name="arrow-left" class="size-4" /> Features
-        </.button>
-      </:actions>
-
       <div data-screen="feature-detail" data-feature-id={@feature.id}>
+        <%!-- One feature lives under the board, so `Features` is the current
+        destination without being this exact page. --%>
+        <.project_nav
+          project_id={@project_id}
+          current={:features}
+          exact?={false}
+          owner?={@owner?}
+          class="mb-6"
+        />
+
         <h1 class="text-xl font-bold text-ink" data-feature-title>{@feature.title}</h1>
 
         <div class="mt-3 flex flex-wrap items-center gap-2">

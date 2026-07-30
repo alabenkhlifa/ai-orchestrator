@@ -1463,6 +1463,72 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     end
   end
 
+  describe "project navigation (AC-48)" do
+    test "marks Features as current without claiming to be that page", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "nav[aria-label='Project'][data-project-nav]")
+
+      # One feature lives under the board, so the board is current but this is
+      # not that exact page.
+      assert has_element?(view, ~s([data-nav-destination="features"][data-nav-current]))
+      assert has_element?(view, ~s([data-nav-destination="features"][aria-current="true"]))
+      refute has_element?(view, ~s([data-nav-destination="features"][aria-current="page"]))
+
+      # The `Features` back button the navigation replaced is gone: the board is
+      # linked exactly once, from the navigation row.
+      assert count(html, ~s(href="/projects/#{project.id}/features")) == 1
+    end
+
+    test "builds every destination from this project only", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      %{project: other_project} = DeliveryFixtures.delivery_project_fixture()
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      refute html =~ other_project.id
+
+      hrefs =
+        view
+        |> element("[data-project-nav]")
+        |> render()
+        |> then(&Regex.scan(~r/href="([^"]+)"/, &1, capture: :all_but_first))
+        |> List.flatten()
+
+      assert length(hrefs) == 3
+      assert Enum.all?(hrefs, &String.starts_with?(&1, "/projects/#{project.id}/"))
+    end
+
+    test "hides the owner-only overview from a participant", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      context: context
+    } do
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      refute has_element?(view, ~s([data-nav-destination="overview"]))
+      assert has_element?(view, ~s([data-nav-destination="features"][data-nav-current]))
+      assert has_element?(view, ~s([data-nav-destination="people"]))
+    end
+  end
+
+  defp count(html, needle), do: html |> String.split(needle) |> length() |> Kernel.-(1)
+
   # One run whose contracted checks all passed for the commit under review, so
   # the screen is proved against a completion the gate genuinely recorded.
   defp proven_run(authority, project, feature) do

@@ -203,7 +203,7 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
               You joined {@project_name}.
             </.notice>
             <.button
-              navigate={~p"/projects/#{elem(@outcome, 1).id}"}
+              href={~p"/projects/#{elem(@outcome, 1).id}"}
               class="mt-4 w-full sm:w-auto"
               data-open-project
             >

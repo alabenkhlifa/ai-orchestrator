@@ -955,7 +955,7 @@ defmodule SddOrchestratorWeb.ProjectRestoreLive do
               exact repository. This action doesn't change repository files or Git configuration.
             </p>
             <.button
-              navigate={completion_path(@completion)}
+              href={completion_path(@completion)}
               data-reconnect-repository
               data-reconnection-method={@completion.reconnection_method}
               class="mt-3 w-full sm:w-auto"

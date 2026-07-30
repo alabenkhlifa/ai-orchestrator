@@ -46,7 +46,7 @@ defmodule SddOrchestratorWeb.ProjectConfirmationLiveTest do
       attempt = ProjectsFixtures.attempt_ready(workspace)
       {:ok, view, _html} = live(conn, ~p"/onboarding/confirm/#{attempt.id}")
 
-      {:error, {:live_redirect, %{to: to}}} =
+      {:error, {:redirect, %{to: to}}} =
         view
         |> form("form", project: %{name: "example"})
         |> render_submit()
@@ -63,7 +63,7 @@ defmodule SddOrchestratorWeb.ProjectConfirmationLiveTest do
 
       view |> form("form", project: %{name: "My Roadmap"}) |> render_change()
 
-      {:error, {:live_redirect, _}} =
+      {:error, {:redirect, _}} =
         view |> form("form", project: %{name: "My Roadmap"}) |> render_submit()
 
       assert Repo.get_by!(Project, workspace_id: workspace.id).name == "My Roadmap"
@@ -130,7 +130,7 @@ defmodule SddOrchestratorWeb.ProjectConfirmationLiveTest do
       attempt = ProjectsFixtures.attempt_ready(workspace)
       {:ok, project} = Projects.register_project(workspace, attempt)
 
-      assert {:error, {:live_redirect, %{to: to}}} =
+      assert {:error, {:redirect, %{to: to}}} =
                live(conn, ~p"/onboarding/confirm/#{attempt.id}")
 
       assert to == "/projects/#{project.id}"

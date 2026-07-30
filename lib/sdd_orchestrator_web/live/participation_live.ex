@@ -319,13 +319,14 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
     <.app_shell max_width="max-w-2xl">
-      <:actions>
-        <.button variant="secondary" size="sm" navigate={~p"/projects/#{@project.id}"}>
-          <.lucide name="arrow-left" class="size-4" /> Project
-        </.button>
-      </:actions>
-
       <div data-screen="participation-settings">
+        <.project_nav
+          project_id={@project.id}
+          current={:people}
+          owner?={@role == :owner}
+          class="mb-6"
+        />
+
         <h1 class="text-xl font-bold text-ink">People on {@project.name}</h1>
         <p class="mt-1 text-sm text-ink-muted">
           Invite people by email to work on this project. They see your project display name,
