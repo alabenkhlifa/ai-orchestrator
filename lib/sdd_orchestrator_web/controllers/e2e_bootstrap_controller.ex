@@ -36,7 +36,16 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     use SddOrchestratorWeb, :controller
 
     alias SddOrchestrator.Accounts
-    alias SddOrchestrator.Delivery.Features
+
+    alias SddOrchestrator.Delivery.{
+      AgentRun,
+      ArtifactStore,
+      EvidenceIngestion,
+      Features,
+      RunAttempt,
+      WorkerProtocol
+    }
+
     alias SddOrchestrator.HostedAccess
     alias SddOrchestrator.HostedAccess.Sessions
     alias SddOrchestrator.Participation
@@ -50,6 +59,22 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     @participant_name "Sam Member"
     @project_name "Delivery Pilot"
     @device_context %{user_agent_family: "E2E Browser", os_family: "E2E OS"}
+
+    # The one commit every seeded item of proof was recorded against. Sharing a
+    # commit is what makes a rerun a replacement rather than a second opinion, so
+    # the superseded item exists only because this value is the same for all of
+    # them.
+    @evidence_commit "4f9c2a7d1b8e6053c4af9d21e7b0356c8ad14e29"
+
+    # The required-check contract the seeded attempt is bound to.
+    @required_checks ["mix format --check-formatted", "mix credo --strict", "mix dialyzer"]
+
+    # One real 1x1 PNG, so the stored screenshot genuinely is the content type it
+    # declares and survives the store's own digest and content-type checks rather
+    # than being waved through.
+    @screenshot_png Base.decode64!(
+                      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+                    )
 
     @doc """
     Seeds one scenario, establishes its sessions, and returns its identifiers.
@@ -152,6 +177,35 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # One hosted project holding a feature that has actually been worked on: a
+    # run, its current attempt, and the spread of recorded proof a reviewer has
+    # to be able to tell apart — a passed, a failed, and a missing required
+    # check, a screenshot with real stored bytes beside one the environment could
+    # not take, and an earlier result a rerun replaced.
+    defp run(conn, "evidence", params) do
+      %{project: project, owner: owner, participant: participant} = member_graph()
+      actor = %{account_id: owner.account.id, hosted_identity_id: nil}
+
+      {:ok, feature} = Features.create(project.id, actor, %{title: "Reviewed feature"})
+      feature = advance(project.id, actor, feature, "ready_for_review")
+
+      %{run: run, evidence: evidence} =
+        seed_evidence(owner.personal_workspace, project, feature)
+
+      conn
+      |> sign_in(params["as"] || "owner", owner, participant)
+      |> json(%{
+        project_id: project.id,
+        project_name: project.name,
+        owner_name: @owner_name,
+        participant_name: @participant_name,
+        feature_id: feature.id,
+        branch: run.branch,
+        commit_sha: @evidence_commit,
+        evidence: evidence
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -227,6 +281,172 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     defp column_title(column),
       do: column |> String.replace("_", " ") |> String.capitalize()
+
+    ## Verification evidence
+
+    # Every item goes through the real ingestion path rather than an insert, so a
+    # seeded result is one a worker could actually have produced: the envelope is
+    # proved against the protocol, the fence, and the attempt's sequence, and the
+    # branch is taken from the run rather than from the event.
+    defp seed_evidence(authority, project, feature) do
+      %{run: run, attempt: attempt} = seed_run(project, feature)
+
+      evidence =
+        authority
+        |> store_screenshot(project.id)
+        |> evidence_payloads()
+        |> Enum.with_index(1)
+        |> Enum.map(&record_evidence(authority, project, run, attempt, &1))
+
+      %{run: run, evidence: evidence}
+    end
+
+    defp seed_run(project, feature) do
+      suffix = unique_suffix()
+
+      run =
+        %AgentRun{}
+        |> AgentRun.create_changeset(%{
+          project_id: project.id,
+          feature_id: feature.id,
+          starting_revision_id: "rev-#{suffix}",
+          starting_revision_digest: content_digest("rev-#{suffix}"),
+          approved_slice: "slice-07",
+          branch: "sdd/evidence-#{suffix}"
+        })
+        |> Repo.insert!()
+
+      attempt =
+        %RunAttempt{}
+        |> RunAttempt.create_changeset(%{
+          run_id: run.id,
+          attempt_number: 1,
+          continuation_reason: "initial",
+          effective_revision_id: run.effective_revision_id,
+          effective_revision_digest: run.effective_revision_digest,
+          manifest_digest: content_digest("manifest-#{run.id}"),
+          required_checks: Enum.map(@required_checks, &%{"name" => &1, "command" => &1}),
+          fence_token: 1
+        })
+        |> Repo.insert!()
+
+      %{run: run, attempt: attempt}
+    end
+
+    # The bytes have to survive an authenticated store before any event may name
+    # them, which is exactly what makes the captured screenshot below believable
+    # instead of merely described.
+    defp store_screenshot(authority, project_id) do
+      {:ok, ref} =
+        ArtifactStore.put(authority, project_id, %{
+          content: @screenshot_png,
+          content_type: "image/png",
+          digest: content_digest(@screenshot_png),
+          redacted: false
+        })
+
+      ref
+    end
+
+    defp evidence_payloads(artifact_ref) do
+      [
+        check_payload("mix format --check-formatted", "failed", 1),
+        check_payload("mix credo --strict", "failed", 1),
+        check_payload("mix dialyzer", "missing", 127),
+        captured_screenshot_payload(artifact_ref),
+        unsupported_screenshot_payload(),
+        # The rerun. Same check against the same commit, so it replaces the first
+        # result rather than sitting beside it as a second opinion.
+        check_payload("mix format --check-formatted", "passed", 0)
+      ]
+    end
+
+    # A required check has to say what it ran and how that ended even when the
+    # result is an absence, so `missing` carries its command and exit code too.
+    defp check_payload(name, outcome, exit_code) do
+      %{
+        "source" => "check",
+        "kind" => "required_check",
+        "name" => name,
+        "outcome" => outcome,
+        "command" => name,
+        "exit_code" => exit_code,
+        "duration_ms" => 2_400,
+        "commit_sha" => @evidence_commit,
+        "digest" => content_digest("#{name}-#{outcome}"),
+        "redacted" => false
+      }
+    end
+
+    defp captured_screenshot_payload(artifact_ref) do
+      %{
+        "source" => "worker",
+        "kind" => "screenshot",
+        "name" => "Feature board after the change",
+        "capture_result" => "captured",
+        "command" => "capture --screen feature-board",
+        "duration_ms" => 5_100,
+        "commit_sha" => @evidence_commit,
+        "digest" => content_digest(@screenshot_png),
+        "redacted" => false,
+        "artifact_ref" => artifact_ref
+      }
+    end
+
+    # An absence claim may not smuggle content, so this one names no artifact at
+    # all. Its outcome comes from the reported capture result, never from here.
+    defp unsupported_screenshot_payload do
+      %{
+        "source" => "worker",
+        "kind" => "screenshot",
+        "name" => "Feature board on a small screen",
+        "capture_result" => "unsupported",
+        "command" => "capture --screen feature-board --device mobile",
+        "duration_ms" => 300,
+        "commit_sha" => @evidence_commit,
+        "digest" => content_digest("screenshot-unsupported"),
+        "redacted" => false
+      }
+    end
+
+    defp record_evidence(authority, project, run, attempt, {payload, sequence}) do
+      {:ok, %{evidence: evidence}} =
+        EvidenceIngestion.ingest(
+          authority,
+          project.id,
+          evidence_event(run, attempt, sequence, payload)
+        )
+
+      %{
+        id: evidence.id,
+        kind: evidence.kind,
+        name: evidence.name,
+        outcome: evidence.outcome,
+        digest: evidence.digest
+      }
+    end
+
+    defp evidence_event(run, attempt, sequence, payload) do
+      unique = unique_suffix()
+
+      %{
+        "type" => "event",
+        "protocol_version" => WorkerProtocol.version(),
+        "event_id" => "evt-#{unique}",
+        "run_id" => run.id,
+        "command_id" => "cmd-#{unique}",
+        "attempt_number" => attempt.attempt_number,
+        "fence_token" => attempt.fence_token,
+        "sequence" => sequence,
+        "event_type" => "evidence",
+        "source" => Map.fetch!(payload, "source"),
+        "occurred_at" => DateTime.to_iso8601(DateTime.utc_now()),
+        "payload" => Map.delete(payload, "source")
+      }
+    end
+
+    defp content_digest(content),
+      do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
 
     ## Sessions
 

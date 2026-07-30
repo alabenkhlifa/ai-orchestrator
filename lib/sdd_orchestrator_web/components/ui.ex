@@ -369,6 +369,11 @@ defmodule SddOrchestratorWeb.UI do
     include:
       ~w(placeholder autocomplete inputmode maxlength minlength required disabled phx-debounce phx-blur)
 
+  # `outline-none` sets `--tw-outline-style: none`, and every Tailwind v4 outline
+  # *width* utility resolves `outline-style` from that same custom property. The
+  # focused state therefore has to restore the style itself — `focus:outline-solid`
+  # rather than a bare `focus:outline` — or the intended 2px ring below computes
+  # to `outline-style: none` and never paints.
   def text_field(assigns) do
     ~H"""
     <div>
@@ -382,7 +387,7 @@ defmodule SddOrchestratorWeb.UI do
         aria-describedby={(@error && "#{@id}-error") || (@hint && "#{@id}-hint") || nil}
         class={[
           "mt-1.5 w-full h-10 rounded-lg border bg-surface px-3 text-sm text-ink outline-none",
-          "focus:outline focus:outline-2 focus:outline-offset-0 focus:outline-focus",
+          "focus:outline-solid focus:outline-2 focus:outline-offset-0 focus:outline-focus",
           (@error && "border-err-fg") || "border-line-strong focus:border-focus"
         ]}
         {@rest}

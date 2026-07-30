@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
+const { tabTo } = require("./support/harness");
 
 // Browser proof for the shared presentation foundation (Task 2). Runs against
 // the design-system preview at /_ui, which renders every shared primitive.
@@ -97,6 +98,30 @@ test.describe("shared presentation foundation", () => {
     expect(focus.outlineStyle).not.toBe("none");
     expect(parseFloat(focus.outlineWidth)).toBeGreaterThan(0);
   });
+
+  // A text field suppresses the browser's own ring and draws the approved one
+  // instead, and the two utilities that do that share a Tailwind custom
+  // property: the suppression sets `--tw-outline-style` and the width utility
+  // reads it. A class list naming a 2px ring can therefore compute to
+  // `outline-style: none` and paint nothing at all, which is exactly what
+  // shipped. Only the values the browser computed for a really-focused field
+  // distinguish the two, so this test tabs there and reads them.
+  for (const field of ["#f-ok", "#f-err"]) {
+    test(`a keyboard-focused text field paints its ring (${field})`, async ({ page }) => {
+      await page.goto(PREVIEW);
+
+      // `tabTo` throws unless the field itself holds focus, so this really is
+      // the ring a keyboard user sees on that input.
+      const ring = await tabTo(page, field);
+
+      expect(ring.style).not.toBe("none");
+      expect(ring.style).toBe("solid");
+      expect(ring.width).toBe("2px");
+      expect(ring.offset).toBe("0px");
+      expect(ring.color).not.toBe("rgba(0, 0, 0, 0)");
+      expect(ring.color).not.toBe("transparent");
+    });
+  }
 
   test("status meaning never depends on color alone", async ({ page }) => {
     await page.goto(PREVIEW);

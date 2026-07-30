@@ -58,10 +58,19 @@ async function tabTo(page, selector, limit = 30) {
   throw new Error(`never reached ${selector} with the keyboard`);
 }
 
+// The ring the browser actually computed, not the classes that asked for one.
+// Tailwind v4 resolves an outline utility's `outline-style` from the
+// `--tw-outline-style` custom property, so a class list can name a 2px ring that
+// computes to `outline-style: none`. Only the computed values tell them apart.
 async function focusRing(page) {
   return await page.evaluate(() => {
     const style = getComputedStyle(document.activeElement);
-    return { style: style.outlineStyle, width: style.outlineWidth };
+    return {
+      style: style.outlineStyle,
+      width: style.outlineWidth,
+      offset: style.outlineOffset,
+      color: style.outlineColor,
+    };
   });
 }
 

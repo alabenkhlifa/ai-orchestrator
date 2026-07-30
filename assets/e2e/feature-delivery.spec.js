@@ -333,4 +333,214 @@ test.describe("feature delivery", () => {
       await expectNoSeriousAxeViolations(page);
     });
   }
+
+  // Recorded evidence, rendered. Until the `evidence` scenario existed no
+  // browser could reach a feature that had actually proved anything, so the
+  // states below were only ever asserted at the LiveView and domain level. Each
+  // of these runs under both the desktop and the mobile Playwright project.
+  test.describe("recorded evidence", () => {
+    test("every recorded state renders as its own distinguishable result", async ({ page }) => {
+      const { project_id, feature_id } = await bootstrap(page, "evidence");
+      await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+      const items = page.locator("[data-evidence-item]");
+
+      await expect(page.locator("[data-evidence-empty]")).toHaveCount(0);
+      await expect(items).toHaveCount(6);
+
+      // A passed, a failed, and a missing required check, each carrying the
+      // exit code that makes the result checkable rather than asserted.
+      await expect(check(page, "passed")).toHaveCount(1);
+      await expect(check(page, "failed")).toHaveCount(2);
+      await expect(check(page, "missing")).toHaveCount(1);
+      await expect(check(page, "missing").locator("[data-evidence-fact=exit-code]")).toHaveText(
+        "127",
+      );
+      await expect(check(page, "passed").locator("[data-evidence-fact=exit-code]")).toHaveText("0");
+
+      // A capture that happened, and one the environment could not perform.
+      // The absence is a typed record with a stated reason, not a gap.
+      const captured = screenshot(page, "passed");
+      const unsupported = screenshot(page, "unsupported");
+
+      await expect(captured).toHaveCount(1);
+      await expect(unsupported).toHaveCount(1);
+      await expect(captured.locator("[data-evidence-fact=artifact]")).toContainText("image/png");
+      await expect(captured.locator("[data-view-evidence]")).toBeVisible();
+      await expect(unsupported.locator("[data-view-evidence]")).toHaveCount(0);
+      await expect(unsupported.locator("[data-evidence-capture-reason]")).toContainText(
+        /could not capture/i,
+      );
+
+      // Only the screenshot with stored bytes offers to open them.
+      await expect(page.locator("[data-view-evidence]")).toHaveCount(1);
+
+      // Every state names itself in words beside its colour, one label per
+      // state and no label shared between two, so a reader who cannot see the
+      // colours still tells the four results apart.
+      const labels = (await items.locator("[data-evidence-state-label]").allInnerTexts()).map(
+        (label) => label.trim(),
+      );
+      const states = await items.evaluateAll((rows) =>
+        rows.map((row) => row.getAttribute("data-evidence-state")),
+      );
+
+      expect(new Set(states)).toEqual(new Set(["passed", "failed", "missing", "unsupported"]));
+      for (const label of labels) expect(label.length).toBeGreaterThan(0);
+      expect(new Set(labels).size).toBe(new Set(states).size);
+      expect(new Set(pair(states, labels)).size).toBe(new Set(states).size);
+
+      // Colour is never the only cue: each state badge carries an icon too.
+      await expect(items.locator("[data-evidence-state-label] svg")).toHaveCount(6);
+    });
+
+    test("each item carries the provenance a reader checks the work against", async ({ page }) => {
+      const { project_id, feature_id, branch, commit_sha, evidence } = await bootstrap(
+        page,
+        "evidence",
+      );
+      await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+      const items = page.locator("[data-evidence-item]");
+
+      // Branch and commit are the same for every item because one run on one
+      // commit produced them all, and both are shown in full rather than
+      // shortened: they are what the work is actually checked against.
+      await expect(items.locator("[data-evidence-fact=branch]")).toHaveText(Array(6).fill(branch));
+      await expect(items.locator("[data-evidence-fact=commit]")).toHaveText(
+        Array(6).fill(commit_sha),
+      );
+
+      // The digest is per item and is the content hash the record declares.
+      await expect(items.locator("[data-evidence-fact=digest]")).toHaveText(
+        evidence.map((item) => item.digest),
+      );
+
+      // Where the result came from is stated in words, never left implicit.
+      const sources = await items.locator("[data-evidence-fact=source]").allInnerTexts();
+      for (const source of sources) expect(source.trim().length).toBeGreaterThan(0);
+    });
+
+    test("a replaced result stays visible with the result it recorded", async ({ page }) => {
+      const { project_id, feature_id, evidence } = await bootstrap(page, "evidence");
+      await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+      const replaced = page.locator('[data-evidence-item][data-evidence-superseded="true"]');
+
+      await expect(replaced).toHaveCount(1);
+      await expect(replaced).toBeVisible();
+
+      // It is the first recorded run of the check, not the rerun that replaced it.
+      await expect(replaced).toHaveAttribute("data-evidence-id", evidence[0].id);
+      await expect(replaced.locator("[data-evidence-name]")).toHaveText(evidence[0].name);
+
+      // Its own result is still legible; being replaced did not flatten it into
+      // a single "superseded" state that hides whether it passed or failed.
+      await expect(replaced).toHaveAttribute("data-evidence-state", "failed");
+      await expect(replaced.locator("[data-evidence-superseded-label]")).toBeVisible();
+      await expect(replaced.locator("[data-evidence-replacement]")).toContainText(/replaced/i);
+
+      // The rerun that replaced it is present under the same name and passed,
+      // so the reader can see both halves of the disagreement.
+      const rerun = page.locator(`[data-evidence-item][data-evidence-id="${evidence[5].id}"]`);
+      await expect(rerun).toHaveAttribute("data-evidence-state", "passed");
+      await expect(rerun.locator("[data-evidence-name]")).toHaveText(evidence[0].name);
+      await expect(rerun).toHaveAttribute("data-evidence-superseded", "false");
+    });
+
+    test("no artifact address or reference ever reaches the page", async ({ page }) => {
+      const { project_id, feature_id } = await bootstrap(page, "evidence");
+      await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+      await expect(page.locator("[data-view-evidence]")).toBeVisible();
+      await expectNoArtifactReference(page);
+
+      // Opening the stored proof hands over content, not a location: the image
+      // is embedded inline and still no reference or address exists to follow.
+      await page.locator("[data-view-evidence]").click();
+
+      const image = page.locator("[data-evidence-image]");
+      await expect(image).toBeVisible();
+      await expect(image).toHaveAttribute("src", /^data:image\/png;base64,/);
+      await expect(page.locator("[data-evidence-artifact-note]")).toContainText(
+        /no address of its own/i,
+      );
+      await expectNoArtifactReference(page);
+
+      await page.locator("[data-hide-evidence]").click();
+      await expect(page.locator("[data-evidence-image]")).toHaveCount(0);
+    });
+
+    test("the recorded evidence fits this device without scrolling sideways", async ({ page }) => {
+      const { project_id, feature_id } = await bootstrap(page, "evidence");
+      await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+      const viewport = page.viewportSize().width;
+
+      await expect(page.locator("[data-evidence-item]")).toHaveCount(6);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        viewport,
+      );
+
+      // The commit and the digest are long single tokens, so an item that keeps
+      // them intact is where a sideways scroll would first appear.
+      const boxes = await page.locator("[data-evidence-item]").evaluateAll((rows) =>
+        rows.map((row) => row.getBoundingClientRect().width),
+      );
+      for (const width of boxes) expect(width).toBeLessThanOrEqual(viewport);
+    });
+
+    for (const colorScheme of ["light", "dark"]) {
+      test(`the recorded evidence is accessible (${colorScheme})`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme });
+        const { project_id, feature_id } = await bootstrap(page, "evidence");
+        await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+        await expect(page.locator("[data-evidence-item]")).toHaveCount(6);
+        await expectNoSeriousAxeViolations(page);
+      });
+    }
+  });
 });
+
+function check(page, state) {
+  return page.locator(
+    `[data-evidence-item][data-evidence-kind="required_check"][data-evidence-state="${state}"]`,
+  );
+}
+
+function screenshot(page, state) {
+  return page.locator(
+    `[data-evidence-item][data-evidence-kind="screenshot"][data-evidence-state="${state}"]`,
+  );
+}
+
+function pair(states, labels) {
+  return states.map((state, index) => `${state} ${labels[index].trim()}`);
+}
+
+// Private project bytes are handed to a reader as content, never as somewhere to
+// go. Nothing in the markup may carry the opaque store reference, and no
+// attribute the browser would dereference may point at the artifact route.
+async function expectNoArtifactReference(page) {
+  const markup = await page.content();
+
+  expect(markup).not.toContain("artifact:v1:sha256:");
+  expect(markup).not.toContain("artifact:v1:");
+
+  const addresses = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("[src], [href], [action], [data-url]"))
+      .flatMap((el) => [
+        el.getAttribute("src"),
+        el.getAttribute("href"),
+        el.getAttribute("action"),
+        el.getAttribute("data-url"),
+      ])
+      .filter(Boolean),
+  );
+
+  for (const address of addresses) {
+    expect(address).not.toMatch(/artifact/i);
+    expect(address).not.toMatch(/\/evidence\//i);
+  }
+}
