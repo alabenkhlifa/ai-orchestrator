@@ -105,6 +105,7 @@ Required boundaries:
 ## Interfaces
 
 - Board interface: show the five lifecycle columns, creator, optional assignment, readiness, active run, completion outcome, and visible `Blocked` or `Failed` status without moving the feature to another column. Let an authorized project participant select any authorized participant for `Assigned` or use `Assign to me`. Do not use free dragging to change lifecycle state; expose the gated workflow action available to an authorized user.
+- Project navigation interface: present project-scoped navigation on every project screen with an overview and a features destination, identify the current destination, land a configured project on its board and an unconfigured one on its overview, and revalidate project authorization on each destination rather than trusting the previous screen.
 - Participant interface: consume current project-participant identity, project display name, authorization, and the versioned `ParticipationRevocation` claim and acknowledgement contract from the separate participation boundary for assignment, notification, run-control, review, content-access, responsibility routing, historical attribution, and active-run control without exposing participant emails or participation-management actions in this slice.
 - Specification-store consumer interface: resolve stable project specifications and immutable current revisions, append complete revisions for accepted write-back through expected-head concurrency, and bind readiness and execution to exact shared-store revision identities without defining persistence.
 - Specification guidance interface: describe required information, classify visible findings as blocking or non-blocking, and allow only non-blocking suggestions to be dismissed.
@@ -131,6 +132,12 @@ Required boundaries:
 - Choice: Use `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done` as the five first-release columns, with `Blocked` and `Failed` shown as statuses rather than columns.
 - Reason: The board should communicate the feature's place in the specification and delivery workflow while preserving that context when progress is temporarily blocked.
 - Consequence: A blocked or terminally failed development run remains in `In development` and exposes its status and reason.
+
+### Board As The Project's Default View
+
+- Choice: Put project-scoped navigation on every project screen with an overview and a features destination, and open a configured project on its board rather than on its setup overview.
+- Reason: The board is where delivery work happens, while the overview holds repository, storage, and backup state that matters mainly during setup. Routing daily work through a setup screen inverts how often each is needed, and a board reachable only by typing its address is effectively undiscoverable.
+- Consequence: The project dashboard keeps its own job instead of being replaced, an unconfigured project still lands on the overview so setup is not skipped, and the navigation pattern extends to further project destinations without another redesign.
 
 ### Gated Lifecycle Transitions
 

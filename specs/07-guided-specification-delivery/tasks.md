@@ -36,6 +36,7 @@ Provides:
 Included:
 
 - One project-scoped feature board with the five approved lifecycle columns, gated action-driven transitions, separate visible `Blocked` and `Failed` statuses, and a feature detail workflow.
+- Project-scoped navigation that reaches the board from every project screen, with the board as a configured project's default view.
 - Guided requirement structure with visible blocking findings, non-blocking suggestions, and suggestion dismissal.
 - Explicit start for one approved specification revision.
 - One configured coding-agent and worker boundary without provider-selection UX.
@@ -365,6 +366,14 @@ Prerequisite:
   - Depends on: Task 30
   - Proof: Focused migration, adapter, authorization, idempotency, exact commit, success, timeout, expiry, supersession, cleanup command, credential absence, safe link, hosted, and device tests pass.
 
+- [ ] Task 53 - Deliver project-scoped board navigation.
+  - Size: Standard
+  - Purpose: Let a participant reach the feature board from any project screen without knowing its address.
+  - Owned surfaces: Project-scoped navigation across project screens, overview and features destinations, current-destination indication, configured-project default landing on the board, unconfigured-project fallback to the overview, per-destination project authorization revalidation, cross-project isolation, keyboard and focus behaviour, fixtures, and responsive accessible navigation UI.
+  - Owns: AC-48
+  - Depends on: Task 2
+  - Proof: Focused navigation, default-landing, unconfigured-fallback, authorization, cross-project isolation, current-destination, keyboard, focus, desktop, and mobile tests pass.
+
 - [ ] Task 33 - Present preview availability and failure.
   - Size: Standard
   - Purpose: Show non-production preview status without blocking review readiness or inventing a link.
@@ -516,6 +525,7 @@ Prerequisite:
 - [ ] `Ready for review`, unauthorized-transition rejection, responsible-participant-or-owner approval to `Done`, and responsible-participant-or-owner feedback-based rejection to the same run and branch as a new `In development` attempt pass.
 - [ ] In-product blocked-to-responsible, review-ready-to-responsible-and-owner, and failed-to-initiator-responsible-and-owner notifications pass current-participation, recipient, authorization, deduplication, content-minimization, and evidence-link checks; no external notification channel is invoked.
 - [ ] Notification projector replay, restart, unique event-recipient keys, durable unread delivery, PubSub independence, idempotent mark-read, removal denial, minimized body, and safe internal-link tests pass.
+- [ ] Project-scoped navigation reaches the board from every project screen, a configured project defaults to its board, an unconfigured project falls back to its overview, and each destination revalidates project authorization.
 - [ ] Desktop and mobile board, feature, activity, blocked, review, and completion scenarios pass.
 - [ ] GDPR data contract, access, retention, deletion, processor, transfer, audit, and privacy review are complete.
 - [ ] Start-time execution, provider, preview, transfer disclosure and change-triggered confirmation tests pass.

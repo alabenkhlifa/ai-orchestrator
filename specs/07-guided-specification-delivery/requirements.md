@@ -77,6 +77,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - The first-release board has exactly five lifecycle columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`.
 - `Blocked` and `Failed` are visible statuses, not lifecycle columns. A blocked or terminally failed development run remains in `In development` while showing why it cannot continue.
 - Cards cannot be freely dragged between lifecycle columns. A feature changes columns only through the workflow's gated actions and validated outcomes.
+- A participant reaches the feature board through project-scoped navigation present on every project screen, without needing to know or type its address. A configured project opens on its board; a project that is not yet configured opens on its overview, because setup must be completed before delivery work can begin.
 - A user interaction must not bypass specification readiness, explicit development start, successful verification, or authorized review.
 - Every feature has a required `Creator` field and an optional `Assigned` field; the two fields may identify different authorized participants.
 - The current responsible participant is the current participant in `Assigned` when present, otherwise the current participant in `Creator`, with the project owner as the fail-closed fallback when neither remains authorized or a participation-removal handoff routes pending responsibility to the owner.
@@ -186,6 +187,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 - [AC-44] Given hosted relay or cache data exists for a device-authoritative project, when retention enforcement runs, then the data is deleted within 24 hours and no durable hosted device-project copy remains.
 - [AC-45] Given Slice 07 operational-security logs reach their approved lifecycle boundary, when retention enforcement runs, then logs contain only approved minimum fields, expose no raw credential or unauthorized project content, and are deleted within 30 days.
 - [AC-46] Given Slice 07 data enters encrypted rolling backups, when lifecycle enforcement runs, then those copies expire within 35 days and cannot restore deleted access outside the approved recovery process.
+- [AC-48] Given an authorized participant opens a configured project, when the project screen renders, then the feature board is the default view and project-scoped navigation moves them between the project overview and the board without typing an address; a project that is not yet configured opens on its overview instead.
 - [AC-47] Given a project is deleted, when authoritative and external cleanup runs, then access ends immediately, hosted or device active copies are removed, configured preview, artifact, cache, index, and processor cleanup is requested, and any failed external cleanup remains restricted and visibly queued for reconciliation without restoring access.
 
 ## Open Questions
