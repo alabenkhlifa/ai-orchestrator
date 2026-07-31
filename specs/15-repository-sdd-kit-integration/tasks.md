@@ -1,0 +1,130 @@
+# Repository SDD Kit Integration Tasks
+
+## Status
+
+Not Started
+
+Task 1 is independently executable. Planning waits for the repository execution profile and managed pilot capability.
+
+## Active Slice
+
+After one managed pilot, let the project owner inspect one immutable SDD kit, review its exact conflict-aware diff, and apply, update, or remove it only through confirmed isolated-branch operations while preserving Orchestrator specification authority.
+
+## Cross-Specification Dependencies
+
+Requires:
+
+- `capability:repository-execution-profile` — provider `specs/14-repository-execution-profile#Task 6` — required before `Task 2`.
+- `capability:guided-specification-delivery` — provider `specs/07-guided-specification-delivery#Task 6` — required before `Task 2`.
+- `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 2`.
+- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 5`.
+- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 5`.
+- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 5`.
+
+Provides:
+
+- `capability:sdd-kit-package` — ready after `Task 1`.
+- `capability:repository-sdd-kit` — ready after `Task 5`.
+
+## Task Size Gate
+
+- Every task is standard, owns one independently provable package, plan, apply, lifecycle, or governance outcome, and has no more than three acceptance criteria and two entities.
+- No exception is required.
+
+## Implementation Boundary
+
+Included:
+
+- Optional post-pilot offer, immutable package inspection, and permission disclosure.
+- Worker-local no-execution planning, precedence and conflict classification, and exact diff.
+- Owner-confirmed isolated-branch application with one commit.
+- Explicit update and removal with installed-file ownership proof.
+- Storage, privacy, source-of-truth, and managed-runtime fallback proof.
+
+Excluded:
+
+- Repository assessment, pilot implementation, empty-repository creation, automatic merge, direct default-branch writes, remote execution, automatic updates, and specification synchronization.
+
+Deferred after this slice:
+
+- Organization-curated package catalogs, package signing beyond the approved digest and provenance contract, multiple kit families, and automatic pull-request provider integration.
+
+Release gates:
+
+- Live authorized worker and repository-host smoke proof.
+- Deployment-specific controller, processor, region, transfer, notice, retention-enforcement, incident, package-distribution, and accountable privacy or legal evidence.
+
+Traceability:
+
+- Deferred criteria: none
+- Release criteria: none
+- Deferred entities: none
+- Release entities: none
+
+## Tasks
+
+- [ ] Task 1 — Establish the immutable kit package catalog.
+  - Size: Standard
+  - Depends on: none
+  - Purpose: Make every installable file, script, permission, license, and source inspectable under one immutable identity.
+  - Owned surfaces: `RepositoryKitPackage` schema and storage, `capability:sdd-kit-package` provider and readiness write-back, package ingestion, canonical manifest and digest, provenance, license, path and size validation, scripts and permissions inventory, adapter compatibility, supersession metadata, package inspection UI, and mutable-reference rejection.
+  - Owns: AC-02, AC-03, entity:RepositoryKitPackage
+  - Proof: Focused package identity, tamper, path, size, license, provenance, permission, mutable-reference, no-network, no-execution, UI, and browser tests pass before `capability:sdd-kit-package` readiness is recorded.
+
+- [ ] Task 2 — Produce the optional exact change plan.
+  - Size: Standard
+  - Depends on: Task 1
+  - Purpose: Let owners decide from a complete repository-specific diff after their pilot proves the managed path.
+  - Owned surfaces: Post-pilot eligibility and decline UX, `RepositoryKitChangePlan`, approved-profile and exact-commit binding, worker-local comparison, complete file-operation diff, existing-rule precedence, protected-file handling, ordinary conflict classification, safety conflict classification, expiry, and no-mutation planning.
+  - Owns: AC-01, AC-04, AC-05, entity:RepositoryKitChangePlan
+  - Proof: Focused pilot-state, decline, profile, stale-commit, complete-diff, protected-file, precedence, conflict, no-mutation, LiveView, and browser tests pass.
+
+- [ ] Task 3 — Apply one confirmed plan on an isolated branch.
+  - Size: Standard
+  - Depends on: Task 2
+  - Purpose: Turn only the reviewed operations into one auditable repository commit without bypassing repository ownership.
+  - Owned surfaces: Safety and ordinary conflict gate, exact-plan owner confirmation, `RepositoryKitInstallation`, branch creation, default-branch prohibition, root and symlink containment, hooks-disabled application, confirmed file operations, one resulting commit, installed-file ownership digests, rollback-safe failure, and proof capture.
+  - Owns: AC-06, AC-07, AC-08, entity:RepositoryKitInstallation
+  - Proof: Focused authorization, stale-plan, conflict, branch isolation, default-branch negative, path and symlink, unexpected-file, hooks-disabled, operation allowlist, partial-failure, commit, evidence, and browser tests pass.
+
+- [ ] Task 4 — Implement idempotent update and removal.
+  - Size: Standard
+  - Depends on: Task 3
+  - Purpose: Keep permanent workflow files controllable without silent changes or deletion of repository-owned work.
+  - Owned surfaces: Apply idempotency, explicit newer-version presentation, update planning and confirmation, kit-owned file comparison, user-modification conflicts, removal planning and confirmation, ownership-safe deletion, lifecycle history, and resulting branch evidence.
+  - Owns: AC-09, AC-10, AC-11
+  - Proof: Focused replay, changed-input, no-silent-update, owned and modified file, shared file, removal safety, history, branch, LiveView, and browser tests pass.
+
+- [ ] Task 5 — Enforce governance and publish the repository-kit capability.
+  - Size: Standard
+  - Depends on: Task 4
+  - Purpose: Prove kit lifecycle data remains governed and workflow installation never becomes a second specification authority.
+  - Owned surfaces: Hosted and device storage parity, role access, retention, deletion, processor and transfer controls, diff and log redaction, no analytics, no secondary use, authorized specification-tool adapter, no project-specific specification files, no synchronization, managed-runtime decline and removal fallback, `capability:repository-sdd-kit` readiness write-back, and release evidence.
+  - Owns: AC-12, AC-13
+  - Proof: Focused storage, access, lifecycle, rights, redaction, processor, no-analytics, source-of-truth, fail-closed tool, no-sync, managed-runtime fallback, and capability readiness tests pass.
+
+## Verification Gate
+
+- [ ] Acceptance criteria pass.
+- [ ] Package integrity, provenance, license, permission, and no-execution suites pass.
+- [ ] Conflict, exact-diff, stale-plan, branch-isolation, and mutation-negative suites pass.
+- [ ] Update, removal, file-ownership, and idempotency suites pass.
+- [ ] Hosted and device storage, privacy, lifecycle, and no-analytics suites pass.
+- [ ] Desktop and mobile package, plan, conflict, apply, update, removal, and decline browser scenarios pass.
+- [ ] `mix check` and all explicit project code-quality commands pass.
+- [ ] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
+- [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
+- [ ] Specification validator and global capability graph pass.
+
+## Blocked Decisions
+
+- None. Task 2 remains capability-blocked until its recorded providers are ready, but Task 1 is executable.
+
+## Progress Log
+
+### 2026-07-31
+
+- Completed: Approved the optional post-pilot package, exact diff, precedence, conflict, branch, update, removal, source-of-truth, governance, and capability contracts.
+- Remaining: Implement Tasks 1–5 and complete the verification gate.
+- Failed checks: None.
+- Spec updates: Created the initial approved specification and first executable slice.
