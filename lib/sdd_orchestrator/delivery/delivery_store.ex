@@ -30,6 +30,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
     Evidence,
     Feature,
     PreviewDeployment,
+    ReviewDecision,
     RunAttempt,
     RunCommand
   }
@@ -60,6 +61,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
           | {:supersede_preview_deployment, PreviewDeployment.t(),
              Ecto.UUID.t() | {:ref, atom(), atom()}}
           | {:record_preview_cleanup, PreviewDeployment.t(), map()}
+          | {:insert_review_decision, map()}
           | {:append_activity, map()}
           | {:enqueue_command, map()}
 
@@ -128,6 +130,15 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
               PreviewDeployment.t()
             ]
 
+  @doc """
+  Lists one project's recorded review decisions in decided order.
+
+  Options narrow it to one run, attempt, or feature. A verdict is immutable and
+  never superseded, so there is no `:current` option: every decision listed here
+  is still the decision that was made.
+  """
+  @callback list_review_decisions(authority(), Ecto.UUID.t(), keyword()) :: [ReviewDecision.t()]
+
   @doc "Lists one feature's activity in authoritative order."
   @callback list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
               [ActivityEntry.t()]
@@ -148,7 +159,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
       transition_feature set_feature_status clear_assignment
       insert_blocking_question resolve_question insert_evidence supersede_evidence
       insert_preview_deployment observe_preview_deployment supersede_preview_deployment
-      record_preview_cleanup append_activity enqueue_command
+      record_preview_cleanup insert_review_decision append_activity enqueue_command
     )a
   end
 
@@ -204,6 +215,10 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   def list_preview_deployments(authority, project_id, opts \\ []),
     do: dispatch(authority, :list_preview_deployments, [project_id, opts])
 
+  @spec list_review_decisions(authority(), Ecto.UUID.t(), keyword()) :: [ReviewDecision.t()]
+  def list_review_decisions(authority, project_id, opts \\ []),
+    do: dispatch(authority, :list_review_decisions, [project_id, opts])
+
   @spec list_activity(authority(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) :: [ActivityEntry.t()]
   def list_activity(authority, project_id, feature_id, opts \\ []),
     do: dispatch(authority, :list_activity, [project_id, feature_id, opts])
@@ -258,6 +273,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore do
   defp dispatch(_authority, :open_question, _args), do: :error
   defp dispatch(_authority, :list_evidence, _args), do: []
   defp dispatch(_authority, :list_preview_deployments, _args), do: []
+  defp dispatch(_authority, :list_review_decisions, _args), do: []
   defp dispatch(_authority, :list_activity, _args), do: []
   defp dispatch(_authority, :claim_commands, _args), do: []
   defp dispatch(_authority, :acknowledge_command, _args), do: {:error, :not_found}

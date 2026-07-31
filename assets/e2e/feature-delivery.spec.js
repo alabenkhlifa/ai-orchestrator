@@ -647,3 +647,149 @@ test.describe("branch preview", () => {
 function previewItem(page, state) {
   return page.locator(`[data-preview-item][data-preview-state="${state}"]`);
 }
+
+// Authenticated browser proof for the review decision (specs/07 Task 34, AC-24
+// and AC-25). The seeded feature reached `Ready for review` the only way a
+// decision accepts: one run that verified for real, its preview, and the
+// recorded handoff. Nobody is assigned, so the owner is the person responsible
+// and the other participant is the one AC-24 is about. Each of these runs under
+// both the desktop and the mobile project.
+test.describe("review decision", () => {
+  const FEEDBACK = "The empty state still shows a spinner after the first load.";
+
+  test("the responsible reviewer approves and the feature is finished", async ({ page }) => {
+    const { project_id, feature_id, owner_name } = await bootstrap(page, "review");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    await expect(page.locator("[data-feature-column]")).toHaveText("Ready for review");
+    await expect(page.locator("[data-review-approve]")).toBeVisible();
+    await expect(page.locator("[data-review-reject]")).toBeVisible();
+
+    await page.locator("[data-review-approve]").click();
+
+    // The one move that ends the lifecycle, with the verdict it was ended by
+    // still on the screen rather than replaced by a bare column change.
+    await expect(page.locator("[data-feature-column]")).toHaveText("Done");
+    await expect(page.locator("[data-review-decision]")).toHaveAttribute(
+      "data-review-decision-outcome",
+      "approved",
+    );
+    await expect(page.locator("[data-review-decision-reviewer]")).toContainText(owner_name);
+    await expect(page.locator("[data-review-decision-feedback]")).toHaveCount(0);
+
+    // Nothing is left to decide, so nothing offers to decide it again.
+    await expect(page.locator("[data-review-approve]")).toHaveCount(0);
+    await expect(page.locator("[data-review-reject]")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("@example.com");
+  });
+
+  test("a rejection records the verdict and its feedback stays readable", async ({ page }) => {
+    const { project_id, feature_id, branch, commit_sha, owner_name } = await bootstrap(
+      page,
+      "review",
+    );
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    await fillDebounced(page, "#review-feedback", FEEDBACK);
+    await page.locator("[data-review-reject]").click();
+
+    const decision = page.locator("[data-review-decision]");
+
+    await expect(decision).toHaveAttribute("data-review-decision-outcome", "rejected");
+    await expect(page.locator("[data-review-decision-feedback]")).toHaveText(FEEDBACK);
+    await expect(page.locator("[data-review-decision-reviewer]")).toContainText(owner_name);
+
+    // The verdict names exactly what was proved, not whatever the branch has
+    // moved on to since.
+    await expect(page.locator("[data-review-decision-branch]")).toHaveText(branch);
+    await expect(page.locator("[data-review-decision-commit]")).toHaveText(commit_sha);
+
+    // A rejection deliberately moves nothing: continuing the run is Task 35's,
+    // so the feature is still in `Ready for review` and the screen says why.
+    await expect(page.locator("[data-feature-column]")).toHaveText("Ready for review");
+    await expect(page.locator("[data-review-decision-note]")).toContainText(/stays where it is/i);
+    await expect(page.locator("[data-review-error]")).toHaveCount(0);
+
+    await expectNoSeriousAxeViolations(page);
+  });
+
+  test("a rejection with nothing to act on is refused inline", async ({ page }) => {
+    const { project_id, feature_id } = await bootstrap(page, "review");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    await page.locator("[data-review-reject]").click();
+
+    await expect(page.locator("[data-review-error]")).toContainText(/what needs to change/i);
+    await expect(page.locator("[data-review-decision]")).toHaveCount(0);
+    await expect(page.locator("[data-feature-column]")).toHaveText("Ready for review");
+
+    // The rule is the domain's, so the same submit succeeds once it has
+    // something to act on rather than needing a different control.
+    await fillDebounced(page, "#review-feedback", FEEDBACK);
+    await page.locator("[data-review-reject]").click();
+
+    await expect(page.locator("[data-review-decision]")).toHaveAttribute(
+      "data-review-decision-outcome",
+      "rejected",
+    );
+    await expect(page.locator("[data-review-error]")).toHaveCount(0);
+  });
+
+  test("another participant sees the review state with no way to decide", async ({ page }) => {
+    const { project_id, feature_id, branch, commit_sha } = await bootstrap(page, "review", {
+      as: "participant",
+    });
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    // Entitled to read the feature, and to read what it is waiting on.
+    await expect(page.locator("[data-review-handoff]")).toBeVisible();
+    await expect(page.locator("[data-review-branch]")).toContainText(branch);
+    await expect(page.locator("[data-review-commit]")).toContainText(commit_sha);
+
+    // A control whose press would be refused never appears at all.
+    await expect(page.locator("[data-review-controls]")).toHaveCount(0);
+    await expect(page.locator("[data-review-approve]")).toHaveCount(0);
+    await expect(page.locator("[data-review-reject]")).toHaveCount(0);
+    await expect(page.locator("[data-review-feedback]")).toHaveCount(0);
+  });
+
+  test("the decision controls are keyboard reachable and fit this device", async ({ page }) => {
+    const { project_id, feature_id } = await bootstrap(page, "review");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    await page.locator("[data-project-nav] a").last().focus();
+
+    const approveRing = await tabTo(page, "[data-review-approve]");
+    expect(approveRing.style).not.toBe("none");
+    expect(parseFloat(approveRing.width)).toBeGreaterThanOrEqual(2);
+
+    // The feedback field paints its own ring: Tailwind v4 resolves an outline
+    // utility's style from a custom property, so a focused control can name a
+    // ring that computes to `outline-style: none`.
+    const feedbackRing = await tabTo(page, "[data-review-feedback]");
+    expect(feedbackRing.style).not.toBe("none");
+    expect(parseFloat(feedbackRing.width)).toBeGreaterThanOrEqual(2);
+
+    const rejectRing = await tabTo(page, "[data-review-reject]");
+    expect(rejectRing.style).not.toBe("none");
+
+    const viewport = page.viewportSize().width;
+    const box = await page.locator("[data-review-handoff]").boundingBox();
+
+    expect(box.width).toBeLessThanOrEqual(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      viewport,
+    );
+  });
+
+  for (const colorScheme of ["light", "dark"]) {
+    test(`the review decision controls are accessible (${colorScheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme });
+      const { project_id, feature_id } = await bootstrap(page, "review");
+      await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+      await expect(page.locator("[data-review-approve]")).toBeVisible();
+      await expectNoSeriousAxeViolations(page);
+    });
+  }
+});

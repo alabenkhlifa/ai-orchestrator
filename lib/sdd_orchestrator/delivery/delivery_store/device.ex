@@ -23,6 +23,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     Evidence,
     Feature,
     PreviewDeployment,
+    ReviewDecision,
     RunAttempt,
     RunCommand
   }
@@ -140,6 +141,22 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     # Ordered by the requested instant as a number rather than as a struct,
     # because Erlang term order over a `DateTime` is not chronological.
     |> Enum.sort_by(&{DateTime.to_unix(&1.requested_at, :microsecond), &1.id})
+  end
+
+  @impl true
+  def list_review_decisions(_authority, project_id, opts) do
+    project_id
+    |> Devices.list_delivery(:review_decision)
+    |> Enum.flat_map(fn value ->
+      case ReviewDecision.from_value(value) do
+        {:ok, decision} -> [decision]
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.filter(&matches_decision_filters?(&1, opts))
+    # Ordered by the decided instant as a number rather than as a struct,
+    # because Erlang term order over a `DateTime` is not chronological.
+    |> Enum.sort_by(&{DateTime.to_unix(&1.decided_at, :microsecond), &1.id})
   end
 
   @impl true
@@ -398,6 +415,23 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     end
   end
 
+  # The device store has no unique index, so the one-verdict-per-attempt rule the
+  # hosted adapter gets from the database is checked here before any write is
+  # applied. A double-submitted approval is refused in either authority.
+  defp apply_operation(project_id, {:insert_review_decision, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
+         %{valid?: true} = changeset <-
+           ReviewDecision.record_changeset(%ReviewDecision{}, resolved),
+         decision = changeset |> Ecto.Changeset.apply_changes() |> put_id(),
+         :ok <- ensure_one_decision_per_attempt(project_id, decision) do
+      {:ok, decision,
+       write(:review_decision, decision.id, ReviewDecision.to_value(decision), nil)}
+    else
+      %Ecto.Changeset{} = invalid -> {:error, invalid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp apply_operation(project_id, {:append_activity, attrs}, results) do
     with {:ok, resolved} <- DeliveryStore.resolve(attrs, results),
          sequence = next_sequence(project_id, resolved),
@@ -569,6 +603,18 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
     end
   end
 
+  defp ensure_one_decision_per_attempt(project_id, decision) do
+    nil
+    |> list_review_decisions(project_id,
+      run_id: decision.run_id,
+      attempt_id: decision.attempt_id
+    )
+    |> case do
+      [] -> :ok
+      _held -> {:error, :one_decision_per_attempt}
+    end
+  end
+
   defp ensure_one_open_question(project_id, question) do
     case open_question(nil, project_id, question.run_id) do
       {:ok, _existing} -> {:error, :one_open_question}
@@ -661,4 +707,22 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Device do
 
   defp current_preview_enough?(deployment, true), do: PreviewDeployment.current?(deployment)
   defp current_preview_enough?(_deployment, _all), do: true
+
+  # The same narrowing the hosted query applies to review decisions: an absent
+  # option asks for everything, never for records whose field is nil.
+  defp matches_decision_filters?(decision, opts) do
+    Enum.all?(
+      [
+        {:run_id, decision.run_id},
+        {:attempt_id, decision.attempt_id},
+        {:feature_id, decision.feature_id}
+      ],
+      fn {option, held} ->
+        case Keyword.get(opts, option) do
+          nil -> true
+          wanted -> held == wanted
+        end
+      end
+    )
+  end
 end

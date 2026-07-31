@@ -18,6 +18,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     DeliveryStore,
     EvidencePresentation,
     Feature,
+    Review,
+    ReviewDecision,
     ReviewHandoff
   }
 
@@ -1407,9 +1409,13 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       assert view |> element("[data-review-branch]") |> render() =~ run.run.branch
       assert view |> element("[data-review-commit]") |> render() =~ EvidenceFixtures.commit()
 
-      # Nobody is offered a way to finish the feature from here yet, and the
-      # agent certainly is not.
-      refute html =~ "Done"
+      # What the run itself achieved is `Ready for review` and nothing further.
+      # This deliberately checks the column rather than the whole page: since
+      # Task 34 the owner reading this screen *is* offered a way to finish the
+      # feature, so refuting the word "Done" anywhere in the markup would stop
+      # testing the handoff and start dictating what the approve control may be
+      # called.
+      refute view |> element("[data-feature-column]") |> render() =~ "Done"
       refute html =~ "@example.com"
       refute html =~ context.identity.hosted_identity.id
     end
@@ -1461,6 +1467,304 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
       # The state is not carried by colour alone: it has an icon and a word.
       assert section =~ "<svg"
+    end
+  end
+
+  # The final product decision, on the screen it is made from. Two people may
+  # make it — whoever responsibility currently resolves to, and the project owner
+  # — and the screen offers the controls to nobody else, because a control whose
+  # press the domain would refuse must never appear [AC-24]. An approval is the
+  # one move that finishes a feature [AC-25].
+  describe "deciding the review [AC-24, AC-25]" do
+    setup %{project: project, account: account, context: context} do
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = proven_run(context.workspace, project, feature)
+
+      {:ok, %{applied?: true}} = ReviewHandoff.deliver(context.workspace, project.id, run.run)
+
+      %{feature: Repo.get!(Feature, feature.id), run: run}
+    end
+
+    test "the current responsible participant approves and the feature is finished [AC-25]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature
+    } do
+      target = context.identity.account
+      {:ok, _assigned} = Assignment.assign(project.id, context.owner_actor, feature, target.id)
+      label = Participation.member_profile(project.id, target.id).display_name
+
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-review-approve]")
+      assert has_element?(view, "[data-review-reject]")
+
+      view |> element("[data-review-approve]") |> render_click()
+
+      assert view |> element("[data-feature-column]") |> render() =~ "Done"
+      assert Repo.get!(Feature, feature.id).lifecycle_column == "done"
+
+      assert has_element?(
+               view,
+               "[data-review-decision][data-review-decision-outcome=\"approved\"]"
+             )
+
+      assert view |> element("[data-review-decision-label]") |> render() =~ "Approved"
+      assert view |> element("[data-review-decision-reviewer]") |> render() =~ label
+
+      # An approval carries no feedback at all, and the feature is finished, so
+      # there is nothing left on this screen to decide.
+      refute has_element?(view, "[data-review-decision-feedback]")
+      refute has_element?(view, "[data-review-approve]")
+      refute has_element?(view, "[data-review-reject]")
+    end
+
+    test "the project owner decides work somebody else is responsible for [AC-25]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      target = context.identity.account
+      {:ok, _assigned} = Assignment.assign(project.id, context.owner_actor, feature, target.id)
+      owner_label = Participation.owner_profile(project.id).display_name
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      # The owner is deliberately not the person the review waits on. They may
+      # still decide, so a departure cannot strand a feature nobody can finish.
+      assert view |> element("[data-review-responsible]") |> render() =~
+               Participation.member_profile(project.id, target.id).display_name
+
+      assert has_element?(view, "[data-review-approve]")
+      assert has_element?(view, "[data-review-reject]")
+
+      view |> element("[data-review-approve]") |> render_click()
+
+      assert view |> element("[data-feature-column]") |> render() =~ "Done"
+      assert view |> element("[data-review-decision-reviewer]") |> render() =~ owner_label
+    end
+
+    test "another current participant is offered no way to decide [AC-24]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      run: run
+    } do
+      # Nobody is assigned, so responsibility resolves to the creator, who is the
+      # owner. This participant is neither, which is exactly the person AC-24 is
+      # about: entitled to read the feature, not to end it.
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-review-handoff]")
+      assert view |> element("[data-review-branch]") |> render() =~ run.run.branch
+      assert view |> element("[data-review-commit]") |> render() =~ EvidenceFixtures.commit()
+
+      refute has_element?(view, "[data-review-controls]")
+      refute has_element?(view, "[data-review-approve]")
+      refute has_element?(view, "[data-review-reject]")
+      refute has_element?(view, "[data-review-feedback]")
+    end
+
+    test "a forged decision from another participant is refused and changes nothing [AC-24]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature
+    } do
+      before = Repo.get!(Feature, feature.id)
+
+      {:ok, approving, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      # The control is absent, so the only way to reach the action is to send the
+      # event without it. The domain refuses, and the screen answers the way it
+      # answers every unauthorized action rather than explaining the refusal.
+      render_click(approving, "approve")
+      assert_redirect(approving, ~p"/projects")
+
+      {:ok, rejecting, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      render_submit(rejecting, "reject", %{"review" => %{"feedback" => "Not for me to say"}})
+      assert_redirect(rejecting, ~p"/projects")
+
+      assert Repo.get!(Feature, feature.id) == before
+      assert Review.decision(context.workspace, project.id, before) == nil
+    end
+
+    test "a rejection with nothing to act on is refused inline and writes nothing", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      for blank <- ["", "   \n  "] do
+        view |> form("#review-form", %{"review" => %{"feedback" => blank}}) |> render_submit()
+
+        assert view |> element("[data-review-error]") |> render() =~ "what needs to change"
+        refute has_element?(view, "[data-review-decision]")
+        assert Review.decision(context.workspace, project.id, feature) == nil
+        assert Repo.get!(Feature, feature.id).lifecycle_column == "ready_for_review"
+      end
+    end
+
+    test "a recorded rejection is readable in full and moves nothing", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      # Longer than the bounded excerpt the activity payload carries, so a screen
+      # rendering the excerpt instead of the decision record would lose the tail.
+      tail = "Finally, the empty state still shows a spinner."
+      feedback = String.duplicate("There is a lot to say about this attempt. ", 12) <> tail
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> form("#review-form", %{"review" => %{"feedback" => feedback}}) |> render_submit()
+
+      assert has_element?(
+               view,
+               "[data-review-decision][data-review-decision-outcome=\"rejected\"]"
+             )
+
+      assert view |> element("[data-review-decision-label]") |> render() =~ "Sent back"
+
+      recorded = view |> element("[data-review-decision-feedback]") |> render()
+      assert recorded =~ tail
+      assert recorded =~ "There is a lot to say about this attempt."
+      assert Review.decision(context.workspace, project.id, feature).feedback == feedback
+
+      # The feature deliberately stays in `Ready for review`: recording the
+      # verdict is this screen's job, and continuing the run — ending the
+      # attempt, opening the next one, and returning the feature to
+      # `In development` — belongs to Task 35. This assertion is the boundary,
+      # not an omission.
+      assert view |> element("[data-feature-column]") |> render() =~ "Ready for review"
+      assert Repo.get!(Feature, feature.id).lifecycle_column == "ready_for_review"
+      assert view |> element("[data-review-decision-note]") |> render() =~ "stays where it is"
+      refute has_element?(view, "[data-review-error]")
+    end
+
+    test "the recorded verdict names the branch and commit that were verified", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      run: run
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> element("[data-review-approve]") |> render_click()
+
+      assert view |> element("[data-review-decision-branch]") |> render() =~ run.run.branch
+
+      assert view |> element("[data-review-decision-commit]") |> render() =~
+               EvidenceFixtures.commit()
+    end
+
+    test "a reviewer who has left is named the way this screen names every former member", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      target = context.identity.account
+      {:ok, _assigned} = Assignment.assign(project.id, context.owner_actor, feature, target.id)
+      label = Participation.member_profile(project.id, target.id).display_name
+
+      {:ok, deciding, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      deciding |> element("[data-review-approve]") |> render_click()
+
+      {:ok, _removed} =
+        Revocations.remove(project, account.id, context.identity.hosted_identity.id)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      # The display name resolves from current participation, so a departure is
+      # reflected rather than frozen — and no name is invented in its place.
+      reviewer = view |> element("[data-review-decision-reviewer]") |> render()
+
+      assert reviewer =~ "A former member"
+      refute reviewer =~ label
+    end
+
+    test "no participant address reaches the review section", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view
+      |> form("#review-form", %{"review" => %{"feedback" => "Contact nobody about this"}})
+      |> render_submit()
+
+      section = view |> element("[data-review-handoff]") |> render()
+
+      refute section =~ "@example.com"
+      refute section =~ context.identity.hosted_identity.id
+      refute section =~ account.id
+      refute view |> render() =~ "@example.com"
+    end
+
+    test "the decision controls label themselves for a screen reader", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      section = view |> element("[data-review-handoff]") |> render()
+
+      assert section =~ "aria-labelledby=\"review-handoff-heading\""
+      assert section =~ "id=\"review-handoff-heading\""
+
+      # The feedback field is a real labelled control, and the rule it is bound
+      # by is the domain's own limit rather than a second one written here.
+      assert section =~ "for=\"review-feedback\""
+      assert section =~ "id=\"review-feedback\""
+      assert section =~ "maxlength=\"#{ReviewDecision.max_feedback_bytes()}\""
+
+      view |> form("#review-form", %{"review" => %{"feedback" => ""}}) |> render_submit()
+
+      decided = view |> element("[data-review-handoff]") |> render()
+
+      assert decided =~ "aria-invalid=\"true\""
+      assert decided =~ "aria-describedby=\"review-feedback-error\""
     end
   end
 

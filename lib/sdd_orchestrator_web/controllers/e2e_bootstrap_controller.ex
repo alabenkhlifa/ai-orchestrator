@@ -311,6 +311,45 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # One hosted project holding a feature that genuinely reached `Ready for
+    # review`: a run that verified for real, the preview that verification
+    # authorized, and the recorded handoff a decision is checked against. The
+    # `evidence` scenario cannot stand in for this — it reaches the column by
+    # walking the transition table, so it has no verified completion behind it
+    # and a review of it would be refused.
+    #
+    # Nobody is assigned, so responsibility resolves to the creator, who is the
+    # owner. `as` therefore decides whether the browser holds someone who may
+    # decide or a participant who may not, which is what makes the refusal
+    # provable in a real browser rather than only in a unit test.
+    defp run(conn, "review", params) do
+      %{project: project, owner: owner, participant: participant} = member_graph()
+      actor = %{account_id: owner.account.id, hosted_identity_id: nil}
+      authority = owner.personal_workspace
+
+      {:ok, feature} = Features.create(project.id, actor, %{title: "Feature awaiting review"})
+      feature = start_development(project.id, actor, feature)
+
+      authorize_preview(project)
+
+      ready = seed_preview(authority, project, feature, E2EPreviewAdapter.ready_path())
+
+      {:ok, %{applied?: true}} = ReviewHandoff.deliver(authority, project.id, ready.run)
+
+      conn
+      |> sign_in(params["as"] || "owner", owner, participant)
+      |> json(%{
+        project_id: project.id,
+        project_name: project.name,
+        owner_name: @owner_name,
+        participant_name: @participant_name,
+        feature_id: feature.id,
+        branch: ready.run.branch,
+        commit_sha: @preview_commit,
+        preview_link: E2EPreviewAdapter.link()
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 

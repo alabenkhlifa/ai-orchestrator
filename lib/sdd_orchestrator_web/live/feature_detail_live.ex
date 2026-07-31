@@ -26,7 +26,9 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     PreviewPresentation,
     ProcessingDisclosure,
     QuestionRouting,
-    Retry
+    Retry,
+    Review,
+    ReviewDecision
   }
 
   @column_labels %{
@@ -77,6 +79,26 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     no_active_run: "There is no run to cancel.",
     stale_state: "This changed while you were looking at it. Try again."
   }
+
+  # The rejection rule lives in the domain, so the screen only puts words to the
+  # answer it gave. Nothing here re-implements the limit or the blank check,
+  # which is what keeps the two from disagreeing.
+  @review_messages %{
+    feedback_required: "Say what needs to change before sending this back.",
+    feedback_too_long: "That feedback is too long. Shorten it and try again.",
+    not_in_review: "This feature is not waiting for a review decision anymore.",
+    not_verified: "Nothing recorded proves this work, so there is nothing to decide about.",
+    stale_state: "This changed while you were looking at it. Try again.",
+    not_found: "This feature is no longer available."
+  }
+
+  # What a recorded verdict is called on the screen. The stored value stays a
+  # machine token; only this map turns it into a person's word for it.
+  @review_outcome_labels %{"approved" => "Approved", "rejected" => "Sent back"}
+
+  # A rejection is the negative outcome on this screen, so it carries the error
+  # icon and colour rather than being told apart from an approval by tone alone.
+  @review_outcome_icons %{"approved" => "circle-check", "rejected" => "circle-alert"}
 
   # Every refused artifact read says exactly this, whether the item never had
   # bytes, belongs to another project, was removed by retention, or is being
@@ -304,6 +326,24 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
+  def handle_event("approve", _params, socket) do
+    socket
+    |> storage_authority()
+    |> Review.approve(socket.assigns.actor, review_subject(socket))
+    |> apply_review(socket, socket.assigns.review_feedback)
+  end
+
+  def handle_event("reject", %{"review" => %{"feedback" => feedback}}, socket) do
+    socket
+    |> storage_authority()
+    |> Review.reject(socket.assigns.actor, review_subject(socket), feedback)
+    |> apply_review(socket, feedback)
+  end
+
+  def handle_event("validate_review", %{"review" => %{"feedback" => feedback}}, socket) do
+    {:noreply, socket |> assign(:review_feedback, feedback) |> assign(:review_error, nil)}
+  end
+
   def handle_event("confirm_boundary", %{"digest" => digest}, socket) do
     # Deliberately not the mounted assign: the agreement must be checked against
     # the boundary in force right now, or a configuration change during the
@@ -417,6 +457,33 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(account_id), do: account_id
 
+  defp review_subject(socket),
+    do: %{project: socket.assigns.project, feature: socket.assigns.feature}
+
+  # A decision that was already made for this attempt answers `applied?: false`
+  # and hands back what is on record, so the screen refreshes from the result
+  # either way rather than treating a second press as a failure.
+  defp apply_review({:ok, results}, socket, _feedback) do
+    {:noreply,
+     socket
+     |> assign(:review_feedback, "")
+     |> assign(:review_error, nil)
+     |> assign_feature(socket.assigns.project_id, socket.assigns.actor, results.feature)}
+  end
+
+  defp apply_review({:error, :unauthorized}, socket, _feedback),
+    do: {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+  defp apply_review({:error, reason}, socket, feedback) do
+    {:noreply,
+     socket
+     |> assign(:review_feedback, feedback)
+     |> assign(
+       :review_error,
+       Map.get(@review_messages, reason, "That decision was not accepted.")
+     )}
+  end
+
   @impl true
   def mount(%{"id" => project_id, "feature_id" => feature_id}, _session, socket) do
     actor = actor(socket)
@@ -462,6 +529,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign_cancelable_run(actor, feature)
     |> assign_evidence(actor, feature)
     |> assign_preview(actor, feature)
+    |> assign_review(actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
@@ -560,6 +628,33 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       end
 
     assign(socket, :preview, preview)
+  end
+
+  # Whether this reader may end the review, and whatever verdict is already on
+  # record. The domain applies the responsible-or-owner rule itself, so an
+  # approve or reject control is absent for someone whose press would be refused
+  # rather than shown and then denied. Someone who is no longer a participant is
+  # shown the same nothing the rest of this screen shows them, verdict included.
+  defp assign_review(socket, actor, feature) do
+    authority = storage_authority(socket)
+
+    {reviewable?, decision} =
+      case Review.reviewable(authority, actor, %{
+             project: socket.assigns.project,
+             feature: feature
+           }) do
+        {:ok, reviewable?} ->
+          {reviewable?, Review.decision(authority, socket.assigns.project_id, feature)}
+
+        {:error, :unauthorized} ->
+          {false, nil}
+      end
+
+    socket
+    |> assign(:reviewable?, reviewable?)
+    |> assign(:review_decision, decision)
+    |> assign(:review_feedback, socket.assigns[:review_feedback] || "")
+    |> assign(:review_error, socket.assigns[:review_error])
   end
 
   defp assign_disclosure(socket) do
@@ -699,6 +794,26 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     )
   end
 
+  ## Review
+
+  # The section keeps its heading after the decision is made, because the
+  # recorded verdict has nowhere else on this screen to live. It stops claiming
+  # the feature is waiting once it no longer is.
+  defp review_heading("ready_for_review"), do: "Ready for review"
+  defp review_heading(_column), do: "Reviewed"
+
+  defp review_outcome_label(%{decision: outcome}),
+    do: Map.get(@review_outcome_labels, outcome, outcome)
+
+  defp review_outcome_icon(%{decision: outcome}),
+    do: Map.get(@review_outcome_icons, outcome, "info")
+
+  defp review_outcome_class(%{decision: "approved"}), do: "border-ok-fg/40 bg-ok-bg"
+  defp review_outcome_class(_decision), do: "border-err-fg/40 bg-err-bg"
+
+  defp review_outcome_text_class(%{decision: "approved"}), do: "text-ok-fg"
+  defp review_outcome_text_class(_decision), do: "text-err-fg"
+
   # One labelled preview fact, kept apart from the evidence section's own facts
   # so a selector for one can never match the other.
   attr :label, :string, required: true
@@ -768,7 +883,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
         </div>
 
         <section
-          :if={@feature.lifecycle_column == "ready_for_review"}
+          :if={@feature.lifecycle_column == "ready_for_review" or @review_decision}
           class="mt-6 rounded-lg border border-ok-fg/40 bg-ok-bg p-4"
           aria-labelledby="review-handoff-heading"
           data-review-handoff
@@ -777,21 +892,144 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             id="review-handoff-heading"
             class="flex items-center gap-1.5 text-[13px] font-semibold text-ok-fg"
           >
-            <.lucide name="circle-check" class="size-4 flex-none" /> Ready for review
+            <.lucide name="circle-check" class="size-4 flex-none" />
+            <span class="whitespace-nowrap">{review_heading(@feature.lifecycle_column)}</span>
           </h2>
-          <p class="mt-2 text-[13px] leading-relaxed text-ink">
-            Development finished and every required check passed for the commit below. Nothing is
-            done until a person says so.
-          </p>
-          <p class="mt-2 text-sm text-ink" data-review-responsible>
-            Waiting on {@responsible || "the project owner"}.
-          </p>
-          <p :if={@verification} class="mt-2 text-xs text-ink-muted" data-review-branch>
-            The work is on {@verification.branch}.
-          </p>
-          <p :if={@verification} class="mt-1 text-xs text-ink-muted" data-review-commit>
-            Reviewing commit {@verification.commit_sha}.
-          </p>
+
+          <div :if={@feature.lifecycle_column == "ready_for_review"}>
+            <p class="mt-2 text-[13px] leading-relaxed text-ink">
+              Development finished and every required check passed for the commit below. Nothing is
+              done until a person says so, and approving moves this feature to Done.
+            </p>
+            <p :if={is_nil(@review_decision)} class="mt-2 text-sm text-ink" data-review-responsible>
+              Waiting on {@responsible || "the project owner"}.
+            </p>
+            <p :if={@verification} class="mt-2 text-xs text-ink-muted" data-review-branch>
+              The work is on {@verification.branch}.
+            </p>
+            <p :if={@verification} class="mt-1 text-xs text-ink-muted" data-review-commit>
+              Reviewing commit {@verification.commit_sha}.
+            </p>
+          </div>
+
+          <%!-- The verdict is read from the decision record, never from the
+          activity payload: the payload deliberately carries a bounded excerpt,
+          and feedback a reviewer wrote in full must be readable in full by the
+          person who has to act on it. --%>
+          <div
+            :if={@review_decision}
+            class={["mt-4 rounded-lg border p-3.5", review_outcome_class(@review_decision)]}
+            data-review-decision
+            data-review-decision-outcome={@review_decision.decision}
+          >
+            <p class={[
+              "flex items-center gap-1.5 text-[13px] font-semibold",
+              review_outcome_text_class(@review_decision)
+            ]}>
+              <.lucide name={review_outcome_icon(@review_decision)} class="size-4 flex-none" />
+              <span class="whitespace-nowrap" data-review-decision-label>
+                {review_outcome_label(@review_decision)}
+              </span>
+            </p>
+
+            <p class="mt-2 text-sm text-ink" data-review-decision-reviewer>
+              Decided by {name(@names, @review_decision.reviewer_account_id) || "A former member"}.
+            </p>
+
+            <p
+              :if={@review_decision.feedback}
+              class="mt-2 whitespace-pre-line break-words text-sm text-ink"
+              data-review-decision-feedback
+            >
+              {@review_decision.feedback}
+            </p>
+
+            <%!-- A rejection records a verdict and moves nothing. The feature is
+            still in `Ready for review` on purpose, so the screen says so rather
+            than leaving a reader to read the unchanged column as a fault. --%>
+            <p
+              :if={@review_decision.decision == "rejected"}
+              class="mt-2 text-xs text-ink-muted"
+              data-review-decision-note
+            >
+              This feedback is on record. The feature stays where it is until the work continues
+              from it.
+            </p>
+
+            <dl class="mt-3 flex flex-col gap-1.5 text-xs">
+              <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <dt class="whitespace-nowrap text-ink-muted">Branch</dt>
+                <dd class="min-w-0 break-all text-ink" data-review-decision-branch>
+                  {@review_decision.branch}
+                </dd>
+              </div>
+              <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <dt class="whitespace-nowrap text-ink-muted">Commit</dt>
+                <dd class="min-w-0 break-all text-ink" data-review-decision-commit>
+                  {@review_decision.commit_sha}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <%!-- Only the two people the domain would accept are offered these
+          controls. Everyone else reads the same state without a control whose
+          press would be refused. --%>
+          <div :if={@reviewable?} class="mt-4" data-review-controls>
+            <.button type="button" phx-click="approve" class="w-full sm:w-auto" data-review-approve>
+              <.lucide name="check" class="size-4" /> Approve
+            </.button>
+
+            <form
+              id="review-form"
+              phx-change="validate_review"
+              phx-submit="reject"
+              class="mt-4"
+            >
+              <label for="review-feedback" class="block text-[13px] font-semibold text-ink">
+                Send it back with feedback
+              </label>
+              <textarea
+                id="review-feedback"
+                name="review[feedback]"
+                rows="3"
+                maxlength={ReviewDecision.max_feedback_bytes()}
+                aria-required="true"
+                aria-invalid={(@review_error && "true") || nil}
+                aria-describedby={
+                  (@review_error && "review-feedback-error") || "review-feedback-hint"
+                }
+                class={[
+                  "mt-1.5 w-full rounded-lg border bg-surface px-3 py-2 text-sm text-ink outline-none",
+                  "focus:outline-solid focus:outline-2 focus:outline-offset-0 focus:outline-focus",
+                  (@review_error && "border-err-fg") || "border-line-strong focus:border-focus"
+                ]}
+                phx-debounce="200"
+                data-review-feedback
+              >{@review_feedback}</textarea>
+              <p
+                :if={@review_error}
+                id="review-feedback-error"
+                class="mt-2 flex items-center gap-1.5 text-xs text-err-fg"
+                data-review-error
+              >
+                <.lucide name="circle-alert" class="size-3.5 flex-none" />
+                {@review_error}
+              </p>
+              <p :if={!@review_error} id="review-feedback-hint" class="mt-2 text-xs text-ink-muted">
+                Sending work back has to say what needs to change. The next attempt works from it.
+              </p>
+
+              <.button
+                variant="secondary"
+                type="submit"
+                class="mt-3 w-full sm:w-auto"
+                data-review-reject
+              >
+                <.lucide name="arrow-left" class="size-4" /> Send back
+              </.button>
+            </form>
+          </div>
         </section>
 
         <section

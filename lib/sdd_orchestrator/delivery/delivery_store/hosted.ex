@@ -23,6 +23,7 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     Evidence,
     Feature,
     PreviewDeployment,
+    ReviewDecision,
     RunAttempt
   }
 
@@ -142,6 +143,19 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
     |> narrow(:commit_sha, Keyword.get(opts, :commit_sha))
     |> only_current(Keyword.get(opts, :current, false))
     |> order_by([d], asc: d.requested_at, asc: d.id)
+    |> Repo.all()
+  rescue
+    Ecto.Query.CastError -> []
+  end
+
+  @impl true
+  def list_review_decisions(_authority, project_id, opts) do
+    ReviewDecision
+    |> where([d], d.project_id == ^project_id)
+    |> narrow(:run_id, Keyword.get(opts, :run_id))
+    |> narrow(:attempt_id, Keyword.get(opts, :attempt_id))
+    |> narrow(:feature_id, Keyword.get(opts, :feature_id))
+    |> order_by([d], asc: d.decided_at, asc: d.id)
     |> Repo.all()
   rescue
     Ecto.Query.CastError -> []
@@ -297,6 +311,12 @@ defmodule SddOrchestrator.Delivery.DeliveryStore.Hosted do
       deployment
       |> PreviewDeployment.cleanup_changeset(resolved, deployment.state_version)
       |> repo.update()
+    end
+  end
+
+  defp apply_operation(repo, {:insert_review_decision, attrs}, results) do
+    with {:ok, resolved} <- DeliveryStore.resolve(attrs, results) do
+      %ReviewDecision{} |> ReviewDecision.record_changeset(resolved) |> repo.insert()
     end
   end
 
