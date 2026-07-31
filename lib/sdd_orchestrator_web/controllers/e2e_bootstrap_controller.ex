@@ -5,6 +5,49 @@
 # in the router, which only gates its route, because this endpoint establishes
 # authenticated sessions.
 if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
+  defmodule SddOrchestratorWeb.E2EPreviewAdapter do
+    @moduledoc """
+    A deterministic preview provider for the browser suite.
+
+    It provisions nothing and reaches no network. The authorized path decides the
+    answer: the ordinary path deploys and returns one participant-safe link, and
+    a second authorized path always refuses, so one seeded feature can show both
+    a preview a reader may open and one that failed with a stated reason.
+
+    It exists only where the bootstrap controller does — behind the same
+    compile-time flag — so no production build contains a preview provider that
+    answers without a provider.
+    """
+    @behaviour SddOrchestrator.Delivery.PreviewAdapter
+
+    @ready_path "web"
+    @link "https://preview.e2e.test/branch-preview"
+
+    @doc "The authorized path whose deployments succeed."
+    def ready_path, do: @ready_path
+
+    @doc "The authorized path whose deployments are always refused."
+    def failing_path, do: "broken"
+
+    @doc "The one participant-safe link a successful deployment serves."
+    def link, do: @link
+
+    @impl true
+    def request(%{path: @ready_path}) do
+      {:ok, %{status: "ready", provider_ref: "e2e-preview/deployment-1", link: @link}}
+    end
+
+    def request(_request) do
+      {:ok, %{status: "failed", provider_ref: nil, link: nil, failure_reason: :quota_exhausted}}
+    end
+
+    @impl true
+    def status(_query), do: {:ok, %{status: "pending", provider_ref: nil, link: nil}}
+
+    @impl true
+    def cleanup(_command), do: :ok
+  end
+
   defmodule SddOrchestratorWeb.E2EBootstrapController do
     @moduledoc """
     Dev and test-only session and fixture bootstrap for the browser suite.
@@ -42,7 +85,10 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       ArtifactStore,
       EvidenceIngestion,
       Features,
+      Previews,
+      ReviewHandoff,
       RunAttempt,
+      VerificationCompletion,
       WorkerProtocol
     }
 
@@ -52,7 +98,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.Participation.{Acceptance, Invitations}
     alias SddOrchestrator.Projects.Project
     alias SddOrchestrator.Repo
-    alias SddOrchestratorWeb.{HostedUserAuth, UserAuth}
+    alias SddOrchestratorWeb.{E2EPreviewAdapter, HostedUserAuth, UserAuth}
 
     @columns ~w(draft ready_for_development in_development ready_for_review done)
     @owner_name "Robin Owner"
@@ -68,6 +114,12 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     # The required-check contract the seeded attempt is bound to.
     @required_checks ["mix format --check-formatted", "mix credo --strict", "mix dialyzer"]
+
+    # The preview scenario verifies for real, so its attempt is bound to a
+    # contract it can actually satisfy: one check, passed against one commit.
+    @preview_checks ["mix test"]
+    @preview_commit "9d3e1c07ab5642f8e0c1937bd4a5f26e0187cc34"
+    @preview_provider "e2e-preview"
 
     # One real 1x1 PNG, so the stored screenshot genuinely is the content type it
     # declares and survives the store's own digest and content-type checks rather
@@ -206,6 +258,40 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # One hosted project whose feature verified twice and has both preview
+    # outcomes a reader must be able to tell apart: a deployment that succeeded
+    # and offers one safe link, and one the provider refused, which offers none.
+    # The feature then reaches `Ready for review` regardless, which is the point.
+    defp run(conn, "preview", params) do
+      %{project: project, owner: owner, participant: participant} = member_graph()
+      actor = %{account_id: owner.account.id, hosted_identity_id: nil}
+      authority = owner.personal_workspace
+
+      {:ok, feature} = Features.create(project.id, actor, %{title: "Previewed feature"})
+      feature = start_development(project.id, actor, feature)
+
+      authorize_preview(project)
+
+      ready = seed_preview(authority, project, feature, E2EPreviewAdapter.ready_path())
+      failed = seed_preview(authority, project, feature, E2EPreviewAdapter.failing_path())
+
+      {:ok, %{applied?: true}} = ReviewHandoff.deliver(authority, project.id, failed.run)
+
+      conn
+      |> sign_in(params["as"] || "owner", owner, participant)
+      |> json(%{
+        project_id: project.id,
+        project_name: project.name,
+        owner_name: @owner_name,
+        feature_id: feature.id,
+        commit_sha: @preview_commit,
+        preview_link: E2EPreviewAdapter.link(),
+        preview_provider: @preview_provider,
+        ready_branch: ready.run.branch,
+        failed_branch: failed.run.branch
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -301,7 +387,108 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       %{run: run, evidence: evidence}
     end
 
-    defp seed_run(project, feature) do
+    ## Branch previews
+
+    # Preview authorization is preconfigured and per project, so the seeded
+    # project is added to the configured list rather than replacing it: an
+    # earlier scenario's project must not lose its preview path because a later
+    # one asked for its own.
+    defp authorize_preview(project) do
+      config = Application.get_env(:sdd_orchestrator, :preview, [])
+
+      projects =
+        config
+        |> Keyword.get(:projects, %{})
+        |> Map.put(project.id, [
+          E2EPreviewAdapter.ready_path(),
+          E2EPreviewAdapter.failing_path()
+        ])
+
+      Application.put_env(:sdd_orchestrator, :preview,
+        adapter: E2EPreviewAdapter,
+        provider: @preview_provider,
+        credential_ref: nil,
+        request_timeout_ms: 300_000,
+        ttl_seconds: 86_400,
+        projects: projects
+      )
+    end
+
+    # One run that genuinely verified, then the preview that verification
+    # authorizes. `Previews.start/4` reads the recorded completion itself, so a
+    # seeded preview is one the product would have produced rather than a row.
+    defp seed_preview(authority, project, feature, path) do
+      %{run: run, attempt: attempt} = seed_run(project, feature, @preview_checks)
+
+      {:ok, _passed} =
+        EvidenceIngestion.ingest(
+          authority,
+          project.id,
+          evidence_event(run, attempt, 1, verified_check_payload(hd(@preview_checks)))
+        )
+
+      {:ok, _verified} =
+        VerificationCompletion.ingest(
+          authority,
+          project.id,
+          completion_event(run, attempt, 2)
+        )
+
+      {:ok, %{deployment: deployment}} =
+        Previews.start(authority, project.id, run, path: path)
+
+      %{run: run, attempt: attempt, deployment: deployment}
+    end
+
+    defp verified_check_payload(name) do
+      %{
+        "source" => "check",
+        "kind" => "required_check",
+        "name" => name,
+        "outcome" => "passed",
+        "command" => name,
+        "exit_code" => 0,
+        "duration_ms" => 1_200,
+        "commit_sha" => @preview_commit,
+        "digest" => content_digest("#{name}-#{@preview_commit}"),
+        "redacted" => false
+      }
+    end
+
+    defp completion_event(run, attempt, sequence) do
+      unique = unique_suffix()
+
+      %{
+        "type" => "event",
+        "protocol_version" => WorkerProtocol.version(),
+        "event_id" => "evt-#{unique}",
+        "run_id" => run.id,
+        "command_id" => "cmd-#{unique}",
+        "attempt_number" => attempt.attempt_number,
+        "fence_token" => attempt.fence_token,
+        "sequence" => sequence,
+        "event_type" => "verification_completed",
+        "source" => "worker",
+        "occurred_at" => DateTime.to_iso8601(DateTime.utc_now()),
+        "payload" => %{
+          "branch" => run.branch,
+          "revision_id" => attempt.effective_revision_id,
+          "commit_sha" => @preview_commit
+        }
+      }
+    end
+
+    # The preview scenario needs a feature that is genuinely in development and
+    # not also blocked, because a blocked status would survive into review and
+    # say something about the run that is not true.
+    defp start_development(project_id, actor, feature) do
+      Enum.reduce(["ready_for_development", "in_development"], feature, fn column, current ->
+        {:ok, moved} = Features.transition(project_id, actor, current, column, [])
+        moved
+      end)
+    end
+
+    defp seed_run(project, feature, checks \\ @required_checks) do
       suffix = unique_suffix()
 
       run =
@@ -325,7 +512,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
           effective_revision_id: run.effective_revision_id,
           effective_revision_digest: run.effective_revision_digest,
           manifest_digest: content_digest("manifest-#{run.id}"),
-          required_checks: Enum.map(@required_checks, &%{"name" => &1, "command" => &1}),
+          required_checks: Enum.map(checks, &%{"name" => &1, "command" => &1}),
           fence_token: 1
         })
         |> Repo.insert!()

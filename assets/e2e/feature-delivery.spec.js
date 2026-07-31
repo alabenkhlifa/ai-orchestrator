@@ -544,3 +544,106 @@ async function expectNoArtifactReference(page) {
     expect(address).not.toMatch(/\/evidence\//i);
   }
 }
+
+// Authenticated browser proof for branch-preview presentation (specs/07 Task 33,
+// AC-22). The seeded feature verified twice on two runs: the configured adapter
+// deployed one of them and refused the other, so one screen holds a preview a
+// reader may open beside one that failed — and the feature reaches review either
+// way. Each of these runs under both the desktop and the mobile project.
+test.describe("branch preview", () => {
+  test("a deployment that succeeded offers one non-production link", async ({ page }) => {
+    const { project_id, feature_id, preview_link, ready_branch, commit_sha } = await bootstrap(
+      page,
+      "preview",
+    );
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    const ready = previewItem(page, "ready");
+    await expect(ready).toHaveCount(1);
+
+    const link = ready.locator("[data-preview-link]");
+
+    await expect(link).toHaveAttribute("href", preview_link);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+
+    // A preview is not production, and a reader has to be able to tell which
+    // branch and commit they are about to open before they open it.
+    await expect(ready.locator("[data-preview-nonproduction]")).toContainText("Non-production");
+    await expect(ready.locator("[data-preview-link-note]")).toContainText(ready_branch);
+    await expect(ready.locator("[data-preview-link-note]")).toContainText(commit_sha);
+  });
+
+  test("a deployment the provider refused shows its reason and no link", async ({ page }) => {
+    const { project_id, feature_id, failed_branch } = await bootstrap(page, "preview");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    const failed = previewItem(page, "failed");
+
+    await expect(failed).toHaveCount(1);
+    await expect(failed.locator("[data-preview-link]")).toHaveCount(0);
+    await expect(failed.locator("[data-preview-reason]")).toContainText(/no capacity left/i);
+    await expect(failed.locator('[data-preview-fact="branch"]')).toHaveText(failed_branch);
+
+    // Both outcomes stay on the screen, and exactly one of them is somewhere a
+    // reader may be sent.
+    await expect(page.locator("[data-preview-item]")).toHaveCount(2);
+    await expect(page.locator("[data-preview-link]")).toHaveCount(1);
+  });
+
+  test("the feature reaches review even though a preview failed", async ({ page }) => {
+    const { project_id, feature_id } = await bootstrap(page, "preview");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    await expect(page.locator("[data-feature-column]")).toHaveText("Ready for review");
+    await expect(page.locator("[data-review-handoff]")).toBeVisible();
+    await expect(page.locator("[data-preview-independence]")).toContainText(/ready for review/i);
+  });
+
+  test("the preview section fits this device without scrolling sideways", async ({ page }) => {
+    const { project_id, feature_id } = await bootstrap(page, "preview");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    const viewport = page.viewportSize().width;
+
+    await expect(page.locator("[data-preview-item]")).toHaveCount(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      viewport,
+    );
+
+    // The link is one long unbroken token, so an item holding it is where a
+    // sideways scroll would first appear.
+    const boxes = await page
+      .locator("[data-preview-item]")
+      .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().width));
+
+    for (const width of boxes) expect(width).toBeLessThanOrEqual(viewport);
+  });
+
+  test("the preview link is reachable by keyboard with a visible focus ring", async ({ page }) => {
+    const { project_id, feature_id } = await bootstrap(page, "preview");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    await page.locator("[data-assignment-select]").focus();
+
+    const ring = await tabTo(page, "[data-preview-link]", 40);
+
+    expect(ring.style).not.toBe("none");
+    expect(parseFloat(ring.width)).toBeGreaterThanOrEqual(2);
+  });
+
+  for (const colorScheme of ["light", "dark"]) {
+    test(`the preview section is accessible (${colorScheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme });
+      const { project_id, feature_id } = await bootstrap(page, "preview");
+      await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+      await expect(page.locator("[data-preview-item]")).toHaveCount(2);
+      await expectNoSeriousAxeViolations(page);
+    });
+  }
+});
+
+function previewItem(page, state) {
+  return page.locator(`[data-preview-item][data-preview-state="${state}"]`);
+}

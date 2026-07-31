@@ -367,9 +367,8 @@ Prerequisite:
   - Depends on: Task 30
   - Proof: Focused migration, adapter, authorization, idempotency, exact commit, success, timeout, expiry, supersession, cleanup command, credential absence, safe link, hosted, and device tests pass.
 
-- [ ] Task 33 - Present preview availability and failure.
+- [x] Task 33 - Present preview availability and failure.
   - Size: Standard
-  - Status: In Progress
   - Purpose: Show non-production preview status without blocking review readiness or inventing a link.
   - Owned surfaces: Preview unavailable, pending, ready, failed, timed-out, expired and superseded presentation, non-production label, safe-link authorization, failure reason, configured expiry and cleanup state, feature activity, fixtures, and responsive accessible UI.
   - Owns: AC-22
@@ -551,6 +550,19 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-31 - Task 33 complete: preview availability and failure presented
+
+- Completed: Added `Delivery.PreviewPresentation` and the preview section of the feature detail screen. A reader can now tell what happened to a branch preview, and is never sent to one that does not exist.
+- Absence has two causes and they are reported apart (AC-22): a project with no authorized preview path never had a preview, and a project with one that has verified nothing yet is waiting. Collapsing them would answer "why is there no link?" with a shrug.
+- Deviation from the briefed mechanism, accepted because it is better: configuration is read from `PreviewAdapter.authorize/1`, the same resolver `Previews.start/4` obeys, rather than from `ProcessingDisclosure`. The disclosure is deployment-wide and project-independent, so it could have said "no preview path" beside a rendered deployment record. Two derivations of one judgement are two answers waiting to differ.
+- Nothing is filtered. Superseded, expired, failed, and timed-out deployments all stay on screen, because "replaced by a newer commit", "reached the end of its lifetime", and "the provider refused" are three different answers to a reader deciding whether to retry or wait. `expired` is deliberately not folded into `failed?`, matching Task 32's domain.
+- A link is re-validated on the way out even though the changeset, the device decode, and a database check constraint each refuse an unsafe one on the way in. Three write-side guards do nothing about a link arriving by a fourth path, and this is the one promise the section exists to keep. `present/1` is public solely so that refusal can be proved with a record no store can hold. A `ready` deployment whose link fails the check is reported as withheld rather than silently blank.
+- Unknown failure tokens are not swallowed. The reason set is genuinely open, so an unrecognized token still gets a sentence plus the token as a separate labelled code; prose never contains the raw token. A map-only approach would have hidden real provider failures.
+- `provider_ref` never reaches the caller and is asserted absent, because it addresses the deployment at the provider and a reader needs only state, reason, and link.
+- Review readiness stays independent, proved rather than assumed: `[data-review-handoff]` renders for a verified feature with an absent, pending, failed, timed-out, or expired preview at the LiveView level, and in a real browser for the failed case.
+- Failed checks: None. Final proof passes with real exit status, confirmed in the main thread: `mix test` (2255 passing, 0 failures, up from 2186), `mix format --check-formatted`, `mix compile --force --warnings-as-errors`, `mix credo --strict`, and `git diff --check`.
+- Recorded defect outside this task's ownership: `PreviewDeployment` validates links against a 500-byte limit while the migration's `link` column is `varchar(255)` with no length check, so the schema's 500 is dead and the two disagree by roughly double. Harmless today because the column binds first. Task 32's surface.
 
 ### 2026-07-31 - Task 53 reopened: the configuration test was measuring the wrong thing
 

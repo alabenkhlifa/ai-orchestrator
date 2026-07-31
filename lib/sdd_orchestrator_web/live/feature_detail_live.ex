@@ -23,6 +23,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     EvidencePresentation,
     Features,
     ParticipantGuard,
+    PreviewPresentation,
     ProcessingDisclosure,
     QuestionRouting,
     Retry
@@ -124,6 +125,67 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     "no_visual_result" => "This work produced nothing to capture.",
     "capture_unsupported" => "This environment could not capture a screenshot.",
     "capture_failed" => "The capture itself broke."
+  }
+
+  # Every state a preview can be presented in, absence included. `not_configured`
+  # and `none` are different answers on purpose: one project never had a preview
+  # path, the other has one and has not verified anything yet.
+  @preview_state_labels %{
+    "not_configured" => "No preview path",
+    "none" => "Not started",
+    "pending" => "Deploying",
+    "ready" => "Ready",
+    "failed" => "Failed",
+    "timed_out" => "Timed out",
+    "expired" => "Expired",
+    "superseded" => "Replaced"
+  }
+
+  # An expired preview is not a failed one. It reached the end of a lifetime
+  # somebody configured, which is a warning at most, while a provider that
+  # refused or never answered is an error.
+  @preview_state_variants %{
+    "not_configured" => "neutral",
+    "none" => "neutral",
+    "pending" => "info",
+    "ready" => "ok",
+    "failed" => "err",
+    "timed_out" => "err",
+    "expired" => "warn",
+    "superseded" => "neutral"
+  }
+
+  @preview_state_icons %{
+    "not_configured" => "info",
+    "none" => "info",
+    "pending" => "loader",
+    "ready" => "circle-check",
+    "failed" => "circle-alert",
+    "timed_out" => "circle-alert",
+    "expired" => "triangle-alert",
+    "superseded" => "refresh-cw"
+  }
+
+  # A preview failure is recorded as a machine token, never as the provider's own
+  # words. The sentence is written here; the token itself is shown separately as
+  # a code, so an unrecognised one is never dressed up as prose and never hidden.
+  @preview_failure_messages %{
+    "preview_request_timeout" => "The preview provider did not answer in time.",
+    "preview_request_rejected" => "The request was refused before it reached the provider.",
+    "invalid_preview_response" => "The provider answered with something this project cannot use.",
+    "preview_not_configured" => "No preview provider is configured for this project.",
+    "preview_not_authorized" => "This project has no authorized preview path.",
+    "preview_path_not_authorized" => "That preview path is not authorized for this project.",
+    "provider_failed" => "The preview provider refused this deployment.",
+    "provider_error" => "The preview provider broke while handling this deployment.",
+    "provider_unavailable" => "The preview provider was unavailable.",
+    "quota_exhausted" => "The preview provider has no capacity left for this project."
+  }
+
+  @preview_cleanup_labels %{
+    "requested" => "Release requested",
+    "done" => "Released",
+    "failed" => "Release failed"
   }
 
   @verification_reasons %{
@@ -399,6 +461,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign_failed_run(actor, feature)
     |> assign_cancelable_run(actor, feature)
     |> assign_evidence(actor, feature)
+    |> assign_preview(actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
@@ -478,6 +541,25 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:verification, verification)
     |> assign(:evidence_artifact, socket.assigns[:evidence_artifact])
     |> assign(:evidence_artifact_error, socket.assigns[:evidence_artifact_error])
+  end
+
+  # Whether this feature has a preview, and what became of it. A reader who
+  # cannot read evidence is shown the same nothing a project with no preview path
+  # shows, so the section never becomes a way to learn about a project from
+  # outside it.
+  defp assign_preview(socket, actor, feature) do
+    preview =
+      case PreviewPresentation.summary(
+             storage_authority(socket),
+             socket.assigns.project_id,
+             actor,
+             feature.id
+           ) do
+        {:ok, summary} -> summary
+        {:error, :unauthorized} -> PreviewPresentation.unavailable()
+      end
+
+    assign(socket, :preview, preview)
   end
 
   defp assign_disclosure(socket) do
@@ -595,6 +677,43 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   defp viewing?(%{evidence_id: evidence_id}, %{id: evidence_id}), do: true
   defp viewing?(_artifact, _item), do: false
+
+  ## Preview
+
+  defp preview_state_label(state), do: Map.get(@preview_state_labels, state, "Unknown")
+  defp preview_state_variant(state), do: Map.get(@preview_state_variants, state, "neutral")
+  defp preview_state_icon(state), do: Map.get(@preview_state_icons, state, "info")
+
+  defp preview_cleanup_label(state), do: Map.get(@preview_cleanup_labels, state)
+
+  # An unrecognised code still gets a sentence, because a preview that stopped
+  # for a reason this screen has never seen is exactly the one a reader most
+  # needs to be told about. The code itself renders beside it as a code.
+  defp preview_failure_message(nil), do: "The preview stopped without recording a reason."
+
+  defp preview_failure_message(reason) do
+    Map.get(
+      @preview_failure_messages,
+      reason,
+      "The preview stopped for a reason this project does not recognise."
+    )
+  end
+
+  # One labelled preview fact, kept apart from the evidence section's own facts
+  # so a selector for one can never match the other.
+  attr :label, :string, required: true
+  attr :test, :string, required: true
+  attr :value, :string, default: nil
+  attr :class, :any, default: nil
+
+  defp preview_fact(assigns) do
+    ~H"""
+    <div class={["flex flex-wrap items-baseline gap-x-2 gap-y-0.5", @class]}>
+      <dt class="whitespace-nowrap text-ink-muted">{@label}</dt>
+      <dd class="min-w-0 break-all text-ink" data-preview-fact={@test}>{@value}</dd>
+    </div>
+    """
+  end
 
   # One labelled provenance value. The label never wraps and the value may,
   # because a broken label reads as a different field while a broken commit or
@@ -1203,6 +1322,175 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           <p :if={@evidence == []} class="mt-3 text-xs text-ink-muted" data-evidence-empty>
             Nothing has been proved about this feature yet.
           </p>
+        </section>
+
+        <section
+          class="mt-6"
+          aria-labelledby="preview-heading"
+          data-preview
+          data-preview-state={@preview.state}
+        >
+          <h2 id="preview-heading" class="text-[13px] font-semibold text-ink">Preview</h2>
+          <p
+            class="mt-1 text-[13px] leading-relaxed text-ink-muted"
+            data-preview-independence
+          >
+            A preview is a non-production deployment of one verified commit, offered so the work can
+            be tried before anyone approves it. Whether it exists, is still deploying, or failed
+            never decides whether this feature is verified or ready for review.
+          </p>
+
+          <p
+            :if={not @preview.configured?}
+            class="mt-3 text-xs text-ink-muted"
+            data-preview-unavailable
+          >
+            This project has no authorized preview path, so nothing was deployed and there is no
+            link to show. Review can go ahead without one.
+          </p>
+
+          <p
+            :if={@preview.configured? and @preview.deployments == []}
+            class="mt-3 text-xs text-ink-muted"
+            data-preview-none
+          >
+            No preview has been deployed for this feature yet. One starts by itself once a run
+            verifies, on {@preview.path}.
+          </p>
+
+          <ul :if={@preview.deployments != []} class="mt-3 flex flex-col gap-3" data-preview-list>
+            <li
+              :for={item <- @preview.deployments}
+              class="rounded-lg border border-line bg-surface p-3.5"
+              data-preview-item
+              data-preview-id={item.id}
+              data-preview-state={item.status}
+              data-preview-current={to_string(item.current?)}
+            >
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="whitespace-nowrap" data-preview-state-label>
+                  <.badge
+                    variant={preview_state_variant(item.status)}
+                    icon={preview_state_icon(item.status)}
+                  >
+                    {preview_state_label(item.status)}
+                  </.badge>
+                </span>
+                <span class="whitespace-nowrap" data-preview-nonproduction>
+                  <.badge variant="neutral" icon="globe">Non-production</.badge>
+                </span>
+              </div>
+
+              <p :if={item.link} class="mt-3 text-[13px]">
+                <.link
+                  href={item.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-start gap-1.5 break-all rounded font-semibold text-primary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  data-preview-link
+                >
+                  <.lucide name="external-link" class="mt-0.5 size-4 flex-none" />
+                  {item.link}
+                </.link>
+              </p>
+
+              <p :if={item.link} class="mt-1 text-xs text-ink-muted" data-preview-link-note>
+                This is a non-production deployment of {item.branch} from run {item.run_ref}, built
+                from commit {item.commit_sha}. It opens in a new tab.
+              </p>
+
+              <p
+                :if={item.link_withheld?}
+                class="mt-3 flex items-start gap-1.5 text-xs text-warn-fg"
+                data-preview-link-withheld
+              >
+                <.lucide name="triangle-alert" class="mt-0.5 size-3.5 flex-none" />
+                This deployment reported ready without a link this project can safely open, so none
+                is shown.
+              </p>
+
+              <p :if={item.failed?} class="mt-3 text-sm text-ink" data-preview-reason>
+                {preview_failure_message(item.failure_reason)} It changes nothing about whether the
+                work was verified.
+              </p>
+
+              <p
+                :if={item.status == "expired"}
+                class="mt-3 text-sm text-ink"
+                data-preview-expired-note
+              >
+                This preview reached the end of its configured lifetime and is no longer served.
+                Nothing failed.
+              </p>
+
+              <p
+                :if={item.superseded?}
+                class="mt-3 text-xs text-ink-muted"
+                data-preview-replacement
+              >
+                A later verified commit replaced this preview. It stays here so what was deployed
+                before is not rewritten. Replaced by {item.replaced_by_ref}.
+              </p>
+
+              <dl class="mt-3 grid grid-cols-1 gap-x-5 gap-y-1.5 text-xs sm:grid-cols-2">
+                <.preview_fact label="Run" test="run" value={item.run_ref} />
+                <.preview_fact
+                  label="Attempt"
+                  test="attempt"
+                  value={item.attempt_ref || "Not recorded"}
+                />
+                <.preview_fact label="Provider" test="provider" value={item.provider} />
+                <.preview_fact label="Path" test="path" value={item.path} />
+                <.preview_fact
+                  label="Requested"
+                  test="requested"
+                  value={recorded_label(item.requested_at)}
+                />
+                <.preview_fact
+                  :if={item.ready_at}
+                  label="Ready"
+                  test="ready"
+                  value={recorded_label(item.ready_at)}
+                />
+                <.preview_fact
+                  :if={item.status == "pending"}
+                  label="Times out"
+                  test="timeout"
+                  value={recorded_label(item.timeout_at)}
+                />
+                <.preview_fact
+                  :if={item.expires_at}
+                  label="Expires"
+                  test="expires"
+                  value={recorded_label(item.expires_at)}
+                />
+                <.preview_fact
+                  :if={preview_cleanup_label(item.cleanup_state)}
+                  label="Cleanup"
+                  test="cleanup"
+                  value={preview_cleanup_label(item.cleanup_state)}
+                />
+                <.preview_fact
+                  :if={item.failure_reason}
+                  label="Reason code"
+                  test="reason-code"
+                  value={item.failure_reason}
+                />
+                <.preview_fact
+                  label="Branch"
+                  test="branch"
+                  value={item.branch}
+                  class="sm:col-span-2"
+                />
+                <.preview_fact
+                  label="Commit"
+                  test="commit"
+                  value={item.commit_sha}
+                  class="sm:col-span-2"
+                />
+              </dl>
+            </li>
+          </ul>
         </section>
 
         <section class="mt-6" data-comments>

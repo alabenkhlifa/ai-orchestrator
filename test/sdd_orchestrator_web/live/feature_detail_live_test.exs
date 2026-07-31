@@ -28,6 +28,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.Revocations
   alias SddOrchestrator.ParticipationDeliveryDouble
+  alias SddOrchestrator.PreviewPresentationFixtures, as: PreviewFixtures
   alias SddOrchestrator.Repo
 
   setup do
@@ -1461,6 +1462,328 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       # The state is not carried by colour alone: it has an icon and a word.
       assert section =~ "<svg"
     end
+  end
+
+  describe "the preview [AC-22]" do
+    setup %{project: project, account: account, context: context} do
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      on_exit(PreviewFixtures.configure(project))
+
+      %{feature: feature, authority: context.workspace}
+    end
+
+    test "a project with no authorized path says so and offers no link", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      on_exit(PreviewFixtures.unconfigure())
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-preview][data-preview-state=\"not_configured\"]")
+      assert has_element?(view, "[data-preview-unavailable]")
+      refute has_element?(view, "[data-preview-list]")
+      refute has_element?(view, "[data-preview-link]")
+    end
+
+    test "a configured project with nothing deployed is waiting, not missing", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-preview][data-preview-state=\"none\"]")
+      assert view |> element("[data-preview-none]") |> render() =~ PreviewFixtures.path()
+      refute has_element?(view, "[data-preview-unavailable]")
+      refute has_element?(view, "[data-preview-link]")
+    end
+
+    test "a preview still deploying shows its state and no link", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      PreviewFixtures.preview_fixture(authority, project, feature, :pending)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element(item("pending") <> " [data-preview-state-label]") |> render() =~
+               "Deploying"
+
+      assert has_element?(view, item("pending") <> " [data-preview-fact=\"timeout\"]")
+      refute has_element?(view, "[data-preview-link]")
+    end
+
+    test "a ready preview is labelled non-production and names what produced it [AC-22]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      %{run: run} = PreviewFixtures.preview_fixture(authority, project, feature, :ready)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      link = view |> element(item("ready") <> " [data-preview-link]") |> render()
+
+      assert link =~ "href=\"#{PreviewFixtures.link()}\""
+      assert link =~ "target=\"_blank\""
+      assert link =~ "rel=\"noopener noreferrer\""
+
+      assert view |> element(item("ready") <> " [data-preview-nonproduction]") |> render() =~
+               "Non-production"
+
+      note = view |> element(item("ready") <> " [data-preview-link-note]") |> render()
+
+      assert note =~ "non-production"
+      assert note =~ run.branch
+      assert note =~ PreviewFixtures.commit()
+    end
+
+    test "a provider failure states a reason and presents no link [AC-22]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      PreviewFixtures.preview_fixture(authority, project, feature, :failed)
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      reason = view |> element(item("failed") <> " [data-preview-reason]") |> render()
+
+      assert reason =~ "no capacity left"
+      refute reason =~ "quota_exhausted"
+
+      # The token itself stays visible as a code rather than being dressed up as
+      # a sentence or hidden entirely.
+      assert view |> element(item("failed") <> " [data-preview-fact=\"reason-code\"]") |> render() =~
+               "quota_exhausted"
+
+      refute has_element?(view, "[data-preview-link]")
+      refute html =~ PreviewFixtures.link()
+    end
+
+    test "a timeout is presented as its own state, not as a plain failure [AC-22]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      PreviewFixtures.preview_fixture(authority, project, feature, :timed_out)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element(item("timed_out") <> " [data-preview-state-label]") |> render() =~
+               "Timed out"
+
+      assert view |> element(item("timed_out") <> " [data-preview-reason]") |> render() =~
+               "did not answer in time"
+
+      refute has_element?(view, "[data-preview-link]")
+    end
+
+    test "an expiry says the lifetime ran out rather than that something broke [AC-22]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      PreviewFixtures.preview_fixture(authority, project, feature, :expired)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert view |> element(item("expired") <> " [data-preview-state-label]") |> render() =~
+               "Expired"
+
+      assert view |> element(item("expired") <> " [data-preview-expired-note]") |> render() =~
+               "Nothing failed"
+
+      assert has_element?(view, item("expired") <> " [data-preview-fact=\"expires\"]")
+      refute has_element?(view, item("expired") <> " [data-preview-reason]")
+      refute has_element?(view, "[data-preview-link]")
+    end
+
+    test "a replaced preview stays visible beside the one that replaced it [AC-22]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      first = PreviewFixtures.preview_fixture(authority, project, feature, :ready)
+      PreviewFixtures.supersede_fixture(authority, project, first)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      # Nothing is filtered: both deployments stay on the screen.
+      assert view |> render() |> count("data-preview-item") == 2
+
+      replaced = item("superseded")
+
+      assert view |> element(replaced <> " [data-preview-state-label]") |> render() =~ "Replaced"
+      assert view |> element(replaced <> " [data-preview-replacement]") |> render() =~ "replaced"
+      assert has_element?(view, replaced <> "[data-preview-current=\"false\"]")
+
+      # The replaced one keeps its place and loses its link; only the current
+      # deployment is somewhere a reader may be sent.
+      refute has_element?(view, replaced <> " [data-preview-link]")
+      assert has_element?(view, item("ready") <> " [data-preview-link]")
+
+      assert view |> element(item("ready") <> " [data-preview-fact=\"commit\"]") |> render() =~
+               PreviewFixtures.later_commit()
+    end
+
+    test "every state is named in words beside an icon, never colour alone", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      for state <- [:pending, :ready, :failed, :timed_out, :expired] do
+        PreviewFixtures.preview_fixture(authority, project, feature, state)
+      end
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      for {state, label} <- [
+            {"pending", "Deploying"},
+            {"ready", "Ready"},
+            {"failed", "Failed"},
+            {"timed_out", "Timed out"},
+            {"expired", "Expired"}
+          ] do
+        badge = view |> element(item(state) <> " [data-preview-state-label]") |> render()
+
+        assert badge =~ label
+        assert badge =~ "<svg"
+      end
+
+      # Every deployment is labelled non-production, whatever became of it.
+      assert view |> render() |> count("data-preview-nonproduction") == 5
+    end
+
+    test "the section labels itself for a screen reader and discloses no address", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      PreviewFixtures.preview_fixture(authority, project, feature, :ready)
+
+      {:ok, view, html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      section = view |> element("[data-preview]") |> render()
+
+      assert section =~ "aria-labelledby=\"preview-heading\""
+      assert section =~ "id=\"preview-heading\""
+
+      refute html =~ "vault://"
+      refute html =~ "@example.com"
+      refute html =~ context.identity.hosted_identity.id
+    end
+
+    test "the preview independence statement is on the screen, not only in the code", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      independence = view |> element("[data-preview-independence]") |> render()
+
+      assert independence =~ "non-production"
+      assert independence =~ "ready for review"
+    end
+
+    for state <- [:none, :pending, :failed, :timed_out, :expired] do
+      test "a verified feature reaches review with a #{state} preview [AC-22]", %{
+        conn: conn,
+        project: project,
+        feature: feature,
+        account: account,
+        authority: authority
+      } do
+        reviewed(authority, project, feature, unquote(state))
+
+        {:ok, view, _html} =
+          conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+        assert view |> element("[data-feature-column]") |> render() =~ "Ready for review"
+        assert has_element?(view, "[data-review-handoff]")
+        refute has_element?(view, "[data-preview-link]")
+      end
+    end
+
+    test "a verified feature with no preview path at all still reaches review [AC-22]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account,
+      authority: authority
+    } do
+      reviewed(authority, project, feature, :none)
+      on_exit(PreviewFixtures.unconfigure())
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-review-handoff]")
+      assert has_element?(view, "[data-preview-unavailable]")
+      refute has_element?(view, "[data-preview-link]")
+    end
+  end
+
+  defp item(state), do: "[data-preview-item][data-preview-state=\"#{state}\"]"
+
+  # One verified run, with or without a preview, handed over to human review.
+  defp reviewed(authority, project, feature, :none) do
+    context = PreviewFixtures.run_fixture(authority, project, feature)
+
+    DeliveryFixtures.verified_completion_fixture(
+      authority,
+      project,
+      context.run,
+      context.attempt
+    )
+
+    hand_over(authority, project, context)
+  end
+
+  defp reviewed(authority, project, feature, state) do
+    authority
+    |> PreviewFixtures.preview_fixture(project, feature, state)
+    |> then(&hand_over(authority, project, &1))
+  end
+
+  defp hand_over(authority, project, context) do
+    {:ok, %{applied?: true}} = ReviewHandoff.deliver(authority, project.id, context.run)
+    context
   end
 
   describe "project navigation (AC-48)" do
