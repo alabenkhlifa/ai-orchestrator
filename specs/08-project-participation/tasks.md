@@ -6,7 +6,12 @@ In Progress
 
 `capability:project-participation-boundary` is ready: Tasks 1, 2, 3, 4, 6, 7, 8,
 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 25, 26, 27, and 29 are complete and
-Slice 07 may consume the published boundary. The remaining lifecycle, retention,
+Slice 07 may consume the published boundary. Tasks 34 and 35 are newly approved
+and executable: Slice 07 Task 53 found that `Boundary.owner/1` treated a missing
+presentation label as missing owner authorization, so the owner of every freshly
+registered hosted project was denied their own feature board. Task 34 creates the
+owner profile with the project and backfills earlier ones, and Task 35 replaces
+AC-26's invitation gate with presentation. The remaining lifecycle, retention,
 rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
 30, 31, 32, 33, and 5) are not started, so
 `capability:project-participation-governance` is still unavailable and the slice
@@ -27,6 +32,7 @@ Requires:
 Provides:
 
 - `capability:project-participation-boundary` — ready after `Task 4`.
+- `capability:project-owner-display-profile` — ready after `Task 34`.
 - `capability:project-participation-governance` — ready after `Task 5`.
 
 ## Task Size Gate
@@ -102,10 +108,19 @@ Release gates:
 - [x] Task 28 — Deliver the owner project-display profile workflow.
   - Size: Standard
   - Depends on: Task 6
-  - Purpose: Require an understandable owner label before the first invitation and let the owner maintain it safely.
-  - Owned surfaces: Owner-profile prerequisite, owner self-edit action, participation-settings owner-profile form, no email-derived fallback, trimmed case-insensitive uniqueness, conflict correction, preserved spelling, authorization, fixtures, and responsive accessible browser behavior.
-  - Owns: AC-26, AC-30
-  - Proof: Focused LiveView, authorization, validation, and browser tests cover missing-profile blocking, successful creation and editing, conflicting labels, no suffix, no email presentation, non-owner denial, keyboard, focus, and mobile layout.
+  - Purpose: Let the owner maintain an understandable project label safely.
+  - Owned surfaces: Owner self-edit action, participation-settings owner-profile form, no email-derived fallback, trimmed case-insensitive uniqueness, conflict correction, preserved spelling, authorization, fixtures, and responsive accessible browser behavior.
+  - Owns: AC-30
+  - Proof: Focused LiveView, authorization, validation, and browser tests cover successful creation and editing, conflicting labels, no suffix, no email presentation, non-owner denial, keyboard, focus, and mobile layout.
+  - Superseded behavior: this task originally owned AC-26's missing-profile invitation gate. Task 34 removes the condition that gate detected and Task 35 owns the replacement presentation, so the gate and its blocking proof no longer apply.
+
+- [ ] Task 34 — Create the owner display profile with the hosted project.
+  - Size: Standard
+  - Depends on: Task 6, Task 28
+  - Purpose: Make a hosted project usable by the person who just registered it, instead of making a presentation label a precondition for owner authorization.
+  - Owned surfaces: `capability:project-owner-display-profile` provider, registration-transaction owner-profile creation, initial GitHub-login label derivation, non-email and non-suffix label rules, idempotent backfill of hosted projects registered before this rule, owner authorization independent of label existence, project-scoped uniqueness, processing-inventory entry for the derived label, fixtures, and rollback.
+  - Owns: AC-40, AC-41
+  - Proof: Focused registration, initial-label, no-email-derivation, absent-GitHub-login fallback, owner-authorization-without-label, backfill, backfill-idempotency, existing-label preservation, ownership and participation non-mutation, project-isolation, and rollback tests pass.
 
 - [x] Task 7 — Implement the shared account-level notification foundation.
   - Size: Standard
@@ -130,6 +145,14 @@ Release gates:
   - Owned surfaces: `ProjectInvitation`, hosted migration and schema, owner authorization, hosted-project eligibility, participation-settings invitation form, established email normalization, encrypted delivery address, runtime-keyed comparison digest, salted-digest invitation credential, seven-day initial expiry, one-pending uniqueness, no-directory boundary, account-neutral acknowledgement and failure, transactional creation and email outbox, fixtures, logs, and responsive accessible browser behavior.
   - Owns: AC-01, AC-06, AC-10, entity:ProjectInvitation
   - Proof: Focused domain, persistence, authorization, constraint, delivery-outbox, security, and browser tests cover owner and non-owner requests, hosted and device projects, existing and unknown accounts with identical responses, protected email and credential fields, one pending invitation, delivery failure, and unchanged project authorization.
+
+- [ ] Task 35 — Present the owner display name in the invitation action.
+  - Size: Standard
+  - Depends on: Task 2, Task 28, Task 34
+  - Purpose: Let the owner see and correct the label an invitee will read without blocking the invitation on it.
+  - Owned surfaces: Invitation-action owner-label presentation, inline correction path reusing the shared availability and no-suffix rules, unblocked send with an unedited initial label, no email presented as a label, authorization, fixtures, and responsive accessible browser behavior.
+  - Owns: AC-26
+  - Proof: Focused presentation, inline-correction, conflict, no-suffix, no-email, unedited-send, non-owner denial, keyboard, focus, desktop, and mobile tests pass.
 
 - [x] Task 9 — Detect existing project roles without account disclosure.
   - Size: Standard
@@ -356,6 +379,7 @@ Release gates:
 - [ ] Fresh invited-email proof, explicit acceptance, single-use, uniqueness, idempotency, concurrency, rollback, and no-partial-state tests pass.
 - [ ] Project, workspace, identity, owner, participant, and cross-user isolation tests pass.
 - [ ] Owner removal, participant self-leave, immutable-owner, direct fail-closed authorization, session preservation, and the versioned Slice 07 producer-contract tests pass without mutating consumer-owned records.
+- [ ] The owner display profile is created with the hosted project from a GitHub-login label, projects registered earlier are backfilled idempotently, and owner authorization never depends on a label existing.
 - [ ] Owner and participant display-name creation and editing, trimming, shared case-insensitive uniqueness, no automatic suffix or email-derived owner fallback, current-name presentation, necessary last-name historical attribution, verified anonymization, account-link removal, and stable contribution-history tests pass.
 - [ ] Invitation, acceptance, decline, expiry, cancellation, removal, and leave notifications pass channel, recipient, account-neutrality, minimization, and failure checks.
 - [ ] Invitation and participation UI passes desktop, mobile, keyboard, focus, non-color, responsive, and accessibility scenarios.

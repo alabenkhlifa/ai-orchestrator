@@ -4,7 +4,7 @@
 
 In Progress
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. The readiness path (Tasks 45, 10, 11, 12), the orchestration foundation (Tasks 15, 16, 17, 18, 3), the worker path (Tasks 19, 20, 43), and assignment and comments (Tasks 9, 46) are complete, and Task 13 now starts one run end to end. The evidence path (Tasks 4, 29, 52, 44, 30, 31) now records typed proof, stores its private artifacts, and gates a completion claim on the exact verified commit, and Task 5 hands verified work to human review. Task 53 made the board reachable and a configured project's default view. Task 33 (preview availability and failure presentation) is the next executable task. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. The readiness path (Tasks 45, 10, 11, 12), the orchestration foundation (Tasks 15, 16, 17, 18, 3), the worker path (Tasks 19, 20, 43), and assignment and comments (Tasks 9, 46) are complete, and Task 13 now starts one run end to end. The evidence path (Tasks 4, 29, 52, 44, 30, 31) now records typed proof, stores its private artifacts, and gates a completion claim on the exact verified commit, and Task 5 hands verified work to human review. Task 53 made the board reachable and a configured project's default view, and is reopened because its configuration test was wrong: it asked for current participation, which made a presentation label a precondition and sent the owner of every freshly registered project to the overview. AC-48 now tests repository connection and storage, and Task 53 waits on `capability:project-owner-display-profile` from `specs/08-project-participation#Task 34`. Task 33 (preview availability and failure presentation) is the next executable task. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
 
 ## Active Slice
 
@@ -17,6 +17,7 @@ Requires:
 - `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 1`.
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 39`.
 - `capability:project-participation-boundary` — provider `specs/08-project-participation#Task 4` — required before `Task 1`.
+- `capability:project-owner-display-profile` — provider `specs/08-project-participation#Task 34` — required before `Task 53`.
 - `capability:project-participation-governance` — provider `specs/08-project-participation#Task 5` — required before `Task 40`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 1`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 40`.
@@ -366,16 +367,9 @@ Prerequisite:
   - Depends on: Task 30
   - Proof: Focused migration, adapter, authorization, idempotency, exact commit, success, timeout, expiry, supersession, cleanup command, credential absence, safe link, hosted, and device tests pass.
 
-- [x] Task 53 - Deliver project-scoped board navigation.
-  - Size: Standard
-  - Purpose: Let a participant reach the feature board from any project screen without knowing its address.
-  - Owned surfaces: Project-scoped navigation across project screens, overview and features destinations, current-destination indication, configured-project default landing on the board, unconfigured-project fallback to the overview, per-destination project authorization revalidation, cross-project isolation, keyboard and focus behaviour, fixtures, and responsive accessible navigation UI.
-  - Owns: AC-48
-  - Depends on: Task 2
-  - Proof: Focused navigation, default-landing, unconfigured-fallback, authorization, cross-project isolation, current-destination, keyboard, focus, desktop, and mobile tests pass.
-
 - [ ] Task 33 - Present preview availability and failure.
   - Size: Standard
+  - Status: In Progress
   - Purpose: Show non-production preview status without blocking review readiness or inventing a link.
   - Owned surfaces: Preview unavailable, pending, ready, failed, timed-out, expired and superseded presentation, non-production label, safe-link authorization, failure reason, configured expiry and cleanup state, feature activity, fixtures, and responsive accessible UI.
   - Owns: AC-22
@@ -421,6 +415,15 @@ Prerequisite:
   - Owns: AC-28, entity:DataProcessingRecord
   - Depends on: Task 14, Task 31, Task 33, Task 35, Task 37, Task 46, Task 52
   - Proof: Focused inventory, purpose and basis, current and removed access, cross-project isolation, support elevation, credential, project-content, raw-event, and audit-minimization tests pass.
+
+- [ ] Task 53 - Deliver project-scoped board navigation.
+  - Size: Standard
+  - Status: Reopened. The navigation, route move, and per-destination authorization shipped and still hold. Only the configuration test is wrong: it asked whether the acting person is a current participant, which made a presentation label a precondition and sent the owner of every freshly registered project to the overview. AC-48 now tests repository connection and storage instead.
+  - Purpose: Let a participant reach the feature board from any project screen without knowing its address.
+  - Owned surfaces: Project-scoped navigation across project screens, overview and features destinations, current-destination indication, repository-and-storage configuration test, configured-project default landing on the board, unconfigured-project fallback to the overview, label-independent landing, per-destination project authorization revalidation, cross-project isolation, keyboard and focus behaviour, fixtures, and responsive accessible navigation UI.
+  - Owns: AC-48
+  - Depends on: Task 2
+  - Proof: Focused navigation, configuration test, default-landing, unconfigured-fallback, missing-label landing, authorization, cross-project isolation, current-destination, keyboard, focus, desktop, and mobile tests pass, including one proof that an owner reaching their configured board is not refused there.
 
 - [ ] Task 39 - Enforce temporary execution-data retention.
   - Size: Standard
@@ -548,6 +551,14 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-07-31 - Task 53 reopened: the configuration test was measuring the wrong thing
+
+- Invalidated proof: Task 53's landing decision asked whether the acting person is a current participant. That passed its tests because the seeded project had an owner display profile, but every real project fails it. `Boundary.owner/1` requires `ProjectMemberProfile`, which only the People screen writes, so the owner of a freshly registered project is denied their own board and is sent to an overview that says nothing about why. Confirmed against real dev data: both hosted projects had zero owner profiles.
+- The mistake was accepting a definition because it was convenient to test. "Configured" now means what the overview means by setup — repository connection and storage — and AC-48 says so explicitly. A member's missing presentation label must never divert the landing or read as missing authorization.
+- Root cause sits in `specs/08`, not here: `Boundary.owner/1` conflates a presentation label with owner authorization, contradicting that specification's own design, which resolves the immutable owner from the hosted project workspace. `specs/08` Task 34 now creates the owner profile with the project and backfills earlier ones; Task 35 replaces AC-26's invitation gate with presentation.
+- Still valid and not re-done: the navigation component, the `/projects/:id/overview` route move, the landing controller's shape, per-destination authorization revalidation, and the plain-request links. Only the configuration predicate and the tests that assert landing change.
+- New capability edge: Task 53 requires `capability:project-owner-display-profile` from `specs/08-project-participation#Task 34`, because proving "a configured project opens on its board" needs the owner not to be refused once they arrive. Task 53 is listed after the independently executable delivery tasks so it does not block them.
 
 ### 2026-07-30 - Task 53 complete: project-scoped board navigation
 

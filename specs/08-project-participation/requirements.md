@@ -51,7 +51,7 @@ The owner of one hosted project can invite another person by email to become an 
 
 ## Primary Workflow
 
-1. The authenticated owner opens participation management for one hosted project and establishes their project-specific display name before sending the first invitation.
+1. Registering a hosted project creates the owner's project-specific display profile with an initial label, so the project is immediately usable; the authenticated owner may open participation management to review or change that label at any time.
 2. The owner enters an email address; the product provides no searchable account directory and does not reveal whether the email already has an account.
 3. The product creates an invitation for that project and sends the invitation through the approved email-delivery boundary. An email already attached to the owner or a current participant creates no invitation and shows the existing project role to the owner.
 4. The invited person opens the invitation and proves control of the invited email through the approved passwordless verification boundary. If another hosted identity is active in the browser, the product explains that continuing authenticates the invited email for this browser and does not treat the existing session as proof.
@@ -66,7 +66,8 @@ The owner of one hosted project can invite another person by email to become an 
 
 - Participation is scoped to one hosted project and grants no access to the owning workspace or any other project.
 - The project owner is derived from the existing hosted project ownership boundary and remains the immutable `Owner` in the first release.
-- Before the first invitation is sent, the owner must establish a project-specific display name. The owner may later edit only their own project display name.
+- The owner's project display profile is created together with the hosted project and carries an initial display name derived from the owner's GitHub login, never from their email. The owner may later edit only their own project display name, and no participation or delivery action may treat a missing owner label as missing owner authorization.
+- The invitation action shows the owner display name the invitee will see and offers an inline correction, but an unedited initial label does not block sending.
 - A non-owner may participate only through one active `Participant` authorization attached to their stable hosted identity.
 - An active participant may view and edit project specifications and feature content, comment, and inspect agent-run evidence that belongs to the project.
 - Participation does not authorize participant management, project deletion, storage-mode or repository-connection changes, or access to provider, worker, agent, invitation, or application-session credentials.
@@ -134,7 +135,9 @@ The owner of one hosted project can invite another person by email to become an 
 - [AC-23] Given a participant is removed or leaves, when in-product notification runs, then removal notifies the former participant at the account boundary, leave notifies the owner, and no notification restores access or exposes project content.
 - [AC-24] Given any participation notification is inspected, when its payload and delivery records are reviewed, then they contain only the approved minimum project and action context and no specification, feature, comment, evidence, repository, credential, secret, or unrelated identity data.
 - [AC-25] Given a departed participant's last project display name remains on historical contributions, when continued identifiable attribution is no longer necessary or an approved rights workflow requires anonymization, then the stable contribution history remains but the display label and account link no longer identify that person.
-- [AC-26] Given a hosted project has no owner display profile, when the owner sends the first invitation, then invitation delivery remains unavailable until the owner saves an available project-specific display name that is not derived from or presented as their email.
+- [AC-26] Given the owner opens the invitation action, when the invitation is composed, then the owner display name the invitee will see is shown with an inline correction path that applies the same availability and no-suffix rules; sending is not blocked by an unedited initial label, and no email is presented as that label.
+- [AC-40] Given a hosted project is registered, when registration commits, then the owner's project display profile exists with an initial display name derived from their GitHub login and never from their email, the owner is authorized on the project without depending on that label, and the owner may change the label at any time.
+- [AC-41] Given a hosted project was registered before owner profiles were created at registration, when the backfill runs, then that project gains one owner display profile under the same rule, idempotently, without changing project ownership, participation, or any existing display name.
 - [AC-27] Given participation management or a participant list is shown, when identity labels are presented, then current members see project display names, the owner may see invitation and verified participant emails, each participant may see only their own email, and no participant sees another member's email.
 - [AC-28] Given an invitation is opened while another hosted identity is active in the browser, when the invitee continues, then the product explains the identity change, requires fresh proof of the invited email, authenticates the proven stable identity for this browser, preserves unrelated server-side sessions, and still grants no project access before explicit acceptance.
 - [AC-29] Given an owner submits an email already attached to the project owner or a current participant, when invitation creation is evaluated, then no invitation or credential is created, the existing project role is shown to the owner, and no unrelated account information is disclosed.

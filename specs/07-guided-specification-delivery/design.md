@@ -138,6 +138,7 @@ Required boundaries:
 - Choice: Put project-scoped navigation on every project screen with an overview and a features destination, and open a configured project on its board rather than on its setup overview.
 - Reason: The board is where delivery work happens, while the overview holds repository, storage, and backup state that matters mainly during setup. Routing daily work through a setup screen inverts how often each is needed, and a board reachable only by typing its address is effectively undiscoverable.
 - Consequence: The project dashboard keeps its own job instead of being replaced, an unconfigured project still lands on the overview so setup is not skipped, and the navigation pattern extends to further project destinations without another redesign.
+- Configuration test: a project is configured when its repository connection and storage are established, which is what "setup" means on the overview. The first implementation instead tested current participation, which silently made a presentation label a precondition for the board and sent the owner of every freshly registered project to the overview with no way forward. Authorization and presentation are separate concerns, and neither is the configuration test.
 
 ### Gated Lifecycle Transitions
 
