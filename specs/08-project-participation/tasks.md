@@ -6,12 +6,12 @@ In Progress
 
 `capability:project-participation-boundary` is ready: Tasks 1, 2, 3, 4, 6, 7, 8,
 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 25, 26, 27, and 29 are complete and
-Slice 07 may consume the published boundary. Tasks 34 and 35 are newly approved
-and executable: Slice 07 Task 53 found that `Boundary.owner/1` treated a missing
-presentation label as missing owner authorization, so the owner of every freshly
-registered hosted project was denied their own feature board. Task 34 creates the
-owner profile with the project and backfills earlier ones, and Task 35 replaces
-AC-26's invitation gate with presentation. The remaining lifecycle, retention,
+Slice 07 may consume the published boundary. Task 34 is complete, so
+`capability:project-owner-display-profile` is ready: the owner profile is created
+with the hosted project, earlier projects are backfilled, and `Boundary.owner/1`
+no longer treats a missing presentation label as missing owner authorization.
+Task 35, which replaces AC-26's invitation gate with presentation, is approved
+and executable. The remaining lifecycle, retention,
 rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
 30, 31, 32, 33, and 5) are not started, so
 `capability:project-participation-governance` is still unavailable and the slice
@@ -114,7 +114,7 @@ Release gates:
   - Proof: Focused LiveView, authorization, validation, and browser tests cover successful creation and editing, conflicting labels, no suffix, no email presentation, non-owner denial, keyboard, focus, and mobile layout.
   - Superseded behavior: this task originally owned AC-26's missing-profile invitation gate. Task 34 removes the condition that gate detected and Task 35 owns the replacement presentation, so the gate and its blocking proof no longer apply.
 
-- [ ] Task 34 — Create the owner display profile with the hosted project.
+- [x] Task 34 — Create the owner display profile with the hosted project.
   - Size: Standard
   - Depends on: Task 6, Task 28
   - Purpose: Make a hosted project usable by the person who just registered it, instead of making a presentation label a precondition for owner authorization.
@@ -393,6 +393,20 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-31 - Task 34 complete: the owner has a label from the moment the project exists
+
+- Completed: Registration now creates the owner's `ProjectMemberProfile` inside its own `Ecto.Multi`, a backfill migration gives earlier hosted projects one, and `Boundary.owner/1` no longer requires a profile to resolve the owner. `capability:project-owner-display-profile` is ready.
+- The defect this closes: `Boundary.owner/1` demanded `owner_profile` before it would call anyone the owner, so a presentation label was a precondition for authorization. `ParticipantGuard` then denied the real owner of every freshly registered hosted project, and Slice 07's feature board refused to render for them with nothing on screen explaining why. Ownership comes from the hosted project workspace, as this specification's own design already said; the label was never part of that question.
+- Fallback label is the neutral `"Project owner"`, exposed as `Participation.default_owner_display_name/0` so registration, the migration, and the boundary all name one value. Anything derived from an email, an account id, or another stable key would push personal data or a linkable pseudonym into a string every project member reads, to solve a problem a generic role word solves.
+- The backfill writes no suffix, ever. A derived label whose key is already taken by an active profile yields no owner profile at all rather than `login-2`, because AC-30 forbids automatic suffixes and a skipped row is recoverable while a wrong label is not. At registration the collision is impossible by construction, and the insert is allowed to abort the whole registration if that invariant ever breaks.
+- The migration derives a label only from a login matching the GitHub shape, ASCII letters, digits, and hyphens up to 39 characters, so SQL `lower/1` is provably identical to the application's NFKC-plus-case-folding key derivation. A test asserts the written key equals `DisplayName.key/1` of the written name rather than trusting that equivalence.
+- `down/0` is a documented no-op. Once backfilled, a derived label is indistinguishable from one the owner typed, so deleting rows would destroy chosen names to undo a default, and nothing depends on their absence now that authorization ignores them. The rollback test asserts exactly that: `down` preserves the row and a re-run of `up` does not duplicate it.
+- Verified against real dev data: the migration was correctly a no-op on two projects whose profiles had been hand-fixed earlier, and `Boundary.owner/1` was proved to resolve both owners with the neutral label inside a rolled-back transaction with their profiles removed.
+- Three existing tests encoded the defect itself and were inverted, not weakened: the onboarding walk and two landing-controller cases asserted that a just-registered project sends its owner to the overview "because it has no owner display name yet". Fail-closed cases are untouched. The landing controller's moduledoc stated the same falsehood and was rewritten; its logic was already correct.
+- Task 35 is unaffected and still owns AC-26. `Participation.owner_profile_established?/1` and the invitation gate were deliberately left alone.
+- Known consequence, owned elsewhere: Slice 07's browser test asserting that an unconfigured project opens on its overview now fails, because its subject was participation rather than setup. `specs/07` Task 53 is already reopened to test repository connection and storage instead.
+- Failed checks: None. Final proof passes with real exit status, confirmed in the main thread: `mix test` (2272 passing, 0 failures), `mix format --check-formatted`, `mix compile --force --warnings-as-errors`, `mix credo --strict`, and `git diff --check`; the agent additionally recorded `mix dialyzer` and `mix sobelow --config` clean.
 
 ### 2026-07-29 - Authenticated participation browser matrix unblocked
 

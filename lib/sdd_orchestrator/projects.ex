@@ -16,6 +16,7 @@ defmodule SddOrchestrator.Projects do
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceProject
+  alias SddOrchestrator.Participation
   alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt, RepositoryConnection}
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.{DeviceStorageReceipt, Hosted}
@@ -494,9 +495,23 @@ defmodule SddOrchestrator.Projects do
       |> prepare_storage(attempt)
 
     multi
+    |> prepare_owner_profile(workspace, attempt)
     |> Multi.update(:attempt, ProjectOnboardingAttempt.consume_changeset(attempt))
     |> Repo.transaction()
   end
+
+  # The owner's project display profile is part of the project, not a later
+  # setup step: a project that committed without one would deny its own creator
+  # a label on every collaboration surface. The label is derived from the
+  # owner's GitHub login and never from their email, and it joins the same
+  # transaction so a failed profile rolls the whole registration back.
+  defp prepare_owner_profile(multi, %PersonalWorkspace{} = workspace, %{storage_mode: "hosted"}) do
+    Multi.insert(multi, :owner_profile, fn %{project: project} ->
+      Participation.initial_owner_profile_changeset(project.id, workspace.account_id)
+    end)
+  end
+
+  defp prepare_owner_profile(multi, _workspace, _attempt), do: multi
 
   # Hosted storage joins the transaction through the shared adapter contract.
   # Task 4 dispatches device registration to the worker-owned local transaction;

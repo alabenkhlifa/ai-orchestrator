@@ -7,12 +7,12 @@ defmodule SddOrchestratorWeb.ProjectLandingController do
   those arrives in a different state, so the destination has to be decided per
   request rather than baked into one route.
 
-  The decision is the authorization check itself. A project is configured for
-  the acting person exactly when `ParticipantGuard.authorize/2` resolves them as
-  a current member, because that check requires the owner's project display name
-  to exist — which is the setup step the participation screen owns. Until it is
-  saved, even the real owner is not yet a member, the feature board would refuse
-  to render, and the overview is genuinely the right place to be.
+  The decision is the authorization check itself. The board is the destination
+  exactly when `ParticipantGuard.authorize/2` resolves the acting person as a
+  current member of the project; everyone else gets the overview, which asks
+  for nothing and shows only what a non-member may see. A project display name
+  is presentation and never a precondition for that check (specs/08 AC-40), so
+  a freshly registered project sends its owner straight to their board.
 
   Nothing is rendered here and nothing is disclosed. Both outcomes are a
   redirect, so an unauthorized visitor learns neither whether the project exists

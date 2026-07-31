@@ -59,13 +59,14 @@ defmodule SddOrchestratorWeb.OnboardingFlowTest do
 
     assert "/projects/" <> _project_id = dashboard_path
 
-    # The project's address is a landing decision. A just-created project has no
-    # owner display name yet, so its feature board is not usable and the landing
-    # opens the overview instead of the board (specs/07 AC-48).
-    assert {:error, {:redirect, %{to: overview_path}}} = live(conn, dashboard_path)
-    assert overview_path == dashboard_path <> "/overview"
+    # The project's address is a landing decision. The owner's display profile
+    # is created with the project, so its owner is a current member from birth
+    # and lands on the usable feature board (specs/08 AC-40, specs/07 AC-48).
+    assert {:error, {:redirect, %{to: board_path}}} = live(conn, dashboard_path)
+    assert board_path == dashboard_path <> "/features"
 
     # The dashboard shows the linked repository, storage mode, and connected status.
+    overview_path = dashboard_path <> "/overview"
     {:ok, _dash, html} = live(conn, overview_path)
     assert html =~ ~s(data-screen="project-dashboard")
     assert html =~ "octo/example"

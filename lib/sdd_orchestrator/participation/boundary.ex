@@ -51,11 +51,9 @@ defmodule SddOrchestrator.Participation.Boundary do
   """
   @spec owner(Ecto.UUID.t()) :: {:ok, member()} | {:error, :unavailable}
   def owner(project_id) do
-    with {:ok, owner} <- Participation.owner(project_id),
-         profile when not is_nil(profile) <- Participation.owner_profile(project_id) do
-      {:ok, member(:owner, owner.account_id, nil, profile.display_name)}
-    else
-      _other -> {:error, :unavailable}
+    case Participation.owner(project_id) do
+      {:ok, owner} -> {:ok, member(:owner, owner.account_id, nil, owner_label(project_id))}
+      {:error, _reason} -> {:error, :unavailable}
     end
   end
 
@@ -138,6 +136,18 @@ defmodule SddOrchestrator.Participation.Boundary do
   @doc "The event namespaces the shared notification store accepts."
   @spec notification_namespaces() :: [String.t()]
   def notification_namespaces, do: AccountNotification.namespaces()
+
+  # A label describes how the owner appears, not whether they are the owner.
+  # Ownership is resolved from the project ownership boundary alone, so a
+  # project created outside registration — or registered before owner profiles
+  # were created with the project — still answers with its owner and simply
+  # presents the neutral label until one is established.
+  defp owner_label(project_id) do
+    case Participation.owner_profile(project_id) do
+      nil -> Participation.default_owner_display_name()
+      profile -> profile.display_name
+    end
+  end
 
   defp owner_member(project_id) do
     case owner(project_id) do

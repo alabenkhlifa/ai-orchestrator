@@ -12,16 +12,31 @@ defmodule SddOrchestrator.Participation do
 
   import Ecto.Query
 
+  alias SddOrchestrator.Accounts
   alias SddOrchestrator.Accounts.{ExternalIdentity, HostedIdentity, PersonalWorkspace}
-  alias SddOrchestrator.Participation.{ProjectMemberProfile, ProjectParticipant}
+  alias SddOrchestrator.Participation.{DisplayName, ProjectMemberProfile, ProjectParticipant}
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
+
+  # The initial owner label used when the registering account has no usable
+  # GitHub login. It is deliberately neutral and identifies nobody: an email
+  # address must never become a project label, and deriving one from an email,
+  # an account identifier, or any other stable key would push personal data
+  # into a string every project member reads. A generic role word says only
+  # what the reader already knows, and the owner may replace it at any time.
+  @default_owner_display_name "Project owner"
 
   @type owner :: %{
           project_id: Ecto.UUID.t(),
           workspace_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t()
         }
+
+  @doc """
+  The neutral owner label used when no owner profile has been established.
+  """
+  @spec default_owner_display_name() :: String.t()
+  def default_owner_display_name, do: @default_owner_display_name
 
   @doc """
   Derives the immutable project owner from the hosted project ownership
@@ -237,6 +252,39 @@ defmodule SddOrchestrator.Participation do
   end
 
   @doc """
+  The initial project display name for the owner of a hosted project.
+
+  The owner's GitHub login is the handle they already registered the project
+  under, so it is a truthful starting label rather than an invented one. Their
+  email address is never used and never derived from, and an absent or
+  unusable login falls back to the neutral role label instead of failing
+  registration or writing nothing.
+  """
+  @spec initial_owner_display_name(Ecto.UUID.t()) :: String.t()
+  def initial_owner_display_name(account_id) do
+    with %{login: login} <- Accounts.get_github_identity(account_id),
+         {:ok, %{display_name: display_name}} <- DisplayName.normalize(login) do
+      display_name
+    else
+      _other -> @default_owner_display_name
+    end
+  end
+
+  @doc """
+  Builds the insert for the owner's initial project display profile.
+
+  Project registration composes this into its own transaction, so a hosted
+  project and the owner label that presents it commit together or not at all.
+  The project is new, so it holds no other member profile and the label cannot
+  collide; a collision would be a broken invariant and correctly aborts the
+  registration rather than being papered over with an automatic suffix.
+  """
+  @spec initial_owner_profile_changeset(Ecto.UUID.t(), Ecto.UUID.t()) :: Ecto.Changeset.t()
+  def initial_owner_profile_changeset(project_id, account_id) do
+    owner_profile_changeset(project_id, account_id, initial_owner_display_name(account_id))
+  end
+
+  @doc """
   Renames one member's own project display name.
 
   Each current member may change only their own label. The change is
@@ -303,13 +351,8 @@ defmodule SddOrchestrator.Participation do
   end
 
   defp upsert_owner_profile(nil, owner, display_name) do
-    %ProjectMemberProfile{}
-    |> ProjectMemberProfile.changeset(%{
-      project_id: owner.project_id,
-      account_id: owner.account_id,
-      role: "owner",
-      display_name: display_name
-    })
+    owner.project_id
+    |> owner_profile_changeset(owner.account_id, display_name)
     |> Repo.insert()
   end
 
@@ -317,6 +360,17 @@ defmodule SddOrchestrator.Participation do
     profile
     |> ProjectMemberProfile.rename_changeset(%{display_name: display_name})
     |> Repo.update()
+  end
+
+  # The single shape of an owner-profile insert, shared by the owner's own
+  # self-edit and by registration, so both write the same row the same way.
+  defp owner_profile_changeset(project_id, account_id, display_name) do
+    ProjectMemberProfile.changeset(%ProjectMemberProfile{}, %{
+      project_id: project_id,
+      account_id: account_id,
+      role: "owner",
+      display_name: display_name
+    })
   end
 
   defp get_project(project_id) when is_binary(project_id) do

@@ -3,10 +3,9 @@ defmodule SddOrchestratorWeb.ProjectLandingControllerTest do
   Proof for the project landing decision (specs/07 Task 53, AC-48).
 
   A project's address is not a screen. It resolves to the board when the acting
-  person is a current member of a configured project, and to the overview in
-  every other case — including the one that matters most, a freshly registered
-  project whose owner has not saved a project display name yet and therefore
-  cannot use the board at all.
+  person is a current member of the project, and to the overview in every other
+  case. A display name is presentation, not authorization (specs/08 AC-40), so
+  the owner reaches their board whether or not any label has been saved.
 
   The failing cases all land in the same place, so nobody learns from the
   redirect whether the project exists or whether they used to belong to it.
@@ -37,25 +36,24 @@ defmodule SddOrchestratorWeb.ProjectLandingControllerTest do
     end
   end
 
-  describe "a project that is not configured yet" do
-    test "sends its owner to the overview while no owner display name exists", %{conn: conn} do
+  describe "a project with no owner display name" do
+    test "still sends its owner to the board (specs/08 AC-40)", %{conn: conn} do
       %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
 
       refute Participation.owner_profile_established?(project.id)
 
       conn = conn |> log_in_account(account) |> get(~p"/projects/#{project.id}")
 
-      assert redirected_to(conn) == "/projects/#{project.id}/overview"
+      assert redirected_to(conn) == "/projects/#{project.id}/features"
     end
 
-    test "sends the same owner to the board once setup is complete", %{conn: conn} do
+    test "sends the same owner to the same board once a label is saved", %{conn: conn} do
       %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
 
       assert conn
              |> log_in_account(account)
              |> get(~p"/projects/#{project.id}")
-             |> redirected_to() ==
-               "/projects/#{project.id}/overview"
+             |> redirected_to() == "/projects/#{project.id}/features"
 
       {:ok, _profile} = Participation.save_owner_profile(project, account.id, "Ada Lovelace")
 
