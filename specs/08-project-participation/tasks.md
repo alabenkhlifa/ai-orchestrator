@@ -10,8 +10,8 @@ Slice 07 may consume the published boundary. Task 34 is complete, so
 `capability:project-owner-display-profile` is ready: the owner profile is created
 with the hosted project, earlier projects are backfilled, and `Boundary.owner/1`
 no longer treats a missing presentation label as missing owner authorization.
-Task 35, which replaces AC-26's invitation gate with presentation, is approved
-and executable. The remaining lifecycle, retention,
+Task 35 is complete: the invitation action shows the owner label with an inline
+correction and no longer blocks on it. The remaining lifecycle, retention,
 rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
 30, 31, 32, 33, and 5) are not started, so
 `capability:project-participation-governance` is still unavailable and the slice
@@ -146,7 +146,7 @@ Release gates:
   - Owns: AC-01, AC-06, AC-10, entity:ProjectInvitation
   - Proof: Focused domain, persistence, authorization, constraint, delivery-outbox, security, and browser tests cover owner and non-owner requests, hosted and device projects, existing and unknown accounts with identical responses, protected email and credential fields, one pending invitation, delivery failure, and unchanged project authorization.
 
-- [ ] Task 35 — Present the owner display name in the invitation action.
+- [x] Task 35 — Present the owner display name in the invitation action.
   - Size: Standard
   - Depends on: Task 2, Task 28, Task 34
   - Purpose: Let the owner see and correct the label an invitee will read without blocking the invitation on it.
@@ -393,6 +393,16 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-07-31 - Task 35 complete: the owner sees the label an invitee will read
+
+- Completed: The invitation action now shows the owner display name with an inline correction path, and the gate that blocked the first invitation until the owner saved one is retired. AC-26 is satisfied as rewritten.
+- The gate is gone from every place it lived: `require_owner_profile/1` and its two call sites in `Invitations.create/3` and `resend/3`, the `:owner_profile_required` error, its message, the warning notice, and the branch that hid the whole invitations card. The card is now unconditional for the owner, because after Task 34 a label always exists and there is nothing left to wait for.
+- Correction reuses `Participation.save_owner_profile/3`, the same function the standalone owner form calls, so trimming, case-insensitive project uniqueness, preserved spelling, explicit conflict rejection, and the no-suffix rule come from one path rather than a second implementation that could drift. A closed correction re-syncs its draft from the stored profile on every refresh, so the two edit surfaces cannot disagree.
+- A non-owner has no label surface at all, and a hand-sent correction event from one fails closed at the domain rather than at the template.
+- `Participation.owner_profile_established?/1` was kept rather than retired. It is public, one test still uses it to prove label-independence, and it remains a truthful question; its documentation no longer claims it is a precondition for inviting.
+- The `owner_profile=false` browser bootstrap parameter also survives on purpose: registration can no longer produce that state, but it is the only way to exercise the neutral-fallback label a legacy or fixture project still gets.
+- Failed checks: None. Final proof passes with real exit status, confirmed in the main thread: `mix test` (2287 passing, 0 failures), `mix format --check-formatted`, `mix compile --force --warnings-as-errors`, `mix credo --strict`, `git diff --check`, and the desktop and mobile browser matrix at 104 passing each.
 
 ### 2026-07-31 - Task 34 complete: the owner has a label from the moment the project exists
 

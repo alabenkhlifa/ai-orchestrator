@@ -9,17 +9,19 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
   alias SddOrchestrator.ParticipationFixtures
   alias SddOrchestrator.Repo
 
-  describe "owner profile prerequisite" do
-    test "blocks invitations until the owner saves a project display name", %{conn: conn} do
+  describe "owner project label" do
+    # AC-26 retired the gate this test used to prove: the owner label is
+    # presentation the owner may correct, never a precondition for inviting.
+    test "keeps invitations available while the owner saves a display name", %{conn: conn} do
       %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
 
       {:ok, view, html} =
         conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
 
-      assert html =~ "data-owner-profile-required"
-      assert html =~ "data-invitations-unavailable"
-      refute html =~ "data-invitations-available"
-      refute Participation.owner_profile_established?(project.id)
+      assert html =~ "data-invitations-available"
+      refute html =~ "data-owner-profile-required"
+      refute html =~ "data-invitations-unavailable"
+      refute Participation.owner_profile(project.id)
 
       html =
         view
@@ -28,7 +30,6 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
 
       assert html =~ "data-owner-profile-saved"
       assert html =~ "data-invitations-available"
-      refute html =~ "data-invitations-unavailable"
       assert html =~ "Ada Lovelace"
 
       profile = Participation.owner_profile(project.id)
@@ -36,7 +37,6 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       assert profile.display_name_key == "ada lovelace"
       assert profile.role == "owner"
       assert profile.account_id == account.id
-      assert Participation.owner_profile_established?(project.id)
     end
 
     test "labels the owner by project name, never by email", %{conn: conn} do
@@ -52,7 +52,6 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
         conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
 
       assert html =~ "Grace Hopper"
-      refute html =~ "data-owner-profile-required"
 
       # The label is the project display name; the address appears only in the
       # owner's own membership-management column.
@@ -112,7 +111,7 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
 
       assert html =~ "is already used in this project"
       refute html =~ "data-owner-profile-saved"
-      refute Participation.owner_profile_established?(project.id)
+      refute Participation.owner_profile(project.id)
 
       # The rejected input is returned for correction, never renamed for the user.
       assert html =~ "ADA lovelace"
@@ -133,7 +132,7 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
 
         assert html =~ ~s(aria-invalid="true")
         refute html =~ "data-owner-profile-saved"
-        refute Participation.owner_profile_established?(project.id)
+        refute Participation.owner_profile(project.id)
       end
 
       # An email address is rejected as a project label rather than accepted as
@@ -185,18 +184,19 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
                Participation.save_owner_profile(project, other_account.id, "Intruder Label")
 
       assert {:error, :unauthorized} = Participation.save_owner_profile(project, nil, "Label")
-      refute Participation.owner_profile_established?(project.id)
+      refute Participation.owner_profile(project.id)
     end
   end
 
   describe "invitation form" do
-    test "appears only after the owner profile exists and sends one invitation", %{conn: conn} do
+    test "is available to the owner immediately and sends one invitation", %{conn: conn} do
       %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
 
       {:ok, view, html} =
         conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
 
-      refute html =~ ~s(id="invitation-form")
+      # AC-26: an unedited owner label never withholds the invitation action.
+      assert html =~ ~s(id="invitation-form")
 
       view
       |> form("#owner-profile-form", owner: %{display_name: "Ada Lovelace"})
@@ -328,6 +328,203 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
       assert html =~ ~s(<label for="invite-email")
       assert html =~ ~s(data-send-invitation)
       assert html =~ "w-full sm:w-auto"
+    end
+  end
+
+  describe "invitation owner label (AC-26)" do
+    test "shows the name the invitee will read", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "Ada Lovelace"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      label = view |> element("[data-invitation-owner-label]") |> render()
+
+      assert label =~ "The invitation shows you as"
+      assert view |> element("[data-invitation-owner-name]") |> render() =~ "Ada Lovelace"
+      assert has_element?(view, "[data-correct-owner-label]")
+    end
+
+    test "presents a neutral label rather than an email when none is stored", %{conn: conn} do
+      %{project: project, account: account, owner: owner} =
+        ParticipationFixtures.hosted_project_fixture()
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      label = view |> element("[data-invitation-owner-label]") |> render()
+
+      assert label =~ Participation.default_owner_display_name()
+      refute label =~ owner.external_identity.display_identifier
+      refute label =~ "@"
+    end
+
+    test "sends the first invitation without editing the initial label", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      # Registration establishes this label; the owner has not touched it.
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "octo-owner"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      html =
+        view
+        |> form("#invitation-form", invite: %{email: "invitee@example.com"})
+        |> render_submit()
+
+      assert html =~ "data-invitation-sent"
+      assert Invitations.pending_for(project.id, "invitee@example.com")
+      assert Participation.owner_profile(project.id).display_name == "octo-owner"
+      assert view |> element("[data-invitation-owner-name]") |> render() =~ "octo-owner"
+    end
+
+    test "corrects the label inline with preserved trimmed spelling", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      original =
+        ParticipationFixtures.member_profile_fixture(project, account, %{
+          role: "owner",
+          display_name: "octo-owner"
+        })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      opened = view |> element("[data-correct-owner-label]") |> render_click()
+      assert opened =~ ~s(id="invitation-owner-name-form")
+      assert opened =~ "octo-owner"
+
+      saved =
+        view
+        |> form("#invitation-owner-name-form", owner_label: %{display_name: "  Ada Lovelace  "})
+        |> render_submit()
+
+      assert saved =~ "data-invitation-owner-name-saved"
+      refute saved =~ ~s(id="invitation-owner-name-form")
+      assert view |> element("[data-invitation-owner-name]") |> render() =~ "Ada Lovelace"
+
+      corrected = Participation.owner_profile(project.id)
+      assert corrected.id == original.id
+      assert corrected.display_name == "Ada Lovelace"
+      assert corrected.display_name_key == "ada lovelace"
+      assert {:ok, owner} = Participation.owner(project)
+      assert owner.account_id == account.id
+
+      # The standalone owner self-edit shows the same corrected label.
+      assert view |> element("#owner-profile-form") |> render() =~ "Ada Lovelace"
+    end
+
+    test "rejects a conflicting inline correction without a suffix", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+      participant = ParticipationFixtures.invited_identity_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "octo-owner"
+      })
+
+      ParticipationFixtures.member_profile_fixture(project, participant.account, %{
+        role: "participant",
+        display_name: "Ada Lovelace"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      view |> element("[data-correct-owner-label]") |> render_click()
+
+      conflict =
+        view
+        |> form("#invitation-owner-name-form", owner_label: %{display_name: "ADA lovelace"})
+        |> render_submit()
+
+      assert conflict =~ "is already used in this project"
+      assert conflict =~ ~s(aria-invalid="true")
+      refute conflict =~ "data-invitation-owner-name-saved"
+
+      # The rejected input is returned for correction, never suffixed.
+      assert conflict =~ "ADA lovelace"
+      refute conflict =~ "ADA lovelace 2"
+      assert Participation.owner_profile(project.id).display_name == "octo-owner"
+    end
+
+    test "rejects an email-shaped inline correction", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "octo-owner"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      view |> element("[data-correct-owner-label]") |> render_click()
+
+      rejected =
+        view
+        |> form("#invitation-owner-name-form", owner_label: %{display_name: "owner@example.com"})
+        |> render_submit()
+
+      assert rejected =~ "is not an available project label"
+      refute rejected =~ "data-invitation-owner-name-saved"
+      assert Participation.owner_profile(project.id).display_name == "octo-owner"
+    end
+
+    test "abandons an inline correction without changing the stored label", %{conn: conn} do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      ParticipationFixtures.member_profile_fixture(project, account, %{
+        role: "owner",
+        display_name: "octo-owner"
+      })
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(~p"/projects/#{project.id}/participation")
+
+      view |> element("[data-correct-owner-label]") |> render_click()
+
+      view
+      |> form("#invitation-owner-name-form", owner_label: %{display_name: "Not Saved"})
+      |> render_change()
+
+      kept = view |> element("[data-cancel-invitation-owner-name]") |> render_click()
+
+      refute kept =~ ~s(id="invitation-owner-name-form")
+      assert view |> element("[data-invitation-owner-name]") |> render() =~ "octo-owner"
+      assert Participation.owner_profile(project.id).display_name == "octo-owner"
+    end
+
+    test "denies a non-owner the correction and the label surface", %{conn: conn} do
+      %{project: project, participants: [first, _second]} = project_with_participants()
+
+      access =
+        SddOrchestrator.HostedAccessFixtures.verified_hosted_session_fixture(%{
+          email: first.external_identity.display_identifier
+        })
+
+      {:ok, view, html} =
+        conn |> hosted_conn(access) |> live(~p"/projects/#{project.id}/participation")
+
+      refute html =~ "data-invitation-owner-label"
+      refute html =~ "data-correct-owner-label"
+
+      # Even a hand-sent event fails closed through the shared owner self-edit.
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               render_click(view, "save_owner_label", %{
+                 "owner_label" => %{"display_name" => "Hijacked Owner"}
+               })
+
+      assert Participation.owner_profile(project.id).display_name == "Owner Label"
     end
   end
 

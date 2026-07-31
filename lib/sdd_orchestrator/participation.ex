@@ -229,8 +229,11 @@ defmodule SddOrchestrator.Participation do
   end
 
   @doc """
-  Reports whether the immutable owner has established the project display name
-  required before the first invitation is sent.
+  Reports whether the immutable owner already has a project display profile.
+
+  This is presentation state, not authorization or a precondition for any
+  action: a hosted project receives the owner label at registration, and the
+  invitation action surfaces that label for correction rather than requiring it.
   """
   @spec owner_profile_established?(Ecto.UUID.t()) :: boolean()
   def owner_profile_established?(project_id), do: not is_nil(owner_profile(project_id))

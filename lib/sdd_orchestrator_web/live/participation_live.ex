@@ -2,11 +2,14 @@ defmodule SddOrchestratorWeb.ParticipationLive do
   @moduledoc """
   Participation settings for one hosted project.
 
-  The immutable project owner establishes their project-specific display name
-  here before the first invitation can be sent, and may later correct only
-  their own label. The label is presentation only: it never changes project
-  ownership, and the owner's email is never used as, or shown as, the project
-  identity.
+  Every member corrects only their own project-specific display name here. The
+  label is presentation only: it never changes project ownership, and the
+  owner's email is never used as, or shown as, the project identity.
+
+  A hosted project already carries the owner label from registration, so the
+  invitation action shows the name the invitee will read and offers an inline
+  correction beside it instead of holding the first invitation until the owner
+  has typed something.
 
   A request from any identity other than the current owner fails closed and
   returns to the project catalog without exposing project content.
@@ -19,7 +22,6 @@ defmodule SddOrchestratorWeb.ParticipationLive do
   @invite_messages %{
     unauthorized: "Only the project owner can invite people to this project.",
     not_hosted_project: "This project is stored on your device, so it can't be shared yet.",
-    owner_profile_required: "Save your project name before inviting anyone.",
     invalid_email: "Enter a complete email address.",
     invitation_already_pending: "That address already has a pending invitation.",
     existing_owner: "That address is the project owner.",
@@ -90,6 +92,61 @@ defmodule SddOrchestratorWeb.ParticipationLive do
          |> assign(:display_name, name)
          |> assign(:display_name_error, display_name_error(changeset))
          |> assign(:saved?, false)}
+    end
+  end
+
+  def handle_event("correct_owner_label", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:correcting_owner_label?, true)
+     |> assign(:owner_label_draft, owner_label_draft(socket.assigns.owner_profile))
+     |> assign(:owner_label_error, nil)
+     |> assign(:owner_label_saved?, false)}
+  end
+
+  def handle_event("cancel_owner_label", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:correcting_owner_label?, false)
+     |> assign(:owner_label_draft, owner_label_draft(socket.assigns.owner_profile))
+     |> assign(:owner_label_error, nil)}
+  end
+
+  def handle_event("validate_owner_label", %{"owner_label" => %{"display_name" => name}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:owner_label_draft, name)
+     |> assign(:owner_label_error, nil)
+     |> assign(:owner_label_saved?, false)}
+  end
+
+  # The inline correction is the same owner self-edit action the standalone
+  # form runs, so trimming, case-insensitive project uniqueness, preserved
+  # spelling, and explicit conflict rejection without a suffix all come from the
+  # one domain path. Anyone who is not the immutable owner fails closed here.
+  def handle_event("save_owner_label", %{"owner_label" => %{"display_name" => name}}, socket) do
+    socket.assigns.project
+    |> Participation.save_owner_profile(socket.assigns.acting_account_id, name)
+    |> case do
+      {:ok, profile} ->
+        {:noreply,
+         socket
+         |> assign(:correcting_owner_label?, false)
+         |> assign(:display_name, profile.display_name)
+         |> assign(:owner_label_error, nil)
+         |> assign(:owner_label_saved?, true)
+         |> refresh()}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, changeset} ->
+        {:noreply,
+         socket
+         |> assign(:correcting_owner_label?, true)
+         |> assign(:owner_label_draft, name)
+         |> assign(:owner_label_error, display_name_error(changeset))
+         |> assign(:owner_label_saved?, false)}
     end
   end
 
@@ -235,6 +292,10 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:display_name, current_label(project, role, account_id))
     |> assign(:display_name_error, nil)
     |> assign(:saved?, false)
+    |> assign(:correcting_owner_label?, false)
+    |> assign(:owner_label_draft, owner_label_draft(profile))
+    |> assign(:owner_label_error, nil)
+    |> assign(:owner_label_saved?, false)
     |> assign(:invite_email, "")
     |> assign(:invite_error, nil)
     |> assign(:invite_sent?, false)
@@ -283,6 +344,15 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     end
   end
 
+  # The name an invitee actually reads. A project registered before owner
+  # profiles existed falls back to the same neutral role label the rest of the
+  # product uses; an email address is never presented as a project label.
+  defp invitation_owner_name(nil), do: Participation.default_owner_display_name()
+  defp invitation_owner_name(profile), do: profile.display_name
+
+  defp owner_label_draft(nil), do: ""
+  defp owner_label_draft(profile), do: profile.display_name
+
   defp role_label(:owner), do: "Runs this project"
   defp role_label(:participant), do: "On this project"
 
@@ -305,7 +375,15 @@ defmodule SddOrchestratorWeb.ParticipationLive do
     |> assign(:invitations, invitations_for(project, role))
     |> assign(:owner_profile, Participation.owner_profile(project.id))
     |> assign(:display_name, current_label(project, role, account_id))
+    |> sync_owner_label_draft()
   end
+
+  # An open correction keeps whatever the owner is still typing; a closed one
+  # follows the stored label so both edit paths always show the same name.
+  defp sync_owner_label_draft(%{assigns: %{correcting_owner_label?: true}} = socket), do: socket
+
+  defp sync_owner_label_draft(socket),
+    do: assign(socket, :owner_label_draft, owner_label_draft(socket.assigns.owner_profile))
 
   defp display_name_error(%Ecto.Changeset{} = changeset) do
     case changeset.errors[:display_name] do
@@ -332,12 +410,6 @@ defmodule SddOrchestratorWeb.ParticipationLive do
           Invite people by email to work on this project. They see your project display name,
           never your email address.
         </p>
-
-        <div :if={is_nil(@owner_profile)} class="mt-4" data-owner-profile-required>
-          <.notice variant="warn" icon="user-round-pen">
-            Choose how your name appears on this project before you send the first invitation.
-          </.notice>
-        </div>
 
         <section class="mt-6" data-members>
           <h2 class="text-[13px] font-semibold text-ink">People on this project</h2>
@@ -416,19 +488,83 @@ defmodule SddOrchestratorWeb.ParticipationLive do
 
         <div :if={@role == :owner} class="mt-6 rounded-lg border border-line bg-surface p-4">
           <p class="text-[13px] font-semibold text-ink">Invitations</p>
-          <p
-            :if={is_nil(@owner_profile)}
-            class="mt-1 text-[13px] leading-relaxed text-ink-muted"
-            data-invitations-unavailable
-          >
-            Save your project name first. Invitations become available right after.
-          </p>
 
-          <div :if={@owner_profile} data-invitations-available>
+          <div data-invitations-available>
             <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
               Enter the email address of the person you want to invite. They join only after
               they confirm that address and accept.
             </p>
+
+            <div class="mt-4 rounded-lg border border-line bg-raised p-3" data-invitation-owner-label>
+              <p class="text-[13px] leading-relaxed text-ink-muted">
+                The invitation shows you as
+                <span class="font-semibold text-ink" data-invitation-owner-name>
+                  {invitation_owner_name(@owner_profile)}
+                </span>
+              </p>
+
+              <div
+                :if={!@correcting_owner_label?}
+                class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center"
+              >
+                <.button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  phx-click="correct_owner_label"
+                  class="w-full sm:w-auto"
+                  data-correct-owner-label
+                >
+                  <.lucide name="user-round-pen" class="size-4" /> Change this name
+                </.button>
+                <span
+                  :if={@owner_label_saved?}
+                  class="inline-flex items-center gap-1.5 text-[13px] text-ok-fg"
+                  data-invitation-owner-name-saved
+                >
+                  <.lucide name="circle-check" class="size-4" /> Name updated
+                </span>
+              </div>
+
+              <form
+                :if={@correcting_owner_label?}
+                id="invitation-owner-name-form"
+                phx-change="validate_owner_label"
+                phx-submit="save_owner_label"
+                class="mt-3"
+              >
+                <.text_field
+                  id="invitation-owner-name-input"
+                  name="owner_label[display_name]"
+                  label="The name people you invite will see"
+                  value={@owner_label_draft}
+                  error={@owner_label_error}
+                  hint="It has to be different from every other name on this project."
+                  autocomplete="off"
+                  phx-debounce="200"
+                />
+                <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <.button
+                    type="submit"
+                    size="sm"
+                    class="w-full sm:w-auto"
+                    data-save-invitation-owner-name
+                  >
+                    <.lucide name="check" class="size-4" /> Use this name
+                  </.button>
+                  <.button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    phx-click="cancel_owner_label"
+                    class="w-full sm:w-auto"
+                    data-cancel-invitation-owner-name
+                  >
+                    <.lucide name="x" class="size-4" /> Keep the current name
+                  </.button>
+                </div>
+              </form>
+            </div>
 
             <form id="invitation-form" phx-change="validate_invite" phx-submit="invite" class="mt-4">
               <.text_field

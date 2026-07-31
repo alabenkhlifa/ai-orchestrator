@@ -153,14 +153,35 @@ defmodule SddOrchestrator.Participation.InvitationsTest do
       assert Repo.aggregate(ProjectInvitation, :count) == 0
     end
 
-    test "requires the owner display profile before the first invitation" do
+    # The owner label is presentation, not a precondition (specs/08 AC-26).
+    # An owner who has not touched their label still sends the first invitation.
+    test "sends the first invitation without waiting for an edited owner label" do
       %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
 
-      assert {:error, :owner_profile_required} =
+      refute Participation.owner_profile(project.id)
+
+      assert {:ok, %{invitation: invitation}} =
                Invitations.create(project, account.id, "invitee@example.com")
 
-      assert Repo.aggregate(ProjectInvitation, :count) == 0
-      refute_received {:participation_email, _email}
+      assert invitation.project_id == project.id
+      assert invitation.status == "pending"
+      assert Repo.aggregate(ProjectInvitation, :count) == 1
+    end
+
+    test "resends without waiting for an edited owner label" do
+      %{project: project, account: account} = ParticipationFixtures.hosted_project_fixture()
+
+      {:ok, %{invitation: original}} =
+        Invitations.create(project, account.id, "invitee@example.com")
+
+      refute Participation.owner_profile(project.id)
+
+      assert {:ok, %{invitation: rotated}} =
+               Invitations.resend(project, account.id, "invitee@example.com")
+
+      assert rotated.id == original.id
+      assert rotated.credential_version == 2
+      assert Repo.aggregate(ProjectInvitation, :count) == 1
     end
 
     test "rejects an address that is not a usable email" do

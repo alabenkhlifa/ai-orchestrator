@@ -39,7 +39,6 @@ defmodule SddOrchestrator.Participation.Invitations do
   @type create_error ::
           :unauthorized
           | :not_hosted_project
-          | :owner_profile_required
           | :invalid_email
           | :invitation_already_pending
           | {:existing_role, ProjectRoles.role()}
@@ -54,7 +53,6 @@ defmodule SddOrchestrator.Participation.Invitations do
           {:ok, %{invitation: ProjectInvitation.t(), delivery: term()}} | {:error, create_error()}
   def create(project, account_id, email) do
     with {:ok, project, owner} <- authorize(project, account_id),
-         :ok <- require_owner_profile(project),
          {:ok, normalized} <- ExternalIdentity.normalize_email(email),
          digest = EmailDigest.from_subject_key(normalized.subject_key),
          :ok <- reject_existing_member(project, digest),
@@ -77,7 +75,6 @@ defmodule SddOrchestrator.Participation.Invitations do
           | {:error, create_error() | :no_pending_invitation}
   def resend(project, account_id, email) do
     with {:ok, project, _owner} <- authorize(project, account_id),
-         :ok <- require_owner_profile(project),
          {:ok, normalized} <- ExternalIdentity.normalize_email(email),
          digest = EmailDigest.from_subject_key(normalized.subject_key),
          :ok <- reject_existing_member(project, digest),
@@ -216,12 +213,6 @@ defmodule SddOrchestrator.Participation.Invitations do
   end
 
   defp owner_of(%Project{}, _account_id), do: {:error, :not_hosted_project}
-
-  defp require_owner_profile(project) do
-    if Participation.owner_profile_established?(project.id),
-      do: :ok,
-      else: {:error, :owner_profile_required}
-  end
 
   # An address that already belongs to the immutable owner or an active
   # participant creates no invitation and no credential. The owner sees the
