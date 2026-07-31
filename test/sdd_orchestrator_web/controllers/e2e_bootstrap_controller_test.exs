@@ -17,6 +17,7 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
   alias SddOrchestrator.HostedAccess.SessionCookie
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.{InvitationProof, Invitations}
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
@@ -183,6 +184,22 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
       # The in-development card carries a visible status; the later columns do not.
       assert Repo.get!(Feature, features["in_development"]).status == "blocked"
       assert Repo.get!(Feature, features["done"]).status == "none"
+    end
+
+    test "seeds a project that is really set up only when asked to", %{conn: conn} do
+      assert %{"project_id" => bare_id} =
+               conn |> get(~p"/_e2e/session?scenario=features") |> json_response(200)
+
+      assert %{"project_id" => configured_id} =
+               build_conn()
+               |> get(~p"/_e2e/session?scenario=features&configured=true")
+               |> json_response(200)
+
+      # The browser navigation matrix needs both landings to be real, so the
+      # difference has to be the repository connection and storage themselves
+      # rather than a flag the harness reports about itself.
+      refute Projects.configured?(bare_id)
+      assert Projects.configured?(configured_id)
     end
   end
 

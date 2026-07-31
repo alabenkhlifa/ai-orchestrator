@@ -11,8 +11,11 @@ const {
 // (specs/07 Task 53, AC-48). Runs under both the desktop and the mobile
 // Playwright projects.
 test.describe("project navigation", () => {
+  // "Configured" means the project really went through registration, so it has
+  // the repository connection and storage the landing decision reads. A bare
+  // seeded project has neither, which is what the next test relies on.
   test("a configured project opens on its board", async ({ page }) => {
-    const { project_id } = await bootstrap(page, "features");
+    const { project_id } = await bootstrap(page, "features", { configured: "true" });
 
     await page.goto(`/projects/${project_id}`);
     await waitConnected(page);
@@ -26,8 +29,12 @@ test.describe("project navigation", () => {
     );
   });
 
+  // A project whose repository connection and storage were never established,
+  // opened by an owner who does have a display label. Setup is not something the
+  // board can finish, so this landing must not be the board — and the label is
+  // present here precisely to show it is not what decides.
   test("a project that is not configured yet opens on its overview", async ({ page }) => {
-    const { project_id } = await bootstrap(page, "project_owner", { owner_profile: "false" });
+    const { project_id } = await bootstrap(page, "project_owner");
 
     await page.goto(`/projects/${project_id}`);
     await waitConnected(page);

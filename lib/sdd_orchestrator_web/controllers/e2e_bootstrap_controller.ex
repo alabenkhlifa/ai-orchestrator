@@ -96,6 +96,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.HostedAccess.Sessions
     alias SddOrchestrator.Participation
     alias SddOrchestrator.Participation.{Acceptance, Invitations}
+    alias SddOrchestrator.Projects
     alias SddOrchestrator.Projects.Project
     alias SddOrchestrator.Repo
     alias SddOrchestratorWeb.{E2EPreviewAdapter, HostedUserAuth, UserAuth}
@@ -105,6 +106,20 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     @participant_name "Sam Member"
     @project_name "Delivery Pilot"
     @device_context %{user_agent_family: "E2E Browser", os_family: "E2E OS"}
+
+    # The repository a configured scenario is registered against. Every scenario
+    # builds its own owner, so its own workspace, and workspace-scoped repository
+    # uniqueness is never contended by a fixed identity here.
+    @repository %{
+      "id" => 101,
+      "owner" => "octo",
+      "name" => "example",
+      "full_name" => "octo/example",
+      "private" => false,
+      "visibility" => "public",
+      "html_url" => "https://github.com/octo/example",
+      "organization" => nil
+    }
 
     # The one commit every seeded item of proof was recorded against. Sharing a
     # commit is what makes a rerun a replacement rather than a second opinion, so
@@ -211,9 +226,13 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # One hosted project whose board is either empty or holds one feature in each
     # of the five columns, with a visible status on the in-development card. The
     # project always has a second member so the assignment selector has a real
-    # choice to make.
+    # choice to make. `configured=true` registers the project through the real
+    # onboarding transaction instead of inserting a bare row, which is what gives
+    # it the repository connection and hosted storage the landing decision reads.
     defp run(conn, "features", params) do
-      %{project: project, owner: owner, participant: participant} = member_graph()
+      %{project: project, owner: owner, participant: participant} =
+        member_graph(configured?: params["configured"] == "true")
+
       actor = %{account_id: owner.account.id, hosted_identity_id: nil}
 
       features = if params["populated"] == "true", do: seed_features(project, actor), else: %{}
@@ -297,9 +316,14 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     ## Scenario building blocks
 
-    defp member_graph do
+    defp member_graph(opts \\ []) do
       owner = new_owner()
-      project = new_project(owner)
+
+      project =
+        if Keyword.get(opts, :configured?, false),
+          do: registered_project(owner),
+          else: new_project(owner)
+
       save_owner_profile(project, owner)
 
       participant = join_project(project, owner, unique_email("member"))
@@ -324,10 +348,27 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     defp new_owner, do: hosted_identity!(unique_email("owner"))
 
+    # A project with no repository connection and no storage: the state a browser
+    # test needs to prove that setup is not skipped.
     defp new_project(owner) do
       %Project{}
       |> Project.changeset(%{name: @project_name, workspace_id: owner.personal_workspace.id})
       |> Repo.insert!()
+    end
+
+    # The same project the product would have produced: the onboarding attempt is
+    # confirmed through the real registration transaction, so the repository
+    # connection and hosted storage exist because they were created the way they
+    # normally are rather than asserted into place here.
+    defp registered_project(owner) do
+      workspace = owner.personal_workspace
+
+      {:ok, attempt} = Projects.start_onboarding_attempt(workspace)
+      {:ok, attempt} = Projects.select_repository(workspace, attempt.id, @repository)
+      {:ok, attempt} = Projects.select_storage_mode(workspace, attempt.id, "hosted")
+      {:ok, project} = Projects.register_project(workspace, attempt, name: @project_name)
+
+      project
     end
 
     defp save_owner_profile(project, owner) do

@@ -68,6 +68,34 @@ defmodule SddOrchestrator.Projects do
     end
   end
 
+  @doc """
+  Returns true when a project's setup is finished: its repository connection and
+  its hosted storage both exist.
+
+  This is the same pair the project overview presents as setup, and it is the
+  only question the project's address has to answer to know whether it opens on
+  the board or on that overview. It is deliberately neither an authorization nor
+  a presentation question: who is asking, and whether they have chosen a display
+  label, is decided by the destination screen instead. Unlike `get_project/2`
+  this takes no workspace, because a landing decision that discloses nothing has
+  no workspace to scope to; a malformed or unknown id is simply not configured.
+  """
+  @spec configured?(String.t()) :: boolean()
+  def configured?(project_id) when is_binary(project_id) do
+    case Ecto.UUID.cast(project_id) do
+      {:ok, uuid} ->
+        Repo.exists?(
+          from p in Project,
+            inner_join: _connection in assoc(p, :repository_connection),
+            inner_join: _storage in assoc(p, :hosted_storage),
+            where: p.id == ^uuid
+        )
+
+      :error ->
+        false
+    end
+  end
+
   ## Onboarding attempts
 
   @doc """

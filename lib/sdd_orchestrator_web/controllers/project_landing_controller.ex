@@ -7,47 +7,39 @@ defmodule SddOrchestratorWeb.ProjectLandingController do
   those arrives in a different state, so the destination has to be decided per
   request rather than baked into one route.
 
-  The decision is the authorization check itself. The board is the destination
-  exactly when `ParticipantGuard.authorize/2` resolves the acting person as a
-  current member of the project; everyone else gets the overview, which asks
-  for nothing and shows only what a non-member may see. A project display name
-  is presentation and never a precondition for that check (specs/08 AC-40), so
-  a freshly registered project sends its owner straight to their board.
+  The decision is about the project, never about the person. A project whose
+  repository connection and hosted storage are both established is set up, so it
+  opens on its board, where the work is; one still missing either of them opens
+  on its overview, which is the screen that shows what setup is left. The first
+  implementation asked whether the acting person was a current participant
+  instead, which quietly turned a presentation label into a precondition for the
+  board and sent the owner of every freshly registered project to a setup screen
+  that had nothing left to tell them.
 
-  Nothing is rendered here and nothing is disclosed. Both outcomes are a
-  redirect, so an unauthorized visitor learns neither whether the project exists
-  nor why they were sent where they were sent, and the destination re-checks
-  authorization on its own mount regardless.
+  Authorization is not skipped, it is simply not this decision. Nothing is
+  rendered here and nothing is disclosed: both outcomes are a redirect, so an
+  unauthorized visitor learns neither whether the project exists nor why they
+  were sent where they were sent, and each destination re-checks access on its
+  own mount. The board fails closed for anyone who is not a current member of
+  that project, and the overview sits behind the application session and its
+  workspace scope, so a visitor without one is sent to sign in and a foreign
+  workspace never resolves the project at all.
   """
   use SddOrchestratorWeb, :controller
 
-  alias SddOrchestrator.Delivery.ParticipantGuard
+  alias SddOrchestrator.Projects
 
   @doc "Redirects to the project's board when it is configured, else its overview."
   def show(conn, %{"id" => id}) do
     case Ecto.UUID.cast(id) do
-      {:ok, project_id} -> redirect(conn, to: landing_path(conn, project_id))
+      {:ok, project_id} -> redirect(conn, to: landing_path(project_id))
       :error -> redirect(conn, to: ~p"/projects")
     end
   end
 
-  defp landing_path(conn, project_id) do
-    case ParticipantGuard.authorize(project_id, actor(conn)) do
-      {:ok, _member} -> ~p"/projects/#{project_id}/features"
-      {:error, :unauthorized} -> ~p"/projects/#{project_id}/overview"
-    end
-  end
-
-  # The same actor shape the feature screens build: an application session and a
-  # hosted session are two ways of being the same person to the participation
-  # boundary.
-  defp actor(conn) do
-    identity = conn.assigns[:current_hosted_identity]
-    account = conn.assigns[:current_account]
-
-    %{
-      account_id: (account && account.id) || (identity && identity.account_id),
-      hosted_identity_id: identity && identity.id
-    }
+  defp landing_path(project_id) do
+    if Projects.configured?(project_id),
+      do: ~p"/projects/#{project_id}/features",
+      else: ~p"/projects/#{project_id}/overview"
   end
 end
