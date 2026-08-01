@@ -61,6 +61,7 @@ defmodule SddOrchestrator.Delivery.Review do
     ReviewHandoff,
     RunAttempt,
     RunCommand,
+    RunNotifications,
     RunTransitions,
     VerificationCompletion
   }
@@ -313,6 +314,8 @@ defmodule SddOrchestrator.Delivery.Review do
       |> DeliveryStore.commit(verdict.project_id, steps(verdict, attrs, continuation))
       |> case do
         {:ok, results} ->
+          notify_blocked(verdict, continuation, results)
+
           {:ok,
            %{
              applied?: true,
@@ -329,6 +332,21 @@ defmodule SddOrchestrator.Delivery.Review do
       end
     end
   end
+
+  # A rejection the reviewer declared contradicts the approved agreement pauses
+  # the run on a question, which is the same blocked event a worker's own
+  # question raises and reaches the same person. An approval and an ordinary
+  # rejection pause nobody, and a run the transition table would not admit into
+  # `blocked` never moved, so there is no run event to project.
+  defp notify_blocked(verdict, %{payload: %{"blocked_for_specification" => true}}, %{
+         run: %AgentRun{} = run
+       }) do
+    RunNotifications.deliver(verdict.project_id, run, verdict.feature, :blocked)
+
+    :ok
+  end
+
+  defp notify_blocked(_verdict, _continuation, _results), do: :ok
 
   # An approval ends the lifecycle and has nothing to continue. A rejection plans
   # its continuation before anything is written, so a run that cannot be

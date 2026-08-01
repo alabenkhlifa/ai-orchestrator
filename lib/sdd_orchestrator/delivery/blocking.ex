@@ -26,7 +26,8 @@ defmodule SddOrchestrator.Delivery.Blocking do
     DeliveryStore,
     EventIngestion,
     ParticipantGuard,
-    QuestionRouting
+    QuestionRouting,
+    RunNotifications
   }
 
   alias SddOrchestrator.Repo
@@ -103,9 +104,19 @@ defmodule SddOrchestrator.Delivery.Blocking do
     authority
     |> DeliveryStore.commit(project_id, steps(run, attempt, feature, attrs, envelope))
     |> case do
-      {:ok, results} -> {:ok, results}
+      {:ok, results} -> {:ok, notified(project_id, feature, results)}
       {:error, _step, reason} -> {:error, reason}
     end
+  end
+
+  # The person who has to answer is told after the pause is durable, never as
+  # part of it: an account notification is a hosted record and this commit may be
+  # device-authoritative. The run is paused either way, so a projection that
+  # cannot store anything must not turn a committed pause into a refusal.
+  defp notified(project_id, feature, results) do
+    RunNotifications.deliver(project_id, results.run, feature, :blocked)
+
+    results
   end
 
   # Each record is written exactly once. A second write to the same record in

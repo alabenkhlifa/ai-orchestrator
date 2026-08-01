@@ -40,6 +40,7 @@ defmodule SddOrchestrator.Delivery.ReviewHandoff do
     DeliveryStore,
     Feature,
     ParticipantGuard,
+    RunNotifications,
     RunTransitions,
     VerificationCompletion
   }
@@ -164,16 +165,37 @@ defmodule SddOrchestrator.Delivery.ReviewHandoff do
     })
     |> case do
       {:ok, %{applied?: applied?, results: results}} ->
+        reviewable = Map.get(results, :feature, feature)
+        notify(authority, project_id, run, reviewable, applied?)
+
         {:ok,
          %{
            applied?: applied?,
-           feature: Map.get(results, :feature, feature),
+           feature: reviewable,
            activity: Map.get(results, :activity),
            responsible: member
          }}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # A handoff that already happened is not a new event, so nobody is told twice.
+  defp notify(_authority, _project_id, _run, _feature, false), do: :ok
+
+  defp notify(authority, project_id, run, feature, true) do
+    # This move belongs to the feature: the run's own version is untouched here,
+    # unlike a block or a terminal failure. The notification key still uses it,
+    # so it is read back from the store rather than taken from a caller's
+    # snapshot that may predate the attempt the run is now on.
+    case DeliveryStore.fetch_run(authority, project_id, run.id) do
+      {:ok, current} ->
+        RunNotifications.deliver(project_id, current, feature, :ready_for_review)
+        :ok
+
+      :error ->
+        :ok
     end
   end
 

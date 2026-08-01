@@ -93,6 +93,7 @@ defmodule SddOrchestrator.Delivery.Reconciliation do
     ProtocolCodec,
     Retry,
     RunAttempt,
+    RunNotifications,
     Start
   }
 
@@ -293,6 +294,11 @@ defmodule SddOrchestrator.Delivery.Reconciliation do
   defp apply_decision(context, %Decision{outcome: :terminal} = decision, _opts) do
     with {:ok, feature} <- fetch_feature(context),
          {:ok, results} <- commit(context, terminal_steps(context, decision, feature)) do
+      # An execution nobody can recover ends the run as terminally as a reported
+      # failure does, so the same people are told the same thing. A scheduled
+      # retry is not announced, for the same reason it is not announced there.
+      RunNotifications.deliver(context.run.project_id, results.run, feature, :failed)
+
       {:ok, %{decision | results: results}}
     end
   end

@@ -34,6 +34,7 @@ defmodule SddOrchestrator.Delivery.Retry do
     ExecutionManifest,
     ParticipantGuard,
     RunAttempt,
+    RunNotifications,
     Start
   }
 
@@ -271,8 +272,19 @@ defmodule SddOrchestrator.Delivery.Retry do
     ]
   end
 
-  defp fail_terminally(%{authority: authority, run: run} = context),
-    do: commit(authority, run.project_id, terminal_steps(context))
+  # Only a run that actually ended is announced, and only after the terminal
+  # state is recorded. A scheduled retry is recovery still in progress, so
+  # nobody is asked to act on it.
+  defp fail_terminally(%{authority: authority, run: run, feature: feature} = context) do
+    case commit(authority, run.project_id, terminal_steps(context)) do
+      {:ok, results} ->
+        RunNotifications.deliver(run.project_id, results.run, feature, :failed)
+        {:ok, results}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   # Four records, four steps, and deliberately no command: an exhausted or
   # non-retryable failure must not leave an instruction behind that would start
