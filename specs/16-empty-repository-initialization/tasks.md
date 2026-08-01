@@ -14,7 +14,7 @@ Guide one user from an empty local directory through an explicit initialization 
 
 Requires:
 
-- `capability:ai-runtime-session` — provider `specs/11-ai-runtime-governance#Task 4` — required before `Task 1`.
+- `capability:ai-runtime-session` — provider `specs/11-ai-runtime-governance#Task 11` — required before `Task 1`.
 - `capability:sdd-kit-package` — provider `specs/15-repository-sdd-kit-integration#Task 1` — required before `Task 2`.
 - `capability:workspace-bound-local-worker-authorization` — provider `specs/02-local-project-onboarding#Task 3` — required before `Task 5`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 5`.

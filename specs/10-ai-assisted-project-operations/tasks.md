@@ -14,7 +14,7 @@ Verify that the shared runtime, read-only project assistant, and nested SDD-adop
 
 Requires:
 
-- `capability:ai-runtime-session` — provider `specs/11-ai-runtime-governance#Task 4` — required before `Task 1`.
+- `capability:ai-runtime-session` — provider `specs/11-ai-runtime-governance#Task 11` — required before `Task 1`.
 - `capability:ai-runtime-observation` — provider `specs/11-ai-runtime-governance#Task 5` — required before `Task 1`.
 - `capability:ai-runtime-governance` — provider `specs/11-ai-runtime-governance#Task 6` — required before `Task 1`.
 - `capability:read-only-project-assistant` — provider `specs/12-project-assistant#Task 10` — required before `Task 1`.
