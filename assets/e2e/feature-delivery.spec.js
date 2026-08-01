@@ -656,6 +656,7 @@ function previewItem(page, state) {
 // both the desktop and the mobile project.
 test.describe("review decision", () => {
   const FEEDBACK = "The empty state still shows a spinner after the first load.";
+  const CONTRADICTION = "Guests should never reach this screen at all.";
 
   test("the responsible reviewer approves and the feature is finished", async ({ page }) => {
     const { project_id, feature_id, owner_name } = await bootstrap(page, "review");
@@ -683,7 +684,7 @@ test.describe("review decision", () => {
     await expect(page.locator("body")).not.toContainText("@example.com");
   });
 
-  test("a rejection records the verdict and its feedback stays readable", async ({ page }) => {
+  test("a rejection sends the work back and its feedback stays readable", async ({ page }) => {
     const { project_id, feature_id, branch, commit_sha, owner_name } = await bootstrap(
       page,
       "review",
@@ -704,11 +705,74 @@ test.describe("review decision", () => {
     await expect(page.locator("[data-review-decision-branch]")).toHaveText(branch);
     await expect(page.locator("[data-review-decision-commit]")).toHaveText(commit_sha);
 
-    // A rejection deliberately moves nothing: continuing the run is Task 35's,
-    // so the feature is still in `Ready for review` and the screen says why.
-    await expect(page.locator("[data-feature-column]")).toHaveText("Ready for review");
-    await expect(page.locator("[data-review-decision-note]")).toContainText(/stays where it is/i);
+    // The rejection does not stop at the verdict: the feature returns to
+    // `In development` and the same run carries on from the feedback, with the
+    // verdict still readable beside it rather than replaced by a column change.
+    await expect(page.locator("[data-feature-column]")).toHaveText("In development");
+    await expect(page.locator("[data-review-decision-note]")).toHaveAttribute(
+      "data-review-decision-continuation",
+      "continued",
+    );
+    await expect(page.locator("[data-review-decision-note]")).toContainText(/same run continues/i);
+
+    // Back at work, not paused: no visible status and nothing waiting on a
+    // person.
+    await expect(page.locator("[data-feature-status]")).toHaveCount(0);
+    await expect(page.locator("[data-blocking-question]")).toHaveCount(0);
     await expect(page.locator("[data-review-error]")).toHaveCount(0);
+
+    // Prior proof is preserved by being left alone, so it is still on the screen
+    // after the work continues rather than only still in the store.
+    await expect(page.locator("[data-verification-label]")).toContainText("Verified");
+    await expect(page.locator("[data-evidence-empty]")).toHaveCount(0);
+
+    await expectNoSeriousAxeViolations(page);
+  });
+
+  test("a declared contradiction blocks for the specification instead", async ({ page }) => {
+    const { project_id, feature_id, branch } = await bootstrap(page, "review");
+    await openLive(page, `/projects/${project_id}/features/${feature_id}`);
+
+    await fillDebounced(page, "#review-feedback", CONTRADICTION);
+
+    // The reviewer declares this. Nothing reads it out of what they wrote, so
+    // the same words take the other path only because the control is on.
+    const declaration = page.locator("[data-review-contradiction]");
+
+    await expect(declaration).not.toBeChecked();
+    await declaration.check();
+    await expect(declaration).toBeChecked();
+
+    await page.locator("[data-review-reject]").click();
+
+    // Blocked is a status, so the work still went back to development rather
+    // than to a column of its own.
+    await expect(page.locator("[data-feature-column]")).toHaveText("In development");
+    await expect(page.locator("[data-feature-status]")).toContainText("Blocked");
+
+    // The question renders in the section this screen already had, carrying the
+    // reviewer's own words and saying what answering it will do. Nothing about
+    // the section assumes an agent asked it.
+    const question = page.locator("[data-blocking-question]");
+
+    await expect(question).toBeVisible();
+    await expect(question.locator("[data-question-text]")).toHaveText(CONTRADICTION);
+    await expect(question.locator("[data-question-context]")).toContainText(
+      /approved product agreement/i,
+    );
+    await expect(question.locator("[data-question-branch]")).toContainText(branch);
+
+    // Nothing was dispatched, and the note says so rather than claiming the
+    // agent went back to work.
+    await expect(page.locator("[data-review-decision-note]")).toHaveAttribute(
+      "data-review-decision-continuation",
+      "blocked",
+    );
+    await expect(page.locator("[data-review-decision-note]")).toContainText(
+      /paused on the question/i,
+    );
+    await expect(page.locator("[data-review-decision-feedback]")).toHaveText(CONTRADICTION);
+    await expect(page.locator("body")).not.toContainText("@example.com");
 
     await expectNoSeriousAxeViolations(page);
   });
@@ -769,6 +833,15 @@ test.describe("review decision", () => {
     const feedbackRing = await tabTo(page, "[data-review-feedback]");
     expect(feedbackRing.style).not.toBe("none");
     expect(parseFloat(feedbackRing.width)).toBeGreaterThanOrEqual(2);
+
+    // The declaration is a real control on the way to the submit, so it has to
+    // be reachable and visibly focused rather than something only a mouse finds.
+    const declarationRing = await tabTo(page, "[data-review-contradiction]");
+    expect(declarationRing.style).not.toBe("none");
+    expect(parseFloat(declarationRing.width)).toBeGreaterThanOrEqual(2);
+
+    await page.keyboard.press("Space");
+    await expect(page.locator("[data-review-contradiction]")).toBeChecked();
 
     const rejectRing = await tabTo(page, "[data-review-reject]");
     expect(rejectRing.style).not.toBe("none");

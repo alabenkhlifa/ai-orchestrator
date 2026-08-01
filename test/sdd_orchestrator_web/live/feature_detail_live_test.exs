@@ -1477,6 +1477,12 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
   # one move that finishes a feature [AC-25].
   describe "deciding the review [AC-24, AC-25]" do
     setup %{project: project, account: account, context: context} do
+      # A rejection plans the next attempt's manifest in the same commit as its
+      # verdict, so this block is configured with the same execution boundary a
+      # run is started from. Without it a rejection would raise, and the screen
+      # would be proved against a crash rather than against the domain.
+      configure_execution()
+
       feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
       run = proven_run(context.workspace, project, feature)
 
@@ -1627,7 +1633,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       end
     end
 
-    test "a recorded rejection is readable in full and moves nothing", %{
+    test "a recorded rejection is readable in full and sends the work back", %{
       conn: conn,
       context: context,
       project: project,
@@ -1656,14 +1662,12 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       assert recorded =~ "There is a lot to say about this attempt."
       assert Review.decision(context.workspace, project.id, feature).feedback == feedback
 
-      # The feature deliberately stays in `Ready for review`: recording the
-      # verdict is this screen's job, and continuing the run — ending the
-      # attempt, opening the next one, and returning the feature to
-      # `In development` — belongs to Task 35. This assertion is the boundary,
-      # not an omission.
-      assert view |> element("[data-feature-column]") |> render() =~ "Ready for review"
-      assert Repo.get!(Feature, feature.id).lifecycle_column == "ready_for_review"
-      assert view |> element("[data-review-decision-note]") |> render() =~ "stays where it is"
+      # The verdict is recorded and the work goes back in one move: the feature
+      # returns to `In development` and the screen says the run continues from
+      # the feedback rather than leaving it where it was.
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+      assert Repo.get!(Feature, feature.id).lifecycle_column == "in_development"
+      assert view |> element("[data-review-decision-note]") |> render() =~ "back in development"
       refute has_element?(view, "[data-review-error]")
     end
 
@@ -1765,6 +1769,293 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
       assert decided =~ "aria-invalid=\"true\""
       assert decided =~ "aria-describedby=\"review-feedback-error\""
+    end
+  end
+
+  # Sending work back is not where the review ends. The feature returns to
+  # `In development`, the same run continues on the same branch as one further
+  # attempt, and everything the earlier attempts proved is still readable
+  # [AC-26, AC-35].
+  #
+  # Whether acting on the feedback would change the approved product agreement is
+  # the reviewer's own declaration, never something read out of what they wrote.
+  # So both outcomes are driven from the control rather than from the words, and
+  # a declared contradiction opens a question for the specification instead of
+  # sending the agent back to work against an agreement that no longer holds.
+  describe "continuing rejected work [AC-26, AC-35]" do
+    setup %{project: project, account: account, context: context} do
+      configure_execution()
+      configure_workspace_root()
+
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      run = proven_run(context.workspace, project, feature)
+
+      {:ok, %{applied?: true}} = ReviewHandoff.deliver(context.workspace, project.id, run.run)
+
+      %{feature: Repo.get!(Feature, feature.id), run: run}
+    end
+
+    test "an ordinary rejection returns the feature to development on screen [AC-26]", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      feedback = "The empty state still shows a spinner after the first load."
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> form("#review-form", %{"review" => %{"feedback" => feedback}}) |> render_submit()
+
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+
+      # Back at work rather than paused: no visible status, and nothing waiting
+      # on a person.
+      refute has_element?(view, "[data-feature-status]")
+      refute has_element?(view, "[data-blocking-question]")
+
+      # The verdict does not leave with the column it was made from. Whoever has
+      # to act on it must still be able to read the whole thing.
+      assert view |> element("[data-review-decision-feedback]") |> render() =~ feedback
+      assert view |> element("[data-review-decision-branch]") |> render() =~ run.run.branch
+
+      assert has_element?(
+               view,
+               "[data-review-decision-note][data-review-decision-continuation=\"continued\"]"
+             )
+
+      assert view |> element("[data-review-decision-note]") |> render() =~ "same run continues"
+
+      stored = Repo.get!(Feature, feature.id)
+      assert stored.lifecycle_column == "in_development"
+      assert stored.status == "none"
+
+      # The same run on the same branch, with one further ordered attempt built
+      # from the feedback rather than a second run started beside it [AC-35].
+      continued = Repo.get!(SddOrchestrator.Delivery.AgentRun, run.run.id)
+      assert continued.branch == run.run.branch
+
+      {:ok, next} = DeliveryStore.latest_attempt(context.workspace, project.id, run.run.id)
+
+      assert next.attempt_number == run.attempt.attempt_number + 1
+      assert next.continuation_reason == "review_feedback"
+    end
+
+    # The continued run is free to block on a question of the agent's own, which
+    # makes the feature `Blocked` for a reason that has nothing to do with the
+    # review. The note must still say the work was sent back to the agent, or it
+    # tells the reviewer their words paused a run they in fact restarted. This is
+    # why the outcome is read from the flag the rejection recorded rather than
+    # from the feature's status or from the question's text.
+    test "an agent's own later question does not restate the rejection as blocked", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      feedback = "The empty state still shows a spinner after the first load."
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view |> form("#review-form", %{"review" => %{"feedback" => feedback}}) |> render_submit()
+
+      # The agent picks the work back up and then asks about something else
+      # entirely.
+      ask(project, feature, run.run, %{
+        question: "Which currency should the totals use?",
+        context: "The design names no currency."
+      })
+
+      {:ok, blocked_view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(blocked_view, "[data-blocking-question]")
+
+      assert has_element?(
+               blocked_view,
+               "[data-review-decision-note][data-review-decision-continuation=\"continued\"]"
+             )
+
+      refute blocked_view |> element("[data-review-decision-note]") |> render() =~
+               "Nothing was sent"
+    end
+
+    test "a declared contradiction blocks for the specification instead [AC-26]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      feedback = "Guests should never reach this screen at all."
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      view
+      |> form("#review-form", %{
+        "review" => %{"feedback" => feedback, "contradicts_agreement" => "true"}
+      })
+      |> render_submit()
+
+      # Blocked is a status, so the work still went back to `In development`
+      # rather than to a column of its own.
+      assert view |> element("[data-feature-column]") |> render() =~ "In development"
+      assert view |> element("[data-feature-status]") |> render() =~ "Blocked"
+
+      # The question a participant raised renders in the section this screen
+      # already has, carrying the reviewer's own words and saying what answering
+      # will do. Nothing about the section assumes an agent asked it.
+      assert has_element?(view, "[data-blocking-question]")
+      assert view |> element("[data-question-text]") |> render() =~ feedback
+
+      assert view |> element("[data-question-context]") |> render() =~
+               "changes the approved product agreement"
+
+      assert view |> element("[data-question-branch]") |> render() =~ run.run.branch
+      assert has_element?(view, "[data-answer-form]")
+
+      assert has_element?(
+               view,
+               "[data-review-decision-note][data-review-decision-continuation=\"blocked\"]"
+             )
+
+      assert view |> element("[data-review-decision-note]") |> render() =~
+               "paused on the question"
+
+      stored = Repo.get!(Feature, feature.id)
+      assert stored.lifecycle_column == "in_development"
+      assert stored.status == "blocked"
+    end
+
+    test "the declaration is off until the reviewer turns it on [AC-26]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      # The control is offered unchecked, and says what turning it on does
+      # before anyone turns it on.
+      assert has_element?(view, "[data-review-contradiction]")
+      refute view |> element("[data-review-contradiction]") |> render() =~ "checked"
+
+      assert view |> element("[data-review-contradiction-hint]") |> render() =~
+               "raised as a question for the specification"
+
+      # Pressing `Send back` without touching it takes the ordinary path. That is
+      # what makes this a declaration rather than something the product guesses.
+      view
+      |> form("#review-form", %{"review" => %{"feedback" => "Tighten the empty state."}})
+      |> render_submit()
+
+      assert has_element?(
+               view,
+               "[data-review-decision-note][data-review-decision-continuation=\"continued\"]"
+             )
+
+      refute has_element?(view, "[data-blocking-question]")
+      assert Repo.get!(Feature, feature.id).status == "none"
+    end
+
+    test "blank feedback is refused inline in either mode and writes nothing", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      # Ordered so the declaration is only ever turned on: a refused submission
+      # keeps it, which is deliberate, and a later undeclared case would inherit
+      # it and stop proving what it claims to.
+      attempts = [
+        %{"feedback" => ""},
+        %{"feedback" => "   \n  "},
+        %{"feedback" => "", "contradicts_agreement" => "true"},
+        %{"feedback" => "   \n  ", "contradicts_agreement" => "true"}
+      ]
+
+      for attempt <- attempts do
+        view |> form("#review-form", %{"review" => attempt}) |> render_submit()
+
+        assert view |> element("[data-review-error]") |> render() =~ "what needs to change"
+        refute has_element?(view, "[data-review-decision]")
+        refute has_element?(view, "[data-blocking-question]")
+        assert Review.decision(context.workspace, project.id, feature) == nil
+
+        # Nothing moved, nothing paused, and no attempt was opened for feedback
+        # that says nothing.
+        stored = Repo.get!(Feature, feature.id)
+        assert stored.lifecycle_column == "ready_for_review"
+        assert stored.status == "none"
+      end
+    end
+
+    test "prior evidence is still on the screen after the work continues [AC-26]", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      run: run,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      proved = view |> element("[data-evidence-item]") |> render()
+
+      view
+      |> form("#review-form", %{"review" => %{"feedback" => "Add the missing empty state."}})
+      |> render_submit()
+
+      # Preserved has to mean readable, not merely stored: the same item, whole
+      # and unchanged, beside the completion that proved it.
+      assert view |> element("[data-evidence-item]") |> render() == proved
+      assert view |> element("[data-verification-label]") |> render() =~ "Verified"
+      assert fact(view, "[data-evidence-item]", "branch") =~ run.run.branch
+      refute has_element?(view, "[data-evidence-empty]")
+    end
+
+    test "no participant address reaches the review section in either mode", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      # One decision per feature, so the declared mode needs a second feature
+      # that reached review the same way.
+      contradicted = awaiting_review(context, project, account)
+
+      for {target, declaration} <- [
+            {feature, %{}},
+            {contradicted, %{"contradicts_agreement" => "true"}}
+          ] do
+        {:ok, view, _html} =
+          conn |> log_in_account(account) |> live(feature_path(project, target))
+
+        view
+        |> form("#review-form", %{
+          "review" => Map.put(declaration, "feedback", "Contact nobody about this")
+        })
+        |> render_submit()
+
+        section = view |> element("[data-review-handoff]") |> render()
+
+        refute section =~ "@example.com"
+        refute section =~ context.identity.hosted_identity.id
+        refute section =~ account.id
+        refute view |> render() =~ "@example.com"
+      end
     end
   end
 
@@ -2191,6 +2482,66 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     DeliveryFixtures.verified_completion_fixture(authority, project, run, attempt)
 
     %{run: run, attempt: attempt}
+  end
+
+  # One more feature that reached `Ready for review` the only way a decision
+  # accepts, for a test that needs two decisions and may only make one per
+  # feature.
+  defp awaiting_review(context, project, account) do
+    feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+    run = proven_run(context.workspace, project, feature)
+
+    {:ok, %{applied?: true}} = ReviewHandoff.deliver(context.workspace, project.id, run.run)
+
+    Repo.get!(Feature, feature.id)
+  end
+
+  # The execution boundary a continuation's manifest is built from. It is the
+  # same one the start and retry paths are proved against, because a rejection
+  # binds its next attempt to the configured branch, worker, and agent rather
+  # than to anything the reviewer wrote.
+  defp configure_execution do
+    previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
+
+    Application.put_env(:sdd_orchestrator, :delivery_execution,
+      approved_slice: "slice-07",
+      repository_base_revision: "a1b2c3d4e5f6a7b8",
+      required_checks: [],
+      agent_ref: %{"provider" => "configured-agent"},
+      worker_ref: %{"target" => "configured-worker"}
+    )
+
+    on_exit(fn ->
+      if previous do
+        Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
+      else
+        Application.delete_env(:sdd_orchestrator, :delivery_execution)
+      end
+    end)
+  end
+
+  # A declared contradiction locates the run's own workspace before it opens a
+  # question about it, and containment is decided against the root's real
+  # location, so this has to be a directory that exists rather than a plausible
+  # string.
+  defp configure_workspace_root do
+    root =
+      Path.join(System.tmp_dir!(), "review-continuation-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(root)
+    previous = Application.fetch_env(:sdd_orchestrator, :worker_workspace_root)
+    Application.put_env(:sdd_orchestrator, :worker_workspace_root, root)
+
+    on_exit(fn ->
+      File.rm_rf(root)
+
+      case previous do
+        {:ok, value} -> Application.put_env(:sdd_orchestrator, :worker_workspace_root, value)
+        :error -> Application.delete_env(:sdd_orchestrator, :worker_workspace_root)
+      end
+    end)
+
+    root
   end
 
   defp fact(view, scope, name) do

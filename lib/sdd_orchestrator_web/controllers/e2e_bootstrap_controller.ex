@@ -130,6 +130,10 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # The required-check contract the seeded attempt is bound to.
     @required_checks ["mix format --check-formatted", "mix credo --strict", "mix dialyzer"]
 
+    # The repository revision a continued attempt's manifest is anchored to. It
+    # is configuration, not evidence: the seeded runs prove their own commits.
+    @repository_base_revision "a1b2c3d4e5f6a7b8"
+
     # The preview scenario verifies for real, so its attempt is bound to a
     # contract it can actually satisfy: one check, passed against one commit.
     @preview_checks ["mix test"]
@@ -331,6 +335,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       feature = start_development(project.id, actor, feature)
 
       authorize_preview(project)
+      configure_continuation()
 
       ready = seed_preview(authority, project, feature, E2EPreviewAdapter.ready_path())
 
@@ -492,6 +497,41 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         ttl_seconds: 86_400,
         projects: projects
       )
+    end
+
+    ## Rejected-work continuation
+
+    # Sending work back continues the run that produced it, so a rejection plans
+    # the next attempt's execution manifest in the same commit as its verdict,
+    # and a declared contradiction locates that run's own workspace before it
+    # opens a question about it. Neither is configured in the environment this
+    # harness serves, and `Review.reject/5` would raise rather than refuse
+    # without them — which would prove the review screen against a crash instead
+    # of against the domain.
+    #
+    # The values are the ordinary configured boundary rather than anything the
+    # browser supplies: nothing a reviewer types may reach a manifest.
+    defp configure_continuation do
+      Application.put_env(:sdd_orchestrator, :delivery_execution,
+        approved_slice: "slice-07",
+        repository_base_revision: @repository_base_revision,
+        required_checks: [],
+        agent_ref: %{"provider" => "e2e-agent"},
+        worker_ref: %{"target" => "e2e-worker"}
+      )
+
+      Application.put_env(:sdd_orchestrator, :worker_workspace_root, workspace_root())
+    end
+
+    # Containment is decided against the root's real location, so the root has to
+    # be a directory that exists rather than a plausible string. The path is a
+    # literal under this machine's temporary directory and carries nothing from a
+    # request. Documented false positive.
+    # sobelow_skip ["Traversal.FileModule"]
+    defp workspace_root do
+      root = Path.join(System.tmp_dir!(), "sdd-orchestrator-e2e-workspaces")
+      File.mkdir_p!(root)
+      root
     end
 
     # One run that genuinely verified, then the preview that verification

@@ -13,11 +13,11 @@ defmodule SddOrchestrator.Delivery.ReviewTest do
   `Ready for review` to `Done`, recorded as an immutable verdict naming exactly
   the branch and commit the gate proved [AC-25].
 
-  The third is the boundary with Task 35. A rejection records the verdict and its
-  activity and moves nothing at all: the feature stays in `Ready for review`, the
-  run keeps its state, and no attempt is ended or opened. Continuing the work is
-  Task 35's, and this test asserts the non-move directly so a later reader does
-  not mistake it for an omission.
+  The third is the boundary with Task 35. This file proves the verdict a
+  rejection records — its feedback, its immutability, and its idempotency — and
+  `review_continuation_test.exs` proves what that same commit does to the run.
+  The two land together deliberately, so a rejection can never leave a feature
+  stranded in `Ready for review` with a verdict nobody acted on.
 
   Every behavioural test runs against both storage authorities, because
   `specs/05` forbids keeping a device-authoritative project's records in the
@@ -52,7 +52,28 @@ defmodule SddOrchestrator.Delivery.ReviewTest do
   @path "web"
   @feedback "The empty state still shows a spinner"
 
+  # A rejection continues the run, so it builds the next attempt's manifest from
+  # the configured execution boundary exactly as a retry does.
+  @execution [
+    approved_slice: "slice-07",
+    repository_base_revision: "a1b2c3d4e5f6a7b8",
+    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
+    agent_ref: %{"provider" => "configured-agent"},
+    worker_ref: %{"target" => "configured-worker"}
+  ]
+
   setup context do
+    previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
+    Application.put_env(:sdd_orchestrator, :delivery_execution, @execution)
+
+    on_exit(fn ->
+      if previous do
+        Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
+      else
+        Application.delete_env(:sdd_orchestrator, :delivery_execution)
+      end
+    end)
+
     hosted = DeliveryFixtures.delivery_project_fixture()
 
     # Responsibility resolves to the assignee, so the responsible participant and
@@ -358,22 +379,21 @@ defmodule SddOrchestrator.Delivery.ReviewTest do
         assert activity.payload["feedback"] == @feedback
       end
 
-      test "a rejection moves nothing: Task 35 owns the continuation", context do
+      test "the verdict and its continuation land in one commit [AC-26]", context do
         context = ready(context)
-        before = world(context)
 
         assert {:ok, results} = reject(context, context.responsible_actor, @feedback)
         assert results.applied?
 
-        # Deliberate and load-bearing. Task 35 ("Continue rejected work on the
-        # same run and branch") consumes this recorded verdict and owns the
-        # `In development` transition, the ended attempt, and the next one. A
-        # future reader must not "fix" this by moving the column here: the board
-        # and the run would then be moved twice by two owners.
-        assert results.feature.lifecycle_column == "ready_for_review"
-        assert reload_feature(context).lifecycle_column == "ready_for_review"
-        assert world(context).run == before.run
-        assert world(context).attempt == before.attempt
+        # Deliberate and load-bearing. The verdict is not recorded a moment
+        # before the feature moves: both are one commit, so a crash can never
+        # leave a rejected feature parked in `Ready for review` with a verdict
+        # nobody acted on.
+        assert results.feature.lifecycle_column == "in_development"
+        assert reload_feature(context).lifecycle_column == "in_development"
+        assert results.activity.payload["column"] == "in_development"
+        assert results.attempt.continuation_reason == "review_feedback"
+        assert results.command.operation == "resume"
       end
 
       test "a repeated rejection decides once and writes nothing twice", context do
@@ -402,7 +422,7 @@ defmodule SddOrchestrator.Delivery.ReviewTest do
 
         assert held.id == rejected.decision.id
         assert held.decision == "rejected"
-        assert reload_feature(context).lifecycle_column == "ready_for_review"
+        assert reload_feature(context).lifecycle_column == "in_development"
         assert length(recorded_decisions(context)) == 1
       end
     end

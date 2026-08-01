@@ -80,17 +80,57 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     stale_state: "This changed while you were looking at it. Try again."
   }
 
+  # Every way an execution manifest can be refused says one thing to a reviewer:
+  # the instructions the next attempt needs cannot be built from this project's
+  # settings. Telling the seventeen shapes apart would describe an operator's
+  # problem to somebody who cannot act on any of them.
+  @manifest_unusable "This project's development settings cannot produce the next attempt, " <>
+                       "so nothing was sent back. That has to be fixed before this work continues."
+
+  @manifest_reasons ~w(
+    invalid_manifest missing_manifest_field unknown_manifest_field
+    unsupported_manifest_version invalid_manifest_identity invalid_attempt_number
+    invalid_revision_id invalid_revision_digest invalid_base_revision
+    invalid_target_branch invalid_required_checks too_many_required_checks
+    invalid_required_check duplicate_required_check manifest_too_large
+    invalid_continuation invalid_continuation_reason
+  )a
+
   # The rejection rule lives in the domain, so the screen only puts words to the
   # answer it gave. Nothing here re-implements the limit or the blank check,
-  # which is what keeps the two from disagreeing.
-  @review_messages %{
-    feedback_required: "Say what needs to change before sending this back.",
-    feedback_too_long: "That feedback is too long. Shorten it and try again.",
-    not_in_review: "This feature is not waiting for a review decision anymore.",
-    not_verified: "Nothing recorded proves this work, so there is nothing to decide about.",
-    stale_state: "This changed while you were looking at it. Try again.",
-    not_found: "This feature is no longer available."
-  }
+  # which is what keeps the two from disagreeing. Sending work back now also
+  # continues the run, so everything that continuation can refuse is answered
+  # here too rather than reaching a reviewer as an atom.
+  @review_messages Map.merge(
+                     Map.new(@manifest_reasons, &{&1, @manifest_unusable}),
+                     %{
+                       feedback_required: "Say what needs to change before sending this back.",
+                       feedback_too_long: "That feedback is too long. Shorten it and try again.",
+                       not_in_review:
+                         "This feature is not waiting for a review decision anymore.",
+                       not_verified:
+                         "Nothing recorded proves this work, so there is nothing to decide about.",
+                       stale_state: "This changed while you were looking at it. Try again.",
+                       not_found: "This feature is no longer available.",
+                       unknown_run:
+                         "The run this work came from is no longer here, so there is nothing to send it back to.",
+                       no_attempt:
+                         "Nothing is recorded for this run to continue from, so it cannot be sent back.",
+                       run_not_continuable:
+                         "This run has already ended, so the work cannot continue from it.",
+                       question_already_open:
+                         "This run is already waiting on a decision. Answer that one before sending more back.",
+                       workspace_root_unconfigured:
+                         "This installation has nowhere for the work to continue in, so nothing was sent back.",
+                       workspace_escape:
+                         "This run's own working directory could not be confirmed, so nothing was sent back."
+                     }
+                   )
+
+  # Nothing is written unless the whole verdict and its continuation commit
+  # together, so an unrecognised refusal can say plainly that nothing changed
+  # rather than implying the reviewer did something wrong.
+  @review_unaccepted "That decision could not be recorded, and nothing changed. Try again."
 
   # What a recorded verdict is called on the screen. The stored value stays a
   # machine token; only this map turns it into a person's word for it.
@@ -330,18 +370,26 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     socket
     |> storage_authority()
     |> Review.approve(socket.assigns.actor, review_subject(socket))
-    |> apply_review(socket, socket.assigns.review_feedback)
+    |> apply_review(socket, socket.assigns.review_feedback, socket.assigns.review_contradicts?)
   end
 
-  def handle_event("reject", %{"review" => %{"feedback" => feedback}}, socket) do
+  def handle_event("reject", %{"review" => %{"feedback" => feedback} = review}, socket) do
+    contradicts? = declared?(review)
+
     socket
     |> storage_authority()
-    |> Review.reject(socket.assigns.actor, review_subject(socket), feedback)
-    |> apply_review(socket, feedback)
+    |> Review.reject(socket.assigns.actor, review_subject(socket), feedback,
+      contradicts_agreement?: contradicts?
+    )
+    |> apply_review(socket, feedback, contradicts?)
   end
 
-  def handle_event("validate_review", %{"review" => %{"feedback" => feedback}}, socket) do
-    {:noreply, socket |> assign(:review_feedback, feedback) |> assign(:review_error, nil)}
+  def handle_event("validate_review", %{"review" => %{"feedback" => feedback} = review}, socket) do
+    {:noreply,
+     socket
+     |> assign(:review_feedback, feedback)
+     |> assign(:review_contradicts?, declared?(review))
+     |> assign(:review_error, nil)}
   end
 
   def handle_event("confirm_boundary", %{"digest" => digest}, socket) do
@@ -460,28 +508,37 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp review_subject(socket),
     do: %{project: socket.assigns.project, feature: socket.assigns.feature}
 
+  # Whether acting on this feedback would change the approved product agreement
+  # is the reviewer's own declaration. An absent control is `false`, and nothing
+  # here reads the feedback to guess: inferring the agreement is exactly what the
+  # specification write-back exists to prevent.
+  defp declared?(%{"contradicts_agreement" => "true"}), do: true
+  defp declared?(_review), do: false
+
   # A decision that was already made for this attempt answers `applied?: false`
   # and hands back what is on record, so the screen refreshes from the result
   # either way rather than treating a second press as a failure.
-  defp apply_review({:ok, results}, socket, _feedback) do
+  defp apply_review({:ok, results}, socket, _feedback, _contradicts?) do
     {:noreply,
      socket
      |> assign(:review_feedback, "")
+     |> assign(:review_contradicts?, false)
      |> assign(:review_error, nil)
      |> assign_feature(socket.assigns.project_id, socket.assigns.actor, results.feature)}
   end
 
-  defp apply_review({:error, :unauthorized}, socket, _feedback),
+  defp apply_review({:error, :unauthorized}, socket, _feedback, _contradicts?),
     do: {:noreply, push_navigate(socket, to: ~p"/projects")}
 
-  defp apply_review({:error, reason}, socket, feedback) do
+  # The declaration is kept along with the words, because a refused submission
+  # that silently cleared it would send the next press somewhere the reviewer
+  # did not choose.
+  defp apply_review({:error, reason}, socket, feedback, contradicts?) do
     {:noreply,
      socket
      |> assign(:review_feedback, feedback)
-     |> assign(
-       :review_error,
-       Map.get(@review_messages, reason, "That decision was not accepted.")
-     )}
+     |> assign(:review_contradicts?, contradicts?)
+     |> assign(:review_error, Map.get(@review_messages, reason, @review_unaccepted))}
   end
 
   @impl true
@@ -638,24 +695,36 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp assign_review(socket, actor, feature) do
     authority = storage_authority(socket)
 
-    {reviewable?, decision} =
+    project_id = socket.assigns.project_id
+
+    {reviewable?, decision, blocked_for_spec?} =
       case Review.reviewable(authority, actor, %{
              project: socket.assigns.project,
              feature: feature
            }) do
         {:ok, reviewable?} ->
-          {reviewable?, Review.decision(authority, socket.assigns.project_id, feature)}
+          decision = Review.decision(authority, project_id, feature)
+          {reviewable?, decision, rejection_blocked?(authority, project_id, feature, decision)}
 
         {:error, :unauthorized} ->
-          {false, nil}
+          {false, nil, false}
       end
 
     socket
     |> assign(:reviewable?, reviewable?)
     |> assign(:review_decision, decision)
+    |> assign(:review_blocked_for_spec?, blocked_for_spec?)
     |> assign(:review_feedback, socket.assigns[:review_feedback] || "")
+    |> assign(:review_contradicts?, socket.assigns[:review_contradicts?] || false)
     |> assign(:review_error, socket.assigns[:review_error])
   end
+
+  # Only a rejection has an outcome to tell apart, so the history is read only
+  # when there is a note that depends on it.
+  defp rejection_blocked?(authority, project_id, feature, %{decision: "rejected"}),
+    do: Review.blocked_for_specification?(authority, project_id, feature)
+
+  defp rejection_blocked?(_authority, _project_id, _feature, _decision), do: false
 
   defp assign_disclosure(socket) do
     disclosure = ProcessingDisclosure.describe()
@@ -814,6 +883,25 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp review_outcome_text_class(%{decision: "approved"}), do: "text-ok-fg"
   defp review_outcome_text_class(_decision), do: "text-err-fg"
 
+  # Which of the two things this rejection set in motion, read from the flag the
+  # rejection recorded rather than re-derived here. The feature's `Blocked`
+  # status cannot answer it — that is also true once the continued run blocks on
+  # a question of the agent's own, and telling a reviewer their words paused the
+  # run when they did not would be worse than saying nothing.
+  defp rejection_outcome(true), do: "blocked"
+  defp rejection_outcome(_blocked?), do: "continued"
+
+  defp rejection_note(blocked_for_specification?) do
+    if blocked_for_specification? do
+      "This feedback is on record and was reported as changing what was agreed. Nothing was sent " <>
+        "to the agent: the run is paused on the question above until that is decided and written " <>
+        "into the specification. The branch and everything already proved are kept."
+    else
+      "This feedback is on record. The feature is back in development, and the same run continues " <>
+        "on the same branch as a further attempt working from it. Everything already proved is kept."
+    end
+  end
+
   # One labelled preview fact, kept apart from the evidence section's own facts
   # so a selector for one can never match the other.
   attr :label, :string, required: true
@@ -944,16 +1032,17 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
               {@review_decision.feedback}
             </p>
 
-            <%!-- A rejection records a verdict and moves nothing. The feature is
-            still in `Ready for review` on purpose, so the screen says so rather
-            than leaving a reader to read the unchanged column as a fault. --%>
+            <%!-- A rejection does not stop at the verdict: the work goes back to
+            `In development` and the same run carries on, so the note says which
+            of the two things this feedback actually set in motion rather than
+            leaving a reader to read the moved column as a fault. --%>
             <p
               :if={@review_decision.decision == "rejected"}
               class="mt-2 text-xs text-ink-muted"
               data-review-decision-note
+              data-review-decision-continuation={rejection_outcome(@review_blocked_for_spec?)}
             >
-              This feedback is on record. The feature stays where it is until the work continues
-              from it.
+              {rejection_note(@review_blocked_for_spec?)}
             </p>
 
             <dl class="mt-3 flex flex-col gap-1.5 text-xs">
@@ -1020,10 +1109,42 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
                 Sending work back has to say what needs to change. The next attempt works from it.
               </p>
 
+              <%!-- The reviewer declares this; it is never read out of what they
+              wrote. An agent deciding what the approved agreement means is
+              exactly what the specification write-back exists to prevent, so
+              the product asks instead of inferring. --%>
+              <label
+                class="mt-4 flex items-start gap-2.5 text-[13px] font-semibold text-ink"
+                data-review-contradiction-label
+              >
+                <input
+                  type="checkbox"
+                  name="review[contradicts_agreement]"
+                  value="true"
+                  checked={@review_contradicts?}
+                  aria-describedby="review-contradiction-hint"
+                  class={[
+                    "mt-0.5 size-4 flex-none rounded border-line-strong",
+                    "focus:outline-solid focus:outline-2 focus:outline-offset-2 focus:outline-focus"
+                  ]}
+                  data-review-contradiction
+                />
+                <span>This changes what we agreed to build</span>
+              </label>
+              <p
+                id="review-contradiction-hint"
+                class="mt-1.5 pl-7 text-xs text-ink-muted"
+                data-review-contradiction-hint
+              >
+                Leave this off and the same run goes straight back to work from your feedback. Turn
+                it on and the feedback is raised as a question for the specification instead, so the
+                agreement is decided before any further attempt runs.
+              </p>
+
               <.button
                 variant="secondary"
                 type="submit"
-                class="mt-3 w-full sm:w-auto"
+                class="mt-4 w-full sm:w-auto"
                 data-review-reject
               >
                 <.lucide name="arrow-left" class="size-4" /> Send back

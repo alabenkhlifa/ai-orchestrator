@@ -20,11 +20,17 @@ defmodule SddOrchestrator.Delivery.Review do
   currently sits.
 
   An approval finishes the feature: `Ready for review` to `Done`, the one move
-  that ends the lifecycle. A rejection deliberately moves nothing. It records the
-  verdict and its activity and stops there, because continuing the run — ending
-  the attempt, opening the next one, and returning the feature to development —
-  is Task 35's, and a column moved twice by two owners is how the board and the
-  run start disagreeing.
+  that ends the lifecycle. A rejection sends it back to `In development` and
+  continues the same run in the same commit as the verdict. Splitting those in
+  two would leave a rejected feature stranded in `Ready for review` whenever the
+  second commit never ran, and a crash would make that permanent. What the
+  continuation consists of belongs to `ReviewContinuation`; this module still
+  owns only the verdict.
+
+  Whether the feedback contradicts the approved product agreement is declared by
+  the reviewer, never inferred here. Feedback that changes the agreement blocks
+  for specification write-back instead of quietly starting an attempt against a
+  manifest the agreement no longer supports.
 
   A rejection must say why. Feedback is required, non-blank, and bounded, in this
   module, in the changeset, and again at the database, because a rejection nobody
@@ -44,12 +50,17 @@ defmodule SddOrchestrator.Delivery.Review do
 
   alias SddOrchestrator.Delivery.{
     ActivityEntry,
+    AgentRun,
     Assignment,
+    BlockingQuestion,
     DeliveryStore,
     Feature,
     ParticipantGuard,
+    ReviewContinuation,
     ReviewDecision,
     ReviewHandoff,
+    RunAttempt,
+    RunCommand,
     RunTransitions,
     VerificationCompletion
   }
@@ -66,7 +77,10 @@ defmodule SddOrchestrator.Delivery.Review do
           applied?: boolean(),
           feature: Feature.t(),
           decision: ReviewDecision.t(),
-          activity: ActivityEntry.t() | nil
+          activity: ActivityEntry.t() | nil,
+          attempt: RunAttempt.t() | nil,
+          command: RunCommand.t() | nil,
+          question: BlockingQuestion.t() | nil
         }
 
   @type error ::
@@ -75,6 +89,9 @@ defmodule SddOrchestrator.Delivery.Review do
           | :not_verified
           | :feedback_required
           | :feedback_too_long
+          | :unknown_run
+          | :no_attempt
+          | ReviewContinuation.error()
           | DeliveryStore.error()
 
   # The one column a decision may be made from, and the one an approval reaches.
@@ -114,13 +131,19 @@ defmodule SddOrchestrator.Delivery.Review do
   Rejects the feature with the feedback the next attempt has to act on.
 
   Blank, whitespace-only, and oversized feedback are refused before anything is
-  written. The feature stays in `Ready for review`: recording the rejection is
-  this module's job, and continuing the run is not.
+  written. The feature returns to `In development` and the same run continues on
+  the same branch as one further attempt.
+
+  `:contradicts_agreement?` is the reviewer's declaration that acting on this
+  feedback would change the approved product agreement. It defaults to `false`,
+  and when it is `true` nothing is dispatched: the run pauses on a blocking
+  question so the agreement is decided and written back before any attempt runs
+  against it.
   """
-  @spec reject(authority(), actor(), subject(), String.t()) ::
+  @spec reject(authority(), actor(), subject(), String.t(), keyword()) ::
           {:ok, result()} | {:error, error()}
-  def reject(authority, actor, subject, feedback),
-    do: decide(authority, actor, subject, "rejected", feedback)
+  def reject(authority, actor, subject, feedback, opts \\ []),
+    do: decide(authority, actor, subject, "rejected", feedback, opts)
 
   @doc """
   Whether this reader may decide this feature right now.
@@ -145,7 +168,31 @@ defmodule SddOrchestrator.Delivery.Review do
     |> List.last()
   end
 
-  defp decide(authority, actor, %{project: project, feature: feature}, outcome, feedback) do
+  @doc """
+  Whether the feature's latest rejection was raised for specification write-back.
+
+  Answered from the flag the rejection itself recorded, so a caller never has to
+  re-derive it. The feature's `Blocked` status cannot answer this — a continued
+  run blocks on questions of the agent's own — and comparing the open question's
+  text against the verdict's feedback would tie the answer to how the question
+  happens to be truncated today. One recorded fact, read by everyone who needs
+  it.
+  """
+  @spec blocked_for_specification?(authority(), Ecto.UUID.t(), Feature.t()) :: boolean()
+  def blocked_for_specification?(authority, project_id, %Feature{} = feature) do
+    authority
+    |> DeliveryStore.list_activity(project_id, feature.id, limit: 200)
+    |> Enum.filter(&(&1.type == @rejected_activity))
+    |> List.last()
+    |> case do
+      nil -> false
+      entry -> entry.payload["blocked_for_specification"] == true
+    end
+  end
+
+  defp decide(authority, actor, subject, outcome, feedback, opts \\ []) do
+    %{project: project, feature: feature} = subject
+
     with {:ok, member} <- ParticipantGuard.authorize_action(project.id, actor, :review),
          :ok <- deciding_authority(project.id, feature, member),
          :ok <- in_review(feature),
@@ -158,7 +205,8 @@ defmodule SddOrchestrator.Delivery.Review do
         verified: verified,
         outcome: outcome,
         feedback: text,
-        key: operation_key(verified)
+        key: operation_key(verified),
+        opts: opts
       })
     end
   end
@@ -260,34 +308,85 @@ defmodule SddOrchestrator.Delivery.Review do
   defp commit(authority, verdict) do
     attrs = decision_attrs(authority, verdict)
 
-    authority
-    |> DeliveryStore.commit(verdict.project_id, steps(verdict, attrs))
-    |> case do
-      {:ok, results} ->
-        {:ok,
-         %{
-           applied?: true,
-           feature: Map.get(results, :feature, verdict.feature),
-           decision: results.decision,
-           activity: Map.get(results, :activity)
-         }}
+    with {:ok, continuation} <- continuation(authority, verdict) do
+      authority
+      |> DeliveryStore.commit(verdict.project_id, steps(verdict, attrs, continuation))
+      |> case do
+        {:ok, results} ->
+          {:ok,
+           %{
+             applied?: true,
+             feature: Map.get(results, :feature, verdict.feature),
+             decision: results.decision,
+             activity: Map.get(results, :activity),
+             attempt: Map.get(results, :attempt),
+             command: Map.get(results, :command),
+             question: Map.get(results, :question)
+           }}
 
-      {:error, _step, reason} ->
-        {:error, reason}
+        {:error, _step, reason} ->
+          {:error, reason}
+      end
     end
   end
 
-  # Each record is written exactly once. A second write of either in one commit
-  # would be offered against the version its sibling just bumped and rejected as
-  # stale.
-  defp steps(verdict, attrs) do
-    [{:decision, {:insert_review_decision, attrs}}] ++
-      feature_steps(verdict) ++
-      [{:activity, {:append_activity, activity_attrs(verdict, attrs)}}]
+  # An approval ends the lifecycle and has nothing to continue. A rejection plans
+  # its continuation before anything is written, so a run that cannot be
+  # continued is refused rather than leaving a verdict behind with no way back
+  # into development.
+  defp continuation(_authority, %{outcome: "approved"}), do: {:ok, nil}
+
+  defp continuation(authority, verdict) do
+    with {:ok, run} <- rejected_run(authority, verdict),
+         {:ok, attempt} <- latest_attempt(authority, verdict, run) do
+      ReviewContinuation.plan(authority, %{
+        feature: verdict.feature,
+        run: run,
+        attempt: attempt,
+        feedback: verdict.feedback,
+        contradicts_agreement?: Keyword.get(verdict.opts, :contradicts_agreement?, false),
+        opts: verdict.opts
+      })
+    end
   end
 
-  # An approval is the only decision that moves the board. A rejection leaves the
-  # feature exactly where it is; Task 35 owns what happens to the run next.
+  defp rejected_run(authority, verdict) do
+    case DeliveryStore.fetch_run(authority, verdict.project_id, verdict.verified.run_id) do
+      {:ok, %AgentRun{} = run} -> {:ok, run}
+      :error -> {:error, :unknown_run}
+    end
+  end
+
+  # The run's highest-numbered attempt rather than its current one, because the
+  # attempt a reviewer judged may already have ended and the continuation still
+  # needs the ordering and fence it has to advance past.
+  defp latest_attempt(authority, verdict, run) do
+    case DeliveryStore.latest_attempt(authority, verdict.project_id, run.id) do
+      {:ok, attempt} -> {:ok, attempt}
+      :error -> {:error, :no_attempt}
+    end
+  end
+
+  # Each record is written exactly once. A second write of any of them in one
+  # commit would be offered against the version its sibling just bumped and
+  # rejected as stale. The history is one entry too: the device adapter numbers
+  # activity from what is already committed, so two appends in one batch would
+  # claim the same sequence.
+  defp steps(verdict, attrs, nil) do
+    [{:decision, {:insert_review_decision, attrs}}] ++
+      feature_steps(verdict) ++
+      [{:activity, {:append_activity, activity_attrs(verdict, attrs, %{})}}]
+  end
+
+  defp steps(verdict, attrs, continuation) do
+    [{:decision, {:insert_review_decision, attrs}}] ++
+      continuation.records ++
+      [{:activity, {:append_activity, activity_attrs(verdict, attrs, continuation.payload)}}] ++
+      continuation.commands
+  end
+
+  # An approval is the only decision that moves the board from here. Where a
+  # rejection moves the feature is part of the continuation it commits with.
   defp feature_steps(%{outcome: "approved", feature: feature}),
     do: [{:feature, {:transition_feature, feature, @approved_column, []}}]
 
@@ -328,7 +427,10 @@ defmodule SddOrchestrator.Delivery.Review do
     end
   end
 
-  defp activity_attrs(verdict, attrs) do
+  # The entry names the attempt the verdict was about, not the one a rejection
+  # opens. A decision belongs to the proof it judged; what the continuation did
+  # next is carried in the payload beside it.
+  defp activity_attrs(verdict, attrs, continuation_payload) do
     %{
       project_id: verdict.project_id,
       feature_id: verdict.feature.id,
@@ -337,7 +439,7 @@ defmodule SddOrchestrator.Delivery.Review do
       actor_kind: "participant",
       actor_account_id: verdict.member.account_id,
       type: activity_type(verdict.outcome),
-      payload: payload(verdict, attrs)
+      payload: Map.merge(payload(verdict, attrs), continuation_payload)
     }
   end
 
@@ -364,20 +466,27 @@ defmodule SddOrchestrator.Delivery.Review do
   defp activity_type("rejected"), do: @rejected_activity
 
   defp column_after("approved"), do: @approved_column
-  defp column_after("rejected"), do: @column
+  defp column_after("rejected"), do: ReviewContinuation.column()
 
   # The attempt is the unit a verdict belongs to, so a resubmitted decision finds
   # its own earlier effect instead of colliding with the store's unique binding.
   defp operation_key(%ActivityEntry{attempt_id: attempt_id}),
     do: "review-decision:" <> attempt_id
 
+  # A decided attempt is decided whichever way it went, so nothing is planned or
+  # dispatched a second time. The records a first rejection created are already
+  # in the store; repeating them here would be a second continuation of a run
+  # that has already moved on.
   defp already_decided(authority, verdict) do
     {:ok,
      %{
        applied?: false,
        feature: current_feature(authority, verdict),
        decision: held_decision(authority, verdict),
-       activity: recorded_entry(authority, verdict)
+       activity: recorded_entry(authority, verdict),
+       attempt: nil,
+       command: nil,
+       question: nil
      }}
   end
 
