@@ -18,6 +18,10 @@ Provides:
 
 - `capability:<name>` — ready after `Task <n>`.
 
+## Slice Size Gate
+
+- Slice size: Standard
+
 ## Task Size Gate
 
 - Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof.

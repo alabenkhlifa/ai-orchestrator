@@ -80,6 +80,9 @@ CAPABILITY_PROVIDER_RE = re.compile(
     rf"^- `(?P<name>{CAPABILITY_NAME_PATTERN})` — ready after `(?P<task>Task \d+)`\.$"
 )
 TASK_RECORD_RE = re.compile(r"^- \[([ xX])\]\s+(.+)$")
+SLICE_SIZE_HEADING = "## Slice Size Gate"
+SLICE_SIZE_LINE_RE = re.compile(r"^- Slice size:\s*(.*)$")
+SLICE_SIZE_EXCEPTION_RE = re.compile(r"^Exception — (?P<reason>.+)\.$")
 TASK_SIZE_HEADING = "## Task Size Gate"
 TASK_SIZE_LINE_RE = re.compile(r"^\s*- Size:\s*(.+)$")
 TASK_SIZE_EXCEPTION_RE = re.compile(r"^Exception — (?P<reason>.+)\.$")
@@ -354,6 +357,122 @@ def task_ownership_counts(task_body: str) -> tuple[int, int]:
             elif token.startswith("entity:") and OWNS_TOKEN_RE.fullmatch(token):
                 entities.add(token)
     return len(acceptance_criteria), len(entities)
+
+
+def valid_dependency_depth(tasks_body: str) -> int | None:
+    """Return the longest valid dependency path, or None for an invalid graph.
+
+    Dependency-shape errors remain owned by validate_task_dependencies so the
+    slice-size gate does not report a second error for the same malformed edge.
+    """
+    tasks, structural_errors = collect_task_dependency_lines(tasks_body)
+    if structural_errors or not tasks:
+        return None
+
+    labels = [label for label, _ in tasks]
+    if any(not TASK_ID_RE.fullmatch(label) for label in labels):
+        return None
+    if len(set(labels)) != len(labels):
+        return None
+
+    positions = {label: position for position, label in enumerate(labels)}
+    depths: dict[str, int] = {}
+    for position, (label, declarations) in enumerate(tasks):
+        if len(declarations) != 1:
+            return None
+
+        content = declarations[0]
+        if content.lower() in {"none", "none."}:
+            dependencies: list[str] = []
+        else:
+            dependencies = [raw.strip() for raw in content.split(",") if raw.strip()]
+            if not dependencies or len(set(dependencies)) != len(dependencies):
+                return None
+            if any(not TASK_ID_RE.fullmatch(dependency) for dependency in dependencies):
+                return None
+            if any(
+                dependency not in positions or positions[dependency] >= position
+                for dependency in dependencies
+            ):
+                return None
+
+        depths[label] = 1 + max(
+            (depths[dependency] for dependency in dependencies),
+            default=0,
+        )
+
+    return max(depths.values())
+
+
+def validate_slice_size_gate(spec_dir: Path, contents: dict[str, str]) -> list[str]:
+    """Validate the optional prospective slice-size declaration and limits."""
+    tasks_text = contents["tasks.md"]
+    tasks_path = spec_dir / "tasks.md"
+    if SLICE_SIZE_HEADING not in tasks_text:
+        return []
+
+    errors: list[str] = []
+    capability_index = tasks_text.find(CAPABILITY_HEADING)
+    slice_size_index = tasks_text.find(SLICE_SIZE_HEADING)
+    task_size_index = tasks_text.find(TASK_SIZE_HEADING)
+    if (
+        capability_index == -1
+        or task_size_index == -1
+        or not (capability_index < slice_size_index < task_size_index)
+    ):
+        errors.append(
+            f"{tasks_path}: {SLICE_SIZE_HEADING} must appear after "
+            f"{CAPABILITY_HEADING} and before {TASK_SIZE_HEADING}"
+        )
+
+    gate_body = section_body(tasks_text, SLICE_SIZE_HEADING)
+    declarations = [
+        match.group(1).strip()
+        for line in gate_body.splitlines()
+        if (match := SLICE_SIZE_LINE_RE.fullmatch(line)) is not None
+    ]
+    if not declarations:
+        errors.append(
+            f"{tasks_path}: {SLICE_SIZE_HEADING} is missing a top-level "
+            "'- Slice size:' declaration"
+        )
+        return errors
+    if len(declarations) > 1:
+        errors.append(
+            f"{tasks_path}: {SLICE_SIZE_HEADING} has multiple top-level "
+            "'- Slice size:' declarations"
+        )
+        return errors
+
+    declaration = declarations[0]
+    if declaration == "Standard":
+        tasks_body = section_body(tasks_text, "## Tasks")
+        tasks, _ = collect_task_dependency_lines(tasks_body)
+        if len(tasks) > 12:
+            errors.append(
+                f"{tasks_path}: Standard slice has {len(tasks)} tasks; "
+                "split it or record a justified Slice size exception"
+            )
+
+        longest_path = valid_dependency_depth(tasks_body)
+        if longest_path is not None and longest_path > 8:
+            errors.append(
+                f"{tasks_path}: Standard slice has a longest dependency path of "
+                f"{longest_path} tasks; split it or record a justified Slice size exception"
+            )
+        return errors
+
+    exception = SLICE_SIZE_EXCEPTION_RE.fullmatch(declaration)
+    if exception is not None:
+        reason = exception.group("reason").strip()
+        if reason and not re.search(r"<[^>\n]+>", reason):
+            return errors
+
+    errors.append(
+        f"{tasks_path}: Slice size must be 'Standard' or "
+        "'Exception — <specific nonempty reason>.'"
+    )
+    return errors
 
 
 def validate_task_size_gate(spec_dir: Path, contents: dict[str, str]) -> list[str]:
@@ -1048,6 +1167,7 @@ def validate_spec_directory(
         errors.extend(validate_task_dependencies(spec_dir, contents))
         errors.extend(validate_traceability(spec_dir, contents))
         errors.extend(validate_capability_dependencies(spec_dir, contents))
+        errors.extend(validate_slice_size_gate(spec_dir, contents))
         errors.extend(validate_task_size_gate(spec_dir, contents))
         errors.extend(validate_proof_scope_gate(spec_dir, contents))
 

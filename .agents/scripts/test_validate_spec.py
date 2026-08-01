@@ -212,6 +212,73 @@ Provides:
 """
 
 
+def slice_size_document(
+    tasks: str,
+    *,
+    declaration: str | None = "- Slice size: Standard",
+    duplicate_declaration: bool = False,
+    gate_after_task_size: bool = False,
+) -> str:
+    declarations = "" if declaration is None else f"{declaration}\n"
+    if duplicate_declaration and declaration is not None:
+        declarations += f"{declaration}\n"
+    slice_gate = f"""\
+## Slice Size Gate
+
+{declarations}"""
+    task_gate = """\
+## Task Size Gate
+
+- Standard tasks deliver one independently provable outcome in one task-boundary commit.
+- Exceptions are allowed only when splitting creates an invalid intermediate state.
+"""
+    ordered_gates = (
+        f"{task_gate}\n{slice_gate}" if gate_after_task_size else f"{slice_gate}\n{task_gate}"
+    )
+    return f"""\
+# Example Tasks
+
+## Status
+
+Not Started
+
+## Active Slice
+
+Deliver the example.
+
+## Cross-Specification Dependencies
+
+Requires:
+
+- None.
+
+Provides:
+
+- None.
+
+{ordered_gates}
+## Implementation Boundary
+
+- The example slice-size contract.
+
+## Tasks
+
+{tasks}
+
+## Verification Gate
+
+- [ ] The example proof passes.
+
+## Blocked Decisions
+
+- None.
+
+## Progress Log
+
+- Implementation has not started.
+"""
+
+
 def proof_scope_document(
     tasks: str,
     *,
@@ -583,6 +650,113 @@ class CapabilityGraphValidationTests(unittest.TestCase):
                 for error in self.errors(first, second)
             )
         )
+
+
+class SliceSizeValidationTests(unittest.TestCase):
+    def errors(self, tasks: str) -> list[str]:
+        return validate_spec.validate_slice_size_gate(
+            Path("specs/example"),
+            {"tasks.md": tasks},
+        )
+
+    def task(self, number: int, dependencies: str = "none") -> str:
+        return f"""\
+- [ ] Task {number} — Deliver outcome {number}.
+  - Size: Standard
+  - Owns: none (slice-size contract only).
+  - Depends on: {dependencies}
+  - Proof: The focused proof passes.
+"""
+
+    def graph(self, dependencies: list[str]) -> str:
+        return "\n".join(
+            self.task(number, dependency)
+            for number, dependency in enumerate(dependencies, start=1)
+        )
+
+    def test_legacy_spec_without_gate_remains_valid(self) -> None:
+        self.assertEqual(
+            [],
+            self.errors("# Tasks\n\n## Tasks\n\n" + self.task(1)),
+        )
+
+    def test_requires_gate_between_capability_and_task_size_sections(self) -> None:
+        errors = self.errors(
+            slice_size_document(self.task(1), gate_after_task_size=True)
+        )
+        self.assertTrue(any("must appear after" in error for error in errors))
+
+    def test_requires_exactly_one_top_level_declaration(self) -> None:
+        missing = slice_size_document(self.task(1), declaration=None)
+        self.assertTrue(
+            any("is missing a top-level" in error for error in self.errors(missing))
+        )
+
+        duplicate = slice_size_document(
+            self.task(1),
+            duplicate_declaration=True,
+        )
+        self.assertTrue(
+            any("has multiple top-level" in error for error in self.errors(duplicate))
+        )
+
+    def test_rejects_malformed_declaration(self) -> None:
+        malformed = slice_size_document(
+            self.task(1),
+            declaration="- Slice size: Exception —",
+        )
+        self.assertTrue(
+            any("Slice size must be" in error for error in self.errors(malformed))
+        )
+
+    def test_accepts_exact_twelve_tasks_and_eight_task_path(self) -> None:
+        dependencies = ["none"]
+        dependencies.extend(f"Task {number}" for number in range(1, 8))
+        dependencies.extend(["Task 1"] * 4)
+        self.assertEqual(
+            [],
+            self.errors(slice_size_document(self.graph(dependencies))),
+        )
+
+    def test_rejects_thirteen_tasks(self) -> None:
+        tasks = self.graph(["none"] + ["Task 1"] * 12)
+        errors = self.errors(slice_size_document(tasks))
+        self.assertTrue(any("Standard slice has 13 tasks" in error for error in errors))
+
+    def test_rejects_nine_task_dependency_path(self) -> None:
+        dependencies = ["none"]
+        dependencies.extend(f"Task {number}" for number in range(1, 9))
+        errors = self.errors(slice_size_document(self.graph(dependencies)))
+        self.assertTrue(
+            any("longest dependency path of 9 tasks" in error for error in errors)
+        )
+
+    def test_accepts_wide_parallel_graph_with_short_critical_path(self) -> None:
+        tasks = self.graph(["none"] + ["Task 1"] * 11)
+        self.assertEqual([], self.errors(slice_size_document(tasks)))
+
+    def test_exception_bypasses_slice_limits_only(self) -> None:
+        dependencies = ["none"]
+        dependencies.extend(f"Task {number}" for number in range(1, 13))
+        document = slice_size_document(
+            self.graph(dependencies),
+            declaration=(
+                "- Slice size: Exception — Splitting the atomic rollout would "
+                "leave consumers without a compatible provider."
+            ),
+        )
+        self.assertEqual([], self.errors(document))
+
+    def test_malformed_dependencies_do_not_duplicate_path_errors(self) -> None:
+        tasks = self.graph(["none", "Task 9"])
+        document = slice_size_document(tasks)
+        self.assertEqual([], self.errors(document))
+        dependency_errors = validate_spec.validate_task_dependencies(
+            Path("specs/example"),
+            {"tasks.md": document},
+        )
+        self.assertEqual(1, len(dependency_errors))
+        self.assertIn("depends on unknown task Task 9", dependency_errors[0])
 
 
 class TaskSizeValidationTests(unittest.TestCase):

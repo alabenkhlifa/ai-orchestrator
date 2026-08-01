@@ -80,11 +80,23 @@ Slice numbers are stable identifiers, not execution order. Express implementatio
 - Run the repository's global cross-specification dependency validator when available. It must reject missing or ambiguous providers, malformed references, cycles, unavailable prerequisites for active consumers, and provider/consumer contract conflicts.
 - When a capability edge changes, update both provider and consumer specifications in the same specification change and re-run their individual validators plus the global graph check.
 
+### Slice Size Gate
+
+Adopt the slice-size contract for every new task plan. Do not retrofit an active legacy slice solely to satisfy the numeric limits; when its unfinished work is next materially refined, preserve completed history and move independently executable remaining outcomes into new child specifications that adopt the gate.
+
+- Every new `tasks.md` must include `## Slice Size Gate` after `## Cross-Specification Dependencies` and before `## Task Size Gate`.
+- Declare exactly `- Slice size: Standard` or `- Slice size: Exception — <why no smaller slice can deliver a coherent independently verifiable capability without duplicating authority or creating an invalid lifecycle boundary>.`
+- A standard slice delivers one primary product or platform outcome through one coherent end-to-end workflow and one verification gate, contains at most 12 tasks total, and has a longest `Depends on:` path of at most 8 tasks.
+- Treat 12 total tasks and an 8-task critical path as hard planning limits, not targets. Split earlier when workflows, integrations, trust boundaries, data lifecycles, owners, failure paths, or proof modalities can be implemented and verified independently.
+- Do not evade the slice limit by combining work that fails the Task Size Gate. Every resulting task must still deliver one independently provable outcome.
+- Use a slice-size exception only when every smaller boundary would duplicate one authoritative contract or create a concrete invalid lifecycle or verification state. Complexity, convenience, chronology, a shared release milestone, or a desire for one pull request is not an exception.
+- Express sequencing between smaller slices with capability dependencies. Keep shared rules and release coordination in an umbrella specification only when its executable work lives in focused child specifications.
+
 ### Task Size Gate
 
 Adopt the task-size contract when Slice 06 or any later slice is next refined. Do not rewrite completed Slice 05 tasks solely to migrate them.
 
-- Every new or refined `tasks.md` must include `## Task Size Gate` after `## Cross-Specification Dependencies` and before `## Implementation Boundary`.
+- Every new `tasks.md` must include `## Task Size Gate` after `## Slice Size Gate` and before `## Implementation Boundary`. Preserve the established position in a legacy plan that has not adopted the Slice Size Gate.
 - Give every task exactly one size declaration: `Size: Standard` or `Size: Exception — <why splitting creates an invalid intermediate state>.`
 - A standard task delivers one independently provable outcome, owns one primary state transition or invariant and normally one adapter or workflow, produces one task-boundary implementation commit, owns at most three acceptance criteria and two entities, and has focused proof expected to run in about ten minutes.
 - Use 30–45 minutes as a planning target, not a promise. Expected work beyond 60 minutes or more than one meaningful implementation commit is a split signal.
