@@ -83,6 +83,15 @@ TASK_RECORD_RE = re.compile(r"^- \[([ xX])\]\s+(.+)$")
 TASK_SIZE_HEADING = "## Task Size Gate"
 TASK_SIZE_LINE_RE = re.compile(r"^\s*- Size:\s*(.+)$")
 TASK_SIZE_EXCEPTION_RE = re.compile(r"^Exception — (?P<reason>.+)\.$")
+PROOF_SCOPE_HEADING = "## Proof Scope Gate"
+PROOF_APPLIES_LINE_RE = re.compile(r"^- Applies to:\s*(.+)$")
+PROOF_SCOPE_LINE_RE = re.compile(r"^\s*- Proof scope:\s*(.*)$")
+PROOF_SCOPE_BROAD_RE = re.compile(r"^Broad — (?P<reason>.+)\.$")
+PROOF_RECEIPT_RE = re.compile(
+    r"^- Proof receipt: `(?P<task>Task \d+)` — "
+    r"scope `(?P<scope>Focused|Broad)` — "
+    r"command `(?P<command>[^`\n]+)` — exit `0`\.$"
+)
 
 
 def section_body(text: str, heading: str) -> str:
@@ -428,6 +437,131 @@ def validate_task_size_gate(spec_dir: Path, contents: dict[str, str]) -> list[st
             errors.append(
                 f"{tasks_path}: {task} Size exception must explain the invalid "
                 "intermediate state created by splitting"
+            )
+
+    return errors
+
+
+def validate_proof_scope_gate(spec_dir: Path, contents: dict[str, str]) -> list[str]:
+    """Validate opt-in task proof scopes and completed-task proof receipts."""
+    tasks_text = contents["tasks.md"]
+    tasks_path = spec_dir / "tasks.md"
+    if PROOF_SCOPE_HEADING not in tasks_text:
+        return []
+
+    errors: list[str] = []
+    size_index = tasks_text.find(TASK_SIZE_HEADING)
+    proof_index = tasks_text.find(PROOF_SCOPE_HEADING)
+    boundary_index = tasks_text.find("## Implementation Boundary")
+    if size_index == -1 or not (size_index < proof_index < boundary_index):
+        errors.append(
+            f"{tasks_path}: {PROOF_SCOPE_HEADING} must appear after "
+            f"{TASK_SIZE_HEADING} and before ## Implementation Boundary"
+        )
+
+    gate_body = section_body(tasks_text, PROOF_SCOPE_HEADING)
+    applies_declarations = [
+        match.group(1).strip()
+        for line in gate_body.splitlines()
+        if (match := PROOF_APPLIES_LINE_RE.fullmatch(line)) is not None
+    ]
+    if not applies_declarations:
+        errors.append(
+            f"{tasks_path}: {PROOF_SCOPE_HEADING} is missing a top-level "
+            "'- Applies to:' declaration"
+        )
+        return errors
+    if len(applies_declarations) > 1:
+        errors.append(
+            f"{tasks_path}: {PROOF_SCOPE_HEADING} has multiple top-level "
+            "'- Applies to:' declarations"
+        )
+        return errors
+
+    task_order, task_records = collect_task_records(section_body(tasks_text, "## Tasks"))
+    applies_value = applies_declarations[0]
+    applicable_tasks: list[str] = []
+    if applies_value == "all tasks.":
+        applicable_tasks = task_order
+        for task in task_order:
+            if not TASK_ID_RE.fullmatch(task):
+                errors.append(
+                    f"{tasks_path}: proof-scope task label {task!r} must be 'Task <n>'"
+                )
+    else:
+        normalized_value = (
+            applies_value[:-1] if applies_value.endswith(".") else applies_value
+        )
+        labels = [label.strip() for label in normalized_value.split(",")]
+        if not labels or any(not label for label in labels):
+            errors.append(
+                f"{tasks_path}: Applies to must be 'all tasks.' or a comma-separated "
+                "list of 'Task <n>' labels"
+            )
+            return errors
+        seen_labels: set[str] = set()
+        for label in labels:
+            if not TASK_ID_RE.fullmatch(label):
+                errors.append(
+                    f"{tasks_path}: Applies to label {label!r} must be 'Task <n>'"
+                )
+                continue
+            if label in seen_labels:
+                errors.append(f"{tasks_path}: Applies to repeats task label {label}")
+                continue
+            seen_labels.add(label)
+            if label not in task_records:
+                errors.append(f"{tasks_path}: Applies to references unknown task {label}")
+                continue
+            applicable_tasks.append(label)
+
+    receipts = [
+        match.groupdict()
+        for line in section_body(tasks_text, "## Progress Log").splitlines()
+        if (match := PROOF_RECEIPT_RE.fullmatch(line.strip())) is not None
+    ]
+
+    for task in applicable_tasks:
+        record = task_records.get(task)
+        if record is None:
+            # Unknown labels are reported while parsing an explicit applicability list.
+            continue
+        declarations = [
+            match.group(1).strip()
+            for line in str(record["body"]).splitlines()
+            if (match := PROOF_SCOPE_LINE_RE.fullmatch(line)) is not None
+        ]
+        if not declarations:
+            errors.append(f"{tasks_path}: {task} is missing a Proof scope line")
+            continue
+        if len(declarations) > 1:
+            errors.append(f"{tasks_path}: {task} has multiple Proof scope lines")
+            continue
+
+        declaration = declarations[0]
+        scope: str | None = None
+        if declaration == "Focused":
+            scope = "Focused"
+        else:
+            broad = PROOF_SCOPE_BROAD_RE.fullmatch(declaration)
+            if broad is not None:
+                reason = broad.group("reason").strip()
+                if reason and not re.search(r"<[^>\n]+>", reason):
+                    scope = "Broad"
+        if scope is None:
+            errors.append(
+                f"{tasks_path}: {task} Proof scope must be 'Focused' or "
+                "'Broad — <specific nonempty reason>.'"
+            )
+            continue
+
+        if bool(record["complete"]) and not any(
+            receipt["task"] == task and receipt["scope"] == scope
+            for receipt in receipts
+        ):
+            errors.append(
+                f"{tasks_path}: completed {task} requires a successful {scope} "
+                "Proof receipt in the Progress Log"
             )
 
     return errors
@@ -915,6 +1049,7 @@ def validate_spec_directory(
         errors.extend(validate_traceability(spec_dir, contents))
         errors.extend(validate_capability_dependencies(spec_dir, contents))
         errors.extend(validate_task_size_gate(spec_dir, contents))
+        errors.extend(validate_proof_scope_gate(spec_dir, contents))
 
     return contents, errors
 

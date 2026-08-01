@@ -212,6 +212,64 @@ Provides:
 """
 
 
+def proof_scope_document(
+    tasks: str,
+    *,
+    applies_to: str = "all tasks.",
+    progress: str = "- Implementation has not started.",
+    proof_gate_after_boundary: bool = False,
+) -> str:
+    size_gate = """\
+## Task Size Gate
+
+- Standard tasks deliver one independently provable outcome in one task-boundary commit.
+- Exceptions are allowed only when splitting creates an invalid intermediate state.
+"""
+    proof_gate = f"""\
+## Proof Scope Gate
+
+- Applies to: {applies_to}
+"""
+    boundary = """\
+## Implementation Boundary
+
+- The example proof-scope contract.
+"""
+    ordered_sections = (
+        f"{size_gate}\n{boundary}\n{proof_gate}"
+        if proof_gate_after_boundary
+        else f"{size_gate}\n{proof_gate}\n{boundary}"
+    )
+    return f"""\
+# Example Tasks
+
+## Status
+
+Not Started
+
+## Active Slice
+
+Deliver the example.
+
+{ordered_sections}
+## Tasks
+
+{tasks}
+
+## Verification Gate
+
+- [ ] The example proof passes.
+
+## Blocked Decisions
+
+- None.
+
+## Progress Log
+
+{progress}
+"""
+
+
 class TraceabilityValidationTests(unittest.TestCase):
     def errors(self, boundary: str = BOUNDARY, tasks: str = TASKS) -> list[str]:
         contents = {
@@ -600,6 +658,141 @@ class TaskSizeValidationTests(unittest.TestCase):
         self.assertTrue(
             any("must explain the invalid intermediate state" in error for error in self.errors(task_size_document(tasks)))
         )
+
+
+class ProofScopeValidationTests(unittest.TestCase):
+    def errors(self, tasks: str) -> list[str]:
+        return validate_spec.validate_proof_scope_gate(
+            Path("specs/example"),
+            {"tasks.md": tasks},
+        )
+
+    def task(
+        self,
+        number: int,
+        *,
+        complete: bool = False,
+        proof_scope: str | None = "Focused",
+        duplicate_scope: bool = False,
+    ) -> str:
+        checkbox = "x" if complete else " "
+        scope_lines = ""
+        if proof_scope is not None:
+            scope_lines = f"  - Proof scope: {proof_scope}\n"
+            if duplicate_scope:
+                scope_lines += f"  - Proof scope: {proof_scope}\n"
+        return f"""\
+- [{checkbox}] Task {number} — Deliver one outcome.
+  - Size: Standard
+{scope_lines}  - Owns: none (proof contract only).
+  - Depends on: none
+  - Proof: The declared proof passes.
+"""
+
+    def receipt(
+        self,
+        task: int,
+        *,
+        scope: str = "Focused",
+        command: str = "mix test test/example_test.exs",
+    ) -> str:
+        return (
+            f"- Proof receipt: `Task {task}` — scope `{scope}` — "
+            f"command `{command}` — exit `0`."
+        )
+
+    def test_legacy_spec_without_gate_remains_valid(self) -> None:
+        self.assertEqual(
+            [],
+            self.errors("# Tasks\n\n## Tasks\n\n" + self.task(1)),
+        )
+
+    def test_accepts_prospective_task_list_without_rewriting_earlier_tasks(self) -> None:
+        tasks = self.task(1, complete=True, proof_scope=None) + "\n" + self.task(2)
+        self.assertEqual(
+            [],
+            self.errors(proof_scope_document(tasks, applies_to="Task 2.")),
+        )
+
+    def test_accepts_completed_focused_task_with_exact_receipt(self) -> None:
+        document = proof_scope_document(
+            self.task(1, complete=True),
+            progress=self.receipt(1),
+        )
+        self.assertEqual([], self.errors(document))
+
+    def test_accepts_completed_broad_task_with_reason_and_broad_receipt(self) -> None:
+        document = proof_scope_document(
+            self.task(
+                1,
+                complete=True,
+                proof_scope=(
+                    "Broad — This task owns the repository-wide dependency "
+                    "validation invariant."
+                ),
+            ),
+            progress=self.receipt(1, scope="Broad", command="mix test"),
+        )
+        self.assertEqual([], self.errors(document))
+
+    def test_requires_gate_between_task_size_and_implementation_boundary(self) -> None:
+        errors = self.errors(
+            proof_scope_document(self.task(1), proof_gate_after_boundary=True)
+        )
+        self.assertTrue(any("must appear after" in error for error in errors))
+
+    def test_requires_exactly_one_top_level_applies_to_declaration(self) -> None:
+        missing = proof_scope_document(self.task(1)).replace(
+            "- Applies to: all tasks.\n",
+            "Applies to all tasks.\n",
+        )
+        self.assertTrue(any("is missing a top-level" in error for error in self.errors(missing)))
+
+        duplicate = proof_scope_document(self.task(1)).replace(
+            "- Applies to: all tasks.\n",
+            "- Applies to: all tasks.\n- Applies to: Task 1.\n",
+        )
+        self.assertTrue(any("has multiple top-level" in error for error in self.errors(duplicate)))
+
+    def test_rejects_malformed_and_unknown_applicability_labels(self) -> None:
+        malformed = proof_scope_document(self.task(1), applies_to="First task.")
+        self.assertTrue(any("must be 'Task <n>'" in error for error in self.errors(malformed)))
+
+        unknown = proof_scope_document(self.task(1), applies_to="Task 1, Task 9.")
+        self.assertTrue(any("unknown task Task 9" in error for error in self.errors(unknown)))
+
+    def test_requires_exactly_one_scope_for_each_applicable_task(self) -> None:
+        missing = proof_scope_document(self.task(1, proof_scope=None))
+        self.assertTrue(any("Task 1 is missing a Proof scope line" in error for error in self.errors(missing)))
+
+        duplicate = proof_scope_document(self.task(1, duplicate_scope=True))
+        self.assertTrue(any("Task 1 has multiple Proof scope lines" in error for error in self.errors(duplicate)))
+
+    def test_rejects_malformed_scope_declarations(self) -> None:
+        malformed_focused = proof_scope_document(self.task(1, proof_scope="focused"))
+        self.assertTrue(any("Proof scope must be" in error for error in self.errors(malformed_focused)))
+
+        empty_broad = proof_scope_document(self.task(1, proof_scope="Broad — ."))
+        self.assertTrue(any("Proof scope must be" in error for error in self.errors(empty_broad)))
+
+    def test_incomplete_task_does_not_require_receipt(self) -> None:
+        self.assertEqual([], self.errors(proof_scope_document(self.task(1))))
+
+    def test_completed_task_requires_matching_exact_receipt(self) -> None:
+        missing = proof_scope_document(self.task(1, complete=True))
+        self.assertTrue(any("requires a successful Focused" in error for error in self.errors(missing)))
+
+        wrong_scope = proof_scope_document(
+            self.task(1, complete=True),
+            progress=self.receipt(1, scope="Broad"),
+        )
+        self.assertTrue(any("requires a successful Focused" in error for error in self.errors(wrong_scope)))
+
+        malformed = proof_scope_document(
+            self.task(1, complete=True),
+            progress=self.receipt(1).replace(" — exit `0`.", " — exit 0."),
+        )
+        self.assertTrue(any("requires a successful Focused" in error for error in self.errors(malformed)))
 
 
 if __name__ == "__main__":

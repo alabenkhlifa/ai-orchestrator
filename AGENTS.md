@@ -93,6 +93,30 @@ Adopt the task-size contract when Slice 06 or any later slice is next refined. D
 - Allow an exception only when splitting an atomic migration, transaction, or invariant would create a concrete invalid intermediate state. Complexity, convenience, chronology, or test duration is not an exception.
 - Preserve completed task labels and history. When splitting unfinished work, update affected task dependencies and cross-specification capability references together and re-run the individual and global validators.
 
+### Task Proof Gate
+
+Adopt the task-proof contract when an active slice's next unfinished task is refined after the proof runner is available. Do not rewrite completed task history solely to migrate it.
+
+- Every newly created `tasks.md`, and every existing `tasks.md` that adopts the contract prospectively, must include `## Proof Scope Gate` after `## Task Size Gate` and before `## Implementation Boundary`.
+- Declare applicability as exactly `- Applies to: all tasks.` for a new task plan or as a comma-separated list of stable task labels for prospective adoption, such as `- Applies to: Task 36, Task 37.` Unknown or duplicate task labels are invalid.
+- Give every applicable task exactly one declaration: `Proof scope: Focused` or `Proof scope: Broad — <why this task owns a broader gate>.` A broad declaration is an exception and requires a concrete ownership reason.
+- Run each focused task-proof command through `python3 .agents/scripts/run_proof.py task --task <n> -- <command>`. For a validator-approved broad task exception, add `--broad` before `--`. The runner must reject unscoped full tests, full browser matrices, dependency installation, production proof, and repository-wide security or quality gates in focused task scope.
+- Paste every successful runner receipt into the task's progress-log entry. An applicable task may not be checked complete, committed, or provide a capability until the specification validator accepts a matching focused or approved broad receipt.
+- The main thread must confirm the same scoped proof by real exit status. Reconciliation does not authorize an additional full-suite run.
+- Run complete repository, browser, security, production, and release commands only through `python3 .agents/scripts/run_proof.py slice -- <command>` at the slice verification gate. Do not use slice scope as a routine task-proof override.
+- If focused proof exposes evidence of a cross-task regression, record the evidence and run the narrowest additional command that can confirm it. Escalate to the slice gate only when the broader gate itself is the affected behavior or a documented stop condition requires it.
+
+## Agent Execution Mode
+
+These rules govern how Codex and Claude Code execute work in this repository, in every SDD workflow.
+
+- Delegate task development to a sub-agent by default and keep the main thread on orchestration, review, proof, committing, and specification write-back. The purpose is to spend the main thread's context on judgment rather than on file contents, so a brief must carry the exact files to read, the decided design, and the hard constraints instead of asking the sub-agent to rediscover them.
+- Run sub-agents in parallel whenever their tasks are genuinely independent. Independence follows from each task's `Depends on:` line together with disjoint ownership of files, surfaces, and proof, not from whether the tasks feel unrelated. Assign explicit path ownership in every brief, and serialize instead when two tasks would touch the same module, migration, or screen.
+- Reconcile every sub-agent result in one place. Confirm each proof by real exit status; a sub-agent's report that a check passed is a claim, not evidence.
+- Manage the main thread's context deliberately. When it passes roughly half its window, finish the task in flight through its proof, write-back, and commit without interrupting it, then stop. Do not start another task in a degraded context, and do not abandon one midway to save room.
+- Hand off by pointing at the repository, never by carrying state. Ask the user to clear the context, then supply the exact prompt for the next session: the branch, the active specification, the next executable task, which tasks to avoid and why, and the instruction to recover state from `specs/<feature>/tasks.md` and its progress log.
+- Exception: when the user says the session is a long or automatic run, do not stop at the context threshold; continue through the task chain.
+
 ## Readiness And Write-Back
 
 Report product-requirement, technical-design, implementation, verification, and release readiness separately, and name the earliest stage each unresolved item blocks; a later-stage unknown must not make an earlier ready stage look blocked. `Approved` requirements are not thereby implemented or releasable.
@@ -129,6 +153,7 @@ For instruction and skill changes, run the checks that currently apply:
 - Patch integrity: `git diff --check`
 - Skills: validate every changed canonical skill under `.agents/skills/` with the validator provided by the active skill-authoring environment.
 - Spec validator: `python3 .agents/scripts/test_validate_spec.py`
+- Proof runner: `python3 .agents/scripts/test_run_proof.py`
 - Specifications: `python3 .agents/scripts/validate_spec.py specs/<feature>`
 - Cross-specification graph: `python3 .agents/scripts/validate_spec.py --all specs`
 

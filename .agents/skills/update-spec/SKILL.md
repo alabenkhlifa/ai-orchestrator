@@ -25,10 +25,10 @@ Activate this skill as the workflow for restoring agreement between requirements
    - `tasks.md`: active-slice boundary, implementation steps, proof, verification gate, active blockers, release gates, deferred work, and progress state when it materially changes.
 10. Remove or replace resolved questions, stale blockers, contradicted wording, and invalid proof. Consolidate obsolete or repetitive discovery checkpoints after confirming their durable decisions live in the current requirements, design, and task state. Preserve a replaced tradeoff by recording the new choice and consequence.
 11. Keep technologies deferred when the decision is still product-level. Add technical consequences as open questions instead of selecting a stack implicitly.
-12. Run the Cross-Specification Capability Gate, Task Size Gate, and Delivery Coverage and Sequence Gate whenever requirements, design, dependencies, or the active task plan changes.
+12. Run the Cross-Specification Capability Gate, Task Size Gate, Task Proof Gate, and Delivery Coverage and Sequence Gate whenever requirements, design, dependencies, proof expectations, or the active task plan changes.
 13. Set status by the affected stage. Move requirements to `Draft` when the product agreement becomes incomplete, move tasks to `Blocked` only when active implementation or required verification cannot proceed, and remove `Verified` whenever existing proof no longer covers the changed behavior. Keep deployment-only unknowns in an explicit release gate without representing the work as releasable.
-14. Run `python3 .agents/scripts/validate_spec.py specs/<feature>` and the repository's global dependency validator once after applying the batch when available, then manually confirm that every changed decision, capability edge, task-size declaration, proof, scope classification, delivery-coverage mapping, and task dependency agrees across files.
-15. Report the scope classification, capability graph result, task-size result and exceptions, delivery-coverage and sequence result including any missing provider, cycle, oversized task, unmapped, ambiguous, or forward-dependent surface, changed decisions, newly exposed questions with their blocked stages, invalidated or deferred work, status changes, and product, design, implementation, verification, and release readiness separately.
+14. Run `python3 .agents/scripts/validate_spec.py specs/<feature>` and the repository's global dependency validator once after applying the batch when available, then manually confirm that every changed decision, capability edge, task-size declaration, proof-scope declaration, proof, scope classification, delivery-coverage mapping, and task dependency agrees across files.
+15. Report the scope classification, capability graph result, task-size and proof-scope results and exceptions, delivery-coverage and sequence result including any missing provider, cycle, oversized task, unmapped, ambiguous, or forward-dependent surface, changed decisions, newly exposed questions with their blocked stages, invalidated or deferred work, status changes, and product, design, implementation, verification, and release readiness separately.
 
 ## Question Batching Rules
 
@@ -69,6 +69,14 @@ Activate this skill as the workflow for restoring agreement between requirements
 - Record `Size: Exception — <reason>.` only when splitting an atomic migration, transaction, or invariant would create a concrete invalid intermediate state. Complexity, convenience, chronology, or test duration does not justify an exception.
 - Preserve completed task labels and history. Split only unfinished work, update affected `Depends on:` and capability provider or consumer task references together, then re-run the individual and global validators.
 - Prefer coherent vertical or invariant-preserving tasks; do not create small layer-only tasks that leave unusable or unprovable intermediate states.
+
+## Task Proof Gate
+
+- When a task plan is first created or next refined after the proof runner is available, add `## Proof Scope Gate` after `## Task Size Gate` and before `## Implementation Boundary`. Do not rewrite completed tasks solely to migrate them.
+- Use exactly `- Applies to: all tasks.` for a new plan. For prospective adoption in an active plan, list only the stable labels of unfinished tasks covered from that boundary onward.
+- Give every applicable task exactly one `Proof scope:` line. Use `Focused` by default; allow `Broad — <reason>.` only when the task itself owns the inseparable broader gate.
+- Keep task proof runnable through task scope and complete verification through slice scope. Reject an update that uses a full suite as routine task confidence or treats reconciliation as authority to repeat the slice gate.
+- When proof scope changes for unfinished work, update the affected declaration and proof together, validate the plan, and record the non-behavioral mechanism in the progress log.
 
 ## Delivery Coverage And Sequence Gate
 
@@ -118,4 +126,4 @@ Activate this skill as the workflow for restoring agreement between requirements
 
 ## Completion
 
-Finish when the scope is classified and healthy, the changed decision and its proof are visible, affected files agree, every required capability has one provider, every new or refined task passes the Task Size Gate or records a justified atomic exception, every required delivery surface has one clear owning task, the capability graph is acyclic, the tasks are executable in their listed order without forward dependencies, stale questions and blockers are removed, `tasks.md` remains a concise representation of the current executable state, available mechanical checks pass, and implementation state is accurate.
+Finish when the scope is classified and healthy, the changed decision and its proof are visible, affected files agree, every required capability has one provider, every new or refined task passes the Task Size Gate and Task Proof Gate or records a justified exception, every required delivery surface has one clear owning task, the capability graph is acyclic, the tasks are executable in their listed order without forward dependencies, stale questions and blockers are removed, `tasks.md` remains a concise representation of the current executable state, available mechanical checks pass, and implementation state is accurate.
