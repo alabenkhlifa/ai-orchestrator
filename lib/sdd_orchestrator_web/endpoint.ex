@@ -31,6 +31,14 @@ defmodule SddOrchestratorWeb.Endpoint do
     websocket: [connect_info: [:peer_data]],
     longpoll: false
 
+  # Paired workers dial in here for account-level personal AI operations,
+  # authenticated by their pairing credential. Deliberately separate from
+  # "/worker": this transport is device-workspace scoped and never carries a
+  # project-run command.
+  socket "/personal_ai_worker", SddOrchestratorWeb.PersonalAIWorkerSocket,
+    websocket: [connect_info: [:peer_data]],
+    longpoll: false
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),

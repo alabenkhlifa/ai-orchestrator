@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
 
-The refined product and technical agreements are approved. The active slice can begin with the paired-local-worker AI transport. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
+Task 7 is complete: the personal-worker AI RPC transport is delivered on `slice/11-ai-runtime-governance` under the recorded parallel-ownership partition with `specs/14-repository-execution-profile#Task 1`, and repository-wide verification remains serialized until both parallel tasks are reconciled. Task 8 (version-checked Codex App Server adapter) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
 
 ## Active Slice
 
@@ -84,13 +84,14 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 7 — Establish the authenticated personal-worker AI RPC transport.
+- [x] Task 7 — Establish the authenticated personal-worker AI RPC transport.
   - Size: Standard
   - Depends on: none
   - Purpose: Carry bounded account-level provider operations through one already authorized paired local worker without broadening the Slice 07 run gateway.
   - Owned surfaces: Personal-worker channel and request envelope, account and device-workspace authorization, negotiated AI capability names and protocol version, request identifier and idempotency key, response correlation, timeout, replay refusal, reconnect, bounded payloads, typed transport failure, project-run command exclusion, fixtures, and worker double.
   - Owns: AC-16
   - Proof: Focused authentication, account, device workspace, capability, request, correlation, idempotency, timeout, reconnect, replay, size, malformed payload, cross-workspace, cross-account, project-command denial, and worker-double tests pass.
+  - Delivered: `PersonalAIWorkerSocket` (pairing-credential authentication of active paired workers only) and `PersonalAIWorkerChannel` on the workspace-scoped `personal_ai:` topic with join-time workspace re-authorization; `AIRuntime.PersonalWorkerProtocol` owning `personal-ai/1`, the connection, catalog, quota, and observation capability allowlist, strict request and response field allowlists, payload limits, and the Slice 07 command denylist; `AIRuntime.PersonalWorkerRPC` with a unique per-worker connection registry, correlated account-scoped bounded requests, typed transport failures, idempotent replay-safe responses, and deterministic reconnect replacement. The Slice 07 run gateway is untouched.
 
 - [ ] Task 8 — Implement the version-checked Codex App Server adapter.
   - Size: Standard

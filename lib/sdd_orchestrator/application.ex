@@ -20,7 +20,12 @@ defmodule SddOrchestrator.Application do
         # registration on restart is correct: each worker reconnects, and the
         # command queue was never in this process anyway.
         {Registry,
-         keys: :duplicate, name: SddOrchestrator.Delivery.CommandTransport.Channel.registry()}
+         keys: :duplicate, name: SddOrchestrator.Delivery.CommandTransport.Channel.registry()},
+        # One live personal AI connection per paired worker. Unique keys make
+        # a reconnect an explicit replacement of the stale channel rather than
+        # a second route; losing registrations on restart is correct because
+        # every worker reconnects and re-registers.
+        {Registry, keys: :unique, name: SddOrchestrator.AIRuntime.PersonalWorkerRPC.registry()}
       ] ++
         retention_children() ++
         dispatcher_children() ++
