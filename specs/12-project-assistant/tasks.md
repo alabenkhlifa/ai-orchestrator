@@ -22,7 +22,7 @@ Requires:
 - `capability:ai-runtime-observation` — provider `specs/11-ai-runtime-governance#Task 5` — required before `Task 2`.
 - `capability:ai-runtime-governance` — provider `specs/11-ai-runtime-governance#Task 6` — required before `Task 9`.
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 9`.
-- `capability:project-participation-governance` — provider `specs/08-project-participation#Task 5` — required before `Task 9`.
+- `capability:project-participation-governance` — provider `specs/29-participation-completion#Task 1` — required before `Task 9`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 9`.
 
 Provides:
