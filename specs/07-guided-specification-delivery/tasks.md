@@ -2,29 +2,31 @@
 
 ## Status
 
-In Progress
+Blocked
 
-The product, orchestration, privacy, and verification agreements remain approved. Task 7 delivered the protocol and execution-manifest foundation, Task 1 confirmed the three delivered provider contracts, and Task 14 delivered the fail-closed participation guard every later action uses. The readiness path (Tasks 45, 10, 11, 12), the orchestration foundation (Tasks 15, 16, 17, 18, 3), the worker path (Tasks 19, 20, 43), and assignment and comments (Tasks 9, 46) are complete, and Task 13 now starts one run end to end. The evidence path (Tasks 4, 29, 52, 44, 30, 31) now records typed proof, stores its private artifacts, and gates a completion claim on the exact verified commit, and Task 5 hands verified work to human review. Task 53 made the board reachable and a configured project's default view, testing repository connection and storage rather than the acting person. Task 33 presents preview availability and failure, Task 34 reserves the final product decision for the current responsible participant or project owner, and Task 35 sends rejected work back to the same run and branch as a further attempt. Task 36 now projects blocked, review-ready, and terminally failed runs into minimized notifications for the smallest current authorized recipient set, keyed by the shared store's existing event, subject, version, and recipient key. Task 37 (durable notification list and read behavior) is the next executable task. Every required check that can run without deployment credentials now passes, including `mix sobelow --config`, `mix dialyzer`, `mix deps.audit`, the production assets and release build, and the desktop and mobile browser matrix, all re-run at the Task 36 boundary rather than deferred to the gate. The board's desktop and mobile browser matrix now runs for real against a dev/test-only session bootstrap, so no delivery task carries an environment-blocked browser proof; the live worker and coding-agent smoke proofs remain environment-blocked for their own separate reason. `capability:project-participation-governance` remains unavailable, which affects Task 40 only.
+The approved feature-delivery foundation is implemented through Task 36, including the board, readiness, orchestration, worker, evidence, preview, review, same-run continuation, and minimized notification projection. The previous unfinished plan mixed notification access, processing controls, several independent retention authorities, deletion, verified rights, deployment governance, and final coordination under one verification gate. Those independently executable outcomes now belong to focused continuation specifications. Task 54 is the only remaining task here: it verifies the completed legacy foundation under the current proof runner and publishes its narrow child-consumer capabilities. It is blocked until Slice 08 repairs active-participant recipient routing that incorrectly depends on `ProjectMemberProfile`; the repair does not reopen completed Slice 07 Task 36 or move participation ownership into this specification.
 
 ## Active Slice
 
-Deliver one project feature across the `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done` board columns through explicit start, one branch-isolated configured coding-agent run, durable blocking-question resume, bounded retry and cancellation recovery, mandatory verification evidence, an automatic pre-authorized preview when configured, authorized approval or same-run feedback continuation, and in-product action and outcome notifications. Show `Blocked` and `Failed` as statuses without moving the feature to another column.
+Verify the completed guided-delivery foundation through minimized notification projection and publish its stable child-consumer contracts. Preserve the approved end-to-end product contract and completed implementation history while focused child specifications own notification access, data-protection controls, operational retention, device retention, deletion and recovery, verified rights, and final release governance.
 
 ## Cross-Specification Dependencies
 
 Requires:
 
 - `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 1`.
-- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 39`.
 - `capability:project-participation-boundary` — provider `specs/08-project-participation#Task 4` — required before `Task 1`.
 - `capability:project-owner-display-profile` — provider `specs/08-project-participation#Task 34` — required before `Task 53`.
-- `capability:project-participation-governance` — provider `specs/08-project-participation#Task 5` — required before `Task 40`.
+- `capability:project-participation-recipient-routing` — provider `specs/08-project-participation#Task 36` — required before `Task 54`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 1`.
-- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 40`.
 
 Provides:
 
-- `capability:guided-specification-delivery` — ready after `Task 6`.
+- `capability:guided-delivery-data-surfaces` — ready after `Task 54`.
+- `capability:guided-delivery-notification-projection` — ready after `Task 54`.
+- `capability:guided-delivery-artifact-preview-boundary` — ready after `Task 54`.
+- `capability:guided-delivery-revocation-consumer` — ready after `Task 54`.
+- `capability:guided-delivery-start-disclosure` — ready after `Task 54`.
 
 ## Task Size Gate
 
@@ -32,24 +34,18 @@ Provides:
 - Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
 - Existing task labels are preserved; newly split tasks use the next unused labels and are listed by dependency order rather than numeric order.
 
+## Proof Scope Gate
+
+- Applies to: Task 54.
+
 ## Implementation Boundary
 
 Included:
 
-- One project-scoped feature board with the five approved lifecycle columns, gated action-driven transitions, separate visible `Blocked` and `Failed` statuses, and a feature detail workflow.
-- Project-scoped navigation that reaches the board from every project screen, with the board as a configured project's default view.
-- Guided requirement structure with visible blocking findings, non-blocking suggestions, and suggestion dismissal.
-- Explicit start for one approved specification revision.
-- One configured coding-agent and worker boundary without provider-selection UX.
-- One isolated feature branch and resumable run.
-- Feature creator, project-wide participant assignment, `Assign to me`, assignee-or-creator blocking-question routing, accepted-answer write-back, progress, comments, and typed evidence.
-- Same-run automatic and manual retry, terminal failure presentation, explicit cancellation recovery into current readiness, and new-run restart after cancellation.
-- Read-only consumption and enforcement of the separately specified current project-participant authorization boundary.
-- Configured required-check results, exact branch and verified-revision identity, and supported screenshot capture.
-- Automatic use of one preconfigured and authorized branch-preview path after successful verification, without making preview success a review-readiness gate.
-- `Ready for review` handoff, authorized approval to `Done`, and feedback-based rejection to `In development`.
-- In-product action-required and completion notifications.
-- Privacy, access, retention, redaction, and audit controls for the slice.
+- The completed project board, guided readiness, explicit start, isolated run, worker, blocking-question resume, retry, cancellation, evidence, preview, review, same-run rejection continuation, and notification-projection foundation recorded by Tasks 1–36 and 43–53.
+- Verification of that completed foundation under the current slice-scoped proof runner.
+- Focused readiness write-back for the completed data, notification-projection, artifact and preview, revocation-consumer, and start-disclosure capabilities consumed by the child specifications.
+- Shared product rules, child boundaries, and release coordination without duplicate child implementation.
 
 Excluded:
 
@@ -59,6 +55,14 @@ Excluded:
 - Automatic merge, default-branch writes, production deployment, or release management.
 - General-purpose issue tracking and broad collaboration administration.
 - Project-participant provisioning, invitations, membership changes, roles, access removal, and their management UI.
+- Durable notification access and notification retention, owned by `specs/17-guided-delivery-notification-access/`.
+- Processing inventory, support access, redaction, audit minimization, and no-secondary-use controls, owned by `specs/18-guided-delivery-data-protection-controls/`.
+- Temporary execution-data and security-log retention, owned by `specs/19-guided-delivery-operational-retention/`.
+- Device relay and cache retention, owned by `specs/20-guided-delivery-device-data-retention/`.
+- Backup expiry, authoritative deletion, external cleanup, and reconciliation, owned by `specs/21-guided-delivery-deletion-and-recovery/`.
+- Verified rights and historical anonymization, owned by `specs/22-guided-delivery-rights-and-anonymization/`.
+- Deployment profile and deployment-specific privacy and security evidence validation, owned by `specs/23-guided-delivery-deployment-governance/`.
+- Final capability coordination and `capability:guided-specification-delivery` readiness, owned by `specs/24-guided-delivery-completion/`.
 
 Deferred after this slice:
 
@@ -67,15 +71,20 @@ Deferred after this slice:
 - Custom board workflows and organization-wide views.
 - Email, chat, mobile, or webhook notifications.
 - Merge, release, production deployment, rollback, and preview cleanup policies beyond the first configured path.
-- Deferred criteria: none.
-- Deferred entities: none.
+- `specs/17-guided-delivery-notification-access/` owns parent AC-41 and AC-43.
+- `specs/18-guided-delivery-data-protection-controls/` owns parent AC-28 and AC-39 plus `entity:DataProcessingRecord`.
+- `specs/19-guided-delivery-operational-retention/` owns parent AC-37 and AC-45.
+- `specs/20-guided-delivery-device-data-retention/` owns parent AC-44.
+- `specs/21-guided-delivery-deletion-and-recovery/` owns parent AC-46 and AC-47.
+- `specs/22-guided-delivery-rights-and-anonymization/` owns parent AC-38.
+- `specs/23-guided-delivery-deployment-governance/` owns `entity:DeploymentPrivacyProfile`, and `specs/24-guided-delivery-completion/` owns final capability coordination.
+- Deferred criteria: AC-28, AC-37, AC-38, AC-39, AC-41, AC-43, AC-44, AC-45, AC-46, AC-47
+- Deferred entities: entity:DataProcessingRecord, entity:DeploymentPrivacyProfile
 
 Prerequisite:
 
-- The shared project-storage specification must deliver its authoritative hosted and device adapter boundary before Task 1 and its governance capability before Task 39.
-- The focused project-participation specification must deliver current participant identity and authorization, the shared account-level notification foundation, and the versioned `ParticipationRevocation` claim and acknowledgement contract through `capability:project-participation-boundary` before Task 1, with its governance capability required before Task 40.
-- The focused project-specification storage specification must deliver stable specification identity, immutable complete revisions, current snapshots, and hosted and device-authoritative persistence through `capability:project-specification-store` before Task 1, with its governance capability required before Task 40.
-- Task 7 may establish the provider-independent protocol and manifest codec before the provider capabilities are available. The three operational provider tasks must be complete before Task 1 confirms their consumer contracts and provider-consuming implementation begins; project-storage governance is required before Task 39, while participation and specification governance are required before Task 40.
+- The shared project-storage, project-participation, and project-specification provider capabilities named above were delivered before their completed consumers.
+- The focused continuations consume only the narrow foundation capabilities they need and declare their own storage-governance, participation-governance, and specification-governance dependencies rather than retaining unavailable future edges in this legacy plan.
 
 ## Tasks
 
@@ -399,22 +408,6 @@ Prerequisite:
   - Depends on: Task 5, Task 22, Task 25, Task 35
   - Proof: Focused projector, blocked, review-ready, failed, stale recipient, duplicate role, replay, restart, minimized body, safe link, and negative external-channel tests pass.
 
-- [ ] Task 37 - Deliver durable notification list and read behavior.
-  - Size: Standard
-  - Purpose: Keep unread action state durable while denying removed participants on every read and link open.
-  - Owned surfaces: Project-authorized notification list, unread state, idempotent mark-read, PubSub presentation hint, disconnected-browser and restart delivery, read-time current-participation check, safe-link open authorization, removed-participant denial, fixtures, and responsive accessible notification UI.
-  - Owns: AC-41
-  - Depends on: Task 36
-  - Proof: Focused list, unread, mark-read, replay, no-PubSub, restart, current and removed participant, safe-link, cross-project, desktop, mobile, keyboard, and focus tests pass.
-
-- [ ] Task 38 - Enforce the Slice 07 processing and access contract.
-  - Size: Standard
-  - Purpose: Limit feature-delivery data to the approved service and security purposes and authorized recipients.
-  - Owned surfaces: `DataProcessingRecord`, complete processing inventory and field-purpose map, contract-necessity and security legitimate-interest basis, current-participant project access, cross-project isolation, content-free default support, verified least-privilege time-bounded audited elevation, credential and project-content redaction, audit minimization, fixtures, and no raw-provider-event persistence.
-  - Owns: AC-28, entity:DataProcessingRecord
-  - Depends on: Task 14, Task 31, Task 33, Task 35, Task 37, Task 46, Task 52
-  - Proof: Focused inventory, purpose and basis, current and removed access, cross-project isolation, support elevation, credential, project-content, raw-event, and audit-minimization tests pass.
-
 - [x] Task 53 - Deliver project-scoped board navigation.
   - Size: Standard
   - Purpose: Let a participant reach the feature board from any project screen without knowing its address.
@@ -423,123 +416,32 @@ Prerequisite:
   - Depends on: Task 2
   - Proof: Focused navigation, configuration test, default-landing, unconfigured-fallback, missing-label landing, authorization, cross-project isolation, current-destination, keyboard, focus, desktop, and mobile tests pass, including one proof that an owner reaching their configured board is not refused there.
 
-- [ ] Task 39 - Enforce temporary execution-data retention.
+- [ ] Task 54 - Verify and publish the completed guided-delivery foundation contracts.
+  - Status: Blocked until `capability:project-participation-recipient-routing` is ready.
   - Size: Standard
-  - Status: Blocked until `capability:project-storage-governance` and preceding implementation tasks are complete.
-  - Purpose: Remove inactive execution mechanics after their short recovery and diagnostic purpose ends.
-  - Owned surfaces: `capability:project-storage-governance` consumer, 30-day temporary command payload, checkpoint, provider-thread reference, transient-log and superseded-artifact cleanup, active run and accepted-evidence preservation, retention-pruner rules, idempotency, lock, restart, reconciliation, and fixtures.
-  - Owns: AC-37
-  - Depends on: Task 28, Task 29, Task 38
-  - Proof: Focused 30-day boundary, command, checkpoint, provider-thread, transient-log, superseded-artifact, active-run, accepted-evidence, idempotency, lock, restart, and reconciliation tests pass.
-
-- [ ] Task 47 - Enforce Slice 07 notification retention.
-  - Size: Standard
-  - Purpose: Remove in-product delivery records after their approved lifetime without changing workflow state.
-  - Owned surfaces: 90-day Slice 07 `AccountNotification` cleanup rule, read and unread selection, feature, run and participant authorization non-mutation, idempotent pruning, lock, restart, reconciliation, and fixtures.
-  - Owns: AC-43
-  - Depends on: Task 37, Task 38
-  - Proof: Focused 90-day boundary, read, unread, feature, run, participant, idempotency, lock, restart, and reconciliation tests pass.
-
-- [ ] Task 48 - Enforce device relay and cache cleanup.
-  - Size: Standard
-  - Purpose: Keep device-authoritative project data from becoming a durable hosted copy.
-  - Owned surfaces: 24-hour hosted relay and cache cleanup rules, device-authoritative selection, active transport allowance, durable-copy denial, cache and relay reconciliation, idempotency, restart, fixtures, and negative hosted-storage scan.
-  - Owns: AC-44
-  - Depends on: Task 18, Task 38
-  - Proof: Focused 24-hour boundary, active transport, relay, cache, durable-copy absence, idempotency, restart, reconciliation, and hosted-storage tests pass.
-
-- [ ] Task 49 - Enforce minimized Slice 07 security logs.
-  - Size: Standard
-  - Purpose: Retain only short-lived security evidence without raw credentials or unauthorized project content.
-  - Owned surfaces: Fixed structured security-log fields, non-secret correlation identifier, feature, run, worker and provider event minimization, credential and project-content redaction, 30-day expiry rule, audit minimization, diagnostic scans, and fixtures.
-  - Owns: AC-45
-  - Depends on: Task 38, Task 39
-  - Proof: Focused structured-log, field allowlist, correlation, credential, project-content, failure-path, 30-day expiry, audit-minimization, and diagnostic tests pass.
-
-- [ ] Task 50 - Enforce encrypted-backup expiry.
-  - Size: Standard
-  - Purpose: Bound recovery copies without allowing deleted project access to return.
-  - Owned surfaces: 35-day encrypted rolling-backup expiry configuration, approved recovery-only boundary, deletion tombstone handling, `DeploymentPrivacyProfile` backup evidence seam, reconciliation, fixtures, and release-gate classification.
-  - Owns: AC-46
-  - Depends on: Task 38, Task 39
-  - Proof: Focused 35-day boundary, recovery authorization, deletion tombstone, no-restored-access, reconciliation, deployment-profile seam, and release-gate checks pass.
-
-- [ ] Task 51 - Enforce project deletion and external cleanup reconciliation.
-  - Size: Standard
-  - Purpose: End access and remove active authoritative and configured external copies while making cleanup failures recoverable but inaccessible.
-  - Owned surfaces: Immediate access revocation, hosted and device authoritative deletion, preview, artifact, cache, index and processor cleanup requests, acknowledgement and failure state, restricted reconciliation record, retry, no restored access, fixtures, and project-deletion activity.
-  - Owns: AC-47
-  - Depends on: Task 29, Task 32, Task 39, Task 47, Task 48, Task 49, Task 50
-  - Proof: Focused hosted and device deletion, immediate denial, preview, artifact, cache, index, processor, acknowledgement, failure, retry, reconciliation, activity, and no-restored-access tests pass.
-
-- [ ] Task 40 - Enforce verified rights and historical anonymization.
-  - Size: Standard
-  - Status: Blocked until the participation and specification governance capabilities and Task 51 are complete.
-  - Purpose: Apply verified rights across authoritative and derived delivery records without exposing another participant or erasing necessary accountability.
-  - Owned surfaces: `capability:project-participation-governance` and `capability:project-specification-governance` consumers, verified access, correction, export or portability, erasure, restriction and objection, hosted and device records, artifacts, notifications, caches, logs, backups, processors, historical-attribution necessity review, last-label anonymization, stable project accountability, fixtures, and authorization.
-  - Owns: AC-38
-  - Depends on: Task 27, Task 38, Task 51
-  - Proof: Focused rights, authorization, hosted, device, artifact, notification, cache, log, backup, processor, historical necessity, anonymization, stable history, and cross-participant isolation tests pass.
-
-- [ ] Task 41 - Prohibit product analytics and secondary use.
-  - Size: Standard
-  - Purpose: Keep feature, run, worker, evidence, preview, review, and notification data out of analytics, training, and unrelated processing.
-  - Owned surfaces: No product analytics store, request, event, identifier, or metric, no advertising, model-training reuse, unrelated improvement, or secondary use, raw credential exclusion, worker, model and preview content-routing checks, device-authoritative durable-copy denial, operational telemetry classification, browser-network checks, fixtures, and negative scans.
-  - Owns: AC-39
-  - Depends on: Task 38, Task 39, Task 40
-  - Proof: Focused analytics-store, browser-network, telemetry, metric, identifier, advertising, training, secondary-use, credential, provider-routing, and durable-device-copy checks pass.
-
-- [ ] Task 42 - Record deployment processor and transfer controls.
-  - Size: Standard
-  - Purpose: Keep locally provable processing configuration separate from deployment-specific release evidence.
-  - Owned surfaces: `DeploymentPrivacyProfile`, worker, model, preview, artifact, hosting, backup and support processor classifications, regions, transfer safeguards, provider retention and training-use settings, controller and notice fields, incident and support procedure, deletion enforcement, DPIA or legal review state, start-disclosure linkage, release-gate validation, and fixtures.
-  - Owns: entity:DeploymentPrivacyProfile
-  - Depends on: Task 12, Task 33, Task 38, Task 41
-  - Proof: Focused profile schema, processor, region, transfer, provider-use, disclosure-link, release-gate, missing-deployment-evidence, and configuration validation tests pass without treating local controls as legal approval.
-
-- [ ] Task 6 - Complete the feature-delivery privacy and security review.
-  - Size: Standard
-  - Status: Blocked until the preceding delivery, privacy, lifecycle, and governance tasks are complete.
-  - Purpose: Confirm the complete board, orchestration, worker, evidence, preview, review, and notification flow follows the approved contract before publishing readiness.
-  - Owned surfaces: Consolidated processing inventory, access, lifecycle, rights, processor, transfer, disclosure, support, redaction, audit, no-analytics, secondary-use and device-copy review, release-gate classification, required privacy and security approval, and `capability:guided-specification-delivery` readiness write-back.
-  - Owns: none (governance gate)
-  - Depends on: Task 5, Task 37, Task 40, Task 41, Task 42, Task 51
-  - Proof: Focused cross-task privacy, security, lifecycle, rights, processor, transfer, disclosure, redaction, support, audit, no-analytics, device-copy, and required-review checks pass before capability readiness is recorded.
+  - Proof scope: Focused
+  - Purpose: Reconcile the completed foundation under the current proof runner and publish its smallest stable child-consumer contracts without implementing any child-owned behavior.
+  - Owned surfaces: `capability:guided-delivery-data-surfaces`, `capability:guided-delivery-notification-projection`, `capability:guided-delivery-artifact-preview-boundary`, `capability:guided-delivery-revocation-consumer`, and `capability:guided-delivery-start-disclosure` providers and readiness write-back; completed-task proof reconciliation; provider-contract compatibility; and child handoff fixtures.
+  - Owns: none (foundation verification gate)
+  - Depends on: Task 33, Task 36, Task 46, Task 53
+  - Proof: Focused specification, capability-contract, completed-surface compatibility, notification-projection, artifact and preview, revocation-consumer, and start-disclosure handoff checks pass through task scope before readiness is recorded. Full repository, browser, security, production, and live-smoke checks remain in the slice verification gate.
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Five-column feature lifecycle, gated transition enforcement, project-participant assignment, `Assign to me`, separate `Blocked` and `Failed` statuses, blocker enforcement, suggestion dismissal, readiness, revision, authorization, and duplicate-start tests pass.
-- [ ] Agent dispatch, branch isolation, ordered attempts, assignee-or-creator blocked-question routing, write-back, same-run resume, bounded automatic and manual retry, stale-attempt fencing, initiator-or-owner cancellation authorization, readiness reevaluation, new-run restart, and recovery tests pass.
-- [ ] Hosted PostgreSQL and worker-owned device delivery-store contracts pass atomic state, activity, command, idempotency, restart, and no-hosted-device-copy tests.
-- [ ] Outbound versioned worker protocol, authentication, capability negotiation, at-least-once command replay, acknowledgement, heartbeat, lease, fence, sequence, reconnect, and cross-workspace denial tests pass.
-- [ ] Execution manifests bind exact revisions, slices, base and target branches, configured checks, agent and worker references, continuation reasons, and digests without carrying raw credentials.
-- [ ] Workspace-root containment, exact agent working directory, one-current-process locking, same-worker retry, provider-thread-loss reconstruction, agent-event normalization, and secret non-propagation tests pass.
-- [ ] Participant removal and leave clear current assignment, route pending question and review responsibility to the owner, preserve non-interactive historical attribution, keep active runs under owner control, and deny former-participant access.
-- [ ] Current participant presentation uses project display names without exposing other participant emails, and former-participant history preserves the last accepted project display name.
-- [ ] Configured required checks, branch and exact verified-revision identity, evidence provenance, conditional screenshot, missing or failed proof, and secret-redaction tests pass.
-- [ ] Normalized event schema, stale and invalid event rejection, worker-derived check results, same-commit completion, immutable supersession, private artifact authorization, size, digest, redaction, and agent-prose negative-proof tests pass.
-- [ ] Worker artifact upload authenticates one exact run, attempt, and current fence, verifies the declared content type, size, and digest before storage, answers a duplicate digest idempotently, denies unauthorized, cross-project, stale-attempt, and device-authoritative uploads, and no artifact byte travels inside a normalized event.
-- [ ] Capture applicability is a worker-reported typed result; a `passed` screenshot with no stored artifact, or one from a worker without the capture capability, is refused rather than downgraded.
-- [ ] Automatic configured preview, unavailable-preview, and failed-preview scenarios pass without production deployment or preview success becoming a review-readiness gate.
-- [ ] Preview idempotency, exact-commit binding, timeout, expiry, supersession, safe-link, credential-isolation, cleanup, and provider-failure tests pass against the configured adapter double.
-- [ ] `Ready for review`, unauthorized-transition rejection, responsible-participant-or-owner approval to `Done`, and responsible-participant-or-owner feedback-based rejection to the same run and branch as a new `In development` attempt pass.
-- [ ] In-product blocked-to-responsible, review-ready-to-responsible-and-owner, and failed-to-initiator-responsible-and-owner notifications pass current-participation, recipient, authorization, deduplication, content-minimization, and evidence-link checks; no external notification channel is invoked.
-- [ ] Notification projector replay, restart, unique event-recipient keys, durable unread delivery, PubSub independence, idempotent mark-read, removal denial, minimized body, and safe internal-link tests pass.
-- [ ] Project-scoped navigation reaches the board from every project screen, a configured project defaults to its board, an unconfigured project falls back to its overview, and each destination revalidates project authorization.
+- [ ] Completed board, readiness, orchestration, worker, recovery, evidence, preview, review, navigation, and notification-projection acceptance criteria pass without child-owned lifecycle or rights proof being implied.
+- [ ] Hosted PostgreSQL and worker-owned device delivery-store, protocol, command, lease, fence, reconciliation, and no-hosted-device-copy contracts pass.
+- [ ] Exact-revision, same-commit evidence, conditional screenshot, private artifact, preview, and human-review contracts pass.
+- [ ] Blocked, ready-for-review, and terminal-failed notification projection passes recipient, current-participation, deduplication, minimization, replay, restart, safe-link-reference, and no-external-channel proof.
 - [ ] Desktop and mobile board, feature, activity, blocked, review, and completion scenarios pass.
-- [ ] GDPR data contract, access, retention, deletion, processor, transfer, audit, and privacy review are complete.
-- [ ] Start-time execution, provider, preview, transfer disclosure and change-triggered confirmation tests pass.
-- [ ] Temporary 30-day, notification 90-day, relay and cache 24-hour, security-log 30-day, and backup 35-day lifecycle enforcement passes, including project-deletion and external-cleanup reconciliation.
-- [ ] Verified rights, historical-attribution necessity and anonymization, current-participant access, removed-participant denial, support elevation, processor, transfer, provider-use, no-analytics, and no-secondary-use checks pass.
-- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
+- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass through slice scope.
+- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
 - [ ] Live configured worker and coding-agent smoke proofs pass, or remain explicitly environment-blocked without weakening deterministic adapter proof.
-- [ ] New decisions and invalidated proof are written back.
+- [ ] The individual specification validator and global capability graph pass, and every published foundation capability has a Task 54 readiness write-back.
+- [ ] Child-owned criteria and entities remain classified without duplicate ownership.
 
 ## Blocked Decisions
 
-- No agreement decision remains unresolved. Task 7 is immediately executable. Task 1 is blocked until the storage-authority, participation-boundary, and specification-store capabilities are delivered by their named provider tasks; Task 39 additionally requires project-storage governance, and Task 40 requires participation and specification governance.
+- No user decision blocks Task 54. The provider defect where an active participant without a `ProjectMemberProfile` disappears from recipient enumeration blocks `capability:project-participation-recipient-routing`; Slice 08 Task 36 owns the approved repair and must complete before Task 54 can publish the notification-projection contract.
 
 ## Release Gate
 
@@ -549,6 +451,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-08-02 - Legacy implementation narrowed to focused continuation slices
+
+- Completed: Preserved every completed task through Task 36 and Task 53, removed the twelve unstarted notification-access, privacy, retention, deletion, rights, deployment-governance, and final-coordination tasks from this active plan, and assigned those outcomes to `specs/17-` through `specs/24-` without changing approved product behavior.
+- Scope classification: Umbrella with completed legacy foundation and focused child specifications. The parent retains shared rules, completed history, release coordination, and one verification/readiness task; no child duplicates a completed implementation surface.
+- Capability sequence: Slice 08 Task 36 first repairs recipient routing, then Task 54 publishes the smallest stable completed-foundation contracts. The notification, processing-control, operational-retention, device-retention, deletion, rights, and deployment-governance continuations form an acyclic graph, and `specs/24-guided-delivery-completion/` is the sole future provider of `capability:guided-specification-delivery`.
+- Proof mechanism: The Task Proof Gate applies prospectively only to Task 54. Its focused receipt will cover capability-contract handoffs; repository, browser, security, production, and live-smoke commands remain slice-scoped verification.
+- Blocker carried forward: Task 36 proved its own projection logic, but its real-recipient route still depends on the Slice 08 defect where an active participant without a `ProjectMemberProfile` disappears from `Boundary.current_participants/1`. Slice 08 Task 36 now owns the focused repair and `capability:project-participation-recipient-routing` readiness.
+- Remaining: Implement Slice 08 Task 36, complete Slice 07 Task 54 through `implement-spec`, then implement the focused continuations according to capability readiness rather than numeric order.
+- Failed checks: None. The individual specification validators, global 24-specification capability graph, validator test suite, and `git diff --check` pass after the parent and continuation files were reconciled.
+- Spec updates: Narrowed the active boundary, adopted prospective proof scope, moved unfinished criteria and entities to focused continuations, introduced a provider-owned recipient-routing repair edge, and assigned final capability coordination to its own specification.
 
 ### 2026-08-01 - Task 36 complete: the fewest people who have to act are told
 

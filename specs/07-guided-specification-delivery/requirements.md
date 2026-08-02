@@ -36,6 +36,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 
 ## In Scope
 
+- Shared product rules and release coordination across the completed guided-delivery foundation and focused continuation specifications under `specs/17-` through `specs/24-`.
 - A project-level Kanban board organized around specification and delivery state.
 - Consumption of the shared project-specification identity, immutable revision, current-snapshot, and append interfaces.
 - Five first-release board columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`.
@@ -60,6 +61,7 @@ A developer or non-developer can turn a feature idea into development-ready requ
 
 ## Out of Scope
 
+- Duplicating notification access, processing controls, retention, deletion, rights, anonymization, or deployment-governance implementation that is assigned to a focused continuation specification.
 - General-purpose issue tracking unrelated to specification and delivery.
 - Repository, identity, storage, and portability onboarding already owned by `specs/01-` through `specs/06-`.
 - Automatic merge to the default branch.
@@ -73,6 +75,8 @@ A developer or non-developer can turn a feature idea into development-ready requ
 
 ## Business Rules
 
+- This specification preserves the shared end-to-end product contract and completed legacy implementation history. New implementation after notification projection belongs to the focused continuation specification that owns its capability and verification gate.
+- `capability:guided-specification-delivery` becomes ready only after the completed foundation and every required notification, processing-control, lifecycle, rights, and deployment-governance capability are ready; a completed foundation task cannot imply that later readiness.
 - The board represents feature specification and delivery state, not a generic task list.
 - The first-release board has exactly five lifecycle columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`.
 - `Blocked` and `Failed` are visible statuses, not lifecycle columns. A blocked or terminally failed development run remains in `In development` while showing why it cannot continue.

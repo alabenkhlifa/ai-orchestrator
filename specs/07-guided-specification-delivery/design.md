@@ -6,6 +6,8 @@ SDD Orchestrator exists to move feature work from requirements to verified imple
 
 OpenAI Symphony provides a language-independent orchestration specification and an experimental Elixir reference implementation for isolated workspaces, agent execution, reconciliation, retries, blocked state, and operational visibility. This feature adapts those capabilities to a specification-first workflow controlled from a project board.
 
+The legacy active plan implemented the shared delivery foundation through minimized notification projection, then kept unrelated notification access, processing controls, retention authorities, deletion, rights, and deployment evidence in one remaining slice. That unfinished work crosses independent data authorities, lifecycles, failure paths, and proof modalities, so it is now assigned to focused continuation specifications while this document remains the shared product contract.
+
 ## Proposed Approach
 
 Represent each feature as a durable lifecycle record connected to a shared-store project specification and immutable revisions, readiness findings, an approved implementation slice, agent runs, blocking questions, evidence, preview deployments, and notifications. Present the lifecycle through five first-release board columns: `Draft`, `Ready for development`, `In development`, `Ready for review`, and `Done`. Treat `Blocked` and `Failed` as additional visible statuses so interrupted and terminally failed runs keep their lifecycle position.
@@ -15,6 +17,8 @@ Keep requirement guidance and readiness assessment separate from execution autho
 Treat required-check results, exact branch and revision identity, applicable screenshots, and preview outcomes as typed evidence rather than unstructured agent claims. Start an authorized preview automatically after successful verification, while keeping preview absence or failure separate from verification success and human review readiness. Deliver action-required and completion notifications in-product in the first release.
 
 Implement the orchestration semantics natively behind the Phoenix control plane and the authoritative project-storage adapter rather than importing Symphony's in-memory scheduler or issue-tracker loop. Persist current state plus ordered activity and durable commands at the project's selected storage destination. Dispatch those commands at least once to one preconfigured compatible worker over a worker-initiated authenticated TLS channel, and make command IDs, ordered attempts, execution leases, fence tokens, and event sequence numbers prevent duplicate or stale execution from changing authoritative state. Adapt Symphony's isolated-workspace, agent-runner, retry, and reconciliation concepts behind project-specific interfaces.
+
+Close the legacy foundation with one focused compatibility and readiness task. Publish narrow capabilities for its completed data surfaces, notification projection, artifact and preview boundary, revocation consumption, and start disclosure. Implement notification access, processing controls, operational retention, device retention, deletion, rights, and deployment governance in `specs/17-` through `specs/23-`; let `specs/24-guided-delivery-completion/` verify their readiness together and publish the final guided-delivery capability. Slice 07 does not require those continuations, which keeps the capability graph acyclic.
 
 ## Components Affected
 
@@ -34,6 +38,7 @@ Implement the orchestration semantics natively behind the Phoenix control plane 
 - Human review and approval.
 - In-product and future external notifications.
 - Audit, privacy, retention, and secret-redaction controls.
+- Focused continuation contracts under `specs/17-` through `specs/24-`.
 
 ## Data and Access Boundaries
 
@@ -124,8 +129,15 @@ Required boundaries:
 - Review interface: present the completed run and its evidence in `Ready for review`, accept approval or rejection only from the current responsible participant or project owner, move an approved feature to `Done`, or record rejection feedback and continue the same run and branch as a new attempt in `In development`.
 - Notification-projector interface: extend Slice 08's shared account-level notification store with Slice 07 lifecycle event types, consume those events at least once, resolve approved roles and current participation at insertion time, enforce one unique event-recipient key, persist unread state before publishing a UI hint, and expose project-authorized list, mark-read, and safe-link behavior without external delivery.
 - Privacy interface: extend the existing processing inventory, retention pruner, verified rights workflow, and deployment privacy profile across every Slice 07 store, worker exchange, provider, artifact, preview, notification, log, cache, backup, export, and derived record without creating a product-analytics pipeline.
+- Continuation-capability interface: publish only completed foundation contracts from this specification; require each focused continuation to own its implementation and verification gate; and publish `capability:guided-specification-delivery` only from the final completion specification after all required continuation capabilities are ready.
 
 ## Decisions and Tradeoffs
+
+### Legacy Foundation With Focused Continuations
+
+- Choice: Preserve the completed Slice 07 task history and shared product contract, publish its verified foundation through Task 54, move each independently executable unfinished outcome to `specs/17-` through `specs/23-`, and reserve final capability coordination for `specs/24-guided-delivery-completion/`.
+- Reason: Notification access, processing control, operational retention, device-copy prevention, deletion, rights, and deployment evidence have different authorities and can fail and be verified independently. Keeping them in one active slice would obscure blockers and violate the current slice-size and scope-health rules.
+- Consequence: No continuation duplicates completed Slice 07 implementation. Capability edges express order without making Slice 07 depend on its own consumers, and `capability:guided-specification-delivery` remains unavailable until the completion specification verifies every required handoff.
 
 ### Fixed First-Release Board
 
@@ -341,6 +353,7 @@ Required boundaries:
 - Preview deployments may create cost or security exposure. Require approved project configuration, isolation, lifecycle limits, and visible non-production status.
 - Local and remote workers may disconnect during a run. Preserve durable state at the authoritative project store, use bounded retry and reconciliation, and do not emit terminal failure before the approved recovery budget ends.
 - A single large workflow could become unimplementable. Keep the first executable slice constrained and defer provider breadth, production delivery, and general collaboration.
+- Continuation specifications could drift from the shared contract or duplicate authority. Keep one named provider per capability, validate the global graph on every edge change, and route shared behavior changes through this umbrella agreement before implementation.
 
 ## Open Questions
 

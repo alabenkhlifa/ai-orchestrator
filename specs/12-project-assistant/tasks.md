@@ -18,7 +18,7 @@ Requires:
 - `capability:project-participation-boundary` — provider `specs/08-project-participation#Task 4` — required before `Task 1`.
 - `capability:ai-runtime-session` — provider `specs/11-ai-runtime-governance#Task 11` — required before `Task 2`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 3`.
-- `capability:guided-specification-delivery` — provider `specs/07-guided-specification-delivery#Task 6` — required before `Task 3`.
+- `capability:guided-specification-delivery` — provider `specs/24-guided-delivery-completion#Task 1` — required before `Task 3`.
 - `capability:ai-runtime-observation` — provider `specs/11-ai-runtime-governance#Task 5` — required before `Task 2`.
 - `capability:ai-runtime-governance` — provider `specs/11-ai-runtime-governance#Task 6` — required before `Task 9`.
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 9`.

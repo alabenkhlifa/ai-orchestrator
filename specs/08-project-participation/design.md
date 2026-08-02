@@ -12,6 +12,8 @@ Add one project-scoped invitation and participation boundary for hosted projects
 
 Expose current project participation through a read-only authorization interface. Participants may work with project specifications, feature content, comments, and run evidence through later consumers, but they receive no membership administration, destructive project settings, repository or storage control, or credential authority. Invitations have a seven-day, single-pending lifecycle with invalidating resend, owner cancellation, invitee decline, and fresh re-invitation. Owner removal and participant self-leave end future authorization and record one durable versioned revocation handoff in the same transaction. Slice 08 does not mutate future feature, question, review, notification, contribution, or agent-run records; Slice 07 consumes the handoff to apply its own owner-fallback behavior. Historical attribution retains the last display name only while necessary for project accountability and is anonymized through the approved rights and deletion workflow. Email delivery and account-level in-product notification storage share reusable infrastructure while keeping invitation credentials and event payloads feature-specific and minimized.
 
+Resolve authorization, current-participant enumeration, responsibility, and notification-recipient identity from project ownership and active `ProjectParticipant` records before joining presentation data. A missing `ProjectMemberProfile` is an explicit presentation-repair state, not an authorization result: the boundary retains stable identity and role, exposes no email fallback, and lets consumers use only a neutral minimized presentation until the profile is repaired.
+
 ## Components Affected
 
 - Hosted-project participation settings and participant list.
@@ -55,6 +57,7 @@ Required boundaries:
 - On-device projects cannot create hosted invitations or participants.
 - Only the owner mutates invitations and other participants; an active participant may end only their own participation.
 - Current authorization revalidates active project participation and fails closed after removal, leave, invalidation, or absence.
+- Current authorization and recipient enumeration are driven by the immutable owner or active `ProjectParticipant` row. Joining `ProjectMemberProfile` may add presentation but cannot remove an authorized identity; a missing profile returns an explicit absent-presentation state and no email-derived label.
 - Removal or leave makes participation inactive and inserts one `ParticipationRevocation` in the same transaction. Slice 08 never directly changes Slice 07 assignment, question, review, contribution, notification, or run state.
 - Slice 07 owns idempotent consumption of `ParticipationRevocation`, including assignment clearing, owner responsibility fallback, governed historical attribution, active-run control, and former-participant denial on its records.
 - Historical attribution resolves through stable identity, uses the current display name while active, and retains the last accepted display name after departure only while necessary for project accountability; approved rights or deletion handling removes the account link and anonymizes the label when continued identification is unnecessary.
@@ -69,7 +72,7 @@ Required boundaries:
 - Invitation-lifecycle interface: enforce seven-day expiry, one pending invitation per project and email, invalidating resend, owner cancellation, invitee decline, current-participant detection, and fresh re-invitation after every terminal state.
 - Invited-email proof interface: bind fresh proof of the invited email to one invitation, warn before replacing another identity's browser cookie, establish the proven identity's hosted browser session, and never treat another session or sign-in method as equivalent proof.
 - Acceptance interface: identify the project and consequence after proof, require explicit acceptance, and create one participant authorization or no partial state.
-- Current-participant interface: return the minimum current project-scoped identity and authorization required by Slice 07 and other approved consumers without mutating participation.
+- Current-participant interface: return the minimum current project-scoped stable identity, role, authorization, and presentation state required by Slice 07 and other approved consumers without mutating participation; include active identities whose profile is absent and never substitute email for presentation.
 - Project-capability interface: authorize project specifications, feature content, comments, and run evidence while denying participation management, destructive project settings, storage or repository changes, and credential access.
 - Display-identity interface: create the owner's project profile with the project and backfill projects registered before that rule, capture a participant profile during acceptance, let each member change only their own trimmed project-specific display name, enforce case-insensitive project uniqueness without automatic suffixes, preserve the last accepted label for necessary historical attribution, and support approved anonymization without erasing stable contribution history.
 - Revocation interface: remove or leave atomically, invalidate current authorization, insert one versioned `ParticipationRevocation`, preserve the immutable owner, and expose idempotent claim and acknowledgement operations without mutating consumer-owned records.
@@ -96,6 +99,12 @@ Required boundaries:
 - Reason: A project must be usable by the person who just created it. Requiring the owner to visit participation management before the project works makes a presentation label a precondition for delivery work, which is the wrong dependency: a label describes how the owner appears, not whether they are the owner. The owner's GitHub login is already the handle they registered the project under, so it is a truthful starting label rather than an invented one.
 - Replaced tradeoff: The earlier choice required the owner to establish the label before the first invitation, to avoid deriving inconsistent labels from GitHub and passwordless sign-in methods. That inconsistency is now accepted deliberately: an owner starts with a derived GitHub label while a participant still chooses one at acceptance, because owners and participants arrive through different proofs and only the owner's is already a public handle.
 - Consequence: Every hosted project has an owner label from birth, and projects registered before this rule are backfilled by the same rule. Owner and participant authorization identity remains separate from presentation, each member edits only their own label, conflicts require explicit correction, and anonymization can remove account linkage without erasing stable project history. The invitation action surfaces the owner label for correction instead of blocking on it.
+
+### Authorization Before Presentation
+
+- Choice: Resolve immutable-owner and active-participant identity and role before joining optional project presentation, and represent a missing profile explicitly without an email fallback.
+- Reason: `ProjectMemberProfile` controls how a person is shown; it is not the source of project authorization or notification responsibility. Treating an inner join as authorization silently drops a valid recipient and violates the already-approved identity boundary.
+- Consequence: Approved consumers continue to fail closed for inactive, removed, left, stale, or absent participation while retaining an active identity whose label needs repair. UI and notifications may use only a neutral minimized label until presentation exists.
 
 ### Email Invitation Without Directory Search
 

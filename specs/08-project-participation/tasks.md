@@ -10,6 +10,10 @@ Slice 07 may consume the published boundary. Task 34 is complete, so
 `capability:project-owner-display-profile` is ready: the owner profile is created
 with the hosted project, earlier projects are backfilled, and `Boundary.owner/1`
 no longer treats a missing presentation label as missing owner authorization.
+Task 36 is now the next cross-specification repair: it makes active-participant
+enumeration and recipient routing independent of `ProjectMemberProfile` and will
+publish `capability:project-participation-recipient-routing` without reopening
+the completed boundary task.
 Task 35 is complete: the invitation action shows the owner label with an inline
 correction and no longer blocks on it. The remaining lifecycle, retention,
 rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
@@ -33,6 +37,7 @@ Provides:
 
 - `capability:project-participation-boundary` — ready after `Task 4`.
 - `capability:project-owner-display-profile` — ready after `Task 34`.
+- `capability:project-participation-recipient-routing` — ready after `Task 36`.
 - `capability:project-participation-governance` — ready after `Task 5`.
 
 ## Task Size Gate
@@ -40,6 +45,10 @@ Provides:
 - Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof expected to run in about ten minutes.
 - Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
 - Existing task labels are preserved; newly split tasks use the next unused labels and are listed by dependency order rather than numeric order.
+
+## Proof Scope Gate
+
+- Applies to: Task 36.
 
 ## Implementation Boundary
 
@@ -290,6 +299,15 @@ Release gates:
   - Owns: AC-11
   - Proof: Focused consumer-contract, current, stale, removed, left, absent, project-isolation, minimum-payload, read-only, revocation replay, notification-extension, and Slice 07 compatibility tests pass before readiness is recorded.
 
+- [ ] Task 36 — Repair active-participant recipient routing without profile coupling.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 4, Task 34
+  - Purpose: Keep authorization, responsibility, and notification routing tied to active participation when presentation data is absent.
+  - Owned surfaces: `Participation.Boundary` active-participant enumeration, immutable-owner and `ProjectParticipant`-first query semantics, optional `ProjectMemberProfile` join, stable identity and role result, explicit absent-presentation state, neutral minimized presentation contract, no email fallback, stale and departed denial, Slice 07 recipient-routing compatibility fixtures, `capability:project-participation-recipient-routing` provider, and readiness write-back.
+  - Owns: AC-42
+  - Proof: Focused boundary and notification-consumer tests prove an active participant without a profile remains authorized and routable, an owner without a profile remains resolvable, no email-derived label is returned, stale and departed identities remain denied, project isolation holds, and capability readiness is recorded through task scope.
+
 - [ ] Task 20 — Enforce invitation and participation-record cleanup.
   - Size: Standard
   - Depends on: Task 4, Task 25
@@ -393,6 +411,13 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-08-02 - Recipient-routing repair refined
+
+- Completed: Preserved completed Task 4 and `capability:project-participation-boundary`, clarified that authorization and routing come from project ownership or active `ProjectParticipant` state before optional presentation, and added focused Task 36 for the observed profile-coupling defect.
+- Remaining: Implement Task 36 and publish `capability:project-participation-recipient-routing`; the existing lifecycle, retention, rights, logging, backup, propagation, and governance tasks remain unchanged.
+- Failed checks: None. The individual specification validator, global 24-specification capability graph, validator test suite, and `git diff --check` pass with the coordinated Slice 07 continuation update.
+- Spec updates: Added AC-42, the explicit absent-presentation and no-email-fallback contract, prospective Task 36 proof scope, the narrow repair capability, and its consumer handoff without reopening completed history.
 
 ### 2026-07-31 - Task 35 complete: the owner sees the label an invitee will read
 
