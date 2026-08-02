@@ -4,7 +4,7 @@
 
 In Progress
 
-The approved feature-delivery foundation is implemented through Task 36, including the board, readiness, orchestration, worker, evidence, preview, review, same-run continuation, and minimized notification projection. The previous unfinished plan mixed notification access, processing controls, several independent retention authorities, deletion, verified rights, deployment governance, and final coordination under one verification gate. Those independently executable outcomes now belong to focused continuation specifications. The Slice 08 recipient-routing repair is ready, so Task 54 is now the next executable task: it verifies the completed legacy foundation under the current proof runner and publishes its narrow child-consumer capabilities. Task 54 remains unimplemented and does not move participation ownership into this specification.
+The approved feature-delivery foundation is implemented through Task 36, including the board, readiness, orchestration, worker, evidence, preview, review, same-run continuation, and minimized notification projection. The previous unfinished plan mixed notification access, processing controls, several independent retention authorities, deletion, verified rights, deployment governance, and final coordination under one verification gate. Those independently executable outcomes now belong to focused continuation specifications. Task 54 is complete: the completed foundation is reconciled under the current proof runner and its five child-consumer capabilities are published, including the Slice 08 recipient-routing contract verified from this consumer's side. No participation ownership moved into this specification. The remaining work in this file is the slice verification gate; new implementation belongs to the focused continuations.
 
 ## Active Slice
 
@@ -416,7 +416,7 @@ Prerequisite:
   - Depends on: Task 2
   - Proof: Focused navigation, configuration test, default-landing, unconfigured-fallback, missing-label landing, authorization, cross-project isolation, current-destination, keyboard, focus, desktop, and mobile tests pass, including one proof that an owner reaching their configured board is not refused there.
 
-- [ ] Task 54 - Verify and publish the completed guided-delivery foundation contracts.
+- [x] Task 54 - Verify and publish the completed guided-delivery foundation contracts.
   - Size: Standard
   - Proof scope: Focused
   - Purpose: Reconcile the completed foundation under the current proof runner and publish its smallest stable child-consumer contracts without implementing any child-owned behavior.
@@ -450,6 +450,16 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-08-02 - Task 54 complete: the foundation contracts are verified and published
+
+- Completed: Reconciled the completed guided-delivery foundation under the current task-proof runner with five new focused handoff test files under `test/sdd_orchestrator/delivery/foundation/`, one per published contract, and recorded readiness for the five child-consumer capabilities. No production code changed and no child-owned behavior was implemented; every test pins a contract the foundation already keeps.
+- Capability readiness: `capability:guided-delivery-data-surfaces`, `capability:guided-delivery-notification-projection`, `capability:guided-delivery-artifact-preview-boundary`, `capability:guided-delivery-revocation-consumer`, and `capability:guided-delivery-start-disclosure` are ready for their consumers in `specs/17-` through `specs/24-`. Each handoff file names the capability it publishes and asserts the contract whole — the delivery-store operation vocabulary, the three `delivery.` event types with their recipient matrices and idempotent key, the opaque artifact reference with its idempotent deletion seam and the preview lifecycle, cleanup, and exact-commit binding, the acknowledged-after-commit revocation consumer, and the digest-bound start disclosure — so a contract change breaks a named handoff test before it breaks a child.
+- The Slice 08 `capability:project-participation-recipient-routing` contract is verified from this consumer's side: an active participant who never had a `ProjectMemberProfile` is still the person a blocked run reaches, `Participation.Boundary.current_participants/1` reports them as `presentation_state: :absent` with the neutral label and no email-derived text, and a departed recipient is dropped at delivery time while the removal notice itself stays Slice 08's record. No provider defect was found.
+- Deliberately not the slice gate: this task's proof is the focused handoff reconciliation only. Full repository, browser, security, production, and live-smoke checks remain in the slice verification gate, and the release gate is unchanged.
+- Proof receipt: `Task 54` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/foundation/data_surfaces_handoff_test.exs test/sdd_orchestrator/delivery/foundation/notification_projection_handoff_test.exs test/sdd_orchestrator/delivery/foundation/artifact_preview_boundary_handoff_test.exs test/sdd_orchestrator/delivery/foundation/revocation_consumer_handoff_test.exs test/sdd_orchestrator/delivery/foundation/start_disclosure_handoff_test.exs` — exit `0`.
+- Failed checks: None. The focused proof passed with 29 tests and 0 failures under `MIX_TEST_PARTITION=754`, `mix format --check-formatted` passes on the new files, and the individual specification validator, the affected consumer validators (`specs/17-` through `specs/24-`), the global capability graph, and `git diff --check` are recorded after this write-back.
+- Spec updates: Marked Task 54 complete and recorded capability readiness. Requirements, design, acceptance criteria, ownership, task sizes, proof scope, and dependency edges are unchanged.
 
 ### 2026-08-02 - Legacy implementation narrowed to focused continuation slices
 
