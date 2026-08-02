@@ -50,7 +50,10 @@ defmodule SddOrchestrator.Privacy.Rights do
       departed participant's project label, verified anonymization of that label
       and its account link, and the project-deletion sweep. Anonymization keeps
       the contribution history that attributes through the profile and restores
-      no project access.
+      no project access. An approved verified request from a current participant
+      is served by `anonymize_verified_participation/4`, which commits the
+      authoritative self-departure first and anonymizes only the resulting
+      historical attribution.
 
   Retained copies outside the primary store (encrypted backups) are expired by the
   deployment's backup lifecycle, recorded in the deployment privacy profile.
@@ -88,6 +91,7 @@ defmodule SddOrchestrator.Privacy.Rights do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking.WorkspaceMergeRecord
   alias SddOrchestrator.Participation
+  alias SddOrchestrator.Participation.Revocations
 
   alias SddOrchestrator.Portability.{
     HostedLocalRepositoryBinding,
@@ -586,6 +590,56 @@ defmodule SddOrchestrator.Privacy.Rights do
          derived_revocations: result.derived_revocations,
          propagation: anonymization_propagation()
        }}
+    end
+  end
+
+  @doc """
+  Completes one approved verified participant-anonymization request in order.
+
+  Identity verification alone is not the legal disposition. The caller's rights
+  workflow must record both that the requester's identity was verified and that
+  the request was approved before this orchestration acts; anything less is
+  refused before any state changes, and unverified processing keeps following
+  the attribution-necessity decision through
+  `anonymize_participation_attribution/3`.
+
+  The scope is the requester's own stable account and hosted identity. A hosted
+  identity that does not belong to the account is refused, so the operation can
+  never end another person's membership, and the immutable owner is refused
+  because owner departure is not a participation transition this workflow may
+  perform. Neither a display name nor an email address is accepted as
+  authority.
+
+  When the requester is a current participant, the workflow first commits the
+  existing authoritative self-departure transition — publishing its durable
+  handoff and notifications exactly as an ordinary leave does — and anonymizes
+  only the historical attribution that departure leaves behind. Departure is
+  never rolled back: when anonymization fails after it, access stays ended and
+  the result reports `:retryable_incomplete` instead of success, and a later
+  run retries only the remaining anonymization work.
+  """
+  @spec anonymize_verified_participation(
+          String.t(),
+          String.t() | nil,
+          String.t() | nil,
+          keyword()
+        ) ::
+          {:ok, map()}
+          | {:error,
+             :unverified_request
+             | :approval_required
+             | :not_found
+             | :owner_cannot_leave
+             | :active_participation
+             | :attribution_necessary
+             | map()}
+  def anonymize_verified_participation(project_id, account_id, hosted_identity_id, opts \\ []) do
+    with :ok <- authorize_verified_disposition(opts),
+         :ok <- verify_identity_scope(account_id, hosted_identity_id),
+         :ok <- refuse_owner(project_id, account_id),
+         {:ok, departure} <-
+           end_current_participation(project_id, account_id, hosted_identity_id) do
+      finish_verified_anonymization(project_id, account_id, departure)
     end
   end
 
@@ -1310,6 +1364,87 @@ defmodule SddOrchestrator.Privacy.Rights do
         revoked_at: session.revoked_at
       }
     end)
+  end
+
+  # Both facts must be on record before the workflow acts: that the requester's
+  # identity was verified and that the request itself was approved as the legal
+  # disposition. Either alone changes nothing.
+  defp authorize_verified_disposition(opts) do
+    cond do
+      not Keyword.get(opts, :verified_request, false) -> {:error, :unverified_request}
+      not Keyword.get(opts, :approved, false) -> {:error, :approval_required}
+      true -> :ok
+    end
+  end
+
+  # The hosted identity must be the requester's own. Self-departure claims the
+  # participant row by hosted identity, so an unbound identity would let a
+  # request verified for one person end another person's membership.
+  defp verify_identity_scope(account_id, hosted_identity_id)
+       when is_binary(account_id) and is_binary(hosted_identity_id) do
+    case Repo.get(HostedIdentity, hosted_identity_id) do
+      %HostedIdentity{account_id: ^account_id} -> :ok
+      _other_or_missing -> {:error, :not_found}
+    end
+  rescue
+    Ecto.Query.CastError -> {:error, :not_found}
+  end
+
+  defp verify_identity_scope(_account_id, _hosted_identity_id), do: {:error, :not_found}
+
+  # Owner anonymization, removal, and self-leave are out of scope; the
+  # immutable owner never reaches the departure transition through this path.
+  defp refuse_owner(project_id, account_id) do
+    if Participation.owner?(project_id, account_id),
+      do: {:error, :owner_cannot_leave},
+      else: :ok
+  end
+
+  # The ordered first step: a current participant departs through the existing
+  # authoritative self-leave transition, which ends access and publishes the
+  # durable handoff in its own transaction. A requester who already departed —
+  # including one departed concurrently — needs no transition here.
+  defp end_current_participation(project_id, account_id, hosted_identity_id) do
+    case Participation.active_participant(project_id, hosted_identity_id) do
+      nil ->
+        {:ok, :already_ended}
+
+      _participant ->
+        case Revocations.leave(project_id, account_id, hosted_identity_id) do
+          {:ok, _departed} -> {:ok, :committed}
+          {:error, :not_a_participant} -> {:ok, :already_ended}
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  # Anonymization runs only after the profile is historical, on the verified
+  # basis. A failure after a committed departure must not roll access back:
+  # the result stays an explicit non-success that names the remaining work.
+  defp finish_verified_anonymization(project_id, account_id, departure) do
+    case anonymize_participation_attribution(project_id, account_id, verified_request: true) do
+      {:ok, result} ->
+        {:ok,
+         result
+         |> Map.put(:workflow, :verified_participation_anonymization)
+         |> Map.put(:status, :complete)
+         |> Map.put(:participation, :ended)
+         |> Map.put(:departure, departure)}
+
+      {:error, reason} when departure == :committed ->
+        {:error,
+         %{
+           workflow: :verified_participation_anonymization,
+           status: :retryable_incomplete,
+           participation: :ended,
+           departure: :committed,
+           retry: :anonymization,
+           reason: reason
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp authorize_anonymization(project_id, account_id, verified_request?) do

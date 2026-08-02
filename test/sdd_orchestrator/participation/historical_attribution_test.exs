@@ -191,6 +191,33 @@ defmodule SddOrchestrator.Participation.HistoricalAttributionTest do
       assert profile.display_name == "Member Label"
     end
 
+    test "a current participant's complete route is the verified workflow, not this path" do
+      context = joined()
+
+      assert {:error, :active_participation} =
+               Rights.anonymize_participation_attribution(
+                 context.project.id,
+                 context.identity.account.id,
+                 verified_request: true
+               )
+
+      assert {:ok, %{status: :complete, departure: :committed}} =
+               Rights.anonymize_verified_participation(
+                 context.project.id,
+                 context.identity.account.id,
+                 context.identity.hosted_identity.id,
+                 verified_request: true,
+                 approved: true
+               )
+
+      refute Participation.active_participant(
+               context.project.id,
+               context.identity.hosted_identity.id
+             )
+
+      refute Participation.member_profile(context.project.id, context.identity.account.id)
+    end
+
     test "an account with no attribution in the project is not found" do
       context = joined()
       stranger = ParticipationFixtures.invited_identity_fixture()
