@@ -20,6 +20,12 @@ defmodule SddOrchestrator.Participation.EmailDelivery do
   alias SddOrchestrator.Repo
 
   @default_transport SddOrchestrator.HostedAccess.SwooshDelivery
+  @context_fields %{
+    invitation: [:subject_ref, :event_version, :recipient, :project_label, :url],
+    invitation_resent: [:subject_ref, :event_version, :recipient, :project_label, :url],
+    invitation_canceled: [:subject_ref, :event_version, :recipient, :project_label],
+    participant_removed: [:subject_ref, :event_version, :recipient, :project_label]
+  }
 
   @type outcome :: {:ok, ParticipationEmailDelivery.t()} | {:error, atom()}
 
@@ -35,7 +41,12 @@ defmodule SddOrchestrator.Participation.EmailDelivery do
   def deliver(event, %{subject_ref: subject_ref} = context) do
     version = Map.get(context, :event_version, 1)
 
-    with {:ok, email} <- ParticipationEmail.build(event, context) do
+    with :ok <- validate_context(event, context),
+         {:ok, email} <-
+           ParticipationEmail.build(
+             event,
+             Map.take(context, ParticipationEmail.context_fields(event))
+           ) do
       case existing(event, subject_ref, version) do
         %ParticipationEmailDelivery{status: "sent"} = sent ->
           {:ok, sent}
@@ -60,6 +71,10 @@ defmodule SddOrchestrator.Participation.EmailDelivery do
 
   def deliver(_event, _context), do: {:error, :invalid_context}
 
+  @doc "The complete delivery context approved for one participation email."
+  @spec context_fields(atom()) :: [atom()]
+  def context_fields(event), do: Map.get(@context_fields, event, [])
+
   @doc "Returns the recorded delivery outcome for one event and subject version."
   @spec result(atom(), Ecto.UUID.t(), pos_integer()) :: ParticipationEmailDelivery.t() | nil
   def result(event, subject_ref, event_version \\ 1) do
@@ -74,6 +89,25 @@ defmodule SddOrchestrator.Participation.EmailDelivery do
   @spec transport() :: module()
   def transport do
     Application.get_env(:sdd_orchestrator, :participation_email_delivery, @default_transport)
+  end
+
+  defp validate_context(event, context) do
+    allowed_fields = context_fields(event)
+    supplied_fields = Map.keys(context)
+
+    cond do
+      allowed_fields == [] ->
+        {:error, :unsupported_event}
+
+      not Enum.all?([:subject_ref, :recipient, :project_label], &Map.has_key?(context, &1)) ->
+        {:error, :invalid_context}
+
+      Enum.any?(supplied_fields, &(&1 not in allowed_fields)) ->
+        {:error, :unapproved_context}
+
+      true ->
+        :ok
+    end
   end
 
   defp send_and_record(record, email, event) do
