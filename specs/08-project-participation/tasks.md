@@ -308,7 +308,7 @@ Release gates:
   - Owns: AC-42
   - Proof: Focused boundary and notification-consumer tests prove an active participant without a profile remains authorized and routable, an owner without a profile remains resolvable, no email-derived label is returned, stale and departed identities remain denied, project isolation holds, and capability readiness is recorded through task scope.
 
-- [ ] Task 20 — Enforce invitation and participation-record cleanup.
+- [x] Task 20 — Enforce invitation and participation-record cleanup.
   - Size: Standard
   - Depends on: Task 4, Task 25
   - Purpose: Remove reusable invitation material and departed identity links on the approved schedule.
@@ -679,3 +679,14 @@ Release gates:
 - Remaining: Implement Tasks 2–5 and complete the verification gate. Slice 07 separately consumes the delivered current-participant and revocation contracts.
 - Failed checks: None; implementation has not started.
 - Spec updates: Changed task status from `Blocked` to `Not Started`, completed Task 1, added stable AC-26 through AC-30 and the new data entities, moved Slice 07 record mutation out of this slice, assigned every active surface to one primary task, and resolved all active design blockers.
+
+### 2026-08-02 - Task 20 complete: invitation and participation-record cleanup
+
+- Completed: `Privacy.Retention.prune_all/1` now enforces the three AC-31 rules through the existing supervised, advisory-locked pruner: pending invitations past their seven-day lifetime are made terminal, terminal invitations are deleted at 30 days, and a departed participant's link to its stable hosted identity is erased at 30 days while active participation is untouched.
+- No migration and no schema change were needed, and that is the finding rather than a shortcut. The `project_invitations_credential_shape` and `project_participants_state_shape` check constraints from Tasks 2 and 6 already make the required end states the only representable ones, and `ProjectInvitation.terminal_changeset/4` and `ProjectParticipant.identity_release_changeset/1` already existed. Task 20 supplied the scheduled rules and the proof, not new structure.
+- Immediate credential erasure is proved two ways. The real `cancel` and expiry commands are driven end to end, and the database is then asked to put `token_digest` and `token_salt` back on a terminal row and refuses. That second assertion is the stronger one: every production terminal transition — accept, decline, cancel, expire — funnels through the single `terminal_changeset/4`, so the constraint covers the accepted and declined paths without a full proof-and-acceptance setup, and it would catch a future caller that tried to bypass the funnel.
+- Seven-day unusability is now enforced on a schedule rather than only at read time. Task 25 left `Invitations.expire_due/1` as a pruner seam that nothing in `lib/` called; `prune_all/1` now drives it, which also lets the Task 26 owner-expiry notification fire on its own. Expiry runs before the 30-day sweep, so an invitation that becomes terminal during a pass starts its own 30 days from that pass instead of being deleted in the same run.
+- Both 30-day rules compare with `<=`, so a record sitting exactly on the boundary is removed and the contract reads "within 30 days" as written; one second inside the window is retained. The departed rule nulls only `hosted_identity_id` and leaves the row, its `departed_at`, and its `departure_reason` as governed project history, and it never selects an active row.
+- Integration note, not owned here: `participation_revocations.former_hosted_identity_id` keeps its own copy of the departed identity, which is what lets the Slice 07 handoff stay meaningful after this erasure. No acceptance criterion currently bounds the handoff's own retention. Tasks 22, 23, and 31 should decide whether it needs one; Task 20's owned surfaces name only the `ProjectParticipant` link.
+- Failed checks: None. Focused proof passes with real exit status: `MIX_TEST_PARTITION=20 mix test test/sdd_orchestrator/privacy/participation_retention_test.exs` (12 passing), the sibling privacy suite `MIX_TEST_PARTITION=20 mix test test/sdd_orchestrator/privacy/` (79 passing) run because `Retention` is shared, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` (441 files, no issues), `python3 .agents/scripts/validate_spec.py specs/08-project-participation`, `python3 .agents/scripts/validate_spec.py --all specs`, and `git diff --check`.
+- Spec updates: Marked Task 20 complete. Requirements, design, acceptance criteria, ownership, task sizes, proof scope, and dependency edges are unchanged.
