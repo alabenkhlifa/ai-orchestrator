@@ -3,7 +3,13 @@ defmodule SddOrchestrator.Participation.InvitationEmailTest do
 
   import ExUnit.CaptureLog
 
-  alias SddOrchestrator.Participation.{EmailDelivery, Invitations, ProjectInvitation}
+  alias SddOrchestrator.Participation.{
+    EmailDelivery,
+    Invitations,
+    ParticipationEmail,
+    ProjectInvitation
+  }
+
   alias SddOrchestrator.ParticipationDeliveryDouble
   alias SddOrchestrator.ParticipationFixtures
 
@@ -120,7 +126,7 @@ defmodule SddOrchestrator.Participation.InvitationEmailTest do
         event_version: 1,
         recipient: @address,
         project_label: project.name,
-        url: "http://localhost/projects/invitations/accept?invitation=#{invitation.id}&token=x"
+        url: ParticipationEmail.invitation_url(invitation.id, "x")
       }
 
       assert {:ok, replayed} = EmailDelivery.deliver(:invitation, context)
@@ -148,8 +154,7 @@ defmodule SddOrchestrator.Participation.InvitationEmailTest do
             event_version: 1,
             recipient: @address,
             project_label: project.name,
-            url:
-              "http://localhost/projects/invitations/accept?invitation=#{invitation.id}&token=x"
+            url: ParticipationEmail.invitation_url(invitation.id, "x")
           }
 
           assert {:ok, retried} = EmailDelivery.deliver(:invitation, context)

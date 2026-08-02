@@ -316,7 +316,7 @@ Release gates:
   - Owns: AC-31
   - Proof: Focused time-boundary, terminal-state, credential-erasure, invitation deletion, departed-link deletion, active-record preservation, idempotency, lock, restart, and reconciliation tests pass.
 
-- [ ] Task 21 — Enforce participation notification minimization.
+- [x] Task 21 — Enforce participation notification minimization.
   - Size: Standard
   - Depends on: Task 11, Task 14, Task 19, Task 27
   - Purpose: Keep every participation notification inside the approved minimum content boundary.
@@ -411,6 +411,13 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-08-02 - Task 21 complete: participation notifications stay minimized
+
+- Completed: Added exact participation-event and email-context allowlists for invitation, resend, acceptance, decline, expiry, cancellation, removal, and leave notifications. In-product payloads now reject unapproved fields or content and enforce event-specific internal links; invitation emails reject unrelated context and links outside the configured product origin or canonical single-token acceptance route. Delivery records remain the existing fixed minimized schemas, and the shared notification store is unchanged.
+- Boundary held: Notification builders accept only the project label, approved event or action wording, the necessary actor label, recipient routing identity, time, and the event's safe link. Focused negative scans and rejection tests cover specification, feature, comment, evidence, repository, credential, secret, and unrelated-identity sentinels without changing participation lifecycle or retention behavior.
+- Proof: `MIX_TEST_PARTITION=21 MIX_DEPS_PATH=/Users/alabenkhlifa/IdeaProjects/sdd-orchestrator/deps mix test test/sdd_orchestrator/participation/notification_minimization_test.exs test/sdd_orchestrator/participation/email_delivery_test.exs test/sdd_orchestrator/participation/invitation_email_test.exs test/sdd_orchestrator/participation/outcome_notification_test.exs test/sdd_orchestrator/participation/expiry_notification_test.exs test/sdd_orchestrator/participation/departure_notification_test.exs test/sdd_orchestrator/participation/removal_email_test.exs` passes with 44 tests and 0 failures. Targeted `mix format --check-formatted` and strict Credo pass on all changed Elixir files.
+- Spec updates: Marked Task 21 complete for AC-24; requirements, design, capability readiness, ownership, and dependency edges are unchanged.
 
 ### 2026-08-02 - Recipient-routing repair refined
 
