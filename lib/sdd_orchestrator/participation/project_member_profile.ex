@@ -70,6 +70,33 @@ defmodule SddOrchestrator.Participation.ProjectMemberProfile do
   end
 
   @doc """
+  Reactivates one linked historical participant profile with a newly accepted
+  project label.
+
+  Only a still-linked participant profile may cross this boundary. An active,
+  owner, anonymized, or otherwise incompatible row remains unchanged and is
+  reported as an identity-lifecycle conflict by the acceptance transaction.
+  """
+  def reactivation_changeset(profile, attrs) do
+    profile
+    |> cast(attrs, [:display_name])
+    |> validate_reactivation_source()
+    |> put_change(:state, "active")
+    |> put_change(:anonymized_at, nil)
+    |> put_display_name()
+    |> validate_required([
+      :project_id,
+      :account_id,
+      :role,
+      :state,
+      :display_name,
+      :display_name_key
+    ])
+    |> validate_inclusion(:role, ["participant"])
+    |> apply_constraints()
+  end
+
+  @doc """
   Preserves the last accepted label as non-interactive historical attribution.
   """
   def historical_changeset(profile) do
@@ -97,6 +124,18 @@ defmodule SddOrchestrator.Participation.ProjectMemberProfile do
   @spec active?(t()) :: boolean()
   def active?(%__MODULE__{state: "active"}), do: true
   def active?(%__MODULE__{}), do: false
+
+  defp validate_reactivation_source(
+         %Ecto.Changeset{
+           data: %__MODULE__{state: "historical", role: "participant", account_id: account_id}
+         } = changeset
+       )
+       when not is_nil(account_id),
+       do: changeset
+
+  defp validate_reactivation_source(changeset) do
+    add_error(changeset, :state, "cannot be reactivated")
+  end
 
   defp put_display_name(changeset) do
     case fetch_change(changeset, :display_name) do

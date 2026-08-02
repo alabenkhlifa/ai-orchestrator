@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 The product and technical agreement is approved. `capability:project-participation-boundary` is already ready, so Tasks 1, 2, and 3 may start independently with disjoint primary module ownership.
 
@@ -72,7 +72,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Repair fresh re-acceptance after departure.
+- [x] Task 1 — Repair fresh re-acceptance after departure.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none

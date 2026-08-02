@@ -1,5 +1,15 @@
 # Participation Identity Lifecycle Progress Log
 
+### 2026-08-02 — Task 1 complete: fresh acceptance restores linked presentation
+
+- Completed: Fresh invitation acceptance now locks the project-and-account profile state, creates one new active participant authorization, reactivates a linked historical participant profile with its stable identifier and newly accepted available label, and creates a new profile only when no linked profile exists. An anonymized row stays unlinked and unchanged.
+- Boundary held: Fresh invited-email proof and explicit acceptance remain mandatory. Invalid labels, unavailable labels, and identity-lifecycle conflicts return distinct results; every failure rolls back participant, profile, invitation, and notification writes. Replay and concurrent acceptance leave one active authorization and the correct profile.
+- Mechanism recorded: First acceptance keeps the established profile-keyed notification identity. Because re-acceptance deliberately reuses that profile identifier, its fresh invitation identifier keys the new participant and owner outcome notifications so they commit once without being mistaken for a replay of the original join.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/participation/reacceptance_test.exs` — exit `0`.
+- Remaining: Tasks 2 and 3 may continue independently; Task 4 remains blocked on Tasks 1, 2, and 3 together.
+- Failed checks: None. The focused proof passed with 9 tests and real exit status.
+- Spec updates: Marked Task 1 complete and recorded its proof. Requirements, design, acceptance criteria, capability ownership, task sizes, proof scope, and dependency edges are unchanged.
+
 ### 2026-08-02 — Focused identity-lifecycle child specification created
 
 - Completed: Approved fresh re-acceptance through linked historical-profile reuse, permanent anonymized-history separation, former-identity-link cleanup on acknowledgement or by 30 days, and verified current-participant departure before historical anonymization.
