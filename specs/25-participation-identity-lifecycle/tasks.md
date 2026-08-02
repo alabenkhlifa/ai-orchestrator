@@ -72,7 +72,7 @@ Traceability:
 
 ## Tasks
 
-- [x] Task 1 — Repair fresh re-acceptance after departure.
+- [ ] Task 1 — Repair fresh re-acceptance after departure.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -81,7 +81,7 @@ Traceability:
   - Owns: AC-01, AC-02, AC-03, entity:ProjectParticipant, entity:ProjectMemberProfile
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/participation/reacceptance_test.exs` passes focused removed, left, fresh proof, same-profile identifier, new label, no-linked-profile, anonymized-history, new-profile, uniqueness, invalid-label, typed-conflict, rollback, replay, concurrency, invitation, and notification cases.
 
-- [ ] Task 2 — Enforce revocation former-identity cleanup.
+- [x] Task 2 — Enforce revocation former-identity cleanup.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none

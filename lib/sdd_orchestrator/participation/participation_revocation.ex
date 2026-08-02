@@ -89,9 +89,18 @@ defmodule SddOrchestrator.Participation.ParticipationRevocation do
   def claim_changeset(revocation, claimed_at),
     do: change(revocation, %{claimed_at: claimed_at})
 
+  @doc "Releases the former-participant routing links while preserving the handoff."
+  def identity_release_changeset(revocation) do
+    change(revocation, %{
+      former_hosted_identity_id: nil,
+      former_account_id: nil
+    })
+  end
+
   @doc "Records that a consumer committed its own handling of one handoff."
   def acknowledge_changeset(revocation, consumer_ref, acknowledged_at) do
     revocation
+    |> identity_release_changeset()
     |> change(%{
       consumer_ref: consumer_ref,
       acknowledged_at: acknowledged_at,

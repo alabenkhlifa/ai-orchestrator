@@ -106,24 +106,55 @@ defmodule SddOrchestrator.Participation.Revocations do
   def acknowledge(revocation_id, consumer_ref, now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
 
-    case Repo.get(ParticipationRevocation, revocation_id) do
-      nil ->
-        {:error, :not_found}
+    Repo.transaction(fn ->
+      case claim_revocation(revocation_id) do
+        nil ->
+          Repo.rollback(:not_found)
 
-      %ParticipationRevocation{acknowledged_at: %DateTime{}} = acknowledged ->
-        {:ok, acknowledged}
+        %ParticipationRevocation{acknowledged_at: %DateTime{}} = acknowledged ->
+          ensure_identity_released(acknowledged)
 
-      revocation ->
-        revocation
-        |> ParticipationRevocation.acknowledge_changeset(consumer_ref, now)
-        |> Repo.update()
-        |> case do
-          {:ok, updated} -> {:ok, updated}
-          {:error, _changeset} -> {:error, :not_found}
-        end
+        revocation ->
+          revocation
+          |> ParticipationRevocation.acknowledge_changeset(consumer_ref, now)
+          |> Repo.update()
+          |> case do
+            {:ok, updated} -> updated
+            {:error, _changeset} -> Repo.rollback(:not_found)
+          end
+      end
+    end)
+    |> case do
+      {:ok, acknowledged} -> {:ok, acknowledged}
+      {:error, _reason} -> {:error, :not_found}
     end
   rescue
     Ecto.Query.CastError -> {:error, :not_found}
+  end
+
+  defp claim_revocation(revocation_id) do
+    ParticipationRevocation
+    |> where([r], r.id == ^revocation_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one()
+  end
+
+  defp ensure_identity_released(
+         %ParticipationRevocation{
+           former_hosted_identity_id: nil,
+           former_account_id: nil
+         } = acknowledged
+       ),
+       do: acknowledged
+
+  defp ensure_identity_released(acknowledged) do
+    acknowledged
+    |> ParticipationRevocation.identity_release_changeset()
+    |> Repo.update()
+    |> case do
+      {:ok, released} -> released
+      {:error, _changeset} -> Repo.rollback(:not_found)
+    end
   end
 
   defp end_participation(project, owner, hosted_identity_id, reason, now) do

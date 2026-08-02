@@ -1,6 +1,7 @@
 defmodule SddOrchestrator.Participation.RevocationsTest do
   use SddOrchestrator.DataCase, async: true
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.{Capabilities, ParticipationRevocation, Revocations}
   alias SddOrchestrator.ParticipationFixtures
@@ -219,6 +220,16 @@ defmodule SddOrchestrator.Participation.RevocationsTest do
       assert {:ok, acknowledged} = Revocations.acknowledge(revocation.id, "slice-07")
       assert acknowledged.consumer_ref == "slice-07"
       assert ParticipationRevocation.acknowledged?(acknowledged)
+      assert is_nil(acknowledged.former_hosted_identity_id)
+      assert is_nil(acknowledged.former_account_id)
+      assert acknowledged.id == revocation.id
+      assert acknowledged.project_id == revocation.project_id
+      assert acknowledged.project_participant_id == revocation.project_participant_id
+      assert acknowledged.owner_account_id == revocation.owner_account_id
+      assert acknowledged.last_display_name == revocation.last_display_name
+      assert acknowledged.reason == revocation.reason
+      assert acknowledged.occurred_at == revocation.occurred_at
+      assert acknowledged.contract_version == revocation.contract_version
       assert Revocations.pending() == []
     end
 
@@ -233,6 +244,75 @@ defmodule SddOrchestrator.Participation.RevocationsTest do
 
       assert repeated.acknowledged_at == first.acknowledged_at
       assert repeated.consumer_ref == "slice-07"
+      assert is_nil(repeated.former_hosted_identity_id)
+      assert is_nil(repeated.former_account_id)
+    end
+
+    test "replaying a legacy acknowledgement releases links without replacing its result" do
+      %{project: project, account: owner_account, identity: identity} = joined()
+
+      {:ok, %{revocation: revocation}} =
+        Revocations.remove(project, owner_account.id, identity.hosted_identity.id)
+
+      acknowledged_at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Repo.update_all(
+        from(r in ParticipationRevocation, where: r.id == ^revocation.id),
+        set: [
+          claimed_at: acknowledged_at,
+          acknowledged_at: acknowledged_at,
+          consumer_ref: "legacy-consumer"
+        ]
+      )
+
+      assert {:ok, replayed} =
+               Revocations.acknowledge(revocation.id, "replacement-consumer")
+
+      assert replayed.acknowledged_at == acknowledged_at
+      assert replayed.consumer_ref == "legacy-consumer"
+      assert is_nil(replayed.former_hosted_identity_id)
+      assert is_nil(replayed.former_account_id)
+    end
+
+    test "concurrent acknowledgement keeps one consumer result and releases identity once" do
+      %{project: project, account: owner_account, identity: identity} = joined()
+
+      {:ok, %{revocation: revocation}} =
+        Revocations.remove(project, owner_account.id, identity.hosted_identity.id)
+
+      parent = self()
+
+      acknowledged =
+        for consumer <- ["slice-07-a", "slice-07-b"] do
+          Task.async(fn ->
+            Sandbox.allow(Repo, parent, self())
+            Revocations.acknowledge(revocation.id, consumer)
+          end)
+        end
+        |> Enum.map(&Task.await/1)
+
+      assert Enum.all?(acknowledged, &match?({:ok, %ParticipationRevocation{}}, &1))
+
+      stored = Repo.get!(ParticipationRevocation, revocation.id)
+      assert stored.consumer_ref in ["slice-07-a", "slice-07-b"]
+      assert is_nil(stored.former_hosted_identity_id)
+      assert is_nil(stored.former_account_id)
+    end
+
+    test "an invalid acknowledgement rolls back identity release" do
+      %{project: project, account: owner_account, identity: identity} = joined()
+
+      {:ok, %{revocation: revocation}} =
+        Revocations.remove(project, owner_account.id, identity.hosted_identity.id)
+
+      assert {:error, :not_found} =
+               Revocations.acknowledge(revocation.id, String.duplicate("x", 129))
+
+      stored = Repo.get!(ParticipationRevocation, revocation.id)
+      assert is_nil(stored.acknowledged_at)
+      assert is_nil(stored.consumer_ref)
+      assert stored.former_hosted_identity_id == identity.hosted_identity.id
+      assert stored.former_account_id == identity.account.id
     end
 
     test "an unknown or malformed handoff is not found" do

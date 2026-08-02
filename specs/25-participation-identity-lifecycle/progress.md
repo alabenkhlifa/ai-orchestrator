@@ -1,5 +1,15 @@
 # Participation Identity Lifecycle Progress Log
 
+### 2026-08-02 — Task 2 complete: revocation former-identity links are bounded
+
+- Completed: Acknowledgement now locks the handoff and clears `former_account_id` and `former_hosted_identity_id` in the acknowledgement transaction. Replays preserve the first consumer reference and acknowledgement time, including cleanup of an already acknowledged legacy row. The shared retention pass now reports `participation_revocation_links` and clears either remaining link at `occurred_at <= now - 30 days`, independently of acknowledgement state.
+- Boundary held: Cleanup preserves the revocation identifier, project, participant-history reference, owner fallback, last display label, reason, occurrence time, contract version, claim and acknowledgement state, and consumer reference. The existing invitation and departed-participant rules remain additive and unchanged; active authorization and Slice 07 records are never selected.
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_revocation_retention_test.exs test/sdd_orchestrator/participation/revocations_test.exs` — exit `0`.
+- Failed checks: None. Focused proof passed with 21 tests and real exit status 0. The Spec 25 validator, global 29-specification capability graph, and `git diff --check` are recorded after this write-back.
+- Integration note: Existing Task 22 derived-revocation anonymization locates handoffs through the former account link that this task now releases. Task 3 owns the replacement lookup mechanism and historical-attribution tests; Task 2 does not edit `Participation` or `Privacy.Rights`.
+- Remaining: Tasks 1 and 3 complete their independent lifecycle repairs; Task 4 reconciles compatibility and publishes `capability:participation-identity-lifecycle`.
+- Spec updates: Marked Task 2 complete and recorded its focused proof. Requirements, design, acceptance criteria, ownership, task sizes, proof scope, and capability edges are unchanged.
+
 ### 2026-08-02 — Task 1 complete: fresh acceptance restores linked presentation
 
 - Completed: Fresh invitation acceptance now locks the project-and-account profile state, creates one new active participant authorization, reactivates a linked historical participant profile with its stable identifier and newly accepted available label, and creates a new profile only when no linked profile exists. An anonymized row stays unlinked and unchanged.

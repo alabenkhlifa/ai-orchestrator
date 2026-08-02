@@ -24,6 +24,9 @@ defmodule SddOrchestrator.Privacy.Retention do
       stable hosted identity is erased no later than 30 days after departure.
       Active participation is never touched, and the departed row itself remains
       as governed project history.
+    * Participation revocation handoffs — former account and hosted-identity
+      routing links are erased no later than 30 days after the handoff occurred.
+      The stable handoff and its acknowledgement state remain intact.
     * Personal AI connections — an outstanding worker-local credential removal is
       retried first, so a connection the worker acknowledges in this pass starts
       its own terminal window now. An acknowledged connection's opaque
@@ -84,7 +87,13 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Participation.Invitations
-  alias SddOrchestrator.Participation.{ProjectInvitation, ProjectParticipant}
+
+  alias SddOrchestrator.Participation.{
+    ParticipationRevocation,
+    ProjectInvitation,
+    ProjectParticipant
+  }
+
   alias SddOrchestrator.Portability.ImportAttempt
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.Repo
@@ -171,6 +180,7 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_invitations: Invitations.expire_due(now),
       terminal_invitations: prune_terminal_invitations(now),
       departed_participant_links: prune_departed_participant_links(now),
+      participation_revocation_links: prune_participation_revocation_links(now),
       acknowledged_personal_ai_connections: reconcile_personal_ai_connections(now),
       revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now)
     }
@@ -434,6 +444,27 @@ defmodule SddOrchestrator.Privacy.Retention do
               not is_nil(participant.hosted_identity_id)
         ),
         set: [hosted_identity_id: nil, updated_at: now]
+      )
+
+    count
+  end
+
+  # The handoff's former identities are transient routing data. Acknowledgement
+  # clears them immediately; this complementary rule bounds any links that remain
+  # when a consumer is unavailable. It preserves the row and every reconciliation
+  # field and is intentionally independent of acknowledgement state.
+  defp prune_participation_revocation_links(now) do
+    cutoff = DateTime.add(now, -@participation_window, :second)
+
+    {count, _} =
+      Repo.update_all(
+        from(revocation in ParticipationRevocation,
+          where:
+            revocation.occurred_at <= ^cutoff and
+              (not is_nil(revocation.former_hosted_identity_id) or
+                 not is_nil(revocation.former_account_id))
+        ),
+        set: [former_hosted_identity_id: nil, former_account_id: nil, updated_at: now]
       )
 
     count
