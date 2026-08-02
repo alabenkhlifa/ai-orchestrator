@@ -158,6 +158,8 @@ Report product-requirement, technical-design, implementation, verification, and 
 
 The repository has the Slice 01 Phoenix toolchain. Run the checks applicable to the change.
 
+For instant cross-slice task and readiness questions, run `.agents/scripts/slice_status.py`. It is a read-only report over `main` plus matching active slice worktrees, defaults to Slice 07 through the latest slice with Slice 11 expanded, and accepts `--from <slice>` and `--focus <slice>` overrides. It does not replace the specification validators.
+
 For instruction and skill changes, run the checks that currently apply:
 
 - Shared instructions: `cmp -s AGENTS.md CLAUDE.md`
