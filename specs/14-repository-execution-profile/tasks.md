@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
 
-The product and technical contracts are approved. Task 7 is the next executable task and supplies the trusted repository binding Task 1 consumes. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Task 7 is complete, and Task 1 is the next executable task using its trusted repository binding. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -81,7 +81,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 7 — Prepare a trusted repository binding after disclosure confirmation.
+- [x] Task 7 — Prepare a trusted repository binding after disclosure confirmation.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
