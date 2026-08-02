@@ -16,6 +16,8 @@ Extend revocation acknowledgement so the acknowledgement fields and both former-
 
 Add an explicit verified participation-anonymization orchestration boundary in `Privacy.Rights`. Direct historical anonymization keeps refusing active profiles. The orchestration path takes the verified participant's stable account and hosted identity, uses the authoritative participant self-departure transition, and invokes the existing verified historical-attribution anonymization only after departure commits. A failure after departure remains safely retryable: access stays ended and the request reports incomplete anonymization instead of rolling authorization back or restoring it.
 
+Integrated proof exposed one unresolved data boundary. Acknowledgement correctly clears `ParticipationRevocation.former_account_id` and `former_hosted_identity_id`, but the existing derived-revocation anonymization selector uses `former_account_id` to find the handoff whose identifying `last_display_name` must change. The specification does not yet approve another durable correlation, an acknowledgement-time attribution transition, or a different bounded lifecycle. Task 3 and compatibility verification remain blocked until that data-handling decision is recorded without weakening identity-link cleanup or retaining an undeclared linkable identifier.
+
 ## Components Affected
 
 - `SddOrchestrator.Participation.Acceptance` transaction and error classification.
@@ -24,6 +26,7 @@ Add an explicit verified participation-anonymization orchestration boundary in `
 - `SddOrchestrator.Participation.ParticipationRevocation` former-identity release changeset.
 - `SddOrchestrator.Privacy.Retention` revocation-link retention rule.
 - `SddOrchestrator.Privacy.Rights` verified participant-anonymization orchestration.
+- `SddOrchestrator.Participation` derived-revocation selection after former-identity release; the replacement data boundary is unresolved.
 - Focused acceptance, revocation retention, rights workflow, and compatibility tests.
 
 ## Data and Access Boundaries
@@ -91,8 +94,9 @@ Required boundaries:
 - Immediate acknowledgement cleanup could break a consumer that expects former identities after it reports success. Treat acknowledgement as the terminal routing boundary and preserve the stable handoff fields needed for replay diagnostics.
 - Shared retention work from other participation slices may touch `Privacy.Retention`. Task 2 owns only the revocation-link rule and must be reconciled additively rather than overwriting email-delivery or account-notification rules.
 - Rights anonymization may fail after departure. Persist no success claim until anonymization completes, keep access denied, and make the incomplete state safe to retry.
+- Acknowledgement removes the account selector currently used to anonymize the handoff's identifying label. Do not introduce a stable or pseudonymous correlation, extend retention, or move anonymization into acknowledgement until its purpose, necessity, lifecycle, and proof are approved.
 - A new active profile could be correlated with anonymized history through application output. Never relink the old row, expose a relationship, or derive labels from email, account, or hosted-identity values.
 
 ## Open Questions
 
-- None.
+- What approved data boundary lets historical-attribution anonymization reach the exact derived revocation after acknowledgement has removed both former-identity links, while preserving data minimization, bounded retention, stable history, and Task 2's immediate cleanup contract? This blocks Task 3 implementation and proof, Task 4 compatibility verification, and `capability:participation-identity-lifecycle`; it does not invalidate Tasks 1 or 2.

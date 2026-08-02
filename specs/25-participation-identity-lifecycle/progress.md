@@ -1,5 +1,14 @@
 # Participation Identity Lifecycle Progress Log
 
+### 2026-08-02 — Integrated proof blocked Task 3 on post-acknowledgement correlation
+
+- Completed: Merged the independently proven Task 1, Task 2, and Task 3 commits onto `slice/25-participation-identity-lifecycle` and reconciled their checkboxes and progress entries. Task 1 passes with 9 tests and Task 2 passes with 21 tests on the combined branch.
+- Invalidated: Task 3's isolated receipt no longer proves the integrated contract. Its required focused command exits `2` with 34 of 35 tests passing because `Revocations.acknowledge/3` correctly returns `former_account_id: nil`, while `Participation.anonymize_member_attribution/3` still selects the derived revocation through that cleared field. Task 3 is reopened and Task 4 remains blocked.
+- Earliest blocked stage: Technical design. Requirements stay approved; the missing choice changes personal-data linkage and retention, so implementation cannot invent it during reconciliation.
+- Remaining: Resolve the design question through `update-spec`, reimplement or adjust Task 3 within the approved boundary, rerun its focused proof, then execute Task 4 and the slice verification gate.
+- Failed check: `MIX_TEST_PARTITION=253 python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/participation/identity_rights_workflow_test.exs test/sdd_orchestrator/participation/historical_attribution_test.exs` — exit `2`; failure at `historical_attribution_test.exs:293` because the acknowledged revocation's former account link is correctly absent.
+- Spec updates: Set the slice to `Blocked`, reopened Task 3, recorded the missing data boundary in `design.md`, and preserved the successful Task 1 and Task 2 receipts and implementation history.
+
 ### 2026-08-02 — Task 3 complete: the verified workflow ends participation before anonymizing
 
 - Completed: An approved verified anonymization request now has an ordered route from current participation to anonymous historical attribution. `Privacy.Rights.anonymize_verified_participation/4` accepts project, account, and hosted-identity scope, commits the existing authoritative self-departure transition (`Participation.Revocations.leave/3`) when the requester is a current participant, and only then invokes the verified historical-attribution anonymization, including the derived revocation copy. AC-05 and AC-06 are satisfied; the direct active-anonymization refusal, the verified pending-handoff override after departure, and unverified necessity denial are unchanged.

@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+Blocked
 
-The product and technical agreement is approved. `capability:project-participation-boundary` is already ready, so Tasks 1, 2, and 3 may start independently with disjoint primary module ownership.
+The product requirements remain approved and `capability:project-participation-boundary` is ready. Tasks 1 and 2 are complete. Integrated proof invalidated Task 3's isolated completion because acknowledgement removes the only approved selector for its derived-revocation anonymization; technical design, Task 3 implementation and proof, Task 4 compatibility verification, and capability publication are blocked until the data boundary is resolved.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slices 15 (Repository SDD Kit Integration) and 16 (Empty Repository Initialization). This slice owns only the `Participation` context (`ProjectParticipant`, `ProjectMemberProfile`, `ParticipationRevocation`); no shared schema, migration, context, or UI with either slice. Partitioned by ownership — no serialization required.
 
@@ -72,7 +72,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Repair fresh re-acceptance after departure.
+- [x] Task 1 — Repair fresh re-acceptance after departure.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -81,7 +81,7 @@ Traceability:
   - Owns: AC-01, AC-02, AC-03, entity:ProjectParticipant, entity:ProjectMemberProfile
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/participation/reacceptance_test.exs` passes focused removed, left, fresh proof, same-profile identifier, new label, no-linked-profile, anonymized-history, new-profile, uniqueness, invalid-label, typed-conflict, rollback, replay, concurrency, invitation, and notification cases.
 
-- [ ] Task 2 — Enforce revocation former-identity cleanup.
+- [x] Task 2 — Enforce revocation former-identity cleanup.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -90,10 +90,11 @@ Traceability:
   - Owns: AC-04, entity:ParticipationRevocation
   - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/privacy/participation_revocation_retention_test.exs test/sdd_orchestrator/participation/revocations_test.exs` passes focused acknowledgement, 29-day, 30-day, acknowledged, unacknowledged, both former links, stable handoff, active authorization, idempotency, lock, restart, and reconciliation cases.
 
-- [x] Task 3 — Complete the verified participant-anonymization workflow.
+- [ ] Task 3 — Complete the verified participant-anonymization workflow.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
+  - Status: Blocked until the design records an approved post-acknowledgement derived-revocation correlation or lifecycle that preserves Task 2's identity-link cleanup and the project privacy rules.
   - Purpose: Give an approved verified request an ordered path from current participation to anonymous historical attribution without weakening direct fail-closed behavior.
   - Owned surfaces: `Privacy.Rights` verified participation-anonymization orchestration, verified stable account and hosted-identity scope, current-participant detection, authoritative self-departure invocation, direct active-anonymization refusal, post-departure verified anonymization, pending-handoff necessity override, unverified necessity denial, retryable incomplete result, no-access-restoration guard, derived revocation anonymization, fixtures, and focused tests.
   - Owns: AC-05, AC-06
@@ -103,6 +104,7 @@ Traceability:
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 2, Task 3
+  - Status: Blocked until Task 3's integrated focused proof passes.
   - Purpose: Confirm the three repairs compose without changing current authorization, invitation safety, revocation consumption, notifications, or stable history before downstream work consumes them.
   - Owned surfaces: Cross-workflow lifecycle compatibility contract and fixtures, fresh accept to depart to acknowledge or rights-anonymize scenarios, current-participant authorization regression, invitation atomicity regression, Slice 07 revocation-consumer contract regression, notification minimization regression, historical-profile and handoff reference stability, `capability:participation-identity-lifecycle` provider, proof receipt, and readiness write-back.
   - Owns: none
@@ -123,7 +125,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None.
+- Data boundary: decide how historical-attribution anonymization reaches the exact `ParticipationRevocation` after acknowledgement clears `former_account_id` and `former_hosted_identity_id`, without retaining an undeclared linkable identifier or weakening immediate identity cleanup. This blocks technical design, Task 3 implementation and proof, Task 4 verification, and capability publication; product requirements and Tasks 1 and 2 remain ready.
 
 ## Progress Log
 
