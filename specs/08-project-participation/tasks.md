@@ -10,10 +10,10 @@ Slice 07 may consume the published boundary. Task 34 is complete, so
 `capability:project-owner-display-profile` is ready: the owner profile is created
 with the hosted project, earlier projects are backfilled, and `Boundary.owner/1`
 no longer treats a missing presentation label as missing owner authorization.
-Task 36 is now the next cross-specification repair: it makes active-participant
-enumeration and recipient routing independent of `ProjectMemberProfile` and will
-publish `capability:project-participation-recipient-routing` without reopening
-the completed boundary task.
+Task 36 is complete, so
+`capability:project-participation-recipient-routing` is ready: active-participant
+enumeration and recipient routing now remain available with an explicit absent
+presentation state when `ProjectMemberProfile` is unavailable.
 Task 35 is complete: the invitation action shows the owner label with an inline
 correction and no longer blocks on it. The remaining lifecycle, retention,
 rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
@@ -299,7 +299,7 @@ Release gates:
   - Owns: AC-11
   - Proof: Focused consumer-contract, current, stale, removed, left, absent, project-isolation, minimum-payload, read-only, revocation replay, notification-extension, and Slice 07 compatibility tests pass before readiness is recorded.
 
-- [ ] Task 36 — Repair active-participant recipient routing without profile coupling.
+- [x] Task 36 — Repair active-participant recipient routing without profile coupling.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4, Task 34
@@ -411,6 +411,13 @@ Release gates:
 - None.
 
 ## Progress Log
+
+### 2026-08-02 - Task 36 complete: recipient routing is independent of presentation
+
+- Completed: `Participation.Boundary` now starts participant enumeration from active `ProjectParticipant` authorization, joins stable hosted identity, and left-joins optional `ProjectMemberProfile` presentation. Missing owner or participant presentation returns `presentation_state: :absent` with the neutral `Project owner` or `Project participant` label; no email fallback is returned. Removed, left, stale, absent, and cross-project identities remain denied, while Slice 07 run notifications route to the active account without a profile.
+- Capability readiness: `capability:project-participation-recipient-routing` is ready for Slice 07 Task 54; Task 54 itself remains unimplemented.
+- Proof receipt: `Task 36` — scope `Focused` — command `mix test test/sdd_orchestrator/participation/boundary_test.exs test/sdd_orchestrator/delivery/run_notifications_test.exs` — exit `0`.
+- Failed checks: None. The focused proof passed with 37 tests; the Slice 08 and Slice 07 specification validators, global capability graph, and `git diff --check` are recorded after readiness write-back.
 
 ### 2026-08-02 - Recipient-routing repair refined
 

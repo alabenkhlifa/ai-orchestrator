@@ -47,6 +47,7 @@ defmodule SddOrchestrator.Delivery.RunNotificationsTest do
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.Notifications
   alias SddOrchestrator.Notifications.AccountNotification
+  alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.Revocations
   alias SddOrchestrator.ParticipationFixtures
   alias SddOrchestrator.Repo
@@ -192,6 +193,33 @@ defmodule SddOrchestrator.Delivery.RunNotificationsTest do
 
       assert accounts(notifications) == Enum.sort([ctx.responsible.account.id, ctx.owner.id])
       assert notifications(ctx.initiator.account.id, @failed) == []
+    end
+
+    test "an active responsible participant without a profile remains the recipient [AC-42]",
+         ctx do
+      delete_profile(ctx.project.id, ctx.responsible.account.id)
+
+      run = blocked(ctx)
+
+      assert {:ok, [notification]} =
+               RunNotifications.deliver(ctx.project.id, run, ctx.feature, :blocked)
+
+      assert notification.account_id == ctx.responsible.account.id
+      assert notifications(ctx.owner.id, @blocked) == []
+    end
+
+    test "an immutable owner without a profile remains a review recipient [AC-42]", ctx do
+      delete_profile(ctx.project.id, ctx.owner.id)
+
+      assert {:ok, notifications} =
+               RunNotifications.deliver(
+                 ctx.project.id,
+                 current_run(ctx),
+                 ctx.feature,
+                 :ready_for_review
+               )
+
+      assert accounts(notifications) == Enum.sort([ctx.responsible.account.id, ctx.owner.id])
     end
 
     test "a departed assignee moves responsibility rather than losing it [AC-27]", ctx do
@@ -536,6 +564,12 @@ defmodule SddOrchestrator.Delivery.RunNotificationsTest do
 
   defp notifications(account_id, event_type),
     do: account_id |> Notifications.list() |> Enum.filter(&(&1.event_type == event_type))
+
+  defp delete_profile(project_id, account_id) do
+    project_id
+    |> Participation.member_profile(account_id)
+    |> Repo.delete!()
+  end
 
   defp commit(ctx, steps), do: DeliveryStore.commit(ctx.authority, ctx.project.id, steps)
 

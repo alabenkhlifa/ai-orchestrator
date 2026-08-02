@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The approved feature-delivery foundation is implemented through Task 36, including the board, readiness, orchestration, worker, evidence, preview, review, same-run continuation, and minimized notification projection. The previous unfinished plan mixed notification access, processing controls, several independent retention authorities, deletion, verified rights, deployment governance, and final coordination under one verification gate. Those independently executable outcomes now belong to focused continuation specifications. Task 54 is the only remaining task here: it verifies the completed legacy foundation under the current proof runner and publishes its narrow child-consumer capabilities. It is blocked until Slice 08 repairs active-participant recipient routing that incorrectly depends on `ProjectMemberProfile`; the repair does not reopen completed Slice 07 Task 36 or move participation ownership into this specification.
+The approved feature-delivery foundation is implemented through Task 36, including the board, readiness, orchestration, worker, evidence, preview, review, same-run continuation, and minimized notification projection. The previous unfinished plan mixed notification access, processing controls, several independent retention authorities, deletion, verified rights, deployment governance, and final coordination under one verification gate. Those independently executable outcomes now belong to focused continuation specifications. The Slice 08 recipient-routing repair is ready, so Task 54 is now the next executable task: it verifies the completed legacy foundation under the current proof runner and publishes its narrow child-consumer capabilities. Task 54 remains unimplemented and does not move participation ownership into this specification.
 
 ## Active Slice
 
@@ -417,7 +417,6 @@ Prerequisite:
   - Proof: Focused navigation, configuration test, default-landing, unconfigured-fallback, missing-label landing, authorization, cross-project isolation, current-destination, keyboard, focus, desktop, and mobile tests pass, including one proof that an owner reaching their configured board is not refused there.
 
 - [ ] Task 54 - Verify and publish the completed guided-delivery foundation contracts.
-  - Status: Blocked until `capability:project-participation-recipient-routing` is ready.
   - Size: Standard
   - Proof scope: Focused
   - Purpose: Reconcile the completed foundation under the current proof runner and publish its smallest stable child-consumer contracts without implementing any child-owned behavior.
@@ -441,7 +440,7 @@ Prerequisite:
 
 ## Blocked Decisions
 
-- No user decision blocks Task 54. The provider defect where an active participant without a `ProjectMemberProfile` disappears from recipient enumeration blocks `capability:project-participation-recipient-routing`; Slice 08 Task 36 owns the approved repair and must complete before Task 54 can publish the notification-projection contract.
+- None.
 
 ## Release Gate
 
