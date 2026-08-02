@@ -1,5 +1,12 @@
 # Repository Execution Profile Progress Log
 
+### 2026-08-02 - Task 1 boundary refined after implementation preflight
+
+- Completed: Task 1 preflight confirmed `capability:project-storage-authority` is ready but found that the unfinished standard task combined the `RepositoryAssessment` entity and migration, hosted and device persistence adapters, authorization, LiveView/navigation, and browser proof. Split that work without changing product behavior: Task 8 now owns the authoritative assessment state, storage parity, and owner-only start service; Task 1 owns the user-visible disclosure, exact-binding review, confirmation, and start workflow.
+- Remaining: Implement Task 8, then Task 1 and Tasks 2–6. Task 7 remains complete and unchanged.
+- Failed checks: None. Preflight stopped before Task 1 application changes as required by the Task Size Gate.
+- Spec updates: Moved the ready project-storage-authority prerequisite to Task 8, made Task 1 depend on Task 8, reassigned `RepositoryAssessment` entity ownership to Task 8, preserved AC-01 and AC-02 under Task 1, and kept every task focused. The slice remains standard with eight tasks and a longest dependency path of eight.
+
 ### 2026-08-02 - Task 7 complete: trusted repository-binding preparation
 
 - Completed: Added the transient `RepositoryBindingPreparation`, owner and device-authority checks, explicit active workspace-worker selection, exact confirmed-disclosure digest gate, metadata-only adapter with unavailable default, worker-local Git reference, dynamically supervised single-use store, expiry and replay refusal, unchanged revalidation, strict result allowlists, identity and root containment, exact full-commit resolution, and no-durable-copy or repository-mutation proof. `application.ex`, `endpoint.ex`, sockets, channels, personal-AI transport, assessment persistence, routes, and UI remain untouched.
