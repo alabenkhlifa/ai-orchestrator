@@ -75,6 +75,13 @@ Traceability:
 - Deferred entities: entity:SharedProjectAIConnection, entity:ProjectAIBudget, entity:RuntimeContinuation
 - Release entities: none.
 
+## Parallel Implementation Ownership
+
+- Implementation is partitioned by ownership between `specs/11-ai-runtime-governance#Task 7` and `specs/14-repository-execution-profile#Task 1` (Task 14.1).
+- `specs/11-ai-runtime-governance#Task 7` exclusively owns the personal AI worker transport, including its socket, channel, and any Endpoint registration.
+- `specs/14-repository-execution-profile#Task 1` exclusively owns repository-assessment persistence and UI, including its migration, hosted and device-authoritative storage contracts, route and project navigation, assessment LiveView, and focused browser test.
+- Repository-wide verification is serialized after both task-scoped changes are reconciled. Each parallel task runs only its focused proof and must not modify the other task's owned surfaces.
+
 ## Tasks
 
 - [ ] Task 7 — Establish the authenticated personal-worker AI RPC transport.
