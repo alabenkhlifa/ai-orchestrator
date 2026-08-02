@@ -12,6 +12,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
   import Phoenix.LiveViewTest
 
   alias SddOrchestrator.Delivery.{
+    Activity,
     ArtifactStore,
     Assignment,
     BlockingQuestion,
@@ -331,6 +332,64 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
       assert view |> element("#comment-body-error") |> render() =~ "already posted"
       assert view |> render() |> then(&Regex.scan(~r/data-comment-body/, &1)) |> length() == 1
+    end
+  end
+
+  describe "feature activity [AC-16]" do
+    test "shows normalized progress in authoritative order without changing comments", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      for {summary, sequence} <- [{"Prepared the implementation", 7}, {"Ran focused tests", 8}] do
+        assert {:ok, _entry} =
+                 Activity.append(%{
+                   project_id: project.id,
+                   feature_id: feature.id,
+                   actor_kind: "agent",
+                   type: "progress",
+                   payload: %{
+                     "attempt_number" => 1,
+                     "event_type" => "progress",
+                     "sequence" => sequence,
+                     "source" => "agent",
+                     "summary" => summary
+                   }
+                 })
+      end
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-activity][aria-labelledby=activity-heading]")
+      assert has_element?(view, "#activity-heading", "Feature activity")
+
+      assert view
+             |> element("[data-activity-entry]:nth-child(1) [data-activity-summary]")
+             |> render() =~ "Prepared the implementation"
+
+      assert view
+             |> element("[data-activity-entry]:nth-child(2) [data-activity-summary]")
+             |> render() =~ "Ran focused tests"
+
+      assert view |> element("[data-activity-position]", "Attempt 1, update 7") |> render()
+      refute has_element?(view, "[data-activity-entry]:nth-child(3)")
+      assert has_element?(view, "[data-comments-empty]")
+      refute has_element?(view, "[data-comment]")
+    end
+
+    test "states when no progress has been recorded", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-activity-empty]")
+      refute has_element?(view, "[data-activity-entry]")
     end
   end
 

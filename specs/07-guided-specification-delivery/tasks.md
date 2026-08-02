@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-The approved feature-delivery foundation is implemented through Task 36, including the board, readiness, orchestration, worker, evidence, preview, review, same-run continuation, and minimized notification projection. The previous unfinished plan mixed notification access, processing controls, several independent retention authorities, deletion, verified rights, deployment governance, and final coordination under one verification gate. Those independently executable outcomes now belong to focused continuation specifications. Task 54 is complete: the completed foundation is reconciled under the current proof runner and its five child-consumer capabilities are published, including the Slice 08 recipient-routing contract verified from this consumer's side. No participation ownership moved into this specification. The remaining work in this file is the slice verification gate; new implementation belongs to the focused continuations.
+The approved feature-delivery foundation is implemented and locally verified through Task 54, including the board, readiness, orchestration, worker protocol, evidence, preview, review, same-run continuation, minimized notification projection, and normalized progress activity. Its five child-consumer capabilities are published, including the Slice 08 recipient-routing contract verified from this consumer's side. No participation ownership moved into this specification. Live configured worker and coding-agent smoke proof is environment-blocked because this checkout has only unavailable production adapters and no configured execution transport; deterministic adapter, protocol, browser, repository, security, and production-build proof is green. Deployment-specific evidence and accountable privacy or legal review remain in the release gate. New implementation belongs to the focused continuation specifications.
 
 ## Active Slice
 
@@ -427,16 +427,16 @@ Prerequisite:
 
 ## Verification Gate
 
-- [ ] Completed board, readiness, orchestration, worker, recovery, evidence, preview, review, navigation, and notification-projection acceptance criteria pass without child-owned lifecycle or rights proof being implied.
-- [ ] Hosted PostgreSQL and worker-owned device delivery-store, protocol, command, lease, fence, reconciliation, and no-hosted-device-copy contracts pass.
-- [ ] Exact-revision, same-commit evidence, conditional screenshot, private artifact, preview, and human-review contracts pass.
-- [ ] Blocked, ready-for-review, and terminal-failed notification projection passes recipient, current-participation, deduplication, minimization, replay, restart, safe-link-reference, and no-external-channel proof.
-- [ ] Desktop and mobile board, feature, activity, blocked, review, and completion scenarios pass.
-- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass through slice scope.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
-- [ ] Live configured worker and coding-agent smoke proofs pass, or remain explicitly environment-blocked without weakening deterministic adapter proof.
-- [ ] The individual specification validator and global capability graph pass, and every published foundation capability has a Task 54 readiness write-back.
-- [ ] Child-owned criteria and entities remain classified without duplicate ownership.
+- [x] Completed board, readiness, orchestration, worker, recovery, evidence, preview, review, navigation, and notification-projection acceptance criteria pass without child-owned lifecycle or rights proof being implied.
+- [x] Hosted PostgreSQL and worker-owned device delivery-store, protocol, command, lease, fence, reconciliation, and no-hosted-device-copy contracts pass.
+- [x] Exact-revision, same-commit evidence, conditional screenshot, private artifact, preview, and human-review contracts pass.
+- [x] Blocked, ready-for-review, and terminal-failed notification projection passes recipient, current-participation, deduplication, minimization, replay, restart, safe-link-reference, and no-external-channel proof.
+- [x] Desktop and mobile board, feature, activity, blocked, review, and completion scenarios pass.
+- [x] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass through slice scope.
+- [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
+- [x] Live configured worker and coding-agent smoke proofs pass, or remain explicitly environment-blocked without weakening deterministic adapter proof.
+- [x] The individual specification validator and global capability graph pass, and every published foundation capability has a Task 54 readiness write-back.
+- [x] Child-owned criteria and entities remain classified without duplicate ownership.
 
 ## Blocked Decisions
 
@@ -450,6 +450,17 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-08-02 - Slice verification complete after integration repair
+
+- Completed: Rebased the slice onto current `main`, preserved the Slice 08 provider history, and repaired three integration findings before accepting the gate. Normalized worker progress was already stored but absent from feature activity, so the authorized feature-detail read now presents it independently from participant comments and the browser seed uses the real ingestion path. The participant-guard key assertion now includes the provider's `presentation_state`. Two exact `Ecto.Multi` opaque-type false positives are suppressed without hiding any other Dialyzer warning.
+- Acceptance proof: `mix check` and the explicit `mix test` each passed with 2,519 results (2,513 tests and 6 properties), one intentionally excluded live tag, and no failures. The focused feature-detail proof passed with 93 tests. The complete Playwright matrix passed with 226 scenarios: 113 Chromium and 113 mobile Chromium, including the normalized-progress activity scenario, accessibility, keyboard, privacy, and viewport checks.
+- Repository, security, and production proof: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `npm --prefix assets ci`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` all passed through slice scope. Dialyzer reported 20 known warnings, skipped all 20 through exact accepted entries, and reported zero unnecessary skips.
+- Environment blocker: Live configured worker and coding-agent smoke proof cannot run in this checkout. Development and test configure only the onboarding worker stub, the production `AgentAdapter` and `CommandTransport` default to unavailable implementations, and no `:delivery_execution`, `:worker_workspace_root`, or `:command_envelope_source` runtime configuration is present. This blocks only the live external smoke branch; the deterministic adapters, authenticated transport, protocol, lease, fence, retry, reconciliation, and browser paths remain proved.
+- Readiness: Product requirements are approved, technical design is approved, implementation is complete, and local verification is `Verified`. Release remains blocked by the deployment-specific processors, regions, transfer safeguards, notices, retention enforcement, preview-provider smoke when enabled, and accountable privacy or legal review listed in the release gate.
+- Proof receipts: `slice` — scope `Broad` — commands `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `mix test`, `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `env MIX_ENV=prod mix assets.deploy`, and `env MIX_ENV=prod mix release` — exit `0` for each command.
+- Failed checks resolved: The first `mix check` exposed the stale participant-guard assertion and then an alias-order issue; both were corrected. The first Dialyzer run exposed only the two exact Ecto opaque-type false positives; the exact suppressions make the gate green with no unnecessary entries. Independent acceptance review exposed the missing progress presentation before the browser matrix; the activity surface, focused proof, and desktop/mobile scenario now pass.
+- Spec updates: Marked the slice `Verified` and completed the verification-gate checklist. Requirements, design, ownership, completed task history, child boundaries, capability edges, and the release gate are unchanged.
 
 ### 2026-08-02 - Task 54 complete: the foundation contracts are verified and published
 

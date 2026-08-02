@@ -83,6 +83,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.Delivery.{
       AgentRun,
       ArtifactStore,
+      EventIngestion,
       EvidenceIngestion,
       Features,
       Previews,
@@ -239,7 +240,10 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
       actor = %{account_id: owner.account.id, hosted_identity_id: nil}
 
-      features = if params["populated"] == "true", do: seed_features(project, actor), else: %{}
+      features =
+        if params["populated"] == "true",
+          do: seed_features(owner.personal_workspace, project, actor),
+          else: %{}
 
       conn
       |> sign_in(params["as"] || "owner", owner, participant)
@@ -425,13 +429,26 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       identity
     end
 
-    defp seed_features(project, actor) do
+    defp seed_features(authority, project, actor) do
       Map.new(@columns, fn column ->
         {:ok, feature} =
           Features.create(project.id, actor, %{title: "#{column_title(column)} feature"})
 
-        {column, advance(project.id, actor, feature, column).id}
+        feature = advance(project.id, actor, feature, column)
+
+        if column == "in_development", do: seed_progress(authority, project, feature)
+
+        {column, feature.id}
       end)
+    end
+
+    defp seed_progress(authority, project, feature) do
+      %{run: run, attempt: attempt} = seed_run(project, feature, [])
+
+      {:ok, _results} =
+        EventIngestion.ingest(authority, project.id, progress_event(run, attempt, 1))
+
+      :ok
     end
 
     # Every column is reached by walking the legal transition table from `Draft`,
@@ -595,6 +612,25 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
           "revision_id" => attempt.effective_revision_id,
           "commit_sha" => @preview_commit
         }
+      }
+    end
+
+    defp progress_event(run, attempt, sequence) do
+      unique = unique_suffix()
+
+      %{
+        "type" => "event",
+        "protocol_version" => WorkerProtocol.version(),
+        "event_id" => "evt-#{unique}",
+        "run_id" => run.id,
+        "command_id" => "cmd-#{unique}",
+        "attempt_number" => attempt.attempt_number,
+        "fence_token" => attempt.fence_token,
+        "sequence" => sequence,
+        "event_type" => "progress",
+        "source" => "agent",
+        "occurred_at" => DateTime.to_iso8601(DateTime.utc_now()),
+        "payload" => %{"summary" => "Ran the focused implementation checks"}
       }
     end
 

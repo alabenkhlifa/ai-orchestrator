@@ -219,6 +219,34 @@ test.describe("feature delivery", () => {
     await expect(page.locator("[data-comment]")).toHaveCount(0);
   });
 
+  // This scenario runs unchanged under both configured feature-delivery
+  // projects, proving the authorized activity surface at desktop and mobile
+  // viewports with a real normalized worker event behind it.
+  test("normalized progress appears in feature activity", async ({ page }) => {
+    const { project_id, features } = await bootstrap(page, "features", { populated: "true" });
+    await openLive(page, `/projects/${project_id}/features/${features.in_development}`);
+
+    const activity = page.locator("[data-activity]");
+
+    await expect(activity).toBeVisible();
+    await expect(activity).toHaveAttribute("aria-labelledby", "activity-heading");
+    await expect(page.locator("#activity-heading")).toHaveText("Feature activity");
+    await expect(page.locator("[data-activity-entry]")).toHaveCount(1);
+    await expect(page.locator("[data-activity-summary]")).toHaveText(
+      "Ran the focused implementation checks",
+    );
+    await expect(page.locator("[data-activity-position]")).toHaveText("Attempt 1, update 1");
+
+    const viewport = page.viewportSize().width;
+    const box = await activity.boundingBox();
+    expect(box.width).toBeLessThanOrEqual(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      viewport,
+    );
+
+    await expectNoSeriousAxeViolations(page);
+  });
+
   test("the board is reachable by keyboard with a visible focus ring", async ({ page }) => {
     const { project_id } = await bootstrap(page, "features", { populated: "true" });
     await openLive(page, `/projects/${project_id}/features`);

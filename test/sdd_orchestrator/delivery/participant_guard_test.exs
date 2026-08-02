@@ -51,7 +51,7 @@ defmodule SddOrchestrator.Delivery.ParticipantGuardTest do
 
       for member <- members do
         assert Enum.sort(Map.keys(member)) ==
-                 [:account_id, :display_name, :hosted_identity_id, :role]
+                 [:account_id, :display_name, :hosted_identity_id, :presentation_state, :role]
 
         refute member.display_name =~ "@"
       end
