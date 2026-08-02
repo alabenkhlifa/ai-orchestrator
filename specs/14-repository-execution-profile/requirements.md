@@ -18,6 +18,7 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 
 - One repository with at least one commit and one user-selected repository root.
 - A first or changed-boundary disclosure before repository assessment.
+- A short-lived, owner-requested worker preparation that proves the connected repository identity, normalizes one selected root, and resolves its current full commit only after the required processing-boundary confirmation.
 - A worker-local, commit-bound, bounded, cancellable, and commit-cached read-only scan.
 - High-signal inspection of existing agent instructions, contribution rules, project manifests, CI definitions, test and build commands, and repository structure.
 - A structured assessment and owner-approved execution profile.
@@ -40,18 +41,24 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 
 1. A project owner opens SDD adoption for a connected repository that has at least one commit.
 2. The product explains what the worker will inspect, what remains worker-local, what structured results may enter authoritative project storage, and whether any configured model or processor receives approved content.
-3. The owner selects one repository root and authorizes assessment of the current exact commit.
-4. The authorized worker scans only the approved high-signal surfaces under configured limits, reports progress, supports cancellation, and reuses an unchanged commit cache without uploading a whole-repository index.
-5. The product shows detected instructions, project commands, verification evidence, repository structure, gaps, and conflicts with source anchors.
-6. The product proposes an execution profile. Existing repository instructions remain authoritative, and the owner reviews and explicitly approves or rejects the proposal.
-7. The product shows assistant, specification, agent-execution, and release readiness separately.
-8. The owner selects one current Orchestrator feature specification as the pilot. No repository issue or backlog item is imported unless a separate explicit import workflow is later authorized.
-9. The approved profile becomes available to managed runtime consumers without changing the repository; permanent kit integration is offered only through its separate workflow after the pilot reaches its required milestone.
+3. The owner confirms the first or materially changed processing boundary before any repository command is issued.
+4. Through the authorized worker boundary, the owner selects one root inside the connected repository. The worker proves the repository identity, normalizes the root, resolves its current full commit, and returns only a short-lived minimized binding without scanning repository content.
+5. The product shows the verified repository, selected root, exact commit, limits, and processing boundary, then the owner explicitly authorizes assessment.
+6. The authorized worker scans only the approved high-signal surfaces under configured limits, reports progress, supports cancellation, and reuses an unchanged commit cache without uploading a whole-repository index.
+7. The product shows detected instructions, project commands, verification evidence, repository structure, gaps, and conflicts with source anchors.
+8. The product proposes an execution profile. Existing repository instructions remain authoritative, and the owner reviews and explicitly approves or rejects the proposal.
+9. The product shows assistant, specification, agent-execution, and release readiness separately.
+10. The owner selects one current Orchestrator feature specification as the pilot. No repository issue or backlog item is imported unless a separate explicit import workflow is later authorized.
+11. The approved profile becomes available to managed runtime consumers without changing the repository; permanent kit integration is offered only through its separate workflow after the pilot reaches its required milestone.
 
 ## Business Rules
 
 - Assessment requires a repository with at least one commit. An unborn local repository routes to empty-repository initialization because the existing local repository identity requires a root commit.
-- Only the project owner may authorize a first assessment, approve or replace an execution profile, change its root, or select the pilot feature.
+- Only the project owner may confirm the processing boundary, request repository-binding preparation, authorize a first assessment, approve or replace an execution profile, change its root, or select the pilot feature.
+- Repository-binding preparation requires a currently authorized paired worker. A device-authoritative project uses its owning device workspace; a hosted project requires the owner to explicitly select a currently available device workspace and worker for this operation. Neither path creates an implicit account-to-device association.
+- The worker must prove that the selected repository is the project's connected canonical repository before it returns a binding. Unknown, malformed, mismatched, cross-project, cross-workspace, unavailable, expired, replayed, or changed repository state fails closed.
+- A binding preparation contains only the project and repository identities, normalized repository-relative root, full exact commit, scanner-contract and disclosure digests, opaque worker reference, nonce, and issue and expiry times. Absolute paths, repository content, Git history, remote URLs, credentials, and raw worker diagnostics remain worker-local. The preparation is short-lived, single-use, not authoritative project data, and creates no durable hosted copy for a device-authoritative project.
+- Assessment authorization consumes the preparation only after the worker revalidates that its repository identity, root, and exact commit remain unchanged. A stale preparation issues no scan command and persists no assessment.
 - The assessment is bound to one exact repository commit and one normalized root contained within the connected repository.
 - The first slice supports one root. A detected multi-root or monorepo structure remains visible and blocks autonomous execution when one reliable root cannot represent the pilot.
 - Scanning is read-only, bounded by configured file, byte, time, and path limits, cancellable, and cached only by project, repository identity, selected root, scanner contract version, and exact commit.
@@ -73,8 +80,8 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 
 ## Acceptance Criteria
 
-- [AC-01] Given a connected repository with at least one commit, when the owner opens assessment, then the product shows one-root selection and the current exact commit without modifying the repository.
-- [AC-02] Given assessment would cross a new or changed processing boundary, when the owner continues, then the product discloses inspected surfaces, local and transferred data, processors, retention, and purpose before authorization.
+- [AC-01] Given a connected repository with at least one commit and a fresh worker-verified binding, when the owner reviews assessment start, then the product shows the one normalized root and current full exact commit without modifying the repository.
+- [AC-02] Given assessment would cross a new or changed processing boundary, when the owner continues, then the product discloses inspected surfaces, local and transferred data, processors, retention, and purpose and issues no repository command until the owner explicitly confirms that boundary.
 - [AC-03] Given an authorized assessment starts, when the worker scans, then it reads only approved high-signal surfaces under configured file, byte, path, and time limits and reports bounded progress.
 - [AC-04] Given an assessment is canceled or fails, when processing stops, then no approved profile or successful cache entry is created and repository state is unchanged.
 - [AC-05] Given the same root, scanner contract, and exact commit were completely assessed, when assessment is requested again, then the worker may reuse the complete cache; any relevant change requires a new assessment.

@@ -8,7 +8,9 @@ Local repository access already occurs through a workspace-authorized worker, an
 
 ## Proposed Approach
 
-Create a worker-local scanner that receives an authorized project, repository identity, selected root, exact commit, scan contract version, limits, and processing confirmation. It inspects an allowlisted set of high-signal files, produces source-anchored structured findings, and retains any raw index only in the worker boundary. Complete results may be cached for the exact commit and contract.
+Before creating an assessment, show the processing disclosure and require confirmation when the boundary is first used or materially changed. Only then may a repository-binding preparation call the existing workspace-authorized worker boundary. The owner selects one root inside the connected repository; the worker proves the project's canonical repository identity, normalizes the repository-relative root, resolves the current full commit, and returns a short-lived single-use `RepositoryBindingPreparation`. No absolute path, source content, Git history, remote URL, credential, or raw diagnostic crosses the worker boundary. Authorization consumes the preparation only after the worker revalidates that the identity, root, and commit are unchanged.
+
+Create a worker-local scanner that receives the authorized `RepositoryAssessment` binding, scan contract version, limits, and processing confirmation. It inspects an allowlisted set of high-signal files, produces source-anchored structured findings, and retains any raw index only in the worker boundary. Complete results may be cached for the exact commit and contract.
 
 Persist a minimized `RepositoryAssessment` and immutable approved `RepositoryExecutionProfile` in the project's authoritative storage mode. The profile normalizes the root, base revision, existing instruction precedence, project commands, required-check contract, allowed execution scope, and readiness blockers without replacing repository rules. Link one pilot to an existing authoritative specification identity and revision.
 
@@ -17,6 +19,7 @@ Expose the completed profile as a capability for a later `update-spec` change to
 ## Components Affected
 
 - SDD adoption assessment and profile review surfaces.
+- Disclosure-confirmed repository-binding preparation and worker metadata adapter.
 - Worker repository-assessment protocol and local scanner.
 - Hosted and device-authoritative assessment and profile adapters.
 - Commit-scoped worker cache and cancellation.
@@ -26,13 +29,15 @@ Expose the completed profile as a capability for a later `update-spec` change to
 
 ## Data and Access Boundaries
 
+- `RepositoryBindingPreparation`: one short-lived, single-use worker-verified value bound to the owning project, canonical repository identity, normalized repository-relative root, current full commit, scanner-contract and processing-boundary digests, opaque worker reference, nonce, and issue and expiry times. It is not authoritative project data and contains no absolute path, source content, Git history, remote URL, credential, or raw diagnostic.
 - `RepositoryAssessment`: one project-scoped read-only assessment request and terminal result bound to repository identity, selected root, exact commit, scanner contract version, limits, structured findings, evidence anchors, readiness outcomes, and cache provenance.
 - `RepositoryExecutionProfile`: one immutable approved profile version containing selected root, base revision, instruction precedence, allowed execution scope, normalized project commands, required-check contract, blockers, approval actor, and the referenced pilot specification and revision when selected.
 
 Required boundaries:
 
-- Both entities follow the project's hosted or device-authoritative storage mode; device-authoritative assessment data creates no durable hosted copy.
-- Worker authorization comes from `capability:workspace-bound-local-worker-authorization` and grants only the command's project, repository, root, commit, and read-only assessment capability.
+- `RepositoryAssessment` and `RepositoryExecutionProfile` follow the project's hosted or device-authoritative storage mode; device-authoritative assessment data creates no durable hosted copy. A `RepositoryBindingPreparation` remains transient and creates no durable hosted copy in either mode.
+- Worker authorization comes from `capability:workspace-bound-local-worker-authorization` and grants only the preparation or assessment command's project, repository, root, commit, and read-only capability. A hosted-project preparation requires explicit current selection of one available device workspace and worker without creating an implicit account-to-device association.
+- The preparation adapter must prove the selected repository matches the project's canonical repository identity before returning a root or commit. It rejects unknown, malformed, mismatched, cross-project, cross-workspace, unavailable, expired, replayed, and changed inputs without persisting an assessment or issuing a scan command.
 - Raw file content, repository index, paths outside the selected root, ignored secrets, binaries, dependencies, and generated output remain outside authoritative project storage.
 - Stored evidence anchors are repository-relative and content-minimized. Any necessary excerpt is bounded, redacted, purpose-specific, and included in the disclosed processing boundary.
 - Only the project owner may authorize assessment or approve a profile. Current authorized participants may read the resulting readiness within their project role.
@@ -41,7 +46,8 @@ Required boundaries:
 
 ## Interfaces
 
-- Assessment start interface: show root, commit, scan categories, configured limits, processors, transfer behavior, and changed-boundary confirmation before issuing a command.
+- Assessment start interface: show scan categories, configured limits, processors, transfer behavior, and first or changed-boundary confirmation before any repository command; after a fresh preparation, show the verified repository, normalized root, and full exact commit before assessment authorization.
+- Repository-binding preparation interface: consume an owner confirmation and explicit worker selection, prove the project's canonical repository identity inside the worker boundary, select and normalize one contained root, resolve the current full commit, return only the minimized short-lived value, and revalidate it unchanged on single-use consumption without scanning content or mutating the repository.
 - Worker assessment command: authorize project and worker, validate normalized root containment and exact commit, apply the allowlist and limits, support cancellation, and return structured findings with source-relative anchors.
 - Worker cache interface: store only complete assessment results under the project, repository identity, root, exact commit, scanner version, and limit contract; reject incomplete or stale reuse.
 - Assessment-store interface: persist request state and minimized structured results through equivalent hosted and device-authoritative adapters.
@@ -88,11 +94,18 @@ Required boundaries:
 - Reason: Whole-repository upload is unnecessary for this workflow and would expand privacy, security, retention, and processor exposure.
 - Consequence: Remote support or model analysis receives only explicitly disclosed allowlisted content.
 
+### Confirmed Binding Before Assessment Authorization
+
+- Choice: Separate processing-boundary confirmation, short-lived worker repository binding, and final assessment authorization. The metadata-only preparation runs only after confirmation, returns one normalized root and full commit, and is revalidated when authorization consumes it.
+- Reason: Existing hosted and device project records intentionally contain no trusted selected root or current commit, while owner-entered values cannot prove exactness or reject stale and cross-project input.
+- Consequence: A stale, expired, replayed, mismatched, or unavailable preparation blocks assessment before persistence or scanning. The preparation adds no independent repository scan and does not use or modify the personal-AI socket, channel, or Endpoint owned by Slice 11 Task 7.
+
 ## Risks
 
 - High-signal files may not describe the real build. Surface uncertainty and require owner confirmation rather than claiming readiness.
 - Malicious repository instructions may attempt prompt injection. Treat all scanned text as untrusted evidence, never execute it during scanning, and preserve fixed tool and safety policy above repository content.
 - A stale cache may approve obsolete commands. Bind reuse to exact commit, root, scanner contract, and completed result.
+- A prepared binding may become stale before authorization. Make it short-lived and single-use, and require worker revalidation of repository identity, root, and full commit when it is consumed.
 - Profile approval may be mistaken for repository approval. Show that the profile governs managed runtime only and does not change repository policy.
 - Source anchors or excerpts may expose confidential data. Minimize, redact, access-control, and keep raw content worker-local.
 
