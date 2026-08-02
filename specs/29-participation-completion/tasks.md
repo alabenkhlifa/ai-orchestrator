@@ -1,0 +1,111 @@
+# Participation Completion Tasks
+
+## Status
+
+Blocked
+
+The agreement is approved. Task 1 is blocked until every participation foundation and focused continuation capability is ready.
+
+## Active Slice
+
+Reconcile every participation provider, run the full deterministic verification gate once, record staged readiness, and publish the sole final participation-governance capability.
+
+## Cross-Specification Dependencies
+
+Requires:
+
+- `capability:project-participation-boundary` — provider `specs/08-project-participation#Task 4` — required before `Task 1`.
+- `capability:project-owner-display-profile` — provider `specs/08-project-participation#Task 34` — required before `Task 1`.
+- `capability:project-participation-recipient-routing` — provider `specs/08-project-participation#Task 36` — required before `Task 1`.
+- `capability:participation-identity-lifecycle` — provider `specs/25-participation-identity-lifecycle#Task 4` — required before `Task 1`.
+- `capability:participation-processing-controls` — provider `specs/26-participation-data-protection-controls#Task 5` — required before `Task 1`.
+- `capability:participation-operational-retention` — provider `specs/27-participation-operational-retention#Task 3` — required before `Task 1`.
+- `capability:participation-deletion-recovery` — provider `specs/28-participation-deletion-and-recovery#Task 2` — required before `Task 1`.
+
+Provides:
+
+- `capability:project-participation-governance` — ready after `Task 1`.
+
+## Slice Size Gate
+
+- Slice size: Standard
+
+## Task Size Gate
+
+- Task 1 is `Size: Standard`: it owns one final readiness invariant, no application entity, and one focused proof receipt.
+- No task-size exception is used; the complete repository, browser, security, dependency, production, and integration matrix belongs to the slice verification gate.
+
+## Proof Scope Gate
+
+- Applies to: all tasks.
+
+## Implementation Boundary
+
+Included:
+
+- Exact capability-provider, task-state, proof-receipt, readiness-write-back, and contract-identity reconciliation.
+- Deterministic compatibility fixtures across every participation provider.
+- Full slice-scoped repository, browser, security, dependency, production-build, and integration proof.
+- Separate product, design, implementation, local-verification, and release readiness.
+- Final participation-governance capability publication.
+
+Excluded:
+
+- Provider implementation or focused provider proof repetition.
+- Deployment evidence bodies, production deployment, merge, or release execution.
+- Downstream Slice 07 or project-assistant implementation.
+
+Deferred after this slice:
+
+- Future roles, ownership transfer, organization membership, public links, and external notification channels.
+
+Release gates:
+
+- Deployment-specific email, hosting, identity, backup, logging, support, and infrastructure processors and agreements.
+- Controller and contact details, regions, transfer safeguards, privacy notices, incident handling, live lifecycle enforcement, and accountable privacy or legal approval.
+
+Traceability:
+
+- Deferred criteria: none
+- Release criteria: none
+- Deferred entities: none
+- Release entities: none
+
+## Tasks
+
+- [ ] Task 1 — Reconcile participation readiness and publish governance.
+  - Status: Blocked until every capability named for Task 1 is ready.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: none
+  - Purpose: Publish one final participation-governance contract only after every provider and deterministic compatibility seam is ready.
+  - Owned surfaces: Exact capability-provider registry, provider task completion and proof-receipt lookup, readiness-write-back validation, contract identity and compatibility fixtures, duplicate and stale provider rejection, product, design, implementation, local-verification and release status write-back, earliest-stage blocker projection, `capability:project-participation-governance` provider, and final readiness write-back only after this slice's verification receipts are recorded.
+  - Owns: AC-01, AC-02, AC-03
+  - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/participation_governance_test.exs` passes focused complete-provider, missing-provider, duplicate-provider, incomplete-task, missing-receipt, stale-contract, compatibility, staged-readiness, earliest-blocker, release-gate, gated-publication, idempotency, and no-provider-mutation cases.
+
+## Verification Gate
+
+- [ ] Every required capability resolves to one completed provider task with a matching proof receipt, readiness write-back, and compatible contract identity.
+- [ ] The individual validator for every participation specification and the global cross-specification capability graph pass.
+- [ ] Deterministic foundation, identity-lifecycle, processing-control, retention, deletion, recovery, rights, notification, and downstream-consumer compatibility suites pass.
+- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
+- [ ] `python3 .agents/scripts/run_proof.py slice -- mix format --check-formatted`, `python3 .agents/scripts/run_proof.py slice -- mix compile --warnings-as-errors`, `python3 .agents/scripts/run_proof.py slice -- mix credo --strict`, `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `python3 .agents/scripts/run_proof.py slice -- mix deps.audit`, `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config`, and `python3 .agents/scripts/run_proof.py slice -- mix test` pass.
+- [ ] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` pass for desktop and mobile.
+- [ ] `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release` pass.
+- [ ] Implementation and local-verification readiness are recorded independently from deployment release readiness.
+- [ ] `capability:project-participation-governance` is published exactly once after the gate and remains unavailable after any deterministic failure.
+
+## Blocked Decisions
+
+- Task 1 is blocked on unavailable provider capabilities; no product or technical-design decision is unresolved.
+
+## Progress Log
+
+### 2026-08-02 - Final participation coordination specification created
+
+- Completed: Approved acyclic provider reconciliation, full slice-scoped deterministic verification, staged readiness, and sole final governance-capability publication.
+- Scope classification: Standard focused coordination slice with one task and a one-task critical path.
+- Remaining: Complete every named provider, implement Task 1 through focused proof, run the full verification gate, and publish final readiness.
+- Failed checks: None. The individual validator and coordinated global capability graph pass; implementation has not started.
+- Proof receipts: None.
+- Spec updates: Added final capability ownership, compatibility proof, task proof scope, downstream publication boundary, and release classification.

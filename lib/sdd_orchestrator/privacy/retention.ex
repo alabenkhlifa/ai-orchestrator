@@ -17,6 +17,13 @@ defmodule SddOrchestrator.Privacy.Retention do
       explicit revocation deletes them immediately in the session context.
     * Restore import attempts — encrypted hosted and available device-local
       attempts are deleted no later than 24 hours after creation.
+    * Project invitations — a pending invitation becomes terminal once its
+      seven-day lifetime passes, which erases its credential immediately, and a
+      terminal invitation is deleted no later than 30 days after it ended.
+    * Departed participation — the link from a departed authorization to its
+      stable hosted identity is erased no later than 30 days after departure.
+      Active participation is never touched, and the departed row itself remains
+      as governed project history.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -30,11 +37,17 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
+  alias SddOrchestrator.Participation.Invitations
+  alias SddOrchestrator.Participation.{ProjectInvitation, ProjectParticipant}
   alias SddOrchestrator.Portability.ImportAttempt
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.Repo
 
   @day 24 * 60 * 60
+
+  # Terminal invitations and departed authorization-to-identity links are removed
+  # within 30 days of reaching their approved lifecycle boundary.
+  @participation_window 30 * @day
 
   @doc "Runs every retention rule and returns the number of rows deleted per category."
   @spec prune_all(DateTime.t()) :: %{atom() => non_neg_integer()}
@@ -49,8 +62,48 @@ defmodule SddOrchestrator.Privacy.Retention do
       device_import_attempts: prune_device_import_attempts(now),
       sessions: prune_sessions(now),
       hosted_sessions: prune_hosted_sessions(now),
-      merge_records: IdentityLinking.prune_merge_records(now)
+      merge_records: IdentityLinking.prune_merge_records(now),
+      expired_invitations: Invitations.expire_due(now),
+      terminal_invitations: prune_terminal_invitations(now),
+      departed_participant_links: prune_departed_participant_links(now)
     }
+  end
+
+  # A terminal invitation already lost its credential at the transition itself, so
+  # what remains is the invited address and its comparison digest. Thirty days
+  # after the invitation ended, that address is no longer needed for replay,
+  # dispute, or support evidence, and the row is deleted. Expiry runs first, so an
+  # invitation that becomes terminal in this same pass starts its own 30 days now.
+  defp prune_terminal_invitations(now) do
+    cutoff = DateTime.add(now, -@participation_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from invitation in ProjectInvitation,
+          where: invitation.status != "pending" and invitation.terminal_at <= ^cutoff
+      )
+
+    count
+  end
+
+  # Departure ends authorization immediately; the row stays as governed project
+  # history. Thirty days later the link from that history to the person's stable
+  # hosted identity is erased. Active participation is retained only while active
+  # and is never selected here.
+  defp prune_departed_participant_links(now) do
+    cutoff = DateTime.add(now, -@participation_window, :second)
+
+    {count, _} =
+      Repo.update_all(
+        from(participant in ProjectParticipant,
+          where:
+            participant.state == "departed" and participant.departed_at <= ^cutoff and
+              not is_nil(participant.hosted_identity_id)
+        ),
+        set: [hosted_identity_id: nil, updated_at: now]
+      )
+
+    count
   end
 
   defp prune_authorization_attempts(now) do

@@ -4,28 +4,22 @@
 
 In Progress
 
-`capability:project-participation-boundary` is ready: Tasks 1, 2, 3, 4, 6, 7, 8,
-9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 25, 26, 27, and 29 are complete and
-Slice 07 may consume the published boundary. Task 34 is complete, so
-`capability:project-owner-display-profile` is ready: the owner profile is created
-with the hosted project, earlier projects are backfilled, and `Boundary.owner/1`
-no longer treats a missing presentation label as missing owner authorization.
-Task 36 is now the next cross-specification repair: it makes active-participant
-enumeration and recipient routing independent of `ProjectMemberProfile` and will
-publish `capability:project-participation-recipient-routing` without reopening
-the completed boundary task.
-Task 35 is complete: the invitation action shows the owner label with an inline
-correction and no longer blocks on it. The remaining lifecycle, retention,
-rights, logging, backup, propagation, and governance tasks (20, 21, 22, 23, 24,
-30, 31, 32, 33, and 5) are not started, so
-`capability:project-participation-governance` is still unavailable and the slice
-has not reached its verification gate. The authenticated participation browser
-matrix now runs for real on desktop and mobile against a dev/test-only session
-bootstrap, so no participation task carries an environment-blocked proof.
+The invitation, authorization, notification, departure, historical-attribution,
+owner-profile, and recipient-routing foundation is implemented through Task 36.
+`capability:project-participation-boundary`,
+`capability:project-owner-display-profile`, and
+`capability:project-participation-recipient-routing` are ready. The legacy plan's
+unfinished identity-lifecycle repair, processing, operational retention,
+deletion, recovery, and final-governance outcomes now belong to focused
+continuation specifications under `specs/25-` through `specs/29-`.
+`capability:project-participation-governance` remains unavailable until
+`specs/29-participation-completion/` completes its provider reconciliation and
+verification gate. This parent is an umbrella with completed legacy foundation
+and no duplicate child implementation ownership.
 
 ## Active Slice
 
-Deliver one project-owner email invitation through fresh invited-email proof and explicit acceptance into one active hosted-project participant authorization, with owner removal, participant self-leave, account-neutral failure, and a fail-closed current-participant handoff to Slice 07.
+Preserve the completed project-participation foundation, its ready consumer contracts, shared product rules, and release coordination while focused child specifications own every unfinished implementation outcome.
 
 ## Cross-Specification Dependencies
 
@@ -38,7 +32,6 @@ Provides:
 - `capability:project-participation-boundary` — ready after `Task 4`.
 - `capability:project-owner-display-profile` — ready after `Task 34`.
 - `capability:project-participation-recipient-routing` — ready after `Task 36`.
-- `capability:project-participation-governance` — ready after `Task 5`.
 
 ## Task Size Gate
 
@@ -54,20 +47,9 @@ Provides:
 
 Included:
 
-- Hosted-project participation settings and participant management.
-- Account-neutral owner invitation by email without directory search.
-- Protected invitation delivery, invited-email proof, explicit acceptance, and safe result behavior.
-- One immutable owner and one active `Participant` role.
-- Project-specific owner and participant display profiles under one uniqueness boundary.
-- Read-only project-capability decisions for later specification, feature-content, comment, and run-evidence consumers with protected settings and credential denial.
-- Project-specific display names and minimized email visibility.
-- Seven-day, one-pending invitation lifecycle with invalidating resend, cancellation, decline, and fresh re-invitation.
-- Event-specific invitation and participation notifications with minimized payloads.
-- Atomic, idempotent, project-scoped participation creation.
-- Current-participant authorization lookup and Slice 07 handoff.
-- Owner removal, participant self-leave, and fail-closed authorization invalidation.
-- A versioned durable revocation handoff produced atomically on removal or leave without mutating Slice 07 records.
-- Privacy, security, delivery, audit, lifecycle, and responsive browser proof.
+- The completed hosted invitation, proof, acceptance, authorization, management, display-profile, notification, removal, leave, revocation-producer, retention-foundation, rights, and recipient-routing implementation recorded by completed Tasks 1 through 36.
+- The ready current-participant, owner-profile, and recipient-routing capabilities consumed by Slice 07 and other approved specifications.
+- Shared product, identity, privacy, lifecycle, and release rules without duplicate child implementation.
 
 Excluded:
 
@@ -79,6 +61,11 @@ Excluded:
 - Public, anonymous, domain-wide, group, or team access.
 - Slice 07 feature assignment, agent-run, review, evidence, preview, and notification implementation.
 - Credential transfer or sharing.
+- Fresh re-entry repair, active-participant rights sequencing, and bounded revocation identity links, owned by `specs/25-participation-identity-lifecycle/`.
+- Participation processing inventory, support access, processor and transfer classification, redaction, and purpose limitation, owned by `specs/26-participation-data-protection-controls/`.
+- Participation email-delivery, account-notification, and operational-security-log retention, owned by `specs/27-participation-operational-retention/`.
+- Participation backup expiry and deletion or anonymization propagation, owned by `specs/28-participation-deletion-and-recovery/`.
+- Final provider reconciliation, full verification, staged readiness, and governance publication, owned by `specs/29-participation-completion/`.
 
 Deferred after this slice:
 
@@ -86,7 +73,12 @@ Deferred after this slice:
 - Project ownership transfer and owner departure.
 - Public links, guest tiers, groups, teams, and domain-managed access.
 - Slice 07 consumption of the revocation handoff for assignment clearing, question and review fallback, historical contribution presentation, notification denial, and active-run control.
-- Deferred criteria: none.
+- `specs/25-participation-identity-lifecycle/` owns parent AC-43, AC-44, and AC-45.
+- `specs/26-participation-data-protection-controls/` owns parent AC-13.
+- `specs/27-participation-operational-retention/` owns parent AC-32, AC-33, and AC-39.
+- `specs/28-participation-deletion-and-recovery/` owns parent AC-37 and AC-38.
+- `specs/29-participation-completion/` owns final governance coordination and `capability:project-participation-governance`.
+- Deferred criteria: AC-13, AC-32, AC-33, AC-37, AC-38, AC-39, AC-43, AC-44, AC-45
 - Deferred entities: none.
 
 Release gates:
@@ -299,7 +291,7 @@ Release gates:
   - Owns: AC-11
   - Proof: Focused consumer-contract, current, stale, removed, left, absent, project-isolation, minimum-payload, read-only, revocation replay, notification-extension, and Slice 07 compatibility tests pass before readiness is recorded.
 
-- [ ] Task 36 — Repair active-participant recipient routing without profile coupling.
+- [x] Task 36 — Repair active-participant recipient routing without profile coupling.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4, Task 34
@@ -308,7 +300,7 @@ Release gates:
   - Owns: AC-42
   - Proof: Focused boundary and notification-consumer tests prove an active participant without a profile remains authorized and routable, an owner without a profile remains resolvable, no email-derived label is returned, stale and departed identities remain denied, project isolation holds, and capability readiness is recorded through task scope.
 
-- [ ] Task 20 — Enforce invitation and participation-record cleanup.
+- [x] Task 20 — Enforce invitation and participation-record cleanup.
   - Size: Standard
   - Depends on: Task 4, Task 25
   - Purpose: Remove reusable invitation material and departed identity links on the approved schedule.
@@ -316,7 +308,7 @@ Release gates:
   - Owns: AC-31
   - Proof: Focused time-boundary, terminal-state, credential-erasure, invitation deletion, departed-link deletion, active-record preservation, idempotency, lock, restart, and reconciliation tests pass.
 
-- [ ] Task 21 — Enforce participation notification minimization.
+- [x] Task 21 — Enforce participation notification minimization.
   - Size: Standard
   - Depends on: Task 11, Task 14, Task 19, Task 27
   - Purpose: Keep every participation notification inside the approved minimum content boundary.
@@ -324,23 +316,7 @@ Release gates:
   - Owns: AC-24
   - Proof: Focused payload allowlist, recipient context, safe link, forbidden-content, credential, secret, unrelated-identity, email, and in-product notification tests pass.
 
-- [ ] Task 32 — Enforce participation email-delivery retention.
-  - Size: Standard
-  - Depends on: Task 8, Task 11, Task 27
-  - Purpose: Remove email-delivery diagnostics after their short operational purpose ends.
-  - Owned surfaces: 30-day `ParticipationEmailDelivery` cleanup rule, terminal delivery-state selection, active invitation and participant preservation, idempotent pruning, lock and restart behavior, fixtures, and reconciliation.
-  - Owns: AC-32
-  - Proof: Focused 30-day boundary, terminal and active delivery, invitation preservation, participant preservation, idempotency, lock, restart, and reconciliation tests pass.
-
-- [ ] Task 33 — Enforce account-notification retention.
-  - Size: Standard
-  - Depends on: Task 7, Task 14, Task 19, Task 26
-  - Purpose: Delete participation in-product notifications after their approved account-level lifetime.
-  - Owned surfaces: 90-day `AccountNotification` cleanup rule, read and unread notification selection, active project authorization non-mutation, idempotent pruning, lock and restart behavior, fixtures, and reconciliation.
-  - Owns: AC-39
-  - Proof: Focused 90-day boundary, read, unread, active authorization, idempotency, lock, restart, and reconciliation tests pass.
-
-- [ ] Task 22 — Enforce rights-aware historical attribution.
+- [x] Task 22 — Enforce rights-aware historical attribution.
   - Size: Standard
   - Depends on: Task 17, Task 18, Task 29
   - Purpose: Preserve stable contribution history while removing unnecessary departed-person identification.
@@ -348,69 +324,67 @@ Release gates:
   - Owns: AC-25
   - Proof: Focused necessity, verified request, anonymization, account-link, label, stable-history, no-restored-access, derived-copy, and project-deletion tests pass.
 
-- [ ] Task 23 — Enforce the participation processing and access contract.
-  - Size: Standard
-  - Depends on: Task 4, Task 21, Task 22
-  - Purpose: Limit participation data to the approved service and security purposes and authorized recipients.
-  - Owned surfaces: Active processing inventory, field-purpose and lawful-basis map, owner, participant, operations, and support access, least-privilege time-bounded audited support, processor and transfer configuration, invitation and identity enumeration resistance, secret and project-content redaction, negative credential transfer, no advertising, model training, unrelated improvement, or secondary use, and aggregate genuinely anonymous analytics boundary.
-  - Owns: AC-13
-  - Proof: Focused inventory, purpose and basis, access, support elevation, processor, transfer, directory and enumeration, secret, project-content, credential-transfer, negative secondary-use, and anonymous-analytics tests pass.
-
-- [ ] Task 24 — Enforce minimized participation security logs.
-  - Size: Standard
-  - Depends on: Task 20, Task 21, Task 32, Task 33
-  - Purpose: Retain only short-lived security evidence without invitation secrets or project content.
-  - Owned surfaces: Fixed structured security-log fields, invitation and identity event minimization, credential, email, project-content, repository, and secret redaction, non-secret correlation identifier, 30-day expiry rule, audit minimization, diagnostic scans, and fixtures.
-  - Owns: AC-33
-  - Proof: Focused structured-log, field allowlist, redaction, correlation, failure-path, 30-day expiry, audit-minimization, and diagnostic tests pass.
-
-- [ ] Task 30 — Enforce encrypted-backup expiry.
-  - Size: Standard
-  - Depends on: Task 22, Task 23, Task 24
-  - Purpose: Bound encrypted recovery copies without restoring deleted or anonymized identity links.
-  - Owned surfaces: 35-day encrypted rolling-backup expiry configuration, approved recovery-only boundary, deletion and anonymization tombstone handling, `DeploymentPrivacyProfile` backup evidence, cleanup reconciliation, and release-gate classification.
-  - Owns: AC-37
-  - Proof: Focused backup-expiry, recovery-boundary, tombstone, anonymization, deletion, reconciliation, deployment-profile, and release-gate checks pass.
-
-- [ ] Task 31 — Propagate participation deletion and anonymization.
-  - Size: Standard
-  - Depends on: Task 20, Task 22, Task 23, Task 30
-  - Purpose: Carry approved deletion and anonymization through every configured non-backup copy.
-  - Owned surfaces: Processor deletion and anonymization requests, cache, index, export and derived-copy propagation, acknowledgement and failure state, restricted cleanup reconciliation, no restored project access, fixtures, and deployment-processor configuration linkage.
-  - Owns: AC-38
-  - Proof: Focused processor, cache, index, export, derived-copy, acknowledgement, failure, retry, reconciliation, anonymization, deletion, and no-restored-access tests pass.
-
-- [ ] Task 5 — Complete the participation privacy and security review.
-  - Size: Standard
-  - Depends on: Task 4, Task 23, Task 31
-  - Purpose: Confirm the complete participation data flow satisfies its approved contract before publishing governance readiness.
-  - Owned surfaces: Consolidated data inventory and lifecycle review, rights coverage, processor and transfer review, notification and email-channel review, no-directory and account-neutrality review, credential and project-content exposure review, cleanup reconciliation review, required privacy and security approval, release-gate classification, and `capability:project-participation-governance` readiness write-back.
-  - Owns: none (governance gate)
-  - Proof: Focused cross-task privacy, security, lifecycle, rights, notification, account-neutrality, credential-exposure, project-content, processor, transfer, and required-review checks pass before capability readiness is recorded.
-
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Every active acceptance criterion and data entity has one clear primary task owner.
-- [ ] Hosted-project owner invitation, no-directory, and account-neutral request and failure scenarios pass.
-- [ ] Seven-day expiry, one-pending uniqueness, invalidating resend, cancellation, decline, current-participant handling, and fresh re-invitation lifecycle tests pass.
-- [ ] Fresh invited-email proof, explicit acceptance, single-use, uniqueness, idempotency, concurrency, rollback, and no-partial-state tests pass.
-- [ ] Project, workspace, identity, owner, participant, and cross-user isolation tests pass.
-- [ ] Owner removal, participant self-leave, immutable-owner, direct fail-closed authorization, session preservation, and the versioned Slice 07 producer-contract tests pass without mutating consumer-owned records.
-- [ ] The owner display profile is created with the hosted project from a GitHub-login label, projects registered earlier are backfilled idempotently, and owner authorization never depends on a label existing.
-- [ ] Owner and participant display-name creation and editing, trimming, shared case-insensitive uniqueness, no automatic suffix or email-derived owner fallback, current-name presentation, necessary last-name historical attribution, verified anonymization, account-link removal, and stable contribution-history tests pass.
-- [ ] Invitation, acceptance, decline, expiry, cancellation, removal, and leave notifications pass channel, recipient, account-neutrality, minimization, and failure checks.
-- [ ] Invitation and participation UI passes desktop, mobile, keyboard, focus, non-color, responsive, and accessibility scenarios.
-- [ ] GDPR data contract, lifecycle enforcement, rights, processor, transfer, no-directory, secret-redaction, audit, and anonymous-analytics checks pass.
-- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
-- [ ] New decisions and invalidated proof are written back.
+- [x] Completed foundation tasks retain their recorded focused and slice evidence.
+- [x] Current-participant, owner-profile, and recipient-routing capabilities have one completed provider and readiness write-back.
+- [x] Every unfinished criterion is mapped to one focused child specification without duplicate parent implementation ownership.
+- [ ] `specs/29-participation-completion/` reconciles every child provider, runs the full deterministic gate, records staged readiness, and publishes `capability:project-participation-governance`.
 
 ## Blocked Decisions
 
 - None.
 
 ## Progress Log
+
+### 2026-08-02 - Participation continuations split and lifecycle decisions approved
+
+- Completed: Classified Slice 08 as an umbrella with completed legacy foundation and moved every unfinished implementation outcome into focused child specifications. Approved fresh re-entry through linked historical-profile reuse, permanent anonymized-history separation, current-participant departure before verified anonymization, verified pending-handoff override after departure, and revocation former-account and former-hosted-identity cleanup after acknowledgement and no later than 30 days.
+- Scope classification: Umbrella with completed legacy foundation and focused child specifications. `specs/25-participation-identity-lifecycle/` owns the three discovered identity-lifecycle repairs; `specs/26-participation-data-protection-controls/`, `specs/27-participation-operational-retention/`, `specs/28-participation-deletion-and-recovery/`, and `specs/29-participation-completion/` own the prior unfinished processing, retention, propagation, recovery, verification, and governance outcomes without duplicate parent tasks.
+- Sequence: Spec 25 Tasks 1, 2, and 3 may run in parallel because their primary modules are disjoint; its Task 4 reconciles them. Specs 26 and 27 then become independently executable, while Spec 27 remains internally serialized around shared `Privacy.Retention`. Spec 28 waits for processing and retention readiness, and Spec 29 runs last. Slice 07 Task 54 remains an independent workstream.
+- Failed checks: None. The individual validators for the parent, all five children, and both changed downstream consumers pass; the global capability graph passes for 29 specifications; `git diff --check` is recorded after the final coordinated patch.
+- Proof receipts: None; this was specification refinement and no application implementation or task proof ran.
+- Spec updates: Added parent AC-43 through AC-45, promoted the rights, revocation-retention, and fresh re-entry decisions into current requirements and design, moved parent AC-13, AC-32, AC-33, AC-37, AC-38, AC-39, and AC-43 through AC-45 to focused child ownership, moved the final governance provider to Spec 29, and updated both downstream governance consumers.
+
+### 2026-08-02 - Task 22 complete: a departed label stops naming a person
+
+- Completed: A departed participant's project label can now stop identifying them while every contribution that attributes through it stays exactly where it was. AC-25 is satisfied. `Privacy.Rights` gained the assessment, the verified anonymization action, and the project-deletion sweep; `Participation` gained the necessity decision and the transactional write behind them.
+- The necessity decision is a decision, not a timer. `Participation.attribution_necessity/1,2` answers `{:necessary, :active_participation}` while the person is still a member, `{:necessary, :pending_consumer_handoff}` while their `ParticipationRevocation` is unacknowledged, and `{:unnecessary, :accountability_complete}` once every handoff for them is acknowledged. The unacknowledged handoff is the honest test of "necessary for project accountability": until a consumer has cleared the departed person's responsibility, the project cannot say who held it without naming them. A second retention period would have been invented rather than approved.
+- Two paths reach anonymization, matching AC-25's two clauses. Without a verified request the necessity must already have lapsed. `verified_request: true` overrides it, because a person exercising erasure or objection does not wait for the project's own interest to lapse. The caller owns the verification workflow, following the boundary the module already documents for passwordless rights; only the basis is recorded, never the request's contents.
+- A current participant is refused on both paths, including the rights override. An active label is the member's present name rather than historical attribution, and the members list and the project-unique display-name rule depend on it. A verified erasure request for a current participant is served by ending participation first. An invariant is not a necessity judgement and the override does not reach it.
+- No migration was needed and none was written. Task 6 already shipped the `anonymized` state, `anonymization_changeset/2`, the anonymous label, and the DB shape constraint; nothing in production had ever produced that state. The partial indexes made it safe: the active display-name index is scoped `WHERE state = 'active'` so any number of `Former participant` rows coexist, and the account index is scoped `WHERE account_id IS NOT NULL` so nulling the link removes the row from it.
+- Derived-copy propagation inside this slice covers the one place the departed label was copied: `ParticipationRevocation.last_display_name`, together with `former_account_id` and `former_hosted_identity_id`, is rewritten in the same transaction as the profile. The handoff keeps its identifier, project, participant reference, reason, occurrence time, and contract version, so a consumer mid-read still sees the same event with nobody named in it.
+- Stable history is preserved by rewriting a row rather than replacing one. The profile keeps its identifier, project, and role, the `ProjectParticipant` row and the revocation's foreign key to it remain intact, and the row count does not move. Access is not restored: the participant stays departed, `member_role/3` and `visible_project/3` still fail closed, `Capabilities.capabilities/2` stays empty, and the anonymous label never reappears in the owner's member list.
+- Anonymization is deliberately not idempotent through the account. A repeat call returns `{:error, :not_found}` because there is no longer an account linked to that attribution, and that absence is the proof the link is gone rather than a missing record.
+- Project deletion is handled twice over: `Rights.anonymize_project_participation_attribution/1` sweeps every historical label in one project for a workflow that retires a project while winding its history down, and deleting the project row removes the profiles, participants, and handoffs outright through the existing `on_delete: :delete_all` cascade. Both are proved.
+- Seam left for later tasks, not crossed: the returned `propagation` map marks the primary store and this slice's own derived copies `:applied`, and lists configured processors, caches, indexes, and exports as `pending_propagation` for Task 31. The encrypted-backup handoff is requested under the existing `:erasure` action because the requirement on a backup is identical either way — it must not restore the link that was removed — and Task 30 owns adding an explicit anonymization tombstone action to `DeploymentPrivacyProfile.backup_handoff/1`. The departed `ProjectParticipant` identity link stays Task 20's 30-day rule, and no processing-inventory entry was added because Task 23 owns that inventory.
+- Failed checks: None. Focused proof passes with real exit status: `MIX_TEST_PARTITION=22 mix test test/sdd_orchestrator/participation/historical_attribution_test.exs` (20 passing, exit 0), a scoped regression run of `test/sdd_orchestrator/participation`, `privacy/rights_test.exs`, and `privacy/portability_rights_test.exs` (201 passing, exit 0), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` (no issues), `python3 .agents/scripts/validate_spec.py specs/08-project-participation`, `python3 .agents/scripts/validate_spec.py --all specs`, and `git diff --check`. The slice gate, browser matrix, dialyzer, sobelow, and production proof were not run; they remain the slice's own gate.
+- Spec updates: Marked Task 22 complete. Requirements, design, acceptance criteria, ownership, task sizes, proof scope, and dependency edges are unchanged.
+
+### 2026-08-02 - Task 21 complete: participation notifications stay minimized
+
+- Completed: Added exact participation-event and email-context allowlists for invitation, resend, acceptance, decline, expiry, cancellation, removal, and leave notifications. In-product payloads now reject unapproved fields or content and enforce event-specific internal links; invitation emails reject unrelated context and links outside the configured product origin or canonical single-token acceptance route. Delivery records remain the existing fixed minimized schemas, and the shared notification store is unchanged.
+- Boundary held: Notification builders accept only the project label, approved event or action wording, the necessary actor label, recipient routing identity, time, and the event's safe link. Focused negative scans and rejection tests cover specification, feature, comment, evidence, repository, credential, secret, and unrelated-identity sentinels without changing participation lifecycle or retention behavior.
+- Proof: `MIX_TEST_PARTITION=21 MIX_DEPS_PATH=/Users/alabenkhlifa/IdeaProjects/sdd-orchestrator/deps mix test test/sdd_orchestrator/participation/notification_minimization_test.exs test/sdd_orchestrator/participation/email_delivery_test.exs test/sdd_orchestrator/participation/invitation_email_test.exs test/sdd_orchestrator/participation/outcome_notification_test.exs test/sdd_orchestrator/participation/expiry_notification_test.exs test/sdd_orchestrator/participation/departure_notification_test.exs test/sdd_orchestrator/participation/removal_email_test.exs` passes with 44 tests and 0 failures. Targeted `mix format --check-formatted` and strict Credo pass on all changed Elixir files.
+- Spec updates: Marked Task 21 complete for AC-24; requirements, design, capability readiness, ownership, and dependency edges are unchanged.
+
+### 2026-08-02 - Task 20 complete: invitation and participation-record cleanup
+
+- Completed: `Privacy.Retention.prune_all/1` now enforces the three AC-31 rules through the existing supervised, advisory-locked pruner: pending invitations past their seven-day lifetime are made terminal, terminal invitations are deleted at 30 days, and a departed participant's link to its stable hosted identity is erased at 30 days while active participation is untouched.
+- No migration and no schema change were needed, and that is the finding rather than a shortcut. The `project_invitations_credential_shape` and `project_participants_state_shape` check constraints from Tasks 2 and 6 already make the required end states the only representable ones, and `ProjectInvitation.terminal_changeset/4` and `ProjectParticipant.identity_release_changeset/1` already existed. Task 20 supplied the scheduled rules and the proof, not new structure.
+- Immediate credential erasure is proved two ways. The real `cancel` and expiry commands are driven end to end, and the database is then asked to put `token_digest` and `token_salt` back on a terminal row and refuses. That second assertion is the stronger one: every production terminal transition — accept, decline, cancel, expire — funnels through the single `terminal_changeset/4`, so the constraint covers the accepted and declined paths without a full proof-and-acceptance setup, and it would catch a future caller that tried to bypass the funnel.
+- Seven-day unusability is now enforced on a schedule rather than only at read time. Task 25 left `Invitations.expire_due/1` as a pruner seam that nothing in `lib/` called; `prune_all/1` now drives it, which also lets the Task 26 owner-expiry notification fire on its own. Expiry runs before the 30-day sweep, so an invitation that becomes terminal during a pass starts its own 30 days from that pass instead of being deleted in the same run.
+- Both 30-day rules compare with `<=`, so a record sitting exactly on the boundary is removed and the contract reads "within 30 days" as written; one second inside the window is retained. The departed rule nulls only `hosted_identity_id` and leaves the row, its `departed_at`, and its `departure_reason` as governed project history, and it never selects an active row.
+- Integration note, not owned here: `participation_revocations.former_hosted_identity_id` keeps its own copy of the departed identity, which is what lets the Slice 07 handoff stay meaningful after this erasure. No acceptance criterion currently bounds the handoff's own retention. Tasks 22, 23, and 31 should decide whether it needs one; Task 20's owned surfaces name only the `ProjectParticipant` link.
+- Failed checks: None. Focused proof passes with real exit status: `MIX_TEST_PARTITION=20 mix test test/sdd_orchestrator/privacy/participation_retention_test.exs` (12 passing), the sibling privacy suite `MIX_TEST_PARTITION=20 mix test test/sdd_orchestrator/privacy/` (79 passing) run because `Retention` is shared, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` (441 files, no issues), `python3 .agents/scripts/validate_spec.py specs/08-project-participation`, `python3 .agents/scripts/validate_spec.py --all specs`, and `git diff --check`.
+- Spec updates: Marked Task 20 complete. Requirements, design, acceptance criteria, ownership, task sizes, proof scope, and dependency edges are unchanged.
+
+### 2026-08-02 - Task 36 complete: recipient routing is independent of presentation
+
+- Completed: `Participation.Boundary` now starts participant enumeration from active `ProjectParticipant` authorization, joins stable hosted identity, and left-joins optional `ProjectMemberProfile` presentation. Missing owner or participant presentation returns `presentation_state: :absent` with the neutral `Project owner` or `Project participant` label; no email fallback is returned. Removed, left, stale, absent, and cross-project identities remain denied, while Slice 07 run notifications route to the active account without a profile.
+- Capability readiness: `capability:project-participation-recipient-routing` is ready for Slice 07 Task 54; Task 54 itself remains unimplemented.
+- Proof receipt: `Task 36` — scope `Focused` — command `mix test test/sdd_orchestrator/participation/boundary_test.exs test/sdd_orchestrator/delivery/run_notifications_test.exs` — exit `0`.
+- Failed checks: None. The focused proof passed with 37 tests; the Slice 08 and Slice 07 specification validators, global capability graph, and `git diff --check` are recorded after readiness write-back.
 
 ### 2026-08-02 - Recipient-routing repair refined
 

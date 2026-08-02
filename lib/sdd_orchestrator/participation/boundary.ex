@@ -12,8 +12,9 @@ defmodule SddOrchestrator.Participation.Boundary do
       take effect on the very next question. There is no cache to invalidate.
     * Reads are fail-closed. A stale, removed, departed, absent, or
       cross-project identity is denied, and the result never says why.
-    * Reads are minimal. A member is returned as a stable identity, a role, and
-      a project display name. Email addresses never cross this boundary;
+    * Reads are minimal. A member is returned as a stable identity, a role, a
+      presentation state, and a project display name. Missing presentation uses
+      only a neutral role label. Email addresses never cross this boundary;
       membership management keeps them inside this specification.
 
   Nothing here mutates participation, and this specification never mutates a
@@ -24,19 +25,33 @@ defmodule SddOrchestrator.Participation.Boundary do
   creating a second store.
   """
 
+  import Ecto.Query
+
+  alias SddOrchestrator.Accounts.HostedIdentity
   alias SddOrchestrator.Notifications
   alias SddOrchestrator.Notifications.AccountNotification
   alias SddOrchestrator.Participation
-  alias SddOrchestrator.Participation.{Capabilities, ParticipationRevocation, Revocations}
+
+  alias SddOrchestrator.Participation.{
+    Capabilities,
+    ParticipationRevocation,
+    ProjectMemberProfile,
+    ProjectParticipant,
+    Revocations
+  }
+
   alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.Repo
 
   @contract_version 1
+  @default_participant_display_name "Project participant"
 
   @type member :: %{
           role: :owner | :participant,
           account_id: Ecto.UUID.t(),
           hosted_identity_id: Ecto.UUID.t() | nil,
-          display_name: String.t()
+          display_name: String.t(),
+          presentation_state: :present | :absent
         }
 
   @doc "The version of this consumer contract."
@@ -52,8 +67,13 @@ defmodule SddOrchestrator.Participation.Boundary do
   @spec owner(Ecto.UUID.t()) :: {:ok, member()} | {:error, :unavailable}
   def owner(project_id) do
     case Participation.owner(project_id) do
-      {:ok, owner} -> {:ok, member(:owner, owner.account_id, nil, owner_label(project_id))}
-      {:error, _reason} -> {:error, :unavailable}
+      {:ok, owner} ->
+        {display_name, presentation_state} = owner_presentation(project_id)
+
+        {:ok, member(:owner, owner.account_id, nil, display_name, presentation_state)}
+
+      {:error, _reason} ->
+        {:error, :unavailable}
     end
   end
 
@@ -72,10 +92,30 @@ defmodule SddOrchestrator.Participation.Boundary do
   @doc "Lists the project's current active participants."
   @spec current_participants(Ecto.UUID.t()) :: [member()]
   def current_participants(project_id) do
-    project_id
-    |> Participation.active_participants()
-    |> Enum.map(&participant_member(project_id, &1))
-    |> Enum.reject(&is_nil/1)
+    ProjectParticipant
+    |> join(:inner, [participant], identity in HostedIdentity,
+      on: identity.id == participant.hosted_identity_id
+    )
+    |> join(:left, [participant, identity], profile in ProjectMemberProfile,
+      on:
+        profile.project_id == participant.project_id and
+          profile.account_id == identity.account_id and profile.role == "participant" and
+          profile.state == "active"
+    )
+    |> where(
+      [participant],
+      participant.project_id == ^project_id and participant.state == "active"
+    )
+    |> order_by([participant], asc: participant.joined_at, asc: participant.id)
+    |> select([participant, identity, profile], {
+      participant.hosted_identity_id,
+      identity.account_id,
+      profile.display_name
+    })
+    |> Repo.all()
+    |> Enum.map(&participant_member/1)
+  rescue
+    Ecto.Query.CastError -> []
   end
 
   @doc """
@@ -142,10 +182,10 @@ defmodule SddOrchestrator.Participation.Boundary do
   # project created outside registration — or registered before owner profiles
   # were created with the project — still answers with its owner and simply
   # presents the neutral label until one is established.
-  defp owner_label(project_id) do
+  defp owner_presentation(project_id) do
     case Participation.owner_profile(project_id) do
-      nil -> Participation.default_owner_display_name()
-      profile -> profile.display_name
+      nil -> {Participation.default_owner_display_name(), :absent}
+      profile -> {profile.display_name, :present}
     end
   end
 
@@ -157,40 +197,38 @@ defmodule SddOrchestrator.Participation.Boundary do
   end
 
   defp participant_member_for(project_id, hosted_identity_id) do
-    case Participation.active_participant(project_id, hosted_identity_id) do
+    case Enum.find(
+           current_participants(project_id),
+           &(&1.hosted_identity_id == hosted_identity_id)
+         ) do
       nil -> {:error, :not_a_member}
-      participant -> wrap(participant_member(project_id, participant))
+      participant -> {:ok, participant}
     end
   end
 
-  defp wrap(nil), do: {:error, :not_a_member}
-  defp wrap(member), do: {:ok, member}
-
-  defp participant_member(project_id, participant) do
-    with account_id when not is_nil(account_id) <- account_id_of(participant),
-         profile when not is_nil(profile) <- Participation.member_profile(project_id, account_id) do
-      member(:participant, account_id, participant.hosted_identity_id, profile.display_name)
-    else
-      _other -> nil
-    end
+  defp participant_member({hosted_identity_id, account_id, nil}) do
+    member(
+      :participant,
+      account_id,
+      hosted_identity_id,
+      @default_participant_display_name,
+      :absent
+    )
   end
 
-  defp account_id_of(%{hosted_identity_id: nil}), do: nil
-
-  defp account_id_of(%{hosted_identity_id: hosted_identity_id}) do
-    case SddOrchestrator.Repo.get(SddOrchestrator.Accounts.HostedIdentity, hosted_identity_id) do
-      nil -> nil
-      identity -> identity.account_id
-    end
+  defp participant_member({hosted_identity_id, account_id, display_name}) do
+    member(:participant, account_id, hosted_identity_id, display_name, :present)
   end
 
-  # The minimum result: stable identity, role, and project label. No address.
-  defp member(role, account_id, hosted_identity_id, display_name) do
+  # The minimum result: stable identity, role, presentation state, and a safe
+  # project label. No address.
+  defp member(role, account_id, hosted_identity_id, display_name, presentation_state) do
     %{
       role: role,
       account_id: account_id,
       hosted_identity_id: hosted_identity_id,
-      display_name: display_name
+      display_name: display_name,
+      presentation_state: presentation_state
     }
   end
 end

@@ -12,9 +12,17 @@ defmodule SddOrchestrator.Participation do
 
   import Ecto.Query
 
+  alias Ecto.Multi
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Accounts.{ExternalIdentity, HostedIdentity, PersonalWorkspace}
-  alias SddOrchestrator.Participation.{DisplayName, ProjectMemberProfile, ProjectParticipant}
+
+  alias SddOrchestrator.Participation.{
+    DisplayName,
+    ParticipationRevocation,
+    ProjectMemberProfile,
+    ProjectParticipant
+  }
+
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
@@ -336,6 +344,183 @@ defmodule SddOrchestrator.Participation do
           {:error, changeset} -> {:error, changeset}
         end
     end
+  end
+
+  @doc """
+  The label that replaces a departed member's name once it may no longer
+  identify them.
+  """
+  @spec anonymous_member_label() :: String.t()
+  def anonymous_member_label, do: ProjectMemberProfile.anonymous_label()
+
+  @doc """
+  Decides whether one member's project label must keep identifying a person.
+
+  While participation is active the label is the member's current name and the
+  question does not arise. After departure the last accepted label is retained
+  only while project accountability still needs it, and that need is not a
+  timer: it is the unacknowledged revocation handoff. Until a consumer has
+  claimed and acknowledged the departure it has not yet cleared the departed
+  person's responsibility, so the project cannot yet say who held it without
+  naming them. Once every handoff for that person is acknowledged the label has
+  no remaining accountability purpose and identification becomes unnecessary.
+  """
+  @spec attribution_necessity(ProjectMemberProfile.t()) ::
+          {:necessary, :active_participation | :pending_consumer_handoff}
+          | {:unnecessary, :accountability_complete | :already_anonymized}
+  def attribution_necessity(%ProjectMemberProfile{state: "anonymized"}),
+    do: {:unnecessary, :already_anonymized}
+
+  def attribution_necessity(%ProjectMemberProfile{state: "active"}),
+    do: {:necessary, :active_participation}
+
+  def attribution_necessity(%ProjectMemberProfile{} = profile) do
+    if pending_handoff?(profile.project_id, profile.account_id) do
+      {:necessary, :pending_consumer_handoff}
+    else
+      {:unnecessary, :accountability_complete}
+    end
+  end
+
+  @doc """
+  Decides necessity for the member one account currently holds in a project.
+
+  An anonymized profile is unreachable here by design: anonymization removes the
+  account link, so there is no longer an account whose attribution could be
+  looked up. That absence is the removal, not a missing record.
+  """
+  @spec attribution_necessity(Ecto.UUID.t(), Ecto.UUID.t() | nil) ::
+          {:necessary, :active_participation | :pending_consumer_handoff}
+          | {:unnecessary, :accountability_complete | :already_anonymized}
+          | {:error, :not_found}
+  def attribution_necessity(project_id, account_id) do
+    case member_profile(project_id, account_id) do
+      nil -> {:error, :not_found}
+      profile -> attribution_necessity(profile)
+    end
+  end
+
+  @doc """
+  Removes one departed member's account link and anonymizes their project label.
+
+  The profile row itself survives with its identifier, project, and role intact,
+  so every contribution that attributes through it stays readable and
+  referentially whole; only the part that identified a person is replaced. The
+  same replacement reaches this specification's own derived copy of that label,
+  the revocation handoff, in the same transaction, so no record left behind
+  still carries the departed name or account.
+
+  A current participant is refused. Their label is not historical attribution
+  but their present name, and the members list and project-unique display-name
+  rule depend on it. A verified erasure request for a current participant is
+  served by ending that participation first and anonymizing afterwards.
+  """
+  @spec anonymize_member_attribution(Ecto.UUID.t(), Ecto.UUID.t() | nil, DateTime.t()) ::
+          {:ok, %{profile: ProjectMemberProfile.t(), derived_revocations: non_neg_integer()}}
+          | {:error, :not_found | :active_participation | Ecto.Changeset.t()}
+  def anonymize_member_attribution(project_id, account_id, now \\ DateTime.utc_now()) do
+    case member_profile(project_id, account_id) do
+      nil ->
+        {:error, :not_found}
+
+      %ProjectMemberProfile{state: "active"} ->
+        {:error, :active_participation}
+
+      profile ->
+        anonymize_profile(profile, DateTime.truncate(now, :second))
+    end
+  end
+
+  @doc """
+  Anonymizes every remaining identifiable departed label in one project.
+
+  An approved project-deletion event ends the project's accountability purpose
+  for all of its history at once, so each departed label loses its account link
+  together rather than one verified request at a time. Dropping the project row
+  itself removes these records outright through their own cascade; this is the
+  path for a deletion workflow that retires the project while its history is
+  still being wound down.
+  """
+  @spec anonymize_project_attribution(Ecto.UUID.t(), DateTime.t()) ::
+          {:ok, %{profiles: non_neg_integer(), derived_revocations: non_neg_integer()}}
+  def anonymize_project_attribution(project_id, now \\ DateTime.utc_now()) do
+    anonymized_at = DateTime.truncate(now, :second)
+    label = ProjectMemberProfile.anonymous_label()
+
+    Multi.new()
+    |> Multi.update_all(
+      :profiles,
+      from(p in ProjectMemberProfile,
+        where: p.project_id == ^project_id and p.state == "historical"
+      ),
+      set: [
+        state: "anonymized",
+        account_id: nil,
+        display_name: label,
+        display_name_key: DisplayName.key(label),
+        anonymized_at: anonymized_at,
+        updated_at: anonymized_at
+      ]
+    )
+    |> Multi.update_all(
+      :derived_revocations,
+      from(r in ParticipationRevocation,
+        where: r.project_id == ^project_id and not is_nil(r.former_account_id)
+      ),
+      set: anonymized_handoff_fields(label, anonymized_at)
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{profiles: {profiles, _}, derived_revocations: {derived, _}}} ->
+        {:ok, %{profiles: profiles, derived_revocations: derived}}
+    end
+  end
+
+  defp anonymize_profile(profile, anonymized_at) do
+    Multi.new()
+    |> Multi.update(
+      :profile,
+      ProjectMemberProfile.anonymization_changeset(profile, anonymized_at)
+    )
+    |> Multi.update_all(
+      :derived_revocations,
+      from(r in ParticipationRevocation,
+        where: r.project_id == ^profile.project_id and r.former_account_id == ^profile.account_id
+      ),
+      set: anonymized_handoff_fields(ProjectMemberProfile.anonymous_label(), anonymized_at)
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{profile: anonymized, derived_revocations: {derived, _}}} ->
+        {:ok, %{profile: anonymized, derived_revocations: derived}}
+
+      {:error, _step, changeset, _changes} ->
+        {:error, changeset}
+    end
+  end
+
+  # The handoff keeps its identifier, project, participant reference, reason,
+  # time, and contract version so a consumer that has not finished reading it
+  # still sees the same event; only the two fields that named a person change.
+  defp anonymized_handoff_fields(label, anonymized_at) do
+    [
+      last_display_name: label,
+      former_account_id: nil,
+      former_hosted_identity_id: nil,
+      updated_at: anonymized_at
+    ]
+  end
+
+  defp pending_handoff?(_project_id, nil), do: false
+
+  defp pending_handoff?(project_id, account_id) do
+    ParticipationRevocation
+    |> where(
+      [r],
+      r.project_id == ^project_id and r.former_account_id == ^account_id and
+        is_nil(r.acknowledged_at)
+    )
+    |> Repo.exists?()
   end
 
   defp own_profile(project, :owner, _account_id), do: owner_profile(project_id(project))

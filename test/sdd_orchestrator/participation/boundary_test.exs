@@ -6,8 +6,9 @@ defmodule SddOrchestrator.Participation.BoundaryTest do
   alias SddOrchestrator.Participation.{Boundary, Capabilities, Revocations}
   alias SddOrchestrator.ParticipationDeliveryDouble
   alias SddOrchestrator.ParticipationFixtures
+  alias SddOrchestrator.Repo
 
-  @member_keys [:account_id, :display_name, :hosted_identity_id, :role]
+  @member_keys [:account_id, :display_name, :hosted_identity_id, :presentation_state, :role]
 
   setup do
     previous = Application.get_env(:sdd_orchestrator, :participation_email_delivery)
@@ -39,12 +40,14 @@ defmodule SddOrchestrator.Participation.BoundaryTest do
       assert owner.role == :owner
       assert owner.account_id == owner_account.id
       assert owner.display_name =~ "Owner"
+      assert owner.presentation_state == :present
 
       assert [participant] = Boundary.current_participants(project.id)
       assert participant.role == :participant
       assert participant.account_id == identity.account.id
       assert participant.hosted_identity_id == identity.hosted_identity.id
       assert participant.display_name == "Member Label"
+      assert participant.presentation_state == :present
 
       assert [first, second] = Boundary.current_members(project.id)
       assert first.role == :owner
@@ -71,6 +74,50 @@ defmodule SddOrchestrator.Participation.BoundaryTest do
 
       assert Enum.sort(Map.keys(resolved)) == @member_keys
       refute Map.has_key?(resolved, :email)
+    end
+
+    test "keeps an active participant current and routable when presentation is absent" do
+      %{project: project, identity: identity} = joined()
+
+      project.id
+      |> Participation.member_profile(identity.account.id)
+      |> Repo.delete!()
+
+      actor = %{
+        account_id: identity.account.id,
+        hosted_identity_id: identity.hosted_identity.id
+      }
+
+      assert [participant] = Boundary.current_participants(project.id)
+      assert participant.role == :participant
+      assert participant.account_id == identity.account.id
+      assert participant.hosted_identity_id == identity.hosted_identity.id
+      assert participant.presentation_state == :absent
+      assert participant.display_name == "Project participant"
+      refute participant.display_name =~ "@"
+      refute participant.display_name == identity.external_identity.display_identifier
+
+      assert {:ok, ^participant} = Boundary.current_member(project.id, actor)
+      assert Boundary.authorized?(project, actor, :read_project)
+      assert [_, ^participant] = Boundary.current_members(project.id)
+    end
+
+    test "keeps the immutable owner resolvable when presentation is absent" do
+      %{project: project, account: owner_account} = joined()
+
+      project.id
+      |> Participation.owner_profile()
+      |> Repo.delete!()
+
+      assert {:ok, owner} = Boundary.owner(project.id)
+      assert owner.role == :owner
+      assert owner.account_id == owner_account.id
+      assert owner.presentation_state == :absent
+      assert owner.display_name == Participation.default_owner_display_name()
+      refute owner.display_name =~ "@"
+
+      assert {:ok, ^owner} =
+               Boundary.current_member(project.id, %{account_id: owner_account.id})
     end
 
     test "denies a stale, absent, or cross-project identity with one result" do

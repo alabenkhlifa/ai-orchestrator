@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Verified
 
-The approved feature-delivery foundation is implemented through Task 36, including the board, readiness, orchestration, worker, evidence, preview, review, same-run continuation, and minimized notification projection. The previous unfinished plan mixed notification access, processing controls, several independent retention authorities, deletion, verified rights, deployment governance, and final coordination under one verification gate. Those independently executable outcomes now belong to focused continuation specifications. Task 54 is the only remaining task here: it verifies the completed legacy foundation under the current proof runner and publishes its narrow child-consumer capabilities. It is blocked until Slice 08 repairs active-participant recipient routing that incorrectly depends on `ProjectMemberProfile`; the repair does not reopen completed Slice 07 Task 36 or move participation ownership into this specification.
+The approved feature-delivery foundation is implemented and locally verified through Task 54, including the board, readiness, orchestration, worker protocol, evidence, preview, review, same-run continuation, minimized notification projection, and normalized progress activity. Its five child-consumer capabilities are published, including the Slice 08 recipient-routing contract verified from this consumer's side. No participation ownership moved into this specification. Live configured worker and coding-agent smoke proof is environment-blocked because this checkout has only unavailable production adapters and no configured execution transport; deterministic adapter, protocol, browser, repository, security, and production-build proof is green. Deployment-specific evidence and accountable privacy or legal review remain in the release gate. New implementation belongs to the focused continuation specifications.
 
 ## Active Slice
 
@@ -416,8 +416,7 @@ Prerequisite:
   - Depends on: Task 2
   - Proof: Focused navigation, configuration test, default-landing, unconfigured-fallback, missing-label landing, authorization, cross-project isolation, current-destination, keyboard, focus, desktop, and mobile tests pass, including one proof that an owner reaching their configured board is not refused there.
 
-- [ ] Task 54 - Verify and publish the completed guided-delivery foundation contracts.
-  - Status: Blocked until `capability:project-participation-recipient-routing` is ready.
+- [x] Task 54 - Verify and publish the completed guided-delivery foundation contracts.
   - Size: Standard
   - Proof scope: Focused
   - Purpose: Reconcile the completed foundation under the current proof runner and publish its smallest stable child-consumer contracts without implementing any child-owned behavior.
@@ -428,20 +427,20 @@ Prerequisite:
 
 ## Verification Gate
 
-- [ ] Completed board, readiness, orchestration, worker, recovery, evidence, preview, review, navigation, and notification-projection acceptance criteria pass without child-owned lifecycle or rights proof being implied.
-- [ ] Hosted PostgreSQL and worker-owned device delivery-store, protocol, command, lease, fence, reconciliation, and no-hosted-device-copy contracts pass.
-- [ ] Exact-revision, same-commit evidence, conditional screenshot, private artifact, preview, and human-review contracts pass.
-- [ ] Blocked, ready-for-review, and terminal-failed notification projection passes recipient, current-participation, deduplication, minimization, replay, restart, safe-link-reference, and no-external-channel proof.
-- [ ] Desktop and mobile board, feature, activity, blocked, review, and completion scenarios pass.
-- [ ] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass through slice scope.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
-- [ ] Live configured worker and coding-agent smoke proofs pass, or remain explicitly environment-blocked without weakening deterministic adapter proof.
-- [ ] The individual specification validator and global capability graph pass, and every published foundation capability has a Task 54 readiness write-back.
-- [ ] Child-owned criteria and entities remain classified without duplicate ownership.
+- [x] Completed board, readiness, orchestration, worker, recovery, evidence, preview, review, navigation, and notification-projection acceptance criteria pass without child-owned lifecycle or rights proof being implied.
+- [x] Hosted PostgreSQL and worker-owned device delivery-store, protocol, command, lease, fence, reconciliation, and no-hosted-device-copy contracts pass.
+- [x] Exact-revision, same-commit evidence, conditional screenshot, private artifact, preview, and human-review contracts pass.
+- [x] Blocked, ready-for-review, and terminal-failed notification projection passes recipient, current-participation, deduplication, minimization, replay, restart, safe-link-reference, and no-external-channel proof.
+- [x] Desktop and mobile board, feature, activity, blocked, review, and completion scenarios pass.
+- [x] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass through slice scope.
+- [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
+- [x] Live configured worker and coding-agent smoke proofs pass, or remain explicitly environment-blocked without weakening deterministic adapter proof.
+- [x] The individual specification validator and global capability graph pass, and every published foundation capability has a Task 54 readiness write-back.
+- [x] Child-owned criteria and entities remain classified without duplicate ownership.
 
 ## Blocked Decisions
 
-- No user decision blocks Task 54. The provider defect where an active participant without a `ProjectMemberProfile` disappears from recipient enumeration blocks `capability:project-participation-recipient-routing`; Slice 08 Task 36 owns the approved repair and must complete before Task 54 can publish the notification-projection contract.
+- None.
 
 ## Release Gate
 
@@ -451,6 +450,27 @@ Prerequisite:
 - Final accountable privacy or legal review for the configured deployment and its subprocessors.
 
 ## Progress Log
+
+### 2026-08-02 - Slice verification complete after integration repair
+
+- Completed: Rebased the slice onto current `main`, preserved the Slice 08 provider history, and repaired three integration findings before accepting the gate. Normalized worker progress was already stored but absent from feature activity, so the authorized feature-detail read now presents it independently from participant comments and the browser seed uses the real ingestion path. The participant-guard key assertion now includes the provider's `presentation_state`. Two exact `Ecto.Multi` opaque-type false positives are suppressed without hiding any other Dialyzer warning.
+- Acceptance proof: `mix check` and the explicit `mix test` each passed with 2,519 results (2,513 tests and 6 properties), one intentionally excluded live tag, and no failures. The focused feature-detail proof passed with 93 tests. The complete Playwright matrix passed with 226 scenarios: 113 Chromium and 113 mobile Chromium, including the normalized-progress activity scenario, accessibility, keyboard, privacy, and viewport checks.
+- Repository, security, and production proof: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `npm --prefix assets ci`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` all passed through slice scope. Dialyzer reported 20 known warnings, skipped all 20 through exact accepted entries, and reported zero unnecessary skips.
+- Environment blocker: Live configured worker and coding-agent smoke proof cannot run in this checkout. Development and test configure only the onboarding worker stub, the production `AgentAdapter` and `CommandTransport` default to unavailable implementations, and no `:delivery_execution`, `:worker_workspace_root`, or `:command_envelope_source` runtime configuration is present. This blocks only the live external smoke branch; the deterministic adapters, authenticated transport, protocol, lease, fence, retry, reconciliation, and browser paths remain proved.
+- Readiness: Product requirements are approved, technical design is approved, implementation is complete, and local verification is `Verified`. Release remains blocked by the deployment-specific processors, regions, transfer safeguards, notices, retention enforcement, preview-provider smoke when enabled, and accountable privacy or legal review listed in the release gate.
+- Proof receipts: `slice` — scope `Broad` — commands `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `mix test`, `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `env MIX_ENV=prod mix assets.deploy`, and `env MIX_ENV=prod mix release` — exit `0` for each command.
+- Failed checks resolved: The first `mix check` exposed the stale participant-guard assertion and then an alias-order issue; both were corrected. The first Dialyzer run exposed only the two exact Ecto opaque-type false positives; the exact suppressions make the gate green with no unnecessary entries. Independent acceptance review exposed the missing progress presentation before the browser matrix; the activity surface, focused proof, and desktop/mobile scenario now pass.
+- Spec updates: Marked the slice `Verified` and completed the verification-gate checklist. Requirements, design, ownership, completed task history, child boundaries, capability edges, and the release gate are unchanged.
+
+### 2026-08-02 - Task 54 complete: the foundation contracts are verified and published
+
+- Completed: Reconciled the completed guided-delivery foundation under the current task-proof runner with five new focused handoff test files under `test/sdd_orchestrator/delivery/foundation/`, one per published contract, and recorded readiness for the five child-consumer capabilities. No production code changed and no child-owned behavior was implemented; every test pins a contract the foundation already keeps.
+- Capability readiness: `capability:guided-delivery-data-surfaces`, `capability:guided-delivery-notification-projection`, `capability:guided-delivery-artifact-preview-boundary`, `capability:guided-delivery-revocation-consumer`, and `capability:guided-delivery-start-disclosure` are ready for their consumers in `specs/17-` through `specs/24-`. Each handoff file names the capability it publishes and asserts the contract whole — the delivery-store operation vocabulary, the three `delivery.` event types with their recipient matrices and idempotent key, the opaque artifact reference with its idempotent deletion seam and the preview lifecycle, cleanup, and exact-commit binding, the acknowledged-after-commit revocation consumer, and the digest-bound start disclosure — so a contract change breaks a named handoff test before it breaks a child.
+- The Slice 08 `capability:project-participation-recipient-routing` contract is verified from this consumer's side: an active participant who never had a `ProjectMemberProfile` is still the person a blocked run reaches, `Participation.Boundary.current_participants/1` reports them as `presentation_state: :absent` with the neutral label and no email-derived text, and a departed recipient is dropped at delivery time while the removal notice itself stays Slice 08's record. No provider defect was found.
+- Deliberately not the slice gate: this task's proof is the focused handoff reconciliation only. Full repository, browser, security, production, and live-smoke checks remain in the slice verification gate, and the release gate is unchanged.
+- Proof receipt: `Task 54` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/foundation/data_surfaces_handoff_test.exs test/sdd_orchestrator/delivery/foundation/notification_projection_handoff_test.exs test/sdd_orchestrator/delivery/foundation/artifact_preview_boundary_handoff_test.exs test/sdd_orchestrator/delivery/foundation/revocation_consumer_handoff_test.exs test/sdd_orchestrator/delivery/foundation/start_disclosure_handoff_test.exs` — exit `0`.
+- Failed checks: None. The focused proof passed with 29 tests and 0 failures under `MIX_TEST_PARTITION=754`, `mix format --check-formatted` passes on the new files, and the individual specification validator, the affected consumer validators (`specs/17-` through `specs/24-`), the global capability graph, and `git diff --check` are recorded after this write-back.
+- Spec updates: Marked Task 54 complete and recorded capability readiness. Requirements, design, acceptance criteria, ownership, task sizes, proof scope, and dependency edges are unchanged.
 
 ### 2026-08-02 - Legacy implementation narrowed to focused continuation slices
 

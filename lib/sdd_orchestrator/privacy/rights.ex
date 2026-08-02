@@ -20,6 +20,11 @@ defmodule SddOrchestrator.Privacy.Rights do
     * `export_passwordless_attempts/1` and `erase_passwordless_attempts/1` —
       access and erasure for a verified requester whose email has attempts but no
       account yet.
+    * Participation attribution operations — the necessity assessment for a
+      departed participant's project label, verified anonymization of that label
+      and its account link, and the project-deletion sweep. Anonymization keeps
+      the contribution history that attributes through the profile and restores
+      no project access.
 
   Retained copies outside the primary store (encrypted backups) are expired by the
   deployment's backup lifecycle, recorded in the deployment privacy profile.
@@ -46,6 +51,7 @@ defmodule SddOrchestrator.Privacy.Rights do
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking.WorkspaceMergeRecord
+  alias SddOrchestrator.Participation
 
   alias SddOrchestrator.Portability.{
     HostedLocalRepositoryBinding,
@@ -283,6 +289,96 @@ defmodule SddOrchestrator.Privacy.Rights do
 
   def assess_portability_request(_authority, _project_id, _action),
     do: {:error, :not_found}
+
+  @doc """
+  Reports whether a departed participant's project label may still identify them.
+
+  The decision is not a timer. A departed label serves project accountability
+  until the durable revocation handoff is acknowledged; after that it names a
+  person for no remaining purpose and anonymization becomes available. Returns
+  `{:error, :not_found}` when no attribution links that account to the project,
+  which is also the answer once anonymization has removed the link.
+  """
+  @spec assess_participation_attribution(String.t(), String.t() | nil) ::
+          {:ok, map()} | {:error, :not_found}
+  def assess_participation_attribution(project_id, account_id) do
+    case Participation.attribution_necessity(project_id, account_id) do
+      {:error, :not_found} ->
+        {:error, :not_found}
+
+      {necessity, reason} ->
+        {:ok,
+         %{
+           action: :anonymization,
+           project_id: project_id,
+           necessity: necessity,
+           reason: reason,
+           disposition: attribution_disposition(necessity),
+           propagation: anonymization_propagation()
+         }}
+    end
+  end
+
+  @doc """
+  Anonymizes one departed participant's historical project attribution.
+
+  Two paths reach here, matching the two ways the retention of an identifying
+  label ends. Without a verified request the necessity assessment must already
+  say the label serves no remaining accountability purpose. A verified rights
+  request overrides that judgement, because a person who has exercised erasure
+  or objection does not wait for the project's own accountability interest to
+  lapse. The caller owns the verification workflow that establishes the request;
+  this boundary records only that a verified one was the basis.
+
+  A current participant is refused on either path. Their label is their present
+  name rather than historical attribution, and ending their participation is the
+  step that makes it historical.
+  """
+  @spec anonymize_participation_attribution(String.t(), String.t() | nil, keyword()) ::
+          {:ok, map()}
+          | {:error, :not_found | :attribution_necessary | :active_participation}
+  def anonymize_participation_attribution(project_id, account_id, opts \\ []) do
+    verified_request? = Keyword.get(opts, :verified_request, false)
+
+    with :ok <- authorize_anonymization(project_id, account_id, verified_request?),
+         {:ok, result} <- Participation.anonymize_member_attribution(project_id, account_id) do
+      {:ok,
+       %{
+         action: :anonymization,
+         project_id: project_id,
+         basis: anonymization_basis(verified_request?),
+         profile_id: result.profile.id,
+         anonymous_label: Participation.anonymous_member_label(),
+         derived_revocations: result.derived_revocations,
+         propagation: anonymization_propagation()
+       }}
+    end
+  end
+
+  @doc """
+  Anonymizes every remaining departed label in a project being deleted.
+
+  An approved project-deletion event ends the accountability purpose of the
+  whole project's history at once, so no departed label survives it still naming
+  a person. Deleting the project row itself removes these records outright
+  through their own cascade; this serves a deletion workflow that retires the
+  project while its history is still being wound down.
+  """
+  @spec anonymize_project_participation_attribution(String.t()) :: {:ok, map()}
+  def anonymize_project_participation_attribution(project_id) do
+    {:ok, result} = Participation.anonymize_project_attribution(project_id)
+
+    {:ok,
+     %{
+       action: :anonymization,
+       project_id: project_id,
+       basis: :project_deletion,
+       anonymous_label: Participation.anonymous_member_label(),
+       profiles: result.profiles,
+       derived_revocations: result.derived_revocations,
+       propagation: anonymization_propagation()
+     }}
+  end
 
   @doc """
   Exports credential-free passwordless attempt lifecycle data for a normalized
@@ -609,6 +705,55 @@ defmodule SddOrchestrator.Privacy.Rights do
         revoked_at: session.revoked_at
       }
     end)
+  end
+
+  defp authorize_anonymization(project_id, account_id, verified_request?) do
+    case Participation.attribution_necessity(project_id, account_id) do
+      {:error, :not_found} ->
+        {:error, :not_found}
+
+      {:necessary, :active_participation} ->
+        {:error, :active_participation}
+
+      {:necessary, _pending_consumer_handoff} ->
+        if verified_request?, do: :ok, else: {:error, :attribution_necessary}
+
+      {:unnecessary, _lapsed} ->
+        :ok
+    end
+  end
+
+  defp anonymization_basis(true), do: :verified_rights_request
+  defp anonymization_basis(false), do: :attribution_no_longer_necessary
+
+  defp attribution_disposition(:necessary), do: :identifiable_attribution_necessary
+  defp attribution_disposition(:unnecessary), do: :anonymization_available
+
+  # What the anonymization has already reached, and what it hands on. The
+  # primary store and this specification's own derived copy of the label are
+  # anonymized before this is returned. Configured processors, caches, indexes,
+  # and exports are the separate propagation contract, and encrypted recovery
+  # copies are bounded by the backup lifecycle rather than rewritten in place:
+  # the backup handoff is requested under the erasure action because the
+  # requirement on a backup is the same either way, that it must not restore the
+  # link that was removed.
+  defp anonymization_propagation do
+    %{
+      primary_boundary: :hosted,
+      primary_store: :anonymized,
+      processors: [%{processor: :hosting_database, action: :anonymize, state: :applied}],
+      derived_records: [
+        %{record: :project_member_profile, action: :anonymize, state: :applied},
+        %{record: :participation_revocation, action: :anonymize, state: :applied}
+      ],
+      pending_propagation: [
+        %{record: :configured_processors, action: :anonymize},
+        %{record: :caches, action: :anonymize},
+        %{record: :indexes, action: :anonymize},
+        %{record: :exports, action: :anonymize}
+      ],
+      encrypted_backups: backup_handoff(:erasure)
+    }
   end
 
   defp access_propagation(boundary) do

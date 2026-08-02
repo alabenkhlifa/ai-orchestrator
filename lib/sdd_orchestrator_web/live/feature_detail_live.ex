@@ -15,6 +15,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   use SddOrchestratorWeb, :live_view
 
   alias SddOrchestrator.Delivery.{
+    Activity,
     Answers,
     Assignment,
     Blocking,
@@ -739,9 +740,16 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   end
 
   defp load_activity(socket, project_id, actor, feature) do
-    case Comments.list(project_id, actor, feature.id) do
-      {:ok, comments} -> assign(socket, :comments, comments)
-      {:error, :unauthorized} -> assign(socket, :comments, [])
+    case Activity.list(project_id, actor, feature.id, limit: Activity.max_limit()) do
+      {:ok, entries} ->
+        socket
+        |> assign(:activity, Enum.filter(entries, &(&1.type == "progress")))
+        |> assign(:comments, Enum.filter(entries, &(&1.type == "comment")))
+
+      {:error, :unauthorized} ->
+        socket
+        |> assign(:activity, [])
+        |> assign(:comments, [])
     end
   end
 
@@ -1850,6 +1858,33 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
               </dl>
             </li>
           </ul>
+        </section>
+
+        <section class="mt-6" aria-labelledby="activity-heading" data-activity>
+          <h2 id="activity-heading" class="text-[13px] font-semibold text-ink">
+            Feature activity
+          </h2>
+
+          <ol :if={@activity != []} class="mt-3 flex flex-col gap-2">
+            <li
+              :for={entry <- @activity}
+              class="min-w-0 rounded-lg border border-line bg-surface p-3.5"
+              data-activity-entry
+              data-activity-sequence={entry.sequence}
+            >
+              <p class="text-xs font-semibold text-ink-muted">Development progress</p>
+              <p class="mt-1 break-words text-sm text-ink" data-activity-summary>
+                {entry.payload["summary"] || "Development progress recorded."}
+              </p>
+              <p class="mt-2 text-xs text-ink-muted" data-activity-position>
+                Attempt {entry.payload["attempt_number"]}, update {entry.payload["sequence"]}
+              </p>
+            </li>
+          </ol>
+
+          <p :if={@activity == []} class="mt-3 text-xs text-ink-muted" data-activity-empty>
+            No development progress has been recorded yet.
+          </p>
         </section>
 
         <section class="mt-6" data-comments>

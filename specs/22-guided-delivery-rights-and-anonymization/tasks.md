@@ -20,7 +20,7 @@ Requires:
 - `capability:guided-delivery-operational-retention` — provider `specs/19-guided-delivery-operational-retention#Task 5` — required before `Task 1`.
 - `capability:guided-delivery-device-transient-retention` — provider `specs/20-guided-delivery-device-data-retention#Task 2` — required before `Task 1`.
 - `capability:guided-delivery-project-deletion-governance` — provider `specs/21-guided-delivery-deletion-and-recovery#Task 6` — required before `Task 1`.
-- `capability:project-participation-governance` — provider `specs/08-project-participation#Task 5` — required before `Task 1`.
+- `capability:project-participation-governance` — provider `specs/29-participation-completion#Task 1` — required before `Task 1`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 1`.
 
 Provides:

@@ -14,6 +14,8 @@ Expose current project participation through a read-only authorization interface
 
 Resolve authorization, current-participant enumeration, responsibility, and notification-recipient identity from project ownership and active `ProjectParticipant` records before joining presentation data. A missing `ProjectMemberProfile` is an explicit presentation-repair state, not an authorization result: the boundary retains stable identity and role, exposes no email fallback, and lets consumers use only a neutral minimized presentation until the profile is repaired.
 
+Treat departure and fresh re-entry as one governed identity lifecycle. Fresh acceptance creates a new active `ProjectParticipant` authorization but reactivates the same linked historical `ProjectMemberProfile` with the newly accepted available label; it creates a profile only when no linked historical one exists and never relinks an anonymized profile. A current participant must pass through an authorized removal or leave transition before an approved verified-rights disposition anonymizes their now-historical attribution. Revocation former-account and former-hosted-identity links are cleared after consumer acknowledgement and no later than 30 days after departure.
+
 ## Components Affected
 
 - Hosted-project participation settings and participant list.
@@ -33,7 +35,7 @@ Resolve authorization, current-participant enumeration, responsibility, and noti
 - `ProjectInvitation`: one project-scoped invitation addressed to an email, with inviter, protected acceptance state, lifecycle status, and only the approved delivery and diagnostic metadata.
 - `ProjectParticipant`: one project-scoped active or inactive authorization attaching a stable hosted identity to the `Participant` role without changing project ownership or owning its presentation label.
 - `ProjectMemberProfile`: one project-specific presentation profile for the immutable owner or one participant, with a stable account reference while active, role, accepted display name, comparison key, and anonymization state separate from authorization identity. The owner's profile is created with the project from their GitHub login; a participant's is captured at acceptance.
-- `ParticipationRevocation`: one versioned, idempotent outbox handoff created atomically with removal or leave and containing only the project, former participant, owner fallback, last accepted display name, reason, event time, and consumer-delivery state.
+- `ParticipationRevocation`: one versioned, idempotent outbox handoff created atomically with removal or leave and containing only the project, former participant, owner fallback, last accepted display name, reason, event time, and consumer-delivery state. Its former-account and former-hosted-identity links are temporary routing fields cleared after acknowledgement and no later than 30 days.
 - `AccountNotification`: the shared account-level in-product notification foundation for participation and later Slice 07 events, addressed only to the approved recipient and governed independently from project content.
 - `ParticipationEmailDelivery`: one minimized invitation or participation email-delivery result with no credential or project content.
 
@@ -61,6 +63,9 @@ Required boundaries:
 - Removal or leave makes participation inactive and inserts one `ParticipationRevocation` in the same transaction. Slice 08 never directly changes Slice 07 assignment, question, review, contribution, notification, or run state.
 - Slice 07 owns idempotent consumption of `ParticipationRevocation`, including assignment clearing, owner responsibility fallback, governed historical attribution, active-run control, and former-participant denial on its records.
 - Historical attribution resolves through stable identity, uses the current display name while active, and retains the last accepted display name after departure only while necessary for project accountability; approved rights or deletion handling removes the account link and anonymizes the label when continued identification is unnecessary.
+- A fresh acceptance after removal or leave locks and reactivates the existing linked historical profile with the newly accepted available display name inside the acceptance transaction. It inserts a new profile only when no linked historical profile exists, never relinks an anonymized profile, and distinguishes structural identity conflicts from invalid display-name input.
+- An approved verified-rights disposition for a current participant first completes an authorized removal or leave transition. Once participation is historical, the approved disposition may override pending-handoff necessity and anonymize without restoring access or deleting stable contribution history.
+- Revocation former-account and former-hosted-identity links are cleared after consumer acknowledgement and at the latest 30 days after departure. The handoff retains only the non-identifying fields required for idempotency, owner fallback, audit, and consumer-delivery state.
 - Notification channels and recipients follow the approved event matrix, and payloads contain only minimum project and action context without project content or credentials.
 - Participation does not transfer or expose repository, worker, model-provider, application-session, or invitation credentials.
 - Invitation and participant records, delivery and audit data, logs, caches, indexes, backups, exports, and derived records follow an approved personal-data lifecycle.
@@ -71,11 +76,11 @@ Required boundaries:
 - Invitation interface: accept one email for one owned hosted project, avoid account discovery, create protected invitation state, and invoke the approved delivery boundary.
 - Invitation-lifecycle interface: enforce seven-day expiry, one pending invitation per project and email, invalidating resend, owner cancellation, invitee decline, current-participant detection, and fresh re-invitation after every terminal state.
 - Invited-email proof interface: bind fresh proof of the invited email to one invitation, warn before replacing another identity's browser cookie, establish the proven identity's hosted browser session, and never treat another session or sign-in method as equivalent proof.
-- Acceptance interface: identify the project and consequence after proof, require explicit acceptance, and create one participant authorization or no partial state.
+- Acceptance interface: identify the project and consequence after proof, require explicit acceptance, and create one participant authorization or no partial state; fresh re-entry reactivates the existing linked historical profile with the newly accepted label instead of inserting a duplicate.
 - Current-participant interface: return the minimum current project-scoped stable identity, role, authorization, and presentation state required by Slice 07 and other approved consumers without mutating participation; include active identities whose profile is absent and never substitute email for presentation.
 - Project-capability interface: authorize project specifications, feature content, comments, and run evidence while denying participation management, destructive project settings, storage or repository changes, and credential access.
 - Display-identity interface: create the owner's project profile with the project and backfill projects registered before that rule, capture a participant profile during acceptance, let each member change only their own trimmed project-specific display name, enforce case-insensitive project uniqueness without automatic suffixes, preserve the last accepted label for necessary historical attribution, and support approved anonymization without erasing stable contribution history.
-- Revocation interface: remove or leave atomically, invalidate current authorization, insert one versioned `ParticipationRevocation`, preserve the immutable owner, and expose idempotent claim and acknowledgement operations without mutating consumer-owned records.
+- Revocation interface: remove or leave atomically, invalidate current authorization, insert one versioned `ParticipationRevocation`, preserve the immutable owner, expose idempotent claim and acknowledgement operations without mutating consumer-owned records, and clear former identity links after acknowledgement or at the 30-day maximum.
 - Notification interface: provide the shared account-level record, unread/read lifecycle, recipient authorization, event-recipient idempotency, and minimized payload contract; deliver invitation, resend, and cancellation email; acceptance and decline in-product outcomes; expiry and leave owner notifications; and removal email plus account-level in-product notice.
 - Privacy interface: enforce purposes, access, retention, deletion, rights, processor, transfer, audit, support, and genuinely anonymous analytics boundaries.
 
@@ -154,11 +159,23 @@ Required boundaries:
 - Reason: Unique project labels keep assignment understandable without exposing participant emails or confusing the label with stable identity.
 - Consequence: Historical records reference stable participant identity, render the current name while active, and preserve the last accepted name after departure.
 
+### Fresh Re-entry Reuses Presentation Identity
+
+- Choice: On fresh acceptance after removal or leave, create a new participant authorization and reactivate the existing linked historical `ProjectMemberProfile` with the newly accepted available display name. Create a profile only when no linked historical profile exists, and never relink an anonymized profile.
+- Reason: One account has one project presentation identity. Inserting another linked profile violates the existing uniqueness boundary and misreports a structural conflict as display-name input failure.
+- Consequence: The profile identifier and contribution references remain stable across departure and re-entry, the current accepted label applies while participation is active, and anonymized history remains unlinkable.
+
 ### Rights-Aware Historical Attribution
 
 - Choice: Preserve stable contribution history without requiring permanent identifiable attribution. Retain the departed participant's last display name only while necessary for project accountability, then remove the account link and replace the label with an anonymous former-participant label when an approved rights or deletion workflow requires it.
 - Reason: Project history must remain understandable, but a display name and stable identity link remain personal data and must not be retained indefinitely without necessity.
-- Consequence: Anonymization does not delete comments, decisions, evidence, or run history and cannot restore access. The privacy design must define the necessity decision, verified request path, propagation to derived copies, and backup expiry.
+- Consequence: Anonymization does not delete comments, decisions, evidence, or run history and cannot restore access. Pending consumer handoff is the ordinary accountability-necessity signal; an approved verified request may override it after departure. A current participant is never anonymized in place: the approved workflow first completes an authorized removal or leave transition, then anonymizes historical attribution. Verification of identity alone is not the rights disposition.
+
+### Bounded Revocation Identity Links
+
+- Choice: Retain `ParticipationRevocation.former_account_id` and `former_hosted_identity_id` only until consumer acknowledgement and never beyond 30 days after departure.
+- Reason: The links support immediate notification and responsibility handoff, but retaining either after consumption or the existing departed-participant limit would create an unnecessary second membership graph.
+- Consequence: Lifecycle enforcement clears both links while preserving the handoff identifier, project and participant references, immutable owner fallback, reason, occurrence time, contract version, and delivery state required for audit and idempotency.
 
 ### Minimal Event-Specific Notifications
 
@@ -192,7 +209,7 @@ Required boundaries:
 
 ### Participation Data Lifecycle
 
-- Choice: Make pending invitations unusable after seven days; erase credential digests and salts on every terminal transition; delete terminal invitation, email-delivery diagnostics, and a departed `ProjectParticipant` authorization-to-identity link within 30 days; delete in-product notifications within 90 days; delete operational-security logs within 30 days; and expire encrypted rolling backups within 35 days. Retain active participation only while active. After the 30-day departed-participant window, a historical `ProjectMemberProfile` may retain its account link and last display label only while project accountability requires identifiable attribution; an approved anonymization or project-deletion event removes that remaining link and replaces the label with an anonymous former-participant label.
+- Choice: Make pending invitations unusable after seven days; erase credential digests and salts on every terminal transition; delete terminal invitation and email-delivery diagnostics within 30 days; clear a departed `ProjectParticipant` authorization-to-identity link within 30 days; clear a revocation's former-account and former-hosted-identity links after acknowledgement and no later than 30 days; delete in-product notifications within 90 days; delete operational-security logs within 30 days; and expire encrypted rolling backups within 35 days. Retain active participation only while active. After the 30-day departed-participant window, a historical `ProjectMemberProfile` may retain its account link and last display label only while project accountability requires identifiable attribution; an approved anonymization or project-deletion event removes that remaining link and replaces the label with an anonymous former-participant label.
 - Reason: The workflow needs bounded replay, dispute, security, notification, and recovery evidence without retaining an indefinite email or membership graph.
 - Consequence: The retention pruner, verified rights workflow, project deletion, exports, caches, indexes, backups, and configured processors must propagate deletion or anonymization. Deployment-specific processors, regions, transfer safeguards, final retention approval, and accountable privacy or legal review remain release-gate evidence.
 
