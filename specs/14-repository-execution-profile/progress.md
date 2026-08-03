@@ -1,5 +1,17 @@
 # Repository Execution Profile Progress Log
 
+### 2026-08-03 - Task 9 complete: exact-commit worker evidence cache
+
+- Completed: Added the strict complete-only cache entry and bounded worker-local LRU process. Exact reuse requires the same project, repository identity, normalized root, full commit, scan protocol, scanner contract, and full limit contract; a hit is rebound to the new assessment command and accepted only after the existing result contract validates it again. Deterministic provenance identifies fresh scans and complete cache hits without exposing raw evidence.
+- Proof receipt: `Task 9` — scope `Focused` — command `MIX_TEST_PARTITION=159 MIX_DEPS_PATH=/Users/alabenkhlifa/IdeaProjects/sdd-orchestrator-s14/deps mix test test/sdd_orchestrator/repository_assessments/worker_repository_assessment_cache_test.exs` — exit `0`.
+- Proof receipt: `Task 9` — scope `Focused` — command `MIX_DEPS_PATH=/Users/alabenkhlifa/IdeaProjects/sdd-orchestrator-s14/deps mix format --check-formatted lib/sdd_orchestrator/repository_assessments/worker_repository_assessment_cache_entry.ex lib/sdd_orchestrator/repository_assessments/worker_repository_assessment_cache.ex test/sdd_orchestrator/repository_assessments/worker_repository_assessment_cache_test.exs` — exit `0`.
+- Proof receipt: `Task 9` — scope `Focused` — command `MIX_DEPS_PATH=/Users/alabenkhlifa/IdeaProjects/sdd-orchestrator-s14/deps mix compile --warnings-as-errors` — exit `0`.
+- Mechanisms: Cache state is memory-only, capped at 64 entries and 16 MiB by hard limits, evicts least-recently-used entries deterministically, and publishes the explicit `discard_all` restart policy. Failed, canceled, incomplete, conflicting, malformed, or oversized evidence cannot become a hit. No existing assessment, store, migration, supervision, transport, route, UI, or Task 10 module changed.
+- Failed checks: The first non-proof formatter invocation omitted the shared dependency path and returned `Unknown dependency :ecto_sql`; rerunning with the declared `MIX_DEPS_PATH` resolved the environment setup issue. No focused proof failed.
+- Final checks: `git diff --check`, `python3 .agents/scripts/validate_spec.py specs/14-repository-execution-profile`, and `python3 .agents/scripts/validate_spec.py --all specs` pass after the completion write-back.
+- Remaining: Complete Task 10 in its isolated worktree, reconcile both task commits into the Slice 14 worktree, then implement Tasks 11, 4, and 12 and the slice verification gate.
+- Spec updates: Marked only Task 9 complete and recorded its delivered cache contract and proof receipts. Requirements, design, acceptance criteria, task dependencies, capability edges, proof scope, and release gates are unchanged.
+
 ### 2026-08-03 - Tasks 9 and 10 parallel implementation started
 
 - Completed: Confirmed both tasks depend only on completed Task 3; the Slice 14 validator and global capability graph pass; PostgreSQL is healthy; and the slice branch is based on current `origin/main`. Partitioned Task 9 into an isolated worker-local cache worktree and Task 10 into an isolated authoritative profile worktree from the same clean Slice 14 baseline.
