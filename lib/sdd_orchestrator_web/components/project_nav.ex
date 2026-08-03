@@ -52,7 +52,10 @@ defmodule SddOrchestratorWeb.ProjectNav do
       <.project_nav project_id={@project_id} current={:features} exact?={false} />
   """
   attr :project_id, :string, required: true
-  attr :current, :atom, required: true, doc: "`:overview`, `:features`, or `:people`"
+
+  attr :current, :atom,
+    required: true,
+    doc: "`:overview`, `:features`, `:assessment`, or `:people`"
 
   attr :owner?, :boolean,
     default: false,
@@ -116,7 +119,14 @@ defmodule SddOrchestratorWeb.ProjectNav do
       path: ~p"/projects/#{project_id}/participation"
     }
 
-    if owner?, do: [overview, board, people], else: [board, people]
+    assessment = %{
+      key: "assessment",
+      label: "Assessment",
+      icon: "search",
+      path: ~p"/projects/#{project_id}/assessment"
+    }
+
+    if owner?, do: [overview, board, assessment, people], else: [board, people]
   end
 
   defp current?(%{key: key}, current), do: key == Atom.to_string(current)

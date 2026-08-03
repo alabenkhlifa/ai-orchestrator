@@ -87,6 +87,7 @@ test.describe("project navigation", () => {
 
     await expect(page.locator("[data-project-nav]")).toBeVisible();
     await expect(page.locator("[data-nav-destination=overview]")).toHaveCount(0);
+    await expect(page.locator("[data-nav-destination=assessment]")).toHaveCount(0);
     await expect(page.locator("[data-nav-destination=features]")).toBeVisible();
     await expect(page.locator("[data-nav-destination=people]")).toBeVisible();
   });
@@ -123,7 +124,7 @@ test.describe("project navigation", () => {
       .locator("[data-nav-destination]")
       .evaluateAll((links) => links.map((link) => link.getBoundingClientRect().height));
 
-    expect(heights.length).toBe(3);
+    expect(heights.length).toBe(4);
     for (const height of heights) {
       expect(height).toBeLessThanOrEqual(nav.height + 1);
     }

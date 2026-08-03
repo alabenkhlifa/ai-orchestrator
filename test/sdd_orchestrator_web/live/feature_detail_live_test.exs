@@ -2483,7 +2483,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
         |> then(&Regex.scan(~r/href="([^"]+)"/, &1, capture: :all_but_first))
         |> List.flatten()
 
-      assert length(hrefs) == 3
+      assert length(hrefs) == 4
       assert Enum.all?(hrefs, &String.starts_with?(&1, "/projects/#{project.id}/"))
     end
 
@@ -2499,6 +2499,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
         |> live(feature_path(project, feature))
 
       refute has_element?(view, ~s([data-nav-destination="overview"]))
+      refute has_element?(view, ~s([data-nav-destination="assessment"]))
       assert has_element?(view, ~s([data-nav-destination="features"][data-nav-current]))
       assert has_element?(view, ~s([data-nav-destination="people"]))
     end

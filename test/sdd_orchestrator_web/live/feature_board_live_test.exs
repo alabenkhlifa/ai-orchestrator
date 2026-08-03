@@ -276,6 +276,7 @@ defmodule SddOrchestratorWeb.FeatureBoardLiveTest do
       for {destination, path} <- [
             {"overview", "/projects/#{project.id}/overview"},
             {"features", "/projects/#{project.id}/features"},
+            {"assessment", "/projects/#{project.id}/assessment"},
             {"people", "/projects/#{project.id}/participation"}
           ] do
         assert has_element?(view, ~s([data-nav-destination="#{destination}"][href="#{path}"]))
@@ -313,7 +314,7 @@ defmodule SddOrchestratorWeb.FeatureBoardLiveTest do
 
       hrefs = view |> element("[data-project-nav]") |> render() |> nav_hrefs()
 
-      assert length(hrefs) == 3
+      assert length(hrefs) == 4
 
       for href <- hrefs do
         assert String.starts_with?(href, "/projects/#{project.id}/")
@@ -334,6 +335,7 @@ defmodule SddOrchestratorWeb.FeatureBoardLiveTest do
       # A participant has no application session, so the overview would only
       # bounce them to sign-in; it is left out rather than shown and refused.
       refute has_element?(view, ~s([data-nav-destination="overview"]))
+      refute has_element?(view, ~s([data-nav-destination="assessment"]))
       assert has_element?(view, ~s([data-nav-destination="features"][data-nav-current]))
       assert has_element?(view, ~s([data-nav-destination="people"]))
     end

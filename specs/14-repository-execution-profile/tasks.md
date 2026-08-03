@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7 and 8 are complete, and Task 1 is the next executable task presenting the authoritative assessment state and owner-controlled start workflow. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, and 1 are complete, and Task 2 is the next executable task implementing the bounded worker-local scan. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -101,7 +101,7 @@ Traceability:
   - Proof: Focused domain, migration, owner and device authorization, hosted/device adapter-contract, restart persistence, cross-project, cross-workspace, stale, replay, no-hosted-copy, no-command, and unchanged-repository tests pass.
   - Delivered: `RepositoryAssessments.start_assessment/4` consumes one unchanged Task 7 binding and creates one minimized `pending_scan` value; `RepositoryAssessment` and the hosted migration constrain the exact repository, scanner and disclosure digests, worker reference, confirmation time, and sole Task 8 state; `AssessmentStore.Hosted` persists only owner-authorized hosted projects in PostgreSQL while `AssessmentStore.Device` persists only connected projects owned by the current device workspace through strict allowlisted `DeviceStore`/DETS callbacks. Device values survive adapter restart and create no hosted row; stale, expired, replayed, cross-project, cross-workspace, wrong-authority, malformed, or repository-mismatched input persists nothing, and no scanner, command transport, repository path, content, raw diagnostic, or repository mutation was introduced.
 
-- [ ] Task 1 — Establish assessment state and owner-controlled start.
+- [x] Task 1 — Establish assessment state and owner-controlled start.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8
@@ -109,6 +109,7 @@ Traceability:
   - Owned surfaces: Assessment entry and one-root selection LiveView, hosted and device routes, project navigation, inspected-surface, local-data, transfer, processor, retention, purpose and limit disclosure, first or changed-boundary confirmation interaction, verified repository, normalized-root and full-commit presentation, owner-only start action, and focused desktop/mobile browser scenario.
   - Owns: AC-01, AC-02
   - Proof: Focused LiveView authorization and interaction tests plus one desktop/mobile browser file prove only the owner can confirm and start, every required disclosure and exact-binding field is visible, and no metadata or scan command is issued before confirmation.
+  - Delivered: `RepositoryAssessmentLive` serves owner-authorized hosted and device routes, content-addresses the complete processing disclosure, lists only currently reachable paired workers, accepts one normalized relative root without narrowing Task 7's length contract, and separates disclosure confirmation and metadata-only binding preparation from the final Task 8 start transition. Hosted owners receive one owner-only Assessment navigation destination; device projects receive a local dashboard entry. The verified repository, normalized root, and full commit remain visible before start, safe failures disclose no raw diagnostics, and the resulting pending assessment stays in the project's authoritative hosted or device store without issuing a scan command.
 
 - [ ] Task 2 — Implement bounded worker-local repository assessment.
   - Size: Standard

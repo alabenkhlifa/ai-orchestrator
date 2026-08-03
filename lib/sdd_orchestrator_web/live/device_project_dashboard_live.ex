@@ -118,6 +118,23 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
           </div>
         </dl>
 
+        <div class="mt-6 rounded-lg border border-line bg-surface p-4" data-assessment-entry>
+          <p class="text-[13px] font-semibold text-ink">Assess repository readiness</p>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Review the read-only processing boundary, verify one exact root and commit, then
+            explicitly start a pending assessment.
+          </p>
+          <.button
+            variant="secondary"
+            size="sm"
+            navigate={~p"/local/projects/#{@project.id}/assessment"}
+            data-open-assessment
+            class="mt-3 w-full sm:w-auto"
+          >
+            <.lucide name="search" class="size-4" /> Open assessment
+          </.button>
+        </div>
+
         <div class="mt-6 rounded-lg border border-line bg-surface p-4">
           <p class="text-[13px] font-semibold text-ink">Moved or renamed the repository?</p>
           <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">

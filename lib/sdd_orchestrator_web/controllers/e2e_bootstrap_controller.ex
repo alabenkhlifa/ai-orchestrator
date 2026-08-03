@@ -5,6 +5,38 @@
 # in the router, which only gates its route, because this endpoint establishes
 # authenticated sessions.
 if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
+  defmodule SddOrchestratorWeb.E2ERepositoryMetadataAdapter do
+    @moduledoc """
+    Deterministic metadata-only repository binding for the browser harness.
+
+    It returns only the identity already present in the authorized request, the
+    selected relative root, and one full commit. It implements no scan command
+    and is excluded from production by the same compile-time gate as the
+    session bootstrap that configures it.
+    """
+    @behaviour SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter
+
+    @commit "0123456789abcdef0123456789abcdef01234567"
+
+    def commit, do: @commit
+
+    @impl true
+    def prepare(request), do: response(request)
+
+    @impl true
+    def revalidate(request), do: response(request)
+
+    defp response(request) do
+      {:ok,
+       %{
+         repository_provider: request.repository_provider,
+         repository_id: request.repository_id,
+         root: request.selected_root,
+         commit: @commit
+       }}
+    end
+  end
+
   defmodule SddOrchestratorWeb.E2EPreviewAdapter do
     @moduledoc """
     A deterministic preview provider for the browser suite.
@@ -79,6 +111,8 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     use SddOrchestratorWeb, :controller
 
     alias SddOrchestrator.Accounts
+    alias SddOrchestrator.Devices
+    alias SddOrchestrator.Devices.Pairing
 
     alias SddOrchestrator.Delivery.{
       AgentRun,
@@ -100,7 +134,15 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.Projects
     alias SddOrchestrator.Projects.Project
     alias SddOrchestrator.Repo
-    alias SddOrchestratorWeb.{E2EPreviewAdapter, HostedUserAuth, UserAuth}
+
+    alias SddOrchestrator.RepositoryAssessments.BindingStore
+
+    alias SddOrchestratorWeb.{
+      E2EPreviewAdapter,
+      E2ERepositoryMetadataAdapter,
+      HostedUserAuth,
+      UserAuth
+    }
 
     @columns ~w(draft ready_for_development in_development ready_for_review done)
     @owner_name "Robin Owner"
@@ -359,6 +401,34 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # One configured hosted project plus one reachable paired worker for the
+    # disclosure-confirmed repository-assessment start flow. The adapter is the
+    # compile-time-gated metadata-only double above; no scanner or command
+    # transport is configured by this scenario.
+    defp run(conn, "repository_assessment", _params) do
+      owner = new_owner()
+      project = registered_project(owner)
+      save_owner_profile(project, owner)
+      {:ok, device_workspace} = Devices.establish_workspace()
+      worker = reachable_worker(device_workspace.id)
+      :ok = BindingStore.reset()
+
+      Application.put_env(
+        :sdd_orchestrator,
+        :repository_metadata_adapter,
+        E2ERepositoryMetadataAdapter
+      )
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        project_id: project.id,
+        project_name: project.name,
+        worker_id: worker.id,
+        commit: E2ERepositoryMetadataAdapter.commit()
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -379,6 +449,21 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       {:ok, _invitation} = Invitations.create(project, owner.account.id, pending)
 
       %{project: project, owner: owner, participant: participant, pending: pending}
+    end
+
+    defp reachable_worker(device_workspace_id) do
+      {:ok, %{code: code}} = Pairing.start_pairing(device_workspace_id)
+
+      {:ok, %{worker: worker}} =
+        Pairing.complete_pairing(code, %{
+          os_family: "macos",
+          os_major: "15",
+          app_version: "1.0.0",
+          protocol_version: "1"
+        })
+
+      {:ok, worker} = Pairing.mark_seen(worker)
+      worker
     end
 
     # The participant joins the way a real one does: the owner invites the
