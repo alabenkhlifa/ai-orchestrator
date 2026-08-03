@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7, 8, and 1 are complete, and Task 2 is the next executable task implementing the bounded worker-local scan. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, 1, and 2 are complete, and Task 3 is the next executable task adding exact-commit caching and owner-approved profiles. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -111,7 +111,7 @@ Traceability:
   - Proof: Focused LiveView authorization and interaction tests plus one desktop/mobile browser file prove only the owner can confirm and start, every required disclosure and exact-binding field is visible, and no metadata or scan command is issued before confirmation.
   - Delivered: `RepositoryAssessmentLive` serves owner-authorized hosted and device routes, content-addresses the complete processing disclosure, lists only currently reachable paired workers, accepts one normalized relative root without narrowing Task 7's length contract, and separates disclosure confirmation and metadata-only binding preparation from the final Task 8 start transition. Hosted owners receive one owner-only Assessment navigation destination; device projects receive a local dashboard entry. The verified repository, normalized root, and full commit remain visible before start, safe failures disclose no raw diagnostics, and the resulting pending assessment stays in the project's authoritative hosted or device store without issuing a scan command.
 
-- [ ] Task 2 — Implement bounded worker-local repository assessment.
+- [x] Task 2 — Implement bounded worker-local repository assessment.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -119,6 +119,7 @@ Traceability:
   - Owned surfaces: Read-only worker command, root-containment and exact-commit guards, high-signal allowlist, ignored and prohibited paths, byte/file/time limits, progress, cancellation, structured findings, and no repository mutation enforcement.
   - Owns: AC-03, AC-04
   - Proof: Focused worker protocol, malicious-content, path-escape, ignored-secret, binary, limit, cancellation, mutation-negative, and structured-result tests pass.
+  - Delivered: `RepositoryAssessmentCommand` serializes one strict minimized pending-assessment command bound to the project, canonical repository, selected root, exact commit, scanner and disclosure digests, opaque worker, and capped path, file, byte, per-file, and time limits without a filesystem path or credential. `WorkerRepositoryAssessment.scan/3` verifies current `HEAD`, requires the selected root to be a tree at that commit, enumerates and reads only exact-commit Git objects, restricts findings to allowlisted instruction, contribution, manifest, CI, check, and top-level structure signals, excludes secrets, generated and dependency stores, symlinks, binaries, unsafe paths, and untracked or modified working-tree content, reports content-free progress, cooperatively cancels without a result, and returns deterministic repository-relative digests and counts without raw content, absolute paths, cache, persistence, transport, or repository mutation.
 
 - [ ] Task 3 — Add exact-commit caching and owner-approved profiles.
   - Size: Standard
