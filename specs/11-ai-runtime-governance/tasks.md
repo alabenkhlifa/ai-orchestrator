@@ -4,7 +4,7 @@
 
 In Progress
 
-Task 7 is complete: the personal-worker AI RPC transport is delivered on `slice/11-ai-runtime-governance` under the recorded parallel-ownership partition with `specs/14-repository-execution-profile#Task 1`, and repository-wide verification remains serialized until both parallel tasks are reconciled. Task 8 (version-checked Codex App Server adapter) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
+Tasks 7 and 8 are complete: the personal-worker AI RPC transport and version-checked Codex App Server adapter are delivered on `slice/11-ai-runtime-governance`, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Task 1 (account-owned personal AI connections) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
 
 ## Active Slice
 
@@ -93,13 +93,14 @@ Traceability:
   - Proof: Focused authentication, account, device workspace, capability, request, correlation, idempotency, timeout, reconnect, replay, size, malformed payload, cross-workspace, cross-account, project-command denial, and worker-double tests pass.
   - Delivered: `PersonalAIWorkerSocket` (pairing-credential authentication of active paired workers only) and `PersonalAIWorkerChannel` on the workspace-scoped `personal_ai:` topic with join-time workspace re-authorization; `AIRuntime.PersonalWorkerProtocol` owning `personal-ai/1`, the connection, catalog, quota, and observation capability allowlist, strict request and response field allowlists, payload limits, and the Slice 07 command denylist; `AIRuntime.PersonalWorkerRPC` with a unique per-worker connection registry, correlated account-scoped bounded requests, typed transport failures, idempotent replay-safe responses, and deterministic reconnect replacement. The Slice 07 run gateway is untouched.
 
-- [ ] Task 8 — Implement the version-checked Codex App Server adapter.
+- [x] Task 8 — Implement the version-checked Codex App Server adapter.
   - Size: Standard
   - Depends on: Task 7
   - Purpose: Give the paired worker one fail-closed official-client boundary without making an experimental protocol shape an implicit domain contract.
   - Owned surfaces: Worker-supervised local App Server process, standard-input and standard-output JSON-RPC, initialization, Codex version and generated-schema-digest compatibility registry, documented method allowlist, managed ChatGPT browser and device-code login, API-key login, external-token and WebSocket denial, typed errors, timeout, cancellation, crash and restart, stdout validation, stderr suppression and redaction, credential-shaped-content rejection, fixtures, and deterministic process double.
   - Owns: none (worker adapter foundation)
   - Proof: Focused version, schema digest, initialization, method allowlist, ChatGPT login, device-code login, API-key login, external-token denial, WebSocket denial, malformed and oversized response, credential-shaped output, raw-error exclusion, timeout, crash, restart, and deterministic-adapter tests pass.
+  - Delivered: `AIRuntime.CodexAppServer` owns a linked worker-local stdio adapter with JSONL buffering, the required `initialize` then `initialized` handshake, strict request and notification method allowlists, managed ChatGPT browser and device-code login, worker-local API-key login, external-token and non-stdio denial, bounded correlation, local cancellation, typed timeout and process failures, crash reinitialization, strict stdout shapes and sizes, raw-error normalization, credential-shaped-content rejection, and stderr suppression. `CodexAppServer.Compatibility` admits only configured installed-version and generated-schema-digest pairs; the production pair remains release-gated. `CodexAppServer.StdioProcess` is replaceable by the deterministic `CodexAppServerProcessDouble` used by the focused fixture-backed proof.
 
 - [ ] Task 1 — Establish account-owned personal AI connections.
   - Size: Standard
