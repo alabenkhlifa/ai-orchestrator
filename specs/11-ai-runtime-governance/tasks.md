@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 7 and 8 are complete: the personal-worker AI RPC transport and version-checked Codex App Server adapter are delivered on `slice/11-ai-runtime-governance`, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Task 1 (account-owned personal AI connections) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
+Tasks 7, 8, and 1 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, and account-owned personal AI connection foundation are delivered on `slice/11-ai-runtime-governance`, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Task 9 (the account-level AI Connections workflow) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
 
 ## Active Slice
 
@@ -102,13 +102,14 @@ Traceability:
   - Proof: Focused version, schema digest, initialization, method allowlist, ChatGPT login, device-code login, API-key login, external-token denial, WebSocket denial, malformed and oversized response, credential-shaped output, raw-error exclusion, timeout, crash, restart, and deterministic-adapter tests pass.
   - Delivered: `AIRuntime.CodexAppServer` owns a linked worker-local stdio adapter with JSONL buffering, the required `initialize` then `initialized` handshake, strict request and notification method allowlists, managed ChatGPT browser and device-code login, worker-local API-key login, external-token and non-stdio denial, bounded correlation, local cancellation, typed timeout and process failures, crash reinitialization, strict stdout shapes and sizes, raw-error normalization, credential-shaped-content rejection, and stderr suppression. `CodexAppServer.Compatibility` admits only configured installed-version and generated-schema-digest pairs; the production pair remains release-gated. `CodexAppServer.StdioProcess` is replaceable by the deterministic `CodexAppServerProcessDouble` used by the focused fixture-backed proof.
 
-- [ ] Task 1 — Establish account-owned personal AI connections.
+- [x] Task 1 — Establish account-owned personal AI connections.
   - Size: Standard
   - Depends on: Task 7, Task 8
   - Purpose: Give support and working-agent consumers stable personal connection references without moving credentials or raw provider identity into the control plane.
   - Owned surfaces: `PersonalAIConnection`, migration and constraints, account and paired-worker ownership, opaque worker-profile reference, provider and authentication mode, trimmed account-scoped case-insensitive label uniqueness, multiple connections, idempotent same-profile link, immutable binding, safe availability, requested and acknowledged revocation states, unavailable or incompatible worker result, no-funded-fallback enforcement, strict allowlist, fixtures, and deterministic adapter double.
   - Owns: AC-01, entity:PersonalAIConnection
   - Proof: Focused account, worker, profile, label, multiple-connection, same-profile idempotency, immutable binding, ChatGPT and API-key mode, availability, incompatibility, revocation-state, credential absence, provider email, account, workspace and plan absence, no fallback, support-consumer, working-agent-consumer, and adapter-contract tests pass.
+  - Delivered: `PersonalAIConnection` and its migration persist one minimized account-owned binding to an active paired worker and opaque worker-local profile with expression-indexed trimmed case-insensitive labels, globally unique worker-profile ownership, constrained provider, authentication, availability and revocation vocabularies, and a database trigger that freezes account, worker, profile, provider and authentication bindings. `PersonalConnections` re-authorizes the active account and worker, validates exact bounded adapter results, links the same binding idempotently, refuses cross-account profile sharing and binding changes, resolves only explicit eligible support-assistant or working-agent selections without a funded fallback or worker-profile disclosure, and records requested and acknowledged revocation states for Task 13's later credential-removal reconciliation. `PersonalConnectionAdapter.RPC` carries only the `connection/1` link contract through the completed personal-worker transport; the deterministic adapter/RPC double and focused fixtures keep provider identity, credentials, plan details and raw errors outside the control plane.
 
 - [ ] Task 9 — Deliver the account-level AI Connections workflow.
   - Size: Standard
