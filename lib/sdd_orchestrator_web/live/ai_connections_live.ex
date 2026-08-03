@@ -1,0 +1,797 @@
+defmodule SddOrchestratorWeb.AIConnectionsLive do
+  @moduledoc """
+  Account-level management for credential-local personal AI connections.
+
+  Worker discovery is derived from the current device authority and the live
+  personal-worker RPC registry. Browser events carry only short-lived display
+  keys; every selected worker is looked up again and re-authorized before the
+  connection domain is called. Provider credentials and raw provider identity
+  have no field or rendering path in this LiveView.
+  """
+
+  use SddOrchestratorWeb, :live_view
+
+  alias Phoenix.LiveView.JS
+
+  alias SddOrchestrator.AIRuntime.{PersonalConnections, PersonalWorkerRPC}
+  alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.Pairing
+
+  @protocol_version "personal-ai/1"
+  @connection_capability "connection/1"
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok,
+     socket
+     |> assign(:page_title, "AI Connections")
+     |> assign(:editing_connection_id, nil)
+     |> assign(:confirming_revoke_id, nil)
+     |> assign(:link_pending?, false)
+     |> assign(:link_result, nil)
+     |> assign(:rename_result, nil)
+     |> assign(:revocation_results, %{})
+     |> assign(:revoking_ids, MapSet.new())
+     |> refresh_workers()
+     |> reset_create_form()
+     |> refresh_connections()}
+  end
+
+  @impl true
+  def handle_event("link", %{"connection" => params}, socket) do
+    socket = refresh_workers(socket)
+
+    with false <- socket.assigns.link_pending?,
+         {:ok, candidate} <- selected_candidate(socket, params["worker_id"]),
+         :ok <- authorize_candidate(socket, candidate),
+         {:ok, attrs} <- link_attrs(params) do
+      account = socket.assigns.current_account
+      worker = candidate.worker
+      authentication_mode = attrs.authentication_mode
+
+      {:noreply,
+       socket
+       |> assign(:create_values, Map.take(params, ["label", "worker_id", "authentication_mode"]))
+       |> assign(:link_pending?, true)
+       |> assign(:link_result, {:pending, authentication_mode})
+       |> start_async(:link_connection, fn ->
+         PersonalConnections.link_connection(account, worker, attrs)
+       end)}
+    else
+      true -> {:noreply, socket}
+      {:error, reason} -> {:noreply, assign(socket, :link_result, {:error, reason})}
+    end
+  end
+
+  def handle_event("link", _params, socket) do
+    {:noreply, assign(socket, :link_result, {:error, :invalid_connection})}
+  end
+
+  def handle_event("change_connection", %{"connection" => params}, socket) do
+    values =
+      socket.assigns.create_values
+      |> Map.merge(Map.take(params, ["label", "worker_id", "authentication_mode"]))
+
+    {:noreply, assign(socket, :create_values, values)}
+  end
+
+  def handle_event("change_connection", _params, socket), do: {:noreply, socket}
+
+  def handle_event("recheck_workers", _params, socket) do
+    {:noreply,
+     socket
+     |> refresh_workers()
+     |> preserve_create_values()}
+  end
+
+  def handle_event("start_rename", %{"id" => id}, socket) do
+    case PersonalConnections.get_connection(socket.assigns.current_account, id) do
+      nil ->
+        {:noreply, assign(socket, :rename_result, {:error, :not_found})}
+
+      connection ->
+        {:noreply,
+         socket
+         |> assign(:editing_connection_id, connection.id)
+         |> assign(:rename_result, nil)}
+    end
+  end
+
+  def handle_event("cancel_rename", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:editing_connection_id, nil)
+     |> assign(:rename_result, nil)}
+  end
+
+  def handle_event("rename", %{"rename" => %{"label" => label}}, socket) do
+    account = socket.assigns.current_account
+
+    case socket.assigns.editing_connection_id do
+      nil ->
+        {:noreply, assign(socket, :rename_result, {:error, :not_found})}
+
+      connection_id ->
+        case PersonalConnections.rename_connection(account, connection_id, label) do
+          {:ok, connection} ->
+            {:noreply,
+             socket
+             |> assign(:editing_connection_id, nil)
+             |> assign(:rename_result, {:ok, connection.id})
+             |> refresh_connections()}
+
+          {:error, reason} ->
+            {:noreply, assign(socket, :rename_result, {:error, reason})}
+        end
+    end
+  end
+
+  def handle_event("rename", _params, socket) do
+    {:noreply, assign(socket, :rename_result, {:error, :invalid_label})}
+  end
+
+  def handle_event("start_revoke", %{"id" => id}, socket) do
+    case PersonalConnections.get_connection(socket.assigns.current_account, id) do
+      nil -> {:noreply, put_revocation_result(socket, id, {:error, :not_found})}
+      connection -> {:noreply, assign(socket, :confirming_revoke_id, connection.id)}
+    end
+  end
+
+  def handle_event("cancel_revoke", _params, socket) do
+    {:noreply, assign(socket, :confirming_revoke_id, nil)}
+  end
+
+  def handle_event("confirm_revoke", _params, socket) do
+    case socket.assigns.confirming_revoke_id do
+      nil ->
+        {:noreply, socket}
+
+      connection_id ->
+        account = socket.assigns.current_account
+
+        {:noreply,
+         socket
+         |> assign(:confirming_revoke_id, nil)
+         |> update(:revoking_ids, &MapSet.put(&1, connection_id))
+         |> put_revocation_result(connection_id, :pending)
+         |> start_async({:revoke_connection, connection_id}, fn ->
+           PersonalConnections.request_revocation(account, connection_id)
+         end)}
+    end
+  end
+
+  @impl true
+  def handle_async(:link_connection, {:ok, {:ok, connection}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:link_pending?, false)
+     |> assign(:link_result, {:ok, connection.authentication_mode})
+     |> reset_create_form()
+     |> refresh_connections()}
+  end
+
+  def handle_async(:link_connection, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:link_pending?, false)
+     |> assign(:link_result, {:error, reason})}
+  end
+
+  def handle_async(:link_connection, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:link_pending?, false)
+     |> assign(:link_result, {:error, :worker_unavailable})}
+  end
+
+  def handle_async({:revoke_connection, connection_id}, {:ok, {:ok, _connection}}, socket) do
+    {:noreply,
+     socket
+     |> update(:revoking_ids, &MapSet.delete(&1, connection_id))
+     |> put_revocation_result(connection_id, :ok)
+     |> refresh_connections()}
+  end
+
+  def handle_async({:revoke_connection, connection_id}, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> update(:revoking_ids, &MapSet.delete(&1, connection_id))
+     |> put_revocation_result(connection_id, {:error, reason})}
+  end
+
+  def handle_async({:revoke_connection, connection_id}, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> update(:revoking_ids, &MapSet.delete(&1, connection_id))
+     |> put_revocation_result(connection_id, {:error, :worker_unavailable})}
+  end
+
+  defp refresh_connections(socket) do
+    assign(
+      socket,
+      :connections,
+      PersonalConnections.list_connections(socket.assigns.current_account)
+    )
+  end
+
+  defp refresh_workers(socket) do
+    {workspace_id, candidates} = discover_workers()
+
+    socket
+    |> assign(:device_workspace_id, workspace_id)
+    |> assign(:worker_candidates, candidates)
+    |> assign(:worker_state, combined_worker_state(candidates))
+  end
+
+  defp discover_workers do
+    case Devices.get_workspace() do
+      {:ok, %{id: workspace_id}} ->
+        candidates =
+          workspace_id
+          |> Pairing.active_workers()
+          |> Enum.sort_by(& &1.id)
+          |> Enum.with_index(1)
+          |> Enum.map(fn {worker, index} ->
+            %{
+              key: "local-worker-#{index}",
+              name: "Local worker #{index}",
+              state: worker_state(workspace_id, worker.id),
+              worker: worker
+            }
+          end)
+
+        {workspace_id, candidates}
+
+      _ ->
+        {nil, []}
+    end
+  end
+
+  defp worker_state(workspace_id, worker_id) do
+    case PersonalWorkerRPC.connection(workspace_id, worker_id) do
+      {:ok, _pid, %{protocol_version: @protocol_version, capabilities: capabilities}}
+      when is_list(capabilities) ->
+        if @connection_capability in capabilities, do: :ready, else: :incompatible
+
+      {:ok, _pid, _contract} ->
+        :incompatible
+
+      :error ->
+        :unavailable
+    end
+  end
+
+  defp combined_worker_state([]), do: :missing
+
+  defp combined_worker_state(candidates) do
+    states = Enum.map(candidates, & &1.state)
+
+    cond do
+      :ready in states -> :ready
+      :incompatible in states -> :incompatible
+      true -> :unavailable
+    end
+  end
+
+  defp reset_create_form(socket) do
+    default_worker =
+      socket.assigns.worker_candidates
+      |> Enum.find(&(&1.state == :ready))
+      |> case do
+        nil -> ""
+        candidate -> candidate.key
+      end
+
+    assign(socket, :create_values, %{
+      "label" => "",
+      "worker_id" => default_worker,
+      "authentication_mode" => "chatgpt"
+    })
+  end
+
+  defp preserve_create_values(socket) do
+    values = socket.assigns.create_values
+    selected = values["worker_id"]
+
+    selected =
+      if Enum.any?(socket.assigns.worker_candidates, fn candidate ->
+           candidate.key == selected and candidate.state == :ready
+         end) do
+        selected
+      else
+        socket.assigns.worker_candidates
+        |> Enum.find(&(&1.state == :ready))
+        |> case do
+          nil -> ""
+          candidate -> candidate.key
+        end
+      end
+
+    assign(socket, :create_values, Map.put(values, "worker_id", selected))
+  end
+
+  defp selected_candidate(socket, key) when is_binary(key) do
+    case Enum.find(socket.assigns.worker_candidates, &(&1.key == key and &1.state == :ready)) do
+      nil -> {:error, worker_selection_error(socket.assigns.worker_state)}
+      candidate -> {:ok, candidate}
+    end
+  end
+
+  defp selected_candidate(socket, _key),
+    do: {:error, worker_selection_error(socket.assigns.worker_state)}
+
+  defp authorize_candidate(%{assigns: %{device_workspace_id: workspace_id}}, candidate)
+       when is_binary(workspace_id),
+       do: Pairing.authorize_for_workspace(candidate.worker, workspace_id)
+
+  defp authorize_candidate(_socket, _candidate), do: {:error, :worker_unavailable}
+
+  defp worker_selection_error(:incompatible), do: :incompatible
+  defp worker_selection_error(_state), do: :worker_unavailable
+
+  defp link_attrs(params) do
+    attrs = %{
+      label: params["label"],
+      provider: "openai_codex",
+      authentication_mode: params["authentication_mode"]
+    }
+
+    if is_binary(attrs.label) and attrs.authentication_mode in ["chatgpt", "api_key"],
+      do: {:ok, attrs},
+      else: {:error, :invalid_connection}
+  end
+
+  defp put_revocation_result(socket, id, result) do
+    update(socket, :revocation_results, &Map.put(&1, id, result))
+  end
+
+  defp link_result_message({:pending, "api_key"}),
+    do: "Waiting for the local worker. Enter the API key only in the worker window."
+
+  defp link_result_message({:pending, _mode}),
+    do: "Waiting for the local worker to complete ChatGPT sign-in."
+
+  defp link_result_message({:ok, "api_key"}),
+    do: "Connection added. API-key entry stayed in the local worker."
+
+  defp link_result_message({:ok, _mode}),
+    do: "Connection added. ChatGPT sign-in completed in the local worker."
+
+  defp link_result_message({:error, reason}), do: error_message(reason)
+
+  defp error_message(:label_taken), do: "That label is already in use. Choose another label."
+  defp error_message(:invalid_label), do: "Enter a label between 1 and 100 characters."
+  defp error_message(:invalid_connection), do: "Check the label and connection choices."
+  defp error_message(:worker_unavailable), do: "The selected local worker is unavailable."
+  defp error_message(:timeout), do: "The local worker did not respond in time. Try again."
+  defp error_message(:incompatible), do: "The selected local worker needs a compatible update."
+  defp error_message(:profile_already_linked), do: "That worker-local profile is already linked."
+  defp error_message(:binding_mismatch), do: "That connection cannot be rebound. Revoke it first."
+
+  defp error_message(:account_unavailable),
+    do: "This account cannot manage connections right now."
+
+  defp error_message(:not_found), do: "That connection is no longer available."
+  defp error_message(_reason), do: "The connection could not be changed. Try again."
+
+  defp worker_state_label(:ready), do: "Ready"
+  defp worker_state_label(:unavailable), do: "Unavailable"
+  defp worker_state_label(:incompatible), do: "Needs update"
+
+  defp worker_state_variant(:ready), do: "ok"
+  defp worker_state_variant(:unavailable), do: "warn"
+  defp worker_state_variant(:incompatible), do: "err"
+
+  defp availability_label(%{revocation_state: "requested"}), do: "Revocation pending"
+  defp availability_label(%{revocation_state: "acknowledged"}), do: "Revoked"
+  defp availability_label(%{availability: "available"}), do: "Available"
+  defp availability_label(%{availability: "unavailable"}), do: "Unavailable"
+  defp availability_label(%{availability: "incompatible"}), do: "Needs update"
+
+  defp availability_variant(%{revocation_state: "requested"}), do: "warn"
+  defp availability_variant(%{revocation_state: "acknowledged"}), do: "neutral"
+  defp availability_variant(%{availability: "available"}), do: "ok"
+  defp availability_variant(%{availability: "unavailable"}), do: "warn"
+  defp availability_variant(%{availability: "incompatible"}), do: "err"
+
+  defp authentication_label("api_key"), do: "API key"
+  defp authentication_label(_chatgpt), do: "ChatGPT"
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.flash_group flash={@flash} />
+    <.app_shell max_width="max-w-6xl">
+      <:actions>
+        <.button variant="ghost" size="sm" navigate={~p"/projects"} data-projects-link>
+          <.lucide name="folder" class="size-4" /> Projects
+        </.button>
+        <.button variant="secondary" size="sm" href={~p"/auth/sign_out"} method="delete">
+          <.lucide name="log-out" class="size-4" /> Sign out
+        </.button>
+      </:actions>
+
+      <div data-screen="ai-connections" class="space-y-8">
+        <header class="max-w-3xl">
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            Account settings
+          </p>
+          <h1 class="mt-2 text-2xl font-bold text-ink sm:text-3xl">AI Connections</h1>
+          <p class="mt-3 text-sm leading-6 text-ink-muted">
+            Link labelled personal AI connections through a paired worker on this device.
+            Sign-in and secret entry stay in that local worker.
+          </p>
+        </header>
+
+        <section
+          aria-labelledby="worker-heading"
+          class="rounded-xl border border-line bg-surface p-4 sm:p-6"
+        >
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 id="worker-heading" class="text-base font-bold text-ink">Local worker</h2>
+              <p class="mt-1 text-sm text-ink-muted">
+                Only compatible live workers can start a connection handoff.
+              </p>
+            </div>
+            <.badge :if={@worker_state == :missing} variant="warn">No paired worker</.badge>
+            <.badge :if={@worker_state == :unavailable} variant="warn">Worker unavailable</.badge>
+            <.badge :if={@worker_state == :incompatible} variant="err">Update required</.badge>
+            <.badge :if={@worker_state == :ready} variant="ok">Ready to connect</.badge>
+          </div>
+
+          <p
+            :if={@worker_state == :missing}
+            data-worker-guidance="missing"
+            class="mt-4 text-sm text-ink-muted"
+          >
+            Pair a local worker on this device before adding an AI connection.
+          </p>
+          <p
+            :if={@worker_state == :unavailable}
+            data-worker-guidance="unavailable"
+            class="mt-4 text-sm text-ink-muted"
+          >
+            A worker is paired but its AI connection is offline. Open the worker and try again.
+          </p>
+          <p
+            :if={@worker_state == :incompatible}
+            data-worker-guidance="incompatible"
+            class="mt-4 text-sm text-ink-muted"
+          >
+            The live worker does not support the required personal AI connection protocol. Update it before continuing.
+          </p>
+
+          <div class="mt-4 flex flex-wrap gap-2">
+            <.button
+              type="button"
+              size="sm"
+              variant="secondary"
+              phx-click="recheck_workers"
+              data-recheck-workers
+            >
+              <.lucide name="refresh-cw" class="size-4" /> Check workers again
+            </.button>
+            <.button
+              :if={@worker_state == :missing}
+              size="sm"
+              variant="ghost"
+              navigate={~p"/onboarding/local"}
+              data-setup-local-worker
+            >
+              Set up a local worker
+            </.button>
+          </div>
+
+          <ul
+            :if={@worker_candidates != []}
+            class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+            data-worker-list
+          >
+            <li
+              :for={candidate <- @worker_candidates}
+              class="flex items-center justify-between gap-3 rounded-lg border border-line bg-canvas px-3 py-2.5"
+            >
+              <span class="text-sm font-semibold text-ink">{candidate.name}</span>
+              <.badge variant={worker_state_variant(candidate.state)}>
+                {worker_state_label(candidate.state)}
+              </.badge>
+            </li>
+          </ul>
+        </section>
+
+        <div class="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+          <section
+            aria-labelledby="add-connection-heading"
+            class="rounded-xl border border-line bg-surface p-4 sm:p-6"
+          >
+            <h2 id="add-connection-heading" class="text-base font-bold text-ink">Add a connection</h2>
+            <p class="mt-1 text-sm text-ink-muted">
+              Choose a label, a ready worker, and where authentication will happen.
+            </p>
+
+            <form
+              id="ai-connection-form"
+              phx-change="change_connection"
+              phx-submit="link"
+              class="mt-5 space-y-5"
+            >
+              <.text_field
+                id="connection-label"
+                name="connection[label]"
+                label="Connection label"
+                value={@create_values["label"]}
+                maxlength="100"
+                required
+                disabled={@link_pending?}
+                hint="Use a name you can recognize without exposing provider account identity."
+              />
+
+              <div>
+                <label for="connection-worker" class="block text-[13px] font-semibold text-ink">Local worker</label>
+                <select
+                  id="connection-worker"
+                  name="connection[worker_id]"
+                  required
+                  disabled={@link_pending? or @worker_state != :ready}
+                  class="mt-1.5 h-10 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink outline-none focus:outline-solid focus:outline-2 focus:outline-focus"
+                >
+                  <option value="" disabled selected={@create_values["worker_id"] == ""}>
+                    Choose a ready local worker
+                  </option>
+                  <option
+                    :for={candidate <- @worker_candidates}
+                    value={candidate.key}
+                    disabled={candidate.state != :ready}
+                    selected={@create_values["worker_id"] == candidate.key}
+                  >
+                    {candidate.name} — {worker_state_label(candidate.state)}
+                  </option>
+                </select>
+              </div>
+
+              <fieldset>
+                <legend class="text-[13px] font-semibold text-ink">Authentication handoff</legend>
+                <div class="mt-2 grid gap-3 sm:grid-cols-2">
+                  <label class="flex cursor-pointer gap-3 rounded-lg border border-line-strong p-3 focus-within:outline focus-within:outline-2 focus-within:outline-focus">
+                    <input
+                      type="radio"
+                      name="connection[authentication_mode]"
+                      value="chatgpt"
+                      checked={@create_values["authentication_mode"] == "chatgpt"}
+                      disabled={@link_pending?}
+                    />
+                    <span>
+                      <span class="block text-sm font-semibold text-ink">ChatGPT</span>
+                      <span class="mt-1 block text-xs leading-5 text-ink-muted">The local worker opens and completes managed sign-in.</span>
+                    </span>
+                  </label>
+                  <label class="flex cursor-pointer gap-3 rounded-lg border border-line-strong p-3 focus-within:outline focus-within:outline-2 focus-within:outline-focus">
+                    <input
+                      type="radio"
+                      name="connection[authentication_mode]"
+                      value="api_key"
+                      checked={@create_values["authentication_mode"] == "api_key"}
+                      disabled={@link_pending?}
+                    />
+                    <span>
+                      <span class="block text-sm font-semibold text-ink">API key</span>
+                      <span class="mt-1 block text-xs leading-5 text-ink-muted">Enter the secret only in the local worker window.</span>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <.button
+                type="submit"
+                disabled={@link_pending? or @worker_state != :ready}
+                data-link-connection
+              >
+                <.lucide :if={@link_pending?} name="loader" class="size-4 motion-safe:animate-spin" />
+                {if @link_pending?, do: "Waiting for local worker", else: "Add connection"}
+              </.button>
+            </form>
+
+            <div
+              :if={@link_result}
+              id="link-result"
+              role={if match?({:error, _}, @link_result), do: "alert", else: "status"}
+              aria-live="polite"
+              tabindex={if match?({:pending, _}, @link_result), do: nil, else: "-1"}
+              phx-mounted={if match?({:pending, _}, @link_result), do: nil, else: JS.focus()}
+              class="mt-5 rounded-lg border border-line bg-canvas p-3 text-sm text-ink"
+              data-link-state={@link_result |> elem(0) |> Atom.to_string()}
+            >
+              {link_result_message(@link_result)}
+            </div>
+          </section>
+
+          <aside class="space-y-4" aria-label="Connection facts">
+            <section data-catalog-panel class="rounded-xl border border-line bg-surface p-4 sm:p-5">
+              <h2 class="text-sm font-bold text-ink">Model catalog</h2>
+              <p class="mt-2 text-sm leading-6 text-ink-muted">
+                Model and effort facts are currently unavailable. Live authenticated catalog details will appear here when supported.
+              </p>
+            </section>
+            <section data-quota-panel class="rounded-xl border border-line bg-surface p-4 sm:p-5">
+              <h2 class="text-sm font-bold text-ink">Quota</h2>
+              <p class="mt-2 text-sm leading-6 text-ink-muted">
+                Quota, reset, credit, and paid-use facts are currently unknown. No limit or availability is assumed.
+              </p>
+            </section>
+          </aside>
+        </div>
+
+        <section aria-labelledby="connections-heading">
+          <div class="flex items-end justify-between gap-4">
+            <div>
+              <h2 id="connections-heading" class="text-lg font-bold text-ink">Your connections</h2>
+              <p class="mt-1 text-sm text-ink-muted">Labels and safe availability only.</p>
+            </div>
+            <span class="text-sm text-ink-muted">{length(@connections)} total</span>
+          </div>
+
+          <div
+            :if={@connections == []}
+            data-empty-connections
+            class="mt-4 rounded-xl border border-dashed border-line-strong bg-surface p-6 text-sm text-ink-muted"
+          >
+            No personal AI connections yet.
+          </div>
+
+          <ul :if={@connections != []} id="ai-connections-list" class="mt-4 grid gap-4 lg:grid-cols-2">
+            <li
+              :for={connection <- @connections}
+              id={"connection-#{connection.id}"}
+              data-connection
+              class="min-w-0 rounded-xl border border-line bg-surface p-4 sm:p-5"
+            >
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                  <h3 data-connection-label class="truncate text-base font-bold text-ink">
+                    {connection.label}
+                  </h3>
+                  <p class="mt-1 text-sm text-ink-muted">
+                    {authentication_label(connection.authentication_mode)} · credential-local
+                  </p>
+                </div>
+                <.badge variant={availability_variant(connection)}>
+                  {availability_label(connection)}
+                </.badge>
+              </div>
+
+              <form
+                :if={@editing_connection_id == connection.id}
+                id={"rename-form-#{connection.id}"}
+                phx-submit="rename"
+                class="mt-4 rounded-lg border border-line bg-canvas p-3"
+                phx-mounted={JS.focus(to: "#rename-input-#{connection.id}")}
+              >
+                <.text_field
+                  id={"rename-input-#{connection.id}"}
+                  name="rename[label]"
+                  label="Connection label"
+                  value={connection.label}
+                  maxlength="100"
+                  required
+                />
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <.button type="submit" size="sm" data-save-rename>Save label</.button>
+                  <.button type="button" size="sm" variant="ghost" phx-click="cancel_rename">Cancel</.button>
+                </div>
+              </form>
+
+              <div
+                :if={@rename_result == {:ok, connection.id}}
+                role="status"
+                aria-live="polite"
+                tabindex="-1"
+                phx-mounted={JS.focus()}
+                class="mt-3 text-sm text-ok-fg"
+                data-rename-result
+              >
+                Label updated.
+              </div>
+
+              <div
+                :if={@confirming_revoke_id == connection.id}
+                class="mt-4 rounded-lg border border-warn-fg/40 bg-warn-bg p-3"
+                data-revoke-confirmation
+              >
+                <p class="text-sm font-semibold text-warn-fg">Revoke this connection?</p>
+                <p class="mt-1 text-xs leading-5 text-warn-fg">
+                  New AI work will be denied immediately. Worker-local credential removal is reconciled separately.
+                </p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <.button
+                    id={"confirm-revoke-#{connection.id}"}
+                    type="button"
+                    size="sm"
+                    phx-click="confirm_revoke"
+                    phx-mounted={JS.focus()}
+                    data-confirm-revoke
+                  >
+                    Confirm revoke
+                  </.button>
+                  <.button type="button" size="sm" variant="ghost" phx-click="cancel_revoke">Keep connection</.button>
+                </div>
+              </div>
+
+              <div
+                :if={Map.get(@revocation_results, connection.id)}
+                role={
+                  if match?({:error, _}, Map.get(@revocation_results, connection.id)),
+                    do: "alert",
+                    else: "status"
+                }
+                aria-live="polite"
+                tabindex={
+                  if Map.get(@revocation_results, connection.id) == :pending, do: nil, else: "-1"
+                }
+                phx-mounted={
+                  if Map.get(@revocation_results, connection.id) == :pending,
+                    do: nil,
+                    else: JS.focus()
+                }
+                class="mt-3 text-sm text-ink"
+                data-revoke-result
+              >
+                <span :if={Map.get(@revocation_results, connection.id) == :pending}>Recording the revocation request…</span>
+                <span :if={Map.get(@revocation_results, connection.id) == :ok}>Revocation requested. New AI work is denied.</span>
+                <span :if={match?({:error, _}, Map.get(@revocation_results, connection.id))}>
+                  {error_message(elem(Map.get(@revocation_results, connection.id), 1))}
+                </span>
+              </div>
+
+              <div
+                :if={
+                  @editing_connection_id != connection.id and @confirming_revoke_id != connection.id
+                }
+                class="mt-4 flex flex-wrap gap-2"
+              >
+                <.button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  phx-click="start_rename"
+                  phx-value-id={connection.id}
+                  disabled={connection.revocation_state != "active"}
+                  data-rename-connection
+                >
+                  <.lucide name="pencil" class="size-4" /> Rename
+                </.button>
+                <.button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  phx-click="start_revoke"
+                  phx-value-id={connection.id}
+                  disabled={
+                    connection.revocation_state != "active" or
+                      MapSet.member?(@revoking_ids, connection.id)
+                  }
+                  data-revoke-connection
+                >
+                  <.lucide name="unplug" class="size-4" /> Revoke
+                </.button>
+              </div>
+            </li>
+          </ul>
+
+          <div
+            :if={match?({:error, _}, @rename_result)}
+            id="rename-error"
+            role="alert"
+            aria-live="polite"
+            tabindex="-1"
+            phx-mounted={JS.focus()}
+            class="mt-4 rounded-lg border border-err-fg/40 bg-err-bg p-3 text-sm text-err-fg"
+          >
+            {error_message(elem(@rename_result, 1))}
+          </div>
+        </section>
+      </div>
+    </.app_shell>
+    """
+  end
+end

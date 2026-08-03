@@ -98,6 +98,36 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
   def get_connection(account_or_id, connection_id),
     do: get_personal_connection(account_or_id, connection_id)
 
+  @doc "Renames one connection inside its active owning-account scope."
+  @spec rename_personal_connection(
+          Account.t() | Ecto.UUID.t(),
+          Ecto.UUID.t(),
+          String.t()
+        ) ::
+          {:ok, PersonalAIConnection.t()}
+          | {:error, :not_found | :invalid_label | :label_taken}
+  def rename_personal_connection(account_or_id, connection_id, label) do
+    with {:ok, label} <- normalize_label(label),
+         {:ok, account_id} <- entity_id(account_or_id, Account),
+         {:ok, connection_id} <- cast_id(connection_id),
+         %Account{} <- active_account(account_id) do
+      Repo.transaction(fn ->
+        case locked_scoped_connection(account_id, connection_id) do
+          nil -> Repo.rollback(:not_found)
+          connection -> update_label(connection, label)
+        end
+      end)
+      |> unwrap_transaction()
+    else
+      {:error, :invalid_label} -> {:error, :invalid_label}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc "Short alias for `rename_personal_connection/3`."
+  def rename_connection(account_or_id, connection_id, label),
+    do: rename_personal_connection(account_or_id, connection_id, label)
+
   @doc "Resolves one explicitly selected eligible connection for either runtime consumer."
   @spec resolve_for_consumer(
           Account.t() | Ecto.UUID.t(),
@@ -242,6 +272,35 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
       _ -> {:error, :not_found}
     end
   end
+
+  defp update_label(connection, label) do
+    case connection
+         |> PersonalAIConnection.update_changeset(%{label: label})
+         |> Repo.update() do
+      {:ok, updated} ->
+        updated
+
+      {:error, changeset} ->
+        if Enum.any?(changeset.errors, fn
+             {:label, {_message, metadata}} -> metadata[:constraint] == :unique
+             _other -> false
+           end) do
+          Repo.rollback(:label_taken)
+        else
+          Repo.rollback(:invalid_label)
+        end
+    end
+  end
+
+  defp normalize_label(label) when is_binary(label) do
+    label = String.trim(label)
+
+    if String.length(label) in 1..PersonalAIConnection.label_max_length(),
+      do: {:ok, label},
+      else: {:error, :invalid_label}
+  end
+
+  defp normalize_label(_label), do: {:error, :invalid_label}
 
   defp apply_revocation_transition(%{revocation_state: "active"} = connection, :request, at) do
     connection

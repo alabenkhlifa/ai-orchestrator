@@ -111,6 +111,8 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     use SddOrchestratorWeb, :controller
 
     alias SddOrchestrator.Accounts
+    alias SddOrchestrator.Accounts.GitHubIdentity
+    alias SddOrchestrator.AIRuntime.PersonalWorkerRPC
     alias SddOrchestrator.Devices
     alias SddOrchestrator.Devices.Pairing
 
@@ -129,6 +131,8 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     alias SddOrchestrator.HostedAccess
     alias SddOrchestrator.HostedAccess.Sessions
+    alias SddOrchestrator.Devices
+    alias SddOrchestrator.Devices.Pairing
     alias SddOrchestrator.Participation
     alias SddOrchestrator.Participation.{Acceptance, Invitations}
     alias SddOrchestrator.Projects
@@ -480,6 +484,31 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # One signed-in account and the current device authority with a deterministic
+    # personal-worker state. The ready and mixed variants attach responders to
+    # the real PersonalWorkerRPC registry; each link returns a fresh opaque
+    # worker-local profile reference and only the exact safe adapter fields.
+    defp run(conn, "ai_connections", params) do
+      owner = new_owner()
+      seed_github_identity(owner.account)
+      project = new_project(owner)
+      {:ok, workspace} = Devices.establish_workspace()
+
+      workspace.id
+      |> Pairing.active_workers()
+      |> Enum.each(fn worker -> {:ok, _revoked} = Pairing.revoke_worker(worker) end)
+
+      worker_state = params["worker_state"] || "ready"
+      seed_ai_workers(workspace.id, worker_state)
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        project_id: project.id,
+        worker_state: worker_state
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -592,6 +621,109 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
       {:ok, worker} = Pairing.mark_seen(worker)
       worker
+    end
+
+    defp seed_ai_workers(_workspace_id, "missing"), do: :ok
+
+    defp seed_ai_workers(workspace_id, "unavailable") do
+      _worker = pair_ai_worker(workspace_id)
+      :ok
+    end
+
+    defp seed_ai_workers(workspace_id, "incompatible") do
+      worker = pair_ai_worker(workspace_id)
+
+      start_ai_responder(workspace_id, worker,
+        protocol_version: "personal-ai/0",
+        capabilities: ["connection/1"]
+      )
+    end
+
+    defp seed_ai_workers(workspace_id, "mixed") do
+      _unavailable = pair_ai_worker(workspace_id)
+      incompatible = pair_ai_worker(workspace_id)
+      ready = pair_ai_worker(workspace_id)
+
+      start_ai_responder(workspace_id, incompatible,
+        protocol_version: "personal-ai/0",
+        capabilities: ["connection/1"]
+      )
+
+      start_ai_responder(workspace_id, ready)
+    end
+
+    defp seed_ai_workers(workspace_id, _ready) do
+      worker = pair_ai_worker(workspace_id)
+      start_ai_responder(workspace_id, worker)
+    end
+
+    defp pair_ai_worker(workspace_id) do
+      {:ok, %{code: code}} = Pairing.start_pairing(workspace_id)
+
+      {:ok, %{worker: worker}} =
+        Pairing.complete_pairing(code, %{
+          os_family: "macos",
+          app_version: "1.0.0",
+          protocol_version: "personal-ai/1"
+        })
+
+      worker
+    end
+
+    defp seed_github_identity(account) do
+      suffix = System.unique_integer([:positive])
+
+      %GitHubIdentity{}
+      |> GitHubIdentity.changeset(%{
+        github_user_id: suffix,
+        login: "e2e-user-#{suffix}",
+        avatar_url: nil,
+        account_id: account.id
+      })
+      |> Repo.insert!()
+    end
+
+    defp start_ai_responder(workspace_id, worker, opts \\ []) do
+      parent = self()
+      ready_ref = make_ref()
+
+      spawn(fn ->
+        contract = %{
+          protocol_version: Keyword.get(opts, :protocol_version, "personal-ai/1"),
+          capabilities: Keyword.get(opts, :capabilities, ["connection/1"])
+        }
+
+        result = PersonalWorkerRPC.attach(workspace_id, worker.id, contract)
+        send(parent, {ready_ref, result})
+        ai_responder_loop()
+      end)
+
+      receive do
+        {^ready_ref, {:ok, _registry}} -> :ok
+      after
+        1_000 -> raise "personal AI responder did not attach"
+      end
+    end
+
+    defp ai_responder_loop do
+      receive do
+        {:ai_request, envelope, caller, request_ref, _deadline} ->
+          Process.sleep(150)
+
+          result = %{
+            "worker_profile_ref" => "e2e-profile-#{unique_suffix()}",
+            "provider" => "openai_codex",
+            "authentication_mode" => envelope["params"]["authentication_mode"],
+            "availability" => "available",
+            "adapter_compatibility_version" => "connection/1"
+          }
+
+          send(caller, {PersonalWorkerRPC, request_ref, {:ok, result}})
+          ai_responder_loop()
+
+        {:cancel_ai_request, _request_id} ->
+          ai_responder_loop()
+      end
     end
 
     # The participant joins the way a real one does: the owner invites the

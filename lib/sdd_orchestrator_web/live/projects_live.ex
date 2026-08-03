@@ -84,6 +84,9 @@ defmodule SddOrchestratorWeb.ProjectsLive do
           </span>
           {@identity.login}
         </span>
+        <.button variant="ghost" size="sm" navigate={~p"/ai-connections"} data-ai-connections-link>
+          <.lucide name="link" class="size-4" /> AI Connections
+        </.button>
         <.button variant="secondary" size="sm" href={~p"/auth/sign_out"} method="delete">
           <.lucide name="log-out" class="size-4" /> Sign out
         </.button>

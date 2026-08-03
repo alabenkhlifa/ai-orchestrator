@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 7, 8, and 1 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, and account-owned personal AI connection foundation are delivered on `slice/11-ai-runtime-governance`, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Task 9 (the account-level AI Connections workflow) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
+Tasks 7, 8, 1, and 9 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, account-owned personal AI connection foundation, and account-level AI Connections workflow are delivered on `slice/11-ai-runtime-governance`, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Task 2 (live model catalog and compatible effort selection) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
 
 ## Active Slice
 
@@ -111,13 +111,14 @@ Traceability:
   - Proof: Focused account, worker, profile, label, multiple-connection, same-profile idempotency, immutable binding, ChatGPT and API-key mode, availability, incompatibility, revocation-state, credential absence, provider email, account, workspace and plan absence, no fallback, support-consumer, working-agent-consumer, and adapter-contract tests pass.
   - Delivered: `PersonalAIConnection` and its migration persist one minimized account-owned binding to an active paired worker and opaque worker-local profile with expression-indexed trimmed case-insensitive labels, globally unique worker-profile ownership, constrained provider, authentication, availability and revocation vocabularies, and a database trigger that freezes account, worker, profile, provider and authentication bindings. `PersonalConnections` re-authorizes the active account and worker, validates exact bounded adapter results, links the same binding idempotently, refuses cross-account profile sharing and binding changes, resolves only explicit eligible support-assistant or working-agent selections without a funded fallback or worker-profile disclosure, and records requested and acknowledged revocation states for Task 13's later credential-removal reconciliation. `PersonalConnectionAdapter.RPC` carries only the `connection/1` link contract through the completed personal-worker transport; the deterministic adapter/RPC double and focused fixtures keep provider identity, credentials, plan details and raw errors outside the control plane.
 
-- [ ] Task 9 — Deliver the account-level AI Connections workflow.
+- [x] Task 9 — Deliver the account-level AI Connections workflow.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Let a signed-in user manage labelled personal connections while all secret entry and raw provider identity stays in the paired worker.
   - Owned surfaces: `AIConnectionsLive`, authenticated route and navigation entry, paired-worker selection, missing, unavailable and incompatible worker guidance, user label create and rename, local managed-login and API-key-entry handoff, pending and completed link states, safe availability, live catalog and quota panels, revoke confirmation and result, provider-identity non-rendering, keyboard, focus, accessibility, desktop and mobile layout, fixtures, and browser setup.
   - Owns: AC-17
   - Proof: Focused LiveView and desktop and mobile browser tests cover link, label, duplicate label, multiple connections, worker selection, missing, unavailable, incompatible, ChatGPT handoff, API-key local-entry handoff, pending, success, failure, rename, inspect, revoke, secret-field absence, raw-account absence, keyboard, focus, accessibility, and responsive behavior.
+  - Delivered: Authenticated `AIConnectionsLive` at `/ai-connections` with a Projects navigation entry, current-device worker discovery, negotiated `personal-ai/1` and `connection/1` readiness checks, workspace re-authorization before link, labelled ChatGPT and API-key worker-local handoffs, pending and typed result states, account-scoped rename, immediate revocation request, safe availability, actionable worker recovery, explicit unknown catalog and quota panels, and responsive keyboard-accessible presentation. The compile-gated browser harness drives the real personal-worker RPC with exact safe adapter results; no secret field, raw worker reference, provider account identity, plan detail, credential, or raw adapter error is rendered.
 
 - [ ] Task 2 — Deliver live model catalog and compatible effort selection.
   - Size: Standard

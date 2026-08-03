@@ -14,6 +14,9 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
   use SddOrchestratorWeb.ConnCase, async: false
 
   alias SddOrchestrator.Delivery.Feature
+  alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.DeviceStore.Local
+  alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.HostedAccess.SessionCookie
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.{InvitationProof, Invitations}
@@ -200,6 +203,39 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
       # rather than a flag the harness reports about itself.
       refute Projects.configured?(bare_id)
       assert Projects.configured?(configured_id)
+    end
+  end
+
+  describe "ai_connections" do
+    setup do
+      directory =
+        Path.join(
+          System.tmp_dir!(),
+          "ai_connections_bootstrap_#{System.unique_integer([:positive])}"
+        )
+
+      path = Path.join(directory, "store.dets")
+      on_exit(fn -> File.rm_rf!(directory) end)
+      start_supervised!({Local, path: path})
+      :ok
+    end
+
+    test "seeds an authenticated current-device worker over the real RPC boundary", %{conn: conn} do
+      conn = get(conn, ~p"/_e2e/session?scenario=ai_connections&worker_state=ready")
+
+      assert %{"project_id" => project_id, "worker_state" => "ready"} =
+               json_response(conn, 200)
+
+      assert get_session(conn, :session_token)
+      {:ok, workspace} = Devices.get_workspace()
+      assert [worker] = Pairing.active_workers(workspace.id)
+
+      html = conn |> get(~p"/ai-connections") |> html_response(200)
+      assert html =~ "Ready to connect"
+      assert html =~ "Local worker 1"
+      refute html =~ worker.id
+      refute html =~ "worker_profile_ref"
+      assert Repo.get!(Project, project_id)
     end
   end
 
