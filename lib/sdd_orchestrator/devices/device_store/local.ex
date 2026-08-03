@@ -32,7 +32,12 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   }
 
   alias SddOrchestrator.Projects.Project
-  alias SddOrchestrator.RepositoryAssessments.RepositoryAssessment
+
+  alias SddOrchestrator.RepositoryAssessments.{
+    RepositoryAssessment,
+    RepositoryExecutionProfile,
+    RepositoryExecutionProfileProposal
+  }
 
   alias SddOrchestrator.Specifications.{
     DeviceProjectSpecification,
@@ -153,6 +158,31 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   @impl SddOrchestrator.Devices.DeviceStore
   def repository_assessment_count(project_id) do
     GenServer.call(__MODULE__, {:repository_assessment_count, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def latest_repository_assessment(project_id) do
+    GenServer.call(__MODULE__, {:latest_repository_assessment, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def append_repository_execution_profile(
+        project_id,
+        assessment_id,
+        proposal,
+        approval_actor_ref,
+        approved_at
+      ) do
+    GenServer.call(
+      __MODULE__,
+      {:append_repository_execution_profile, project_id, assessment_id, proposal,
+       approval_actor_ref, approved_at}
+    )
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def list_repository_execution_profiles(project_id) do
+    GenServer.call(__MODULE__, {:list_repository_execution_profiles, project_id})
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
@@ -395,6 +425,33 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       )
 
     {:reply, count, state}
+  end
+
+  def handle_call({:latest_repository_assessment, project_id}, _from, state) do
+    {:reply, latest_repository_assessment(state.table, project_id), state}
+  end
+
+  def handle_call(
+        {:append_repository_execution_profile, project_id, assessment_id, proposal,
+         approval_actor_ref, approved_at},
+        _from,
+        state
+      ) do
+    reply =
+      append_repository_execution_profile(
+        state.table,
+        project_id,
+        assessment_id,
+        proposal,
+        approval_actor_ref,
+        approved_at
+      )
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:list_repository_execution_profiles, project_id}, _from, state) do
+    {:reply, repository_execution_profile_values(state.table, project_id), state}
   end
 
   def handle_call({:commit_delivery, project_id, writes}, _from, state) do
@@ -862,6 +919,146 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
          _value
        ),
        do: {:error, :invalid_assessment}
+
+  defp latest_repository_assessment(table, project_id) do
+    table
+    |> repository_assessment_values(project_id)
+    |> Enum.max_by(
+      fn assessment -> {DateTime.to_iso8601(assessment.inserted_at), assessment.id} end,
+      fn -> nil end
+    )
+    |> case do
+      %RepositoryAssessment{} = assessment ->
+        {:ok, RepositoryAssessment.to_value(assessment)}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  defp repository_assessment_values(table, project_id) do
+    :dets.foldl(
+      fn
+        {{:repository_assessment, ^project_id, _assessment_id}, value}, assessments ->
+          case RepositoryAssessment.from_value(value) do
+            {:ok, assessment} -> [assessment | assessments]
+            {:error, :invalid_assessment} -> assessments
+          end
+
+        _other, assessments ->
+          assessments
+      end,
+      [],
+      table
+    )
+  end
+
+  # ---- repository execution profiles ----
+
+  defp append_repository_execution_profile(
+         table,
+         project_id,
+         assessment_id,
+         proposal_value,
+         approval_actor_ref,
+         approved_at
+       )
+       when is_map(proposal_value) and is_binary(approval_actor_ref) and
+              is_binary(approved_at) do
+    with {:ok, %DeviceWorkspace{id: ^approval_actor_ref}} <- fetch_workspace(table),
+         [{{:project, ^project_id}, %{storage_mode: "device", status: "connected"} = project}] <-
+           :dets.lookup(table, {:project, project_id}),
+         true <- project.workspace_id == approval_actor_ref,
+         [{{:repository_assessment, ^project_id, ^assessment_id}, assessment_value}] <-
+           :dets.lookup(table, {:repository_assessment, project_id, assessment_id}),
+         {:ok, assessment} <- RepositoryAssessment.from_value(assessment_value),
+         true <- assessment.state == "completed",
+         {:ok, latest_value} <- latest_repository_assessment(table, project_id),
+         {:ok, latest} <- RepositoryAssessment.from_value(latest_value),
+         true <- latest.id == assessment.id,
+         true <-
+           canonical_repository_identity(project) ==
+             {assessment.repository_provider, assessment.repository_id},
+         {:ok, proposal} <- RepositoryExecutionProfileProposal.from_value(proposal_value),
+         true <- RepositoryExecutionProfileProposal.matches_assessment?(proposal, assessment),
+         {:ok, approved_at, 0} <- DateTime.from_iso8601(approved_at) do
+      case existing_repository_execution_profile(table, project_id, proposal.proposal_digest) do
+        {:ok, existing} ->
+          {:ok, existing}
+
+        :error ->
+          version = next_repository_execution_profile_version(table, project_id)
+
+          with {:ok, profile} <-
+                 RepositoryExecutionProfile.approved(
+                   proposal,
+                   approval_actor_ref,
+                   version,
+                   approved_at
+                 ) do
+            value = RepositoryExecutionProfile.to_value(profile)
+
+            :ok =
+              :dets.insert(
+                table,
+                {{:repository_execution_profile, project_id, profile.id}, value}
+              )
+
+            :ok = :dets.sync(table)
+            {:ok, value}
+          end
+      end
+    else
+      [] -> {:error, :not_found}
+      false -> {:error, :stale_assessment}
+      {:error, :invalid_profile} -> {:error, :invalid_profile}
+      {:error, :invalid_proposal} -> {:error, :invalid_proposal}
+      _invalid -> {:error, :stale_assessment}
+    end
+  end
+
+  defp append_repository_execution_profile(
+         _table,
+         _project_id,
+         _assessment_id,
+         _proposal,
+         _approval_actor_ref,
+         _approved_at
+       ),
+       do: {:error, :invalid_profile}
+
+  defp existing_repository_execution_profile(table, project_id, proposal_digest) do
+    case Enum.find(
+           repository_execution_profile_values(table, project_id),
+           &(&1["proposal_digest"] == proposal_digest)
+         ) do
+      nil -> :error
+      existing -> {:ok, existing}
+    end
+  end
+
+  defp next_repository_execution_profile_version(table, project_id) do
+    table
+    |> repository_execution_profile_values(project_id)
+    |> Enum.map(& &1["version"])
+    |> Enum.max(fn -> 0 end)
+    |> Kernel.+(1)
+  end
+
+  defp repository_execution_profile_values(table, project_id) do
+    :dets.foldl(
+      fn
+        {{:repository_execution_profile, ^project_id, _profile_id}, value}, values ->
+          [value | values]
+
+        _other, values ->
+          values
+      end,
+      [],
+      table
+    )
+    |> Enum.sort_by(& &1["version"])
+  end
 
   # ---- specifications ----
 

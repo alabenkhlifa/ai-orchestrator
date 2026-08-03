@@ -67,6 +67,26 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
   def fetch(_authority, _project_id, _assessment_id), do: {:error, :not_found}
 
   @impl true
+  def latest({:hosted, account_id}, project_id) do
+    with {:ok, project} <- Participation.owned_project(account_id, project_id),
+         true <- project.storage_mode == "hosted" and project.lifecycle_state == "active",
+         %RepositoryAssessment{} = assessment <-
+           RepositoryAssessment
+           |> where([a], a.project_id == ^project_id)
+           |> order_by([a], desc: a.inserted_at, desc: a.id)
+           |> limit(1)
+           |> Repo.one() do
+      {:ok, assessment}
+    else
+      _missing -> {:error, :not_found}
+    end
+  rescue
+    Ecto.Query.CastError -> {:error, :not_found}
+  end
+
+  def latest(_authority, _project_id), do: {:error, :not_found}
+
+  @impl true
   def count({:hosted, account_id}, project_id) do
     with {:ok, project} <- Participation.owned_project(account_id, project_id),
          true <- project.storage_mode == "hosted" and project.lifecycle_state == "active" do

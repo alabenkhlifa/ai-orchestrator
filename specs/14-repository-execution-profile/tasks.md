@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7, 8, 1, 2, 3, and 9 are complete. Task 10 remains in progress in its isolated task worktree. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, 1, 2, 3, and 10 are complete. Task 9 remains in its isolated task worktree pending reconciliation. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -133,7 +133,7 @@ Traceability:
   - Proof: Focused result-shape, pending-to-terminal, hosted/device adapter, source-anchor, exact-binding, stale-commit, duplicate, canceled, failed, cross-project, cross-workspace, minimized-field, and raw-content negative tests pass.
   - Delivered: `RepositoryAssessmentResult` accepts only exact command-bound completed, canceled, or allowlisted failed outcomes; caps findings, structure, anchors, counters, line counts, and the aggregate serialized value; and stores no source content, absolute path, credential, index, or raw diagnostic. Pending assessments now own the scanner version and exact limit contract. `RepositoryAssessments.finish_assessment/5` performs one strict pending-to-terminal transition through transactionally locked hosted storage or one serialized device-store compare-and-swap, rechecking current authority and repository binding, rejecting terminal inserts and repeats, and preserving legacy device pending records through strict normalization.
 
-- [x] Task 9 — Reuse only complete exact-commit worker evidence.
+- [ ] Task 9 — Reuse only complete exact-commit worker evidence.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
@@ -141,9 +141,8 @@ Traceability:
   - Owned surfaces: Worker-local cache value and adapter, complete-only insertion, cache key over project, repository identity, root, exact commit, scanner contract and limit contract, deterministic provenance, incomplete and unsuccessful exclusion, relevant-key invalidation, bounded storage, and no authoritative or hosted raw index copy.
   - Owns: AC-05
   - Proof: Focused complete hit, miss, exact-key reuse, project, repository, root, commit, scanner and limit invalidation, incomplete, failed and canceled exclusion, bounded-storage, restart-policy, and no-hosted-copy tests pass.
-  - Delivered: `WorkerRepositoryAssessmentCacheEntry` accepts only strict completed `RepositoryAssessmentResult` evidence, keys it by cache-contract version, project, repository identity, normalized root, full commit, scan protocol, scanner digest, and every limit field, and emits deterministic cache-key and evidence digests. `WorkerRepositoryAssessmentCache` provides an explicitly worker-owned memory-only LRU process bounded by entry count and encoded bytes, revalidates and rebinds a hit to the current command, refuses conflicting, incomplete, failed, canceled, malformed, or oversized values, and deliberately discards all entries on restart. It persists no repository content, raw index, hosted row, device-authoritative value, filesystem entry, or application-supervised state.
 
-- [ ] Task 10 — Propose and append immutable owner-approved profile versions.
+- [x] Task 10 — Propose and append immutable owner-approved profile versions.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
@@ -151,6 +150,7 @@ Traceability:
   - Owned surfaces: Profile proposal value, `RepositoryExecutionProfile`, hosted schema and immutable version constraints, hosted and device-authoritative profile-store adapters, exact assessment and commit binding, root and base revision, instruction precedence, normalized commands and required checks, allowed scope, gaps, conflicts and multi-root blockers, owner-only approval or rejection, stale-assessment refusal, and append-only version history.
   - Owns: entity:RepositoryExecutionProfile
   - Proof: Focused proposal normalization, existing-instruction precedence, command, check, scope, gap, conflict, multi-root, hosted/device adapter, owner, stale-assessment, immutable-version, append-only, rejection, and cross-project tests pass.
+  - Delivered: `RepositoryExecutionProfileProposal` derives immutable repository binding, base revision, assessment digest, and repository-instruction precedence from only the newest completed authoritative assessment, then strictly normalizes evidence-supported commands, required checks, allowed scope, gaps, conflicts, and multi-root blockers without accepting source content, credentials, or absolute paths. `RepositoryExecutionProfile` and the hosted migration append immutable project versions protected by exact assessment/proposal uniqueness, positive-version and digest constraints, and a database update-rejection trigger. Owner-only approval or rejection rechecks current project authority, repository identity, newest assessment, and proposal digest; rejection writes nothing and identical approval delivery is idempotent. Hosted writes are transactionally locked, while the device adapter appends atomically through the worker-owned DETS store, survives restart, and creates no hosted copy.
 
 - [ ] Task 11 — Let the owner review and approve the proposed profile.
   - Size: Standard

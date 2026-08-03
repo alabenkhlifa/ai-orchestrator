@@ -18,6 +18,8 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
               {:ok, RepositoryAssessment.t()} | {:error, atom() | Ecto.Changeset.t()}
   @callback fetch(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, RepositoryAssessment.t()} | {:error, :not_found}
+  @callback latest(authority(), Ecto.UUID.t()) ::
+              {:ok, RepositoryAssessment.t()} | {:error, :not_found}
   @callback count(authority(), Ecto.UUID.t()) :: non_neg_integer()
 
   @spec put(authority(), RepositoryAssessment.t()) ::
@@ -50,6 +52,17 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
     do: Device.fetch(authority, project_id, assessment_id)
 
   def fetch(_authority, _project_id, _assessment_id), do: {:error, :not_found}
+
+  @doc "Returns the newest authoritative assessment regardless of outcome."
+  @spec latest(authority(), Ecto.UUID.t()) ::
+          {:ok, RepositoryAssessment.t()} | {:error, :not_found}
+  def latest({:hosted, _account_id} = authority, project_id),
+    do: Hosted.latest(authority, project_id)
+
+  def latest({:device, %DeviceWorkspace{}} = authority, project_id),
+    do: Device.latest(authority, project_id)
+
+  def latest(_authority, _project_id), do: {:error, :not_found}
 
   @spec count(authority(), Ecto.UUID.t()) :: non_neg_integer()
   def count({:hosted, _account_id} = authority, project_id),

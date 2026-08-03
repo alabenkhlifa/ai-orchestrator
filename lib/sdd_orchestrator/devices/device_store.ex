@@ -116,6 +116,21 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Counts one project's device-authoritative repository assessments."
   @callback repository_assessment_count(String.t()) :: non_neg_integer()
 
+  @doc "Reads the newest device-authoritative repository assessment value."
+  @callback latest_repository_assessment(String.t()) :: {:ok, map()} | {:error, :not_found}
+
+  @doc "Atomically appends one immutable execution profile from an exact assessment proposal."
+  @callback append_repository_execution_profile(
+              String.t(),
+              String.t(),
+              map(),
+              String.t(),
+              String.t()
+            ) :: {:ok, map()} | {:error, atom()}
+
+  @doc "Lists one project's immutable execution profile values in version order."
+  @callback list_repository_execution_profiles(String.t()) :: [map()]
+
   @doc "Stores one vault-sealed device-local import attempt."
   @callback put_import_attempt(ImportAttempt.t()) ::
               {:ok, ImportAttempt.t()} | {:error, term()}

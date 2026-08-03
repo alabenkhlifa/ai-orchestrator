@@ -19,10 +19,13 @@ defmodule SddOrchestrator.RepositoryAssessments do
   alias SddOrchestrator.RepositoryAssessments.{
     AssessmentStore,
     BindingStore,
+    ProfileStore,
     RepositoryAssessment,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult,
     RepositoryBindingPreparation,
+    RepositoryExecutionProfile,
+    RepositoryExecutionProfileProposal,
     RepositoryMetadataAdapter
   }
 
@@ -53,6 +56,8 @@ defmodule SddOrchestrator.RepositoryAssessments do
           | :unknown_or_replayed
           | :already_terminal
           | :invalid_result
+          | :invalid_proposal
+          | :stale_assessment
           | :not_found
           | :persistence_failed
 
@@ -188,6 +193,119 @@ defmodule SddOrchestrator.RepositoryAssessments do
         {:error, :persistence_failed}
     end
   end
+
+  @doc """
+  Normalizes one transient profile proposal from an exact completed assessment.
+
+  The assessment supplies the repository binding, base revision, and existing
+  repository-instruction precedence. Caller input is restricted to the managed
+  runtime fields that the assessment review proposes; it cannot replace those
+  assessment-owned values.
+  """
+  @spec propose_profile(authority(), String.t(), String.t(), map(), keyword()) ::
+          {:ok, RepositoryExecutionProfileProposal.t()} | {:error, error()}
+  def propose_profile(authority, project_id, assessment_id, attrs, opts \\ []) do
+    assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
+
+    with {:ok, project} <- authorize_project(authority, project_id),
+         {:ok, assessment} <-
+           assessment_store.fetch(authority, project_id, assessment_id),
+         :ok <- current_completed_assessment(authority, assessment_store, project, assessment),
+         {:ok, proposal} <- RepositoryExecutionProfileProposal.new(assessment, attrs) do
+      {:ok, proposal}
+    else
+      {:error, :invalid_proposal} -> {:error, :invalid_proposal}
+      {:error, :stale_assessment} -> {:error, :stale_assessment}
+      _unauthorized_or_missing -> {:error, :not_found}
+    end
+  end
+
+  @doc "Appends one immutable profile version after an exact owner-only approval."
+  @spec approve_profile(
+          authority(),
+          String.t(),
+          RepositoryExecutionProfileProposal.t(),
+          keyword()
+        ) ::
+          {:ok, RepositoryExecutionProfile.t()} | {:error, error()}
+  def approve_profile(authority, project_id, proposal, opts \\ []) do
+    decide_profile(authority, project_id, proposal, :approve, opts)
+  end
+
+  @doc "Rejects one current proposal without appending a profile version."
+  @spec reject_profile(authority(), String.t(), RepositoryExecutionProfileProposal.t(), keyword()) ::
+          :ok | {:error, error()}
+  def reject_profile(authority, project_id, proposal, opts \\ []) do
+    decide_profile(authority, project_id, proposal, :reject, opts)
+  end
+
+  defp decide_profile(authority, project_id, proposal, decision, opts)
+       when decision in [:approve, :reject] do
+    assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
+    profile_store = Keyword.get(opts, :profile_store, ProfileStore)
+    decided_at = now(opts)
+
+    with %RepositoryExecutionProfileProposal{} <- proposal,
+         true <- RepositoryExecutionProfileProposal.valid?(proposal),
+         :ok <- proposal_for_project(proposal, project_id),
+         {:ok, project} <- authorize_project(authority, project_id),
+         {:ok, assessment} <-
+           assessment_store.fetch(authority, project_id, proposal.assessment_id),
+         :ok <- current_completed_assessment(authority, assessment_store, project, assessment),
+         :ok <- proposal_matches_assessment(proposal, assessment),
+         {:ok, actor_ref} <- approval_actor_ref(authority) do
+      case decision do
+        :approve -> profile_store.append(authority, assessment, proposal, actor_ref, decided_at)
+        :reject -> :ok
+      end
+    else
+      false -> {:error, :invalid_proposal}
+      {:error, reason} when reason in [:stale_assessment, :unauthorized] -> {:error, reason}
+      {:error, :not_found} -> {:error, :stale_assessment}
+      %{} -> {:error, :invalid_proposal}
+      _invalid -> {:error, :invalid_proposal}
+    end
+  end
+
+  defp current_completed_assessment(
+         authority,
+         assessment_store,
+         project,
+         %RepositoryAssessment{} = assessment
+       ) do
+    with true <- RepositoryAssessment.strict?(assessment),
+         true <- assessment.state == "completed",
+         {:ok, latest} <- assessment_store.latest(authority, assessment.project_id),
+         true <- latest.id == assessment.id,
+         {:ok, identity} <- repository_identity(project),
+         true <- identity.repository_provider == assessment.repository_provider,
+         true <- identity.repository_id == assessment.repository_id,
+         true <- project.id == assessment.project_id do
+      :ok
+    else
+      _stale -> {:error, :stale_assessment}
+    end
+  end
+
+  defp current_completed_assessment(_authority, _store, _project, _assessment),
+    do: {:error, :stale_assessment}
+
+  defp proposal_for_project(
+         %RepositoryExecutionProfileProposal{project_id: project_id},
+         project_id
+       ),
+       do: :ok
+
+  defp proposal_for_project(_proposal, _project_id), do: {:error, :unauthorized}
+
+  defp proposal_matches_assessment(proposal, assessment) do
+    if RepositoryExecutionProfileProposal.matches_assessment?(proposal, assessment),
+      do: :ok,
+      else: {:error, :stale_assessment}
+  end
+
+  defp approval_actor_ref({:hosted, account_id}), do: uuid(account_id)
+  defp approval_actor_ref({:device, %DeviceWorkspace{id: workspace_id}}), do: uuid(workspace_id)
 
   defp validate_input(attrs) when is_map(attrs) do
     with true <- MapSet.new(Map.keys(attrs)) == @input_fields,

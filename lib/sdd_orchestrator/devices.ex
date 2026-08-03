@@ -222,6 +222,33 @@ defmodule SddOrchestrator.Devices do
     adapter().repository_assessment_count(project_id)
   end
 
+  @doc "Reads the newest device-authoritative repository assessment value."
+  def latest_repository_assessment(project_id) do
+    adapter().latest_repository_assessment(project_id)
+  end
+
+  @doc "Atomically appends one immutable device-authoritative profile version."
+  def append_repository_execution_profile(
+        project_id,
+        assessment_id,
+        proposal,
+        approval_actor_ref,
+        approved_at
+      ) do
+    adapter().append_repository_execution_profile(
+      project_id,
+      assessment_id,
+      proposal,
+      approval_actor_ref,
+      approved_at
+    )
+  end
+
+  @doc "Lists one project's immutable device-authoritative profile versions."
+  def list_repository_execution_profiles(project_id) do
+    adapter().list_repository_execution_profiles(project_id)
+  end
+
   @doc "Stores one vault-sealed device-local import attempt."
   def put_import_attempt(%ImportAttempt{} = attempt), do: adapter().put_import_attempt(attempt)
 
