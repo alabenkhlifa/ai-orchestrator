@@ -1,5 +1,12 @@
 # Repository Execution Profile Progress Log
 
+### 2026-08-03 - Tasks 9 and 10 parallel implementation started
+
+- Completed: Confirmed both tasks depend only on completed Task 3; the Slice 14 validator and global capability graph pass; PostgreSQL is healthy; and the slice branch is based on current `origin/main`. Partitioned Task 9 into an isolated worker-local cache worktree and Task 10 into an isolated authoritative profile worktree from the same clean Slice 14 baseline.
+- Remaining: Implement Task 9's complete-only exact-key cache with focused proof in test partition 159; implement Task 10's proposal, immutable hosted/device profile storage, and owner approval with focused proof in test partition 160; then reconcile both task branches into the Slice 14 worktree and serialize integration checks.
+- Failed checks: None. Task 9 must not modify authoritative assessment/profile storage, database migrations, or device-store callbacks. Task 10 must not modify worker cache modules or cache tests. Neither task owns UI, Slice 11 transport, application Endpoint/socket/channel surfaces, or repository-wide verification.
+- Spec updates: Marked Tasks 9 and 10 in progress and recorded exact task-worktree, path-ownership, test-partition, and serialized-integration boundaries. Requirements, design, acceptance criteria, task dependencies, capability edges, proof scope, and release gates are unchanged.
+
 ### 2026-08-03 - Task 3 complete: terminal minimized assessment results
 
 - Completed: Added the strict `RepositoryAssessmentResult`, authoritative scanner-version and limit binding, completed, canceled, and safe failed terminal shapes, one pending-to-terminal service, transactional hosted compare-and-swap, serialized device-authoritative compare-and-swap, additive hosted schema constraints, legacy device pending normalization, and focused hosted/device parity and refusal proof. Cache, profile, UI, pilot, readiness, lifecycle, and Slice 11 transport remain unchanged.

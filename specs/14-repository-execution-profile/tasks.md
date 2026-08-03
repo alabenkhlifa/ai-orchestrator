@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7, 8, 1, 2, and 3 are complete. Tasks 9 and 10 are the next executable tasks: Task 9 owns worker-local exact-commit cache reuse, while Task 10 owns profile proposal and immutable owner approval. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, 1, 2, and 3 are complete. Tasks 9 and 10 are in progress in isolated task worktrees: Task 9 owns worker-local exact-commit cache reuse, while Task 10 owns profile proposal and immutable owner approval. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
