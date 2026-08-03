@@ -42,6 +42,20 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServerTest do
       CodexAppServer.stop(uppercase_digest_adapter)
     end
 
+    test "binds one App Server instance to one worker-local profile without exposing it", %{
+      adapter: adapter
+    } do
+      assert CodexAppServer.binding_matches?(adapter, "profile-codex-test")
+      refute CodexAppServer.binding_matches?(adapter, "profile-other")
+      refute CodexAppServer.binding_matches?(adapter, nil)
+
+      assert {:error, :invalid_request} =
+               CodexAppServerFixtures.start_adapter(self(), worker_profile_ref: nil)
+
+      assert {:error, :invalid_request} =
+               CodexAppServerFixtures.start_adapter(self(), worker_profile_ref: "")
+    end
+
     test "accepts only a registered version and generated-schema digest" do
       assert {:error, :unsupported_version} =
                CodexAppServerFixtures.start_adapter(self(), codex_version: "codex-cli unknown")
@@ -329,13 +343,27 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServerTest do
       assert :ok = CodexAppServer.await_ready(adapter, 100)
     end
 
-    test "accepts only allowlisted safe notifications", %{process: process} do
+    test "accepts only allowlisted safe notifications", %{adapter: adapter, process: process} do
+      CodexAppServerProcessDouble.notify(process, "account/rateLimits/updated", %{
+        "rateLimits" => %{
+          "limitId" => "codex",
+          "primary" => %{"usedPercent" => 48}
+        }
+      })
+
+      assert_receive {CodexAppServer, :notification, ^adapter, "account/rateLimits/updated",
+                      rate_params}
+
+      assert rate_params["rateLimits"]["primary"] == %{"usedPercent" => 48}
+
       CodexAppServerProcessDouble.notify(process, "thread/tokenUsage/updated", %{
         "threadId" => "thread-local",
         "tokenUsage" => %{"totalTokens" => 12}
       })
 
-      assert_receive {CodexAppServer, :notification, "thread/tokenUsage/updated", params}
+      assert_receive {CodexAppServer, :notification, ^adapter, "thread/tokenUsage/updated",
+                      params}
+
       assert params["tokenUsage"] == %{"totalTokens" => 12}
     end
 

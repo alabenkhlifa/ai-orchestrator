@@ -71,14 +71,18 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
   def start_link(opts) do
     version = Keyword.get(opts, :codex_version)
     digest = Keyword.get(opts, :schema_digest)
+    worker_profile_ref = Keyword.get(opts, :worker_profile_ref)
     registry = Keyword.get(opts, :compatibility_registry, configured_registry())
     transport = Keyword.get(opts, :transport, :stdio)
 
-    with :ok <- validate_transport(transport),
+    with :ok <- validate_worker_profile_ref(worker_profile_ref),
+         :ok <- validate_transport(transport),
          :ok <- Compatibility.verify(version, digest, registry),
          {:ok, pid} <-
            start_adapter(
-             Keyword.put(opts, :verified_compatibility, %{
+             opts
+             |> Keyword.put(:worker_profile_ref, worker_profile_ref)
+             |> Keyword.put(:verified_compatibility, %{
                codex_version: version,
                schema_digest: String.downcase(digest)
              })
@@ -102,6 +106,17 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
   catch
     :exit, _reason -> {:error, :process_unavailable}
   end
+
+  @doc "Checks a worker-local profile binding without exposing the stored reference."
+  @spec binding_matches?(server(), String.t()) :: boolean()
+  def binding_matches?(server, worker_profile_ref)
+      when is_binary(worker_profile_ref) and byte_size(worker_profile_ref) > 0 do
+    GenServer.call(server, {:binding_matches?, worker_profile_ref})
+  catch
+    :exit, _reason -> false
+  end
+
+  def binding_matches?(_server, _worker_profile_ref), do: false
 
   @doc "Waits until the current App Server process completes initialization."
   @spec await_ready(server(), pos_integer()) :: :ok | {:error, error()}
@@ -198,6 +213,7 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
         Keyword.get(opts, :initialization_timeout_ms, @default_timeout_ms),
       restart_delay_ms: Keyword.get(opts, :restart_delay_ms, @default_restart_delay_ms),
       notification_target: Keyword.get(opts, :notification_target),
+      worker_profile_ref: Keyword.fetch!(opts, :worker_profile_ref),
       client_info:
         Keyword.get(opts, :client_info, %{
           "name" => "sdd_orchestrator",
@@ -217,6 +233,10 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
   @impl true
   def handle_call(:compatibility, _from, state) do
     {:reply, {:ok, state.verified_compatibility}, state}
+  end
+
+  def handle_call({:binding_matches?, worker_profile_ref}, _from, state) do
+    {:reply, worker_profile_ref == state.worker_profile_ref, state}
   end
 
   def handle_call(:await_ready, _from, %{ready?: true} = state), do: {:reply, :ok, state}
@@ -450,7 +470,7 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
        when map_size(frame) == 2 and is_binary(method) and is_map(params) do
     if method in @notification_methods and not credential_shaped?(params) do
       if is_pid(state.notification_target) do
-        send(state.notification_target, {__MODULE__, :notification, method, params})
+        send(state.notification_target, {__MODULE__, :notification, self(), method, params})
       end
 
       state
@@ -522,6 +542,13 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
       true -> :ok
     end
   end
+
+  defp validate_worker_profile_ref(value)
+       when is_binary(value) and byte_size(value) > 0 and byte_size(value) <= 255 do
+    if String.trim(value) == value, do: :ok, else: {:error, :invalid_request}
+  end
+
+  defp validate_worker_profile_ref(_value), do: {:error, :invalid_request}
 
   defp validate_login(%{"type" => type} = params) when type in @login_types do
     case type do

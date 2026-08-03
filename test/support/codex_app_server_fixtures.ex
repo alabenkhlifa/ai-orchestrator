@@ -19,6 +19,7 @@ defmodule SddOrchestrator.CodexAppServerFixtures do
       process_module: CodexAppServerProcessDouble,
       process_options: [test_pid: test_pid],
       notification_target: test_pid,
+      worker_profile_ref: "profile-codex-test",
       initialization_timeout_ms: 500,
       timeout_ms: 500,
       restart_delay_ms: 0

@@ -1,12 +1,22 @@
 defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
-  @moduledoc "Focused Task 9 proof for the account-level AI Connections workflow."
+  @moduledoc "Focused account-level AI Connections workflow proof."
 
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
   import SddOrchestrator.AIRuntimeFixtures
 
-  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, PersonalWorkerRPC}
+  alias SddOrchestrator.AIRuntime.{
+    CodexAppServer,
+    ModelCatalogs,
+    PersonalConnections,
+    PersonalWorkerRPC,
+    Quotas
+  }
+
+  alias SddOrchestrator.AIRuntime.QuotaAdapter.Codex
+  alias SddOrchestrator.CodexAppServerFixtures
+  alias SddOrchestrator.CodexAppServerProcessDouble
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.ProjectsFixtures
@@ -435,6 +445,157 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
     refute html =~ malformed_connection.worker_profile_ref
   end
 
+  test "refreshes and renders owner-only quota buckets, reset, credit, and token facts", %{
+    conn: conn
+  } do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+
+    %{connection: connection} =
+      personal_ai_connection_fixture(%{account: account, worker: worker, label: "Live quota"})
+
+    codex_result = fetch_real_codex_quota(connection.worker_profile_ref)
+
+    start_responder(workspace.id, worker,
+      quota_result: codex_result |> Jason.encode!() |> Jason.decode!()
+    )
+
+    {:ok, view, html} = live(conn, ~p"/ai-connections")
+    assert has_element?(view, "#quota-#{connection.id} [data-quota-unknown]")
+    refute html =~ "gpt-5-mini"
+
+    pending =
+      view
+      |> element("#quota-#{connection.id} [data-refresh-quota]")
+      |> render_click()
+
+    assert pending =~ "Requesting live quota facts"
+    html = render_async(view, 1_000)
+
+    assert has_element?(
+             view,
+             ~s([data-quota-bucket][data-bucket-id="codex"][data-bucket-scope="provider_defined"]),
+             "Provider-defined"
+           )
+
+    assert has_element?(
+             view,
+             ~s([data-quota-bucket][data-bucket-id="gpt-5-mini"][data-bucket-scope="provider_defined"])
+           )
+
+    refute has_element?(
+             view,
+             ~s([data-quota-bucket][data-bucket-id="codex"] p),
+             "Model scope:"
+           )
+
+    assert has_element?(view, "[data-primary-window]", "35% used")
+    assert has_element?(view, "[data-secondary-window]", "70% used")
+    assert has_element?(view, "[data-paid-continuation]", "Paid continuation unknown")
+    assert has_element?(view, "[data-credit-facts]", "12.50")
+    assert has_element?(view, "[data-reset-credits]", "2")
+    assert has_element?(view, "[data-token-activity]", "12000")
+    assert has_element?(view, "[data-quota-provenance]", "account/rateLimits/read")
+    assert has_element?(view, ~s([data-quota-result="ok"]))
+
+    for value <- [
+          connection.worker_profile_ref,
+          "provider@example.test",
+          "provider-account-123",
+          "provider-workspace-456",
+          "premium-plan",
+          "raw provider failure",
+          "secret-credential"
+        ] do
+      refute html =~ value
+    end
+  end
+
+  test "clears prior quota evidence when a later refresh is malformed", %{conn: conn} do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+
+    %{connection: connection} =
+      personal_ai_connection_fixture(%{account: account, worker: worker})
+
+    valid = quota_result(%{buckets: [quota_bucket(%{display_name: "Must disappear"})]})
+    malformed = Map.put(valid, "provider_account_id", "provider-account-123")
+    start_responder(workspace.id, worker, quota_results: [valid, malformed])
+
+    {:ok, view, _html} = live(conn, ~p"/ai-connections")
+
+    view |> element("#quota-#{connection.id} [data-refresh-quota]") |> render_click()
+    assert render_async(view, 1_000) =~ "Must disappear"
+
+    pending =
+      view
+      |> element("#quota-#{connection.id} [data-refresh-quota]")
+      |> render_click()
+
+    assert pending =~ "Requesting live quota facts"
+    refute pending =~ "Must disappear"
+
+    html = render_async(view, 1_000)
+    assert has_element?(view, ~s([data-quota-result="error"]))
+    refute html =~ "Must disappear"
+    refute html =~ "provider-account-123"
+    assert {:error, :unknown} = Quotas.current_quota(account, connection.id)
+  end
+
+  test "keeps API-key quota and billing visibly unknown", %{conn: conn} do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+
+    %{connection: connection} =
+      personal_ai_connection_fixture(%{
+        account: account,
+        worker: worker,
+        authentication_mode: "api_key",
+        label: "Local API key"
+      })
+
+    start_responder(workspace.id, worker,
+      quota_result:
+        quota_result(%{
+          authentication_mode: "api_key",
+          buckets: []
+        })
+    )
+
+    {:ok, view, _html} = live(conn, ~p"/ai-connections")
+    view |> element("#quota-#{connection.id} [data-refresh-quota]") |> render_click()
+    html = render_async(view, 1_000)
+
+    assert has_element?(view, "#quota-#{connection.id} [data-api-key-quota-unknown]")
+    assert html =~ "API-key account quota, credits, and billing are unknown"
+    refute html =~ "unlimited capacity"
+    refute has_element?(view, "#quota-#{connection.id} [data-quota-bucket]")
+  end
+
+  test "marks an expired quota snapshot stale without rendering old buckets", %{conn: conn} do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+    stale_time = DateTime.utc_now() |> DateTime.add(-600, :second) |> DateTime.truncate(:second)
+
+    %{connection: connection} =
+      quota_snapshot_fixture(%{
+        account: account,
+        worker: worker,
+        label: "Expired quota",
+        now: stale_time,
+        ttl_seconds: 300
+      })
+
+    {:ok, view, html} = live(conn, ~p"/ai-connections")
+    assert has_element?(view, "#quota-#{connection.id} [data-quota-stale]")
+    refute html =~ "General Codex"
+    refute has_element?(view, "#quota-#{connection.id} [data-quota-bucket]")
+  end
+
   defp start_responder(workspace_id, worker, opts \\ []) do
     parent = self()
     ready_ref = make_ref()
@@ -443,7 +604,7 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
       spawn(fn ->
         contract = %{
           protocol_version: Keyword.get(opts, :protocol_version, "personal-ai/1"),
-          capabilities: Keyword.get(opts, :capabilities, ["catalog/1", "connection/1"])
+          capabilities: Keyword.get(opts, :capabilities, ["catalog/1", "connection/1", "quota/1"])
         }
 
         result = PersonalWorkerRPC.attach(workspace_id, worker.id, contract)
@@ -493,6 +654,16 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
     end
   end
 
+  defp responder_result(%{"capability" => "quota/1"}, opts, count) do
+    case Keyword.get(opts, :quota_results) do
+      results when is_list(results) and results != [] ->
+        Enum.at(results, count, List.last(results))
+
+      _other ->
+        Keyword.get_lazy(opts, :quota_result, &quota_result/0)
+    end
+  end
+
   defp catalog_result(attrs \\ %{}) do
     %{
       "status" => Map.get(attrs, :status, "enumerated"),
@@ -529,6 +700,84 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
           }
         end)
     }
+  end
+
+  defp fetch_real_codex_quota(worker_profile_ref) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {:ok, adapter} =
+      CodexAppServerFixtures.start_adapter(self(), worker_profile_ref: worker_profile_ref)
+
+    process = CodexAppServerFixtures.receive_handshake().process
+
+    task =
+      Task.async(fn ->
+        Codex.fetch(
+          %{},
+          %{
+            provider: "openai_codex",
+            authentication_mode: "chatgpt",
+            worker_profile_ref: worker_profile_ref
+          },
+          server: adapter,
+          now: now
+        )
+      end)
+
+    general = %{
+      "limitId" => "codex",
+      "limitName" => "General Codex",
+      "primary" => %{
+        "usedPercent" => 35,
+        "resetsAt" => DateTime.to_unix(DateTime.add(now, 3_600)),
+        "windowDurationMins" => 300
+      },
+      "secondary" => %{
+        "usedPercent" => 70,
+        "resetsAt" => DateTime.to_unix(DateTime.add(now, 86_400)),
+        "windowDurationMins" => 10_080
+      },
+      "credits" => %{"hasCredits" => true, "unlimited" => false, "balance" => "12.50"}
+    }
+
+    rate_request = CodexAppServerFixtures.receive_write(process, "account/rateLimits/read")
+
+    CodexAppServerProcessDouble.respond(process, rate_request["id"], %{
+      "rateLimits" => general,
+      "rateLimitsByLimitId" => %{
+        "codex" => general,
+        "gpt-5-mini" => %{
+          "limitId" => "gpt-5-mini",
+          "limitName" => "GPT-5 mini",
+          "primary" => %{"usedPercent" => 90}
+        }
+      },
+      "rateLimitResetCredits" => %{"availableCount" => 2}
+    })
+
+    usage_request = CodexAppServerFixtures.receive_write(process, "account/usage/read")
+
+    CodexAppServerProcessDouble.respond(process, usage_request["id"], %{
+      "summary" => %{
+        "lifetimeTokens" => 12_000,
+        "peakDailyTokens" => 2_500,
+        "currentStreakDays" => 3,
+        "longestStreakDays" => 8,
+        "longestRunningTurnSec" => 90
+      }
+    })
+
+    assert {:ok, result} = Task.await(task)
+    CodexAppServer.stop(adapter)
+    result
+  end
+
+  defp quota_result(attrs \\ %{}) do
+    attrs
+    |> Map.put_new_lazy(:retrieved_at, fn -> DateTime.utc_now() |> DateTime.truncate(:second) end)
+    |> quota_adapter_result()
+    |> Jason.encode!()
+    |> Jason.decode!()
   end
 
   defp stop_responder(workspace_id, worker_id) do

@@ -1,12 +1,13 @@
 defmodule SddOrchestrator.AIRuntimeFixtures do
-  @moduledoc "Test fixtures for account-owned personal AI connections and catalogs."
+  @moduledoc "Test fixtures for personal AI connections, catalogs, and quota snapshots."
 
   import SddOrchestrator.AccountsFixtures
 
-  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections}
+  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, Quotas}
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.ModelCatalogAdapterDouble
   alias SddOrchestrator.PersonalConnectionAdapterDouble
+  alias SddOrchestrator.QuotaAdapterDouble
 
   @catalog_source_version "codex-cli 0.test.8|schema:" <> String.duplicate("8", 64)
 
@@ -136,5 +137,122 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
       )
 
     Map.put(connection_fixture, :catalog, catalog)
+  end
+
+  @doc "Builds one exact provider-neutral quota bucket."
+  def quota_bucket(attrs \\ %{}) do
+    %{
+      id: Map.get(attrs, :id, "general"),
+      scope: Map.get(attrs, :scope, "general"),
+      model: Map.get(attrs, :model),
+      display_name: Map.get(attrs, :display_name, "General Codex"),
+      primary_window:
+        Map.get(attrs, :primary_window, %{
+          used_percent: 35,
+          resets_at: ~U[2026-08-03 13:00:00Z],
+          duration_minutes: 300,
+          unknown_fields: []
+        }),
+      secondary_window: Map.get(attrs, :secondary_window),
+      credits:
+        Map.get(attrs, :credits, %{
+          has_credits: true,
+          unlimited: false,
+          balance: "12.50",
+          unknown_fields: []
+        }),
+      paid_continuation: Map.get(attrs, :paid_continuation, "unknown"),
+      spend_control: Map.get(attrs, :spend_control),
+      spend_control_reached: Map.get(attrs, :spend_control_reached),
+      limit_reached_reason: Map.get(attrs, :limit_reached_reason),
+      unknown_fields:
+        Map.get(attrs, :unknown_fields, [
+          "secondary_window",
+          "paid_continuation",
+          "spend_control",
+          "spend_control_reached",
+          "limit_reached_reason"
+        ])
+    }
+  end
+
+  @doc "Builds one exact provider-neutral quota adapter result."
+  def quota_adapter_result(attrs \\ %{}) do
+    authentication_mode = Map.get(attrs, :authentication_mode, "chatgpt")
+
+    if authentication_mode == "api_key" do
+      %{
+        status: "unknown",
+        provider: Map.get(attrs, :provider, "openai_codex"),
+        authentication_mode: "api_key",
+        source: Map.get(attrs, :source, "official_client"),
+        source_methods: [],
+        source_version: Map.get(attrs, :source_version, @catalog_source_version),
+        retrieved_at: Map.get(attrs, :retrieved_at, ~U[2026-08-03 12:00:00Z]),
+        buckets: [],
+        reset_credits: nil,
+        token_activity: nil,
+        unknown_fields: [
+          "api_key_quota",
+          "api_key_billing",
+          "reset_credits",
+          "paid_continuation",
+          "token_activity"
+        ]
+      }
+    else
+      %{
+        status: Map.get(attrs, :status, "reported"),
+        provider: Map.get(attrs, :provider, "openai_codex"),
+        authentication_mode: "chatgpt",
+        source: Map.get(attrs, :source, "official_client"),
+        source_methods:
+          Map.get(attrs, :source_methods, [
+            "account/rateLimits/read",
+            "account/usage/read"
+          ]),
+        source_version: Map.get(attrs, :source_version, @catalog_source_version),
+        retrieved_at: Map.get(attrs, :retrieved_at, ~U[2026-08-03 12:00:00Z]),
+        buckets: Map.get_lazy(attrs, :buckets, fn -> [quota_bucket()] end),
+        reset_credits: Map.get(attrs, :reset_credits, %{available_count: 2, unknown_fields: []}),
+        token_activity:
+          Map.get(attrs, :token_activity, %{
+            lifetime_tokens: 12_000,
+            peak_daily_tokens: 2_500,
+            current_streak_days: 3,
+            longest_streak_days: 8,
+            longest_running_turn_seconds: 90,
+            unknown_fields: []
+          }),
+        unknown_fields: Map.get(attrs, :unknown_fields, ["provider_billing"])
+      }
+    end
+  end
+
+  @doc "Creates one current quota snapshot through the public refresh boundary."
+  def quota_snapshot_fixture(attrs \\ %{}) do
+    connection_fixture =
+      Map.get_lazy(attrs, :connection_fixture, fn -> personal_ai_connection_fixture(attrs) end)
+
+    result =
+      Map.get_lazy(attrs, :adapter_result, fn ->
+        quota_adapter_result(%{
+          authentication_mode: connection_fixture.connection.authentication_mode,
+          retrieved_at: Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z]),
+          buckets: Map.get(attrs, :buckets, [quota_bucket()])
+        })
+      end)
+
+    {:ok, quota} =
+      Quotas.refresh(
+        connection_fixture.account,
+        connection_fixture.connection.id,
+        adapter: QuotaAdapterDouble,
+        adapter_result: {:ok, result},
+        now: Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z]),
+        ttl_seconds: Map.get(attrs, :ttl_seconds, 300)
+      )
+
+    Map.put(connection_fixture, :quota, quota)
   end
 end
