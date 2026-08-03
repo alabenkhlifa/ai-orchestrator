@@ -1,5 +1,13 @@
 # Repository Execution Profile Progress Log
 
+### 2026-08-03 - Task 3 boundary refined before implementation
+
+- Completed: Task 3 implementation preflight found four independently provable outcomes across terminal assessment persistence, worker-local cache, immutable profile domain and storage, and LiveView/browser review. Preserved Task 3 as the next executable terminal-result task; split cache into Task 9, profile proposal and immutable approval into Task 10, profile review UI into Task 11, narrowed Task 4 to pilot selection, and moved independent readiness plus the missing-check gate to Task 12. Moved privacy and lifecycle enforcement plus final capability publication to `specs/30-repository-execution-profile-completion/` without changing approved product behavior.
+- Scope classification: Slice 14 remains a focused standard profile-and-readiness slice with ten tasks and an eight-task longest dependency path. The continuation is a focused two-task governance-and-publication slice.
+- Remaining: Implement Tasks 3, 9, 10, 11, 4, and 12; complete the Slice 14 verification gate; then implement and verify the focused continuation. Task 3 remains the next executable task.
+- Failed checks: No mechanical check failed. The preflight semantic Task Size Gate blocked application code because the old Task 3 mixed separate state transitions, adapters, and proof modalities. Live assessment transport remains outside this task split and must not modify Slice 11 personal-worker socket, channel, Endpoint, protocol, or RPC surfaces.
+- Spec updates: Reassigned AC-05 through AC-11 across focused tasks, kept `RepositoryExecutionProfile` under Task 10, published separate approved-pilot and readiness handoffs, deferred AC-12 and AC-13 to the continuation, and changed downstream final-capability provider edges. Requirements remain approved; implementation is resumable at Task 3 in a later request.
+
 ### 2026-08-03 - Task 2 complete: bounded worker-local repository assessment
 
 - Completed: Added the strict versioned `RepositoryAssessmentCommand` and the Git-object-based `WorkerRepositoryAssessment` scanner. The command accepts only one valid pending assessment and hard-capped limits. The scanner verifies the current full commit, contains one selected tree root, reads only allowlisted exact-commit blobs, treats content as untrusted data, excludes prohibited, generated, secret, symlink, binary, untracked, and modified-working-tree surfaces, emits deterministic minimized findings and bounded content-free progress, and returns no successful result on cancellation or limit failure. No cache, authoritative-result persistence, profile behavior, Slice 11 transport, application supervision, route, UI, or repository mutation was added.

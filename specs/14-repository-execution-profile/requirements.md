@@ -36,6 +36,7 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - Automatically inventing missing verification commands or resolving a safety conflict.
 - Multiple independently configured roots or monorepo subprojects in the first executable slice.
 - Changing the approved Slice 07 execution-manifest contract in this specification.
+- Privacy and lifecycle enforcement plus final `capability:repository-execution-profile` publication, which are owned by `specs/30-repository-execution-profile-completion/` after this slice publishes its approved-pilot and readiness handoffs.
 
 ## Primary Workflow
 
@@ -77,6 +78,7 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - Managed runtime skills and authoritative specification revisions are sufficient for Orchestrator-managed SDD. Permanent repository files are not required.
 - Before Slice 07 consumes `capability:repository-execution-profile`, its approved execution-manifest requirements, design, tasks, and capability edge must be changed through `update-spec` after the current Slice 07 work completes.
 - Assessment and profile data are confidential project data, follow the project's authoritative storage mode, are available only to current authorized project participants according to role, and are prohibited from analytics, advertising, model training, or unrelated reuse.
+- This specification owns assessment completion, exact-commit caching, owner-approved profile versions, one pilot reference, and independent readiness. `specs/30-repository-execution-profile-completion/` owns the separately verifiable privacy and lifecycle controls and publishes the final managed-runtime capability without redefining these records or workflows.
 
 ## Acceptance Criteria
 

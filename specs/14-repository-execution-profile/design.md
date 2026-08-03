@@ -12,9 +12,9 @@ Before creating an assessment, show the processing disclosure and require confir
 
 Create a worker-local scanner that receives the authorized `RepositoryAssessment` binding, scan contract version, limits, and processing confirmation. It inspects an allowlisted set of high-signal files, produces source-anchored structured findings, and retains any raw index only in the worker boundary. Complete results may be cached for the exact commit and contract.
 
-Persist a minimized `RepositoryAssessment` and immutable approved `RepositoryExecutionProfile` in the project's authoritative storage mode. The profile normalizes the root, base revision, existing instruction precedence, project commands, required-check contract, allowed execution scope, and readiness blockers without replacing repository rules. Link one pilot to an existing authoritative specification identity and revision.
+Persist a minimized terminal `RepositoryAssessment` result and immutable approved `RepositoryExecutionProfile` in the project's authoritative storage mode. The profile normalizes the root, base revision, existing instruction precedence, project commands, required-check contract, allowed execution scope, and readiness blockers without replacing repository rules. Link one pilot to an existing authoritative specification identity and revision.
 
-Expose the completed profile as a capability for a later `update-spec` change to Slice 07. The current feature proves the consumer value contract but does not silently change Slice 07's approved manifest.
+Publish the approved-pilot and independent-readiness handoffs to `specs/30-repository-execution-profile-completion/`. That focused continuation enforces privacy and lifecycle controls and publishes the final profile capability for a later `update-spec` change to Slice 07. Neither specification silently changes Slice 07's approved manifest.
 
 ## Components Affected
 
@@ -54,7 +54,8 @@ Required boundaries:
 - Profile approval interface: compare the current commit and assessment, show every field and blocker, require owner approval, and append an immutable profile version.
 - Pilot-selection interface: resolve one current specification and revision through the shared store and add only their stable references to the approved profile.
 - Readiness interface: project assistant, specification, agent execution, and release status with separate reason codes and earliest blocking stage.
-- Managed-runtime compatibility interface: serialize the approved profile as an allowlisted value suitable for a future execution-manifest consumer without repository mutation.
+- Completion handoff interfaces: publish the immutable approved profile plus current pilot reference and the four-axis readiness value without transferring profile, assessment, or specification authority.
+- Managed-runtime compatibility interface: `specs/30-repository-execution-profile-completion/` serializes the approved profile as an allowlisted value suitable for a future execution-manifest consumer without repository mutation.
 
 ## Decisions and Tradeoffs
 

@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7, 8, 1, and 2 are complete, and Task 3 is the next executable task adding exact-commit caching and owner-approved profiles. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, 1, and 2 are complete. Task 3 is the next executable task and now owns only terminal assessment results and source anchors; cache, profile domain, review UI, pilot, and readiness work are separate focused tasks. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -17,12 +17,11 @@ Requires:
 - `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 8`.
 - `capability:workspace-bound-local-worker-authorization` — provider `specs/02-local-project-onboarding#Task 3` — required before `Task 7`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 4`.
-- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 5`.
-- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 5`.
 
 Provides:
 
-- `capability:repository-execution-profile` — ready after `Task 6`.
+- `capability:repository-approved-pilot` — ready after `Task 4`.
+- `capability:repository-profile-readiness` — ready after `Task 12`.
 
 ## Slice Size Gate
 
@@ -30,7 +29,8 @@ Provides:
 
 ## Task Size Gate
 
-- Every task is standard, owns one primary outcome, has at most three acceptance criteria and two entities, and has focused proof expected to run in about ten minutes.
+- All ten tasks are standard, own one primary outcome, have at most three acceptance criteria and two entities, and have focused proof expected to run in about ten minutes.
+- The longest `Depends on:` path contains eight tasks: Task 7, Task 8, Task 1, Task 2, Task 3, Task 10, Task 11, then Task 4 or Task 12.
 - No exception is required.
 
 ## Proof Scope Gate
@@ -44,18 +44,20 @@ Included:
 - One-root assessment start, disclosure, persistence, and readiness surface.
 - Short-lived disclosure-confirmed repository-binding preparation that proves repository identity, normalized root, and current full commit without scanning content.
 - Worker-local high-signal scanning, exact-commit cache, cancellation, and structured findings.
+- Terminal minimized assessment results and exact-commit cache reuse.
 - Owner-reviewed immutable execution-profile approval.
-- One authoritative pilot specification and revision reference.
-- Hosted and device-authoritative lifecycle, privacy, and compatibility proof.
+- One authoritative pilot specification and revision reference plus independent readiness.
 
 Excluded:
 
 - Repository mutation, kit installation, empty-repository initialization, whole-source indexing or upload, backlog import, and automatic check invention.
 - Slice 07 execution-manifest behavior changes.
+- Privacy and lifecycle enforcement plus final managed-runtime serialization and `capability:repository-execution-profile` publication, owned by `specs/30-repository-execution-profile-completion/`.
 
 Deferred after this slice:
 
 - Multiple roots, monorepo subprojects, automatic backlog import, and issue-provider synchronization.
+- `specs/30-repository-execution-profile-completion/` consumes the two focused handoffs from Tasks 4 and 12, enforces AC-12, and owns AC-13 plus final capability publication.
 - Slice 07 `update-spec` work that consumes `capability:repository-execution-profile` before managed execution.
 
 Release gates:
@@ -66,7 +68,7 @@ Release gates:
 
 Traceability:
 
-- Deferred criteria: none
+- Deferred criteria: AC-12, AC-13
 - Release criteria: none
 - Deferred entities: none
 - Release entities: none
@@ -121,54 +123,72 @@ Traceability:
   - Proof: Focused worker protocol, malicious-content, path-escape, ignored-secret, binary, limit, cancellation, mutation-negative, and structured-result tests pass.
   - Delivered: `RepositoryAssessmentCommand` serializes one strict minimized pending-assessment command bound to the project, canonical repository, selected root, exact commit, scanner and disclosure digests, opaque worker, and capped path, file, byte, per-file, and time limits without a filesystem path or credential. `WorkerRepositoryAssessment.scan/3` verifies current `HEAD`, requires the selected root to be a tree at that commit, enumerates and reads only exact-commit Git objects, restricts findings to allowlisted instruction, contribution, manifest, CI, check, and top-level structure signals, excludes secrets, generated and dependency stores, symlinks, binaries, unsafe paths, and untracked or modified working-tree content, reports content-free progress, cooperatively cancels without a result, and returns deterministic repository-relative digests and counts without raw content, absolute paths, cache, persistence, transport, or repository mutation.
 
-- [ ] Task 3 — Add exact-commit caching and owner-approved profiles.
+- [ ] Task 3 — Persist one terminal minimized assessment result.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
-  - Purpose: Reuse only complete unchanged evidence and convert findings into one explicit immutable managed-runtime contract.
-  - Owned surfaces: Complete cache key and terminal-state rules, source-relative finding anchors, profile proposal and review UI, immutable `RepositoryExecutionProfile` versions, stale-commit rejection, instruction precedence, command and check normalization, conflict and multi-root blockers, and owner approval.
-  - Owns: AC-05, AC-06, AC-07, entity:RepositoryExecutionProfile
-  - Proof: Focused cache hit and invalidation, incomplete-result, stale-commit, source-anchor, conflict, profile-version, owner-approval, LiveView, and browser tests pass.
+  - Purpose: Accept one strict worker result for the pending exact binding and persist only its minimized complete or unsuccessful terminal outcome in the project's authoritative store.
+  - Owned surfaces: Strict terminal-result value, pending-to-terminal transition, exact project, repository, root, commit, scanner and limit binding, complete, canceled and failed outcome rules, source-relative finding anchors, result allowlist and size limits, hosted and device-authoritative terminal update parity, stale, duplicate, cross-project and cross-workspace refusal, and no raw source, index, absolute path, credential, or raw diagnostic persistence.
+  - Owns: AC-06
+  - Proof: Focused result-shape, pending-to-terminal, hosted/device adapter, source-anchor, exact-binding, stale-commit, duplicate, canceled, failed, cross-project, cross-workspace, minimized-field, and raw-content negative tests pass.
 
-- [ ] Task 4 — Select one pilot and present independent readiness.
+- [ ] Task 9 — Reuse only complete exact-commit worker evidence.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
-  - Purpose: Bound adoption to one authoritative feature and explain what each available workflow may safely do.
-  - Owned surfaces: Shared-store specification and revision selector, pilot reference, no-backlog-import guard, assistant/specification/agent-execution/release readiness model and UI, conflict behavior, and missing-check verification blocker.
-  - Owns: AC-08, AC-09, AC-10
-  - Proof: Focused specification-store consumer, stale-revision, no-copy, no-import, readiness independence, missing-check, LiveView, and browser tests pass.
+  - Purpose: Avoid repeating an unchanged completed worker scan without allowing incomplete, failed, canceled, stale, or differently limited evidence to become a hit.
+  - Owned surfaces: Worker-local cache value and adapter, complete-only insertion, cache key over project, repository identity, root, exact commit, scanner contract and limit contract, deterministic provenance, incomplete and unsuccessful exclusion, relevant-key invalidation, bounded storage, and no authoritative or hosted raw index copy.
+  - Owns: AC-05
+  - Proof: Focused complete hit, miss, exact-key reuse, project, repository, root, commit, scanner and limit invalidation, incomplete, failed and canceled exclusion, bounded-storage, restart-policy, and no-hosted-copy tests pass.
 
-- [ ] Task 5 — Enforce verification, privacy, lifecycle, and storage parity.
+- [ ] Task 10 — Propose and append immutable owner-approved profile versions.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 4
-  - Purpose: Prevent unverified delivery claims and keep assessment data inside its approved project and worker boundaries.
-  - Owned surfaces: Required-check reliability gate, `Ready for review` compatibility rule, hosted and device authority parity, raw-index locality, minimized result allowlist, role access, changed-boundary records, retention and deletion, redacted logs, processor controls, no analytics, and no secondary use.
-  - Owns: AC-11, AC-12
-  - Proof: Focused verification-gate, hosted/device parity, project isolation, raw-content negative scan, access, deletion, retention, log-redaction, processor, and no-analytics tests pass.
+  - Depends on: Task 3
+  - Purpose: Convert one current completed assessment into a strict profile proposal and append an immutable version only through owner approval.
+  - Owned surfaces: Profile proposal value, `RepositoryExecutionProfile`, hosted schema and immutable version constraints, hosted and device-authoritative profile-store adapters, exact assessment and commit binding, root and base revision, instruction precedence, normalized commands and required checks, allowed scope, gaps, conflicts and multi-root blockers, owner-only approval or rejection, stale-assessment refusal, and append-only version history.
+  - Owns: entity:RepositoryExecutionProfile
+  - Proof: Focused proposal normalization, existing-instruction precedence, command, check, scope, gap, conflict, multi-root, hosted/device adapter, owner, stale-assessment, immutable-version, append-only, rejection, and cross-project tests pass.
 
-- [ ] Task 6 — Publish the execution-profile capability.
+- [ ] Task 11 — Let the owner review and approve the proposed profile.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 5
-  - Purpose: Prove an approved profile is deterministic, allowlisted, and ready for a separately approved managed-runtime consumer.
-  - Owned surfaces: Managed-runtime profile value, deterministic digest and serialization, authoritative specification-reference compatibility fixture, no-repository-mutation fixture, `capability:repository-execution-profile` readiness write-back, and future Slice 07 `update-spec` handoff.
-  - Owns: AC-13
-  - Proof: Profile serialization, digest, compatibility, no-specification-copy, and no-repository-write tests pass; capability readiness is recorded; the handoff names the exact Slice 07 agreement change required before consumption.
+  - Depends on: Task 9, Task 10
+  - Purpose: Show every managed-runtime field and blocker before an explicit owner approval without making repository instructions appear replaced.
+  - Owned surfaces: Completed-assessment and cache-provenance presentation, profile proposal and version history LiveView, root, base revision, instruction precedence, command, required-check, allowed-scope, gap, conflict and multi-root presentation, managed-runtime-only explanation, owner approve and reject interactions, participant read-only access, stale recovery, and focused desktop/mobile browser scenario.
+  - Owns: AC-07
+  - Proof: Focused LiveView authorization and interaction tests plus one desktop/mobile browser file prove complete field and blocker visibility, repository-instruction authority, managed-runtime-only scope, explicit owner approval or rejection, participant read-only access, and stale refusal.
+
+- [ ] Task 4 — Select one authoritative pilot specification revision.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 11
+  - Purpose: Bound adoption to one current authoritative Orchestrator feature without copying specifications or importing repository backlog items.
+  - Owned surfaces: Shared-store specification and current revision selector, owner-only pilot selection, stable pilot reference, stale-revision refusal, no specification-document copy, no repository issue or backlog import, hosted and device-authoritative persistence parity, focused LiveView interaction, `capability:repository-approved-pilot` provider, and readiness write-back.
+  - Owns: AC-10
+  - Proof: Focused specification-store consumer, current and stale revision, owner, participant read-only, hosted/device adapter, stable-reference, no-copy, no-import, LiveView, and browser tests pass.
+
+- [ ] Task 12 — Present independent repository readiness and verification blockers.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 11
+  - Purpose: Explain separately what the assistant, specification workflow, autonomous agent, and release may safely do without inventing a reliable check contract.
+  - Owned surfaces: Assistant, specification, agent-execution and release readiness value and UI, earliest blocking stage and actionable reason codes, stale commit and changed-root behavior, unresolved instruction and safety conflict behavior, unsupported multi-root behavior, reliable required-check contract gate, verified-completion and `Ready for review` denial, read-only assistant independence, `capability:repository-profile-readiness` provider, and readiness write-back.
+  - Owns: AC-08, AC-09, AC-11
+  - Proof: Focused stale-commit, changed-root, conflict, safety-conflict, multi-root, missing and unreliable check, assistant independence, earliest-stage reason, LiveView, and browser tests pass.
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
+- [ ] Active-slice acceptance criteria AC-01 through AC-11 pass; AC-12 and AC-13 remain owned by `specs/30-repository-execution-profile-completion/`.
 - [ ] Hosted and device-authoritative adapter contracts pass.
 - [ ] Worker scanner safety, cancellation, cache, and no-mutation suites pass.
-- [ ] Authorization, privacy, lifecycle, and no-analytics suites pass.
+- [ ] Authorization and project-isolation suites pass.
 - [ ] Desktop and mobile assessment, profile approval, pilot, conflict, and readiness browser scenarios pass.
 - [ ] `mix check` and all explicit project code-quality commands pass.
 - [ ] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
 - [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
 - [ ] Specification validator and global capability graph pass.
-- [ ] Slice 07 consumption remains unimplemented until its explicit `update-spec` change is approved.
+- [ ] Both focused continuation capabilities are ready for `specs/30-repository-execution-profile-completion/`; Slice 07 consumption remains unimplemented until its explicit `update-spec` change is approved.
 
 ## Blocked Decisions
 
