@@ -1,11 +1,14 @@
 defmodule SddOrchestrator.AIRuntimeFixtures do
-  @moduledoc "Test fixtures for account-owned personal AI connections."
+  @moduledoc "Test fixtures for account-owned personal AI connections and catalogs."
 
   import SddOrchestrator.AccountsFixtures
 
-  alias SddOrchestrator.AIRuntime.PersonalConnections
+  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections}
   alias SddOrchestrator.Devices.Pairing
+  alias SddOrchestrator.ModelCatalogAdapterDouble
   alias SddOrchestrator.PersonalConnectionAdapterDouble
+
+  @catalog_source_version "codex-cli 0.test.8|schema:" <> String.duplicate("8", 64)
 
   @doc "Creates one active paired local worker through the real pairing boundary."
   def personal_ai_worker_fixture(attrs \\ %{}) do
@@ -70,5 +73,68 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
       )
 
     %{connection: connection, account: account, worker: worker}
+  end
+
+  @doc "Builds one exact safe model and effort compatibility result."
+  def model_catalog_model(attrs \\ %{}) do
+    model = Map.get(attrs, :model, "codex-test-model")
+    efforts = Map.get(attrs, :efforts, ["low", "medium", "high"])
+
+    %{
+      id: Map.get(attrs, :id, "catalog-#{model}"),
+      model: model,
+      display_name: Map.get(attrs, :display_name, "Codex Test Model"),
+      current: Map.get(attrs, :current, false),
+      default: Map.get(attrs, :default, true),
+      default_reasoning_effort: Map.get(attrs, :default_reasoning_effort, "medium"),
+      supported_reasoning_efforts:
+        Enum.map(efforts, fn effort ->
+          %{
+            reasoning_effort: effort,
+            description: "Authenticated #{effort} reasoning"
+          }
+        end)
+    }
+  end
+
+  @doc "Builds one exact provider-neutral catalog adapter result."
+  def model_catalog_adapter_result(attrs \\ %{}) do
+    now = Map.get(attrs, :retrieved_at, ~U[2026-08-03 12:00:00Z])
+
+    %{
+      status: Map.get(attrs, :status, "enumerated"),
+      provider: Map.get(attrs, :provider, "openai_codex"),
+      source: Map.get(attrs, :source, "official_client"),
+      source_method: Map.get(attrs, :source_method, "model/list"),
+      source_version: Map.get(attrs, :source_version, @catalog_source_version),
+      retrieved_at: now,
+      models: Map.get_lazy(attrs, :models, fn -> [model_catalog_model()] end)
+    }
+  end
+
+  @doc "Creates one current catalog snapshot through the public refresh boundary."
+  def model_catalog_snapshot_fixture(attrs \\ %{}) do
+    connection_fixture =
+      Map.get_lazy(attrs, :connection_fixture, fn -> personal_ai_connection_fixture(attrs) end)
+
+    result =
+      Map.get_lazy(attrs, :adapter_result, fn ->
+        model_catalog_adapter_result(%{
+          retrieved_at: Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z]),
+          models: Map.get(attrs, :models, [model_catalog_model()])
+        })
+      end)
+
+    {:ok, catalog} =
+      ModelCatalogs.refresh(
+        connection_fixture.account,
+        connection_fixture.connection.id,
+        adapter: ModelCatalogAdapterDouble,
+        adapter_result: {:ok, result},
+        now: Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z]),
+        ttl_seconds: Map.get(attrs, :ttl_seconds, 300)
+      )
+
+    Map.put(connection_fixture, :catalog, catalog)
   end
 end

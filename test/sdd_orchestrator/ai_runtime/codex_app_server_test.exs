@@ -15,6 +15,33 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServerTest do
   end
 
   describe "compatibility and initialization" do
+    test "retains the exact normalized version and schema pair verified at startup", %{
+      adapter: adapter
+    } do
+      assert CodexAppServer.compatibility(adapter) ==
+               {:ok,
+                %{
+                  codex_version: CodexAppServerFixtures.codex_version(),
+                  schema_digest: CodexAppServerFixtures.schema_digest()
+                }}
+
+      {:ok, uppercase_digest_adapter} =
+        CodexAppServerFixtures.start_adapter(self(),
+          schema_digest: String.upcase(CodexAppServerFixtures.schema_digest())
+        )
+
+      _handshake = CodexAppServerFixtures.receive_handshake()
+
+      assert CodexAppServer.compatibility(uppercase_digest_adapter) ==
+               {:ok,
+                %{
+                  codex_version: CodexAppServerFixtures.codex_version(),
+                  schema_digest: CodexAppServerFixtures.schema_digest()
+                }}
+
+      CodexAppServer.stop(uppercase_digest_adapter)
+    end
+
     test "accepts only a registered version and generated-schema digest" do
       assert {:error, :unsupported_version} =
                CodexAppServerFixtures.start_adapter(self(), codex_version: "codex-cli unknown")
@@ -163,6 +190,41 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServerTest do
       })
 
       assert Task.await(task) == {:error, :app_server_error}
+    end
+
+    test "normalizes only JSON-RPC method-not-found while credential content still wins", %{
+      adapter: adapter,
+      process: process
+    } do
+      unsupported = Task.async(fn -> CodexAppServer.request(adapter, "model/list", %{}) end)
+      unsupported_request = CodexAppServerFixtures.receive_write(process, "model/list")
+
+      CodexAppServerProcessDouble.error(process, unsupported_request["id"], %{
+        "code" => -32_601,
+        "message" => "raw method-not-found diagnostic"
+      })
+
+      assert Task.await(unsupported) == {:error, :unsupported_method}
+
+      credential = Task.async(fn -> CodexAppServer.request(adapter, "model/list", %{}) end)
+      credential_request = CodexAppServerFixtures.receive_write(process, "model/list")
+
+      CodexAppServerProcessDouble.error(process, credential_request["id"], %{
+        "code" => -32_601,
+        "message" => "Bearer worker-local-secret"
+      })
+
+      assert Task.await(credential) == {:error, :credential_content}
+
+      non_integer = Task.async(fn -> CodexAppServer.request(adapter, "model/list", %{}) end)
+      non_integer_request = CodexAppServerFixtures.receive_write(process, "model/list")
+
+      CodexAppServerProcessDouble.error(process, non_integer_request["id"], %{
+        "code" => -32_601.0,
+        "message" => "not an exact JSON-RPC integer code"
+      })
+
+      assert Task.await(non_integer) == {:error, :app_server_error}
     end
 
     test "rejects credential-shaped response keys and values", %{

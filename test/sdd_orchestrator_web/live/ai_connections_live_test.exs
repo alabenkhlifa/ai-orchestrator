@@ -6,7 +6,7 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
   import Phoenix.LiveViewTest
   import SddOrchestrator.AIRuntimeFixtures
 
-  alias SddOrchestrator.AIRuntime.{PersonalConnections, PersonalWorkerRPC}
+  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, PersonalWorkerRPC}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.ProjectsFixtures
@@ -261,6 +261,180 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
     assert has_element?(view, ~s([data-ai-connections-link][href="/ai-connections"]))
   end
 
+  test "refreshes and renders only safe authenticated model and effort facts", %{conn: conn} do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+
+    %{connection: connection} =
+      personal_ai_connection_fixture(%{account: account, worker: worker, label: "Live catalog"})
+
+    start_responder(workspace.id, worker,
+      catalog_result:
+        catalog_result(%{
+          models: [
+            catalog_model(%{
+              model: "provider-live-model",
+              display_name: "Provider Live Model",
+              current: true,
+              default: true,
+              efforts: ["minimal", "high"]
+            })
+          ]
+        })
+    )
+
+    {:ok, view, html} = live(conn, ~p"/ai-connections")
+    assert has_element?(view, "#catalog-#{connection.id} [data-catalog-unknown]")
+    refute html =~ "provider-live-model"
+
+    pending =
+      view
+      |> element("#catalog-#{connection.id} [data-refresh-catalog]")
+      |> render_click()
+
+    assert pending =~ "Requesting the live catalog"
+    html = render_async(view, 1_000)
+
+    assert html =~ "Provider Live Model"
+    assert html =~ "provider-live-model"
+    assert has_element?(view, ~s([data-catalog-model][data-model="provider-live-model"]))
+    assert has_element?(view, ~s([data-effort="minimal"]))
+    assert has_element?(view, ~s([data-effort="high"]))
+    assert has_element?(view, "[data-catalog-provenance]", "Official client")
+    assert has_element?(view, ~s([data-catalog-result="ok"]))
+
+    forbidden = [
+      connection.worker_profile_ref,
+      "provider@example.test",
+      "provider-account-123",
+      "provider-workspace-456",
+      "premium-plan",
+      "raw provider failure",
+      "secret-credential"
+    ]
+
+    for value <- forbidden, do: refute(html =~ value)
+  end
+
+  test "clears a previously rendered catalog when a later refresh is malformed", %{conn: conn} do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+
+    %{connection: connection} =
+      personal_ai_connection_fixture(%{account: account, worker: worker})
+
+    valid =
+      catalog_result(%{
+        models: [
+          catalog_model(%{
+            model: "catalog-must-disappear",
+            display_name: "Catalog Must Disappear"
+          })
+        ]
+      })
+
+    malformed = Map.put(valid, "provider_account_id", "provider-account-123")
+    start_responder(workspace.id, worker, catalog_results: [valid, malformed])
+
+    {:ok, view, _html} = live(conn, ~p"/ai-connections")
+
+    view |> element("#catalog-#{connection.id} [data-refresh-catalog]") |> render_click()
+    assert render_async(view, 1_000) =~ "Catalog Must Disappear"
+
+    pending =
+      view
+      |> element("#catalog-#{connection.id} [data-refresh-catalog]")
+      |> render_click()
+
+    assert pending =~ "Requesting the live catalog"
+    refute pending =~ "Catalog Must Disappear"
+
+    html = render_async(view, 1_000)
+    assert has_element?(view, ~s([data-catalog-result="error"]))
+    refute html =~ "Catalog Must Disappear"
+    refute html =~ "catalog-must-disappear"
+    refute html =~ "provider-account-123"
+
+    assert {:error, :unknown} =
+             ModelCatalogs.current_catalog(account, connection.id)
+  end
+
+  test "shows only the proven current model for an enumeration-unsupported catalog", %{
+    conn: conn
+  } do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+
+    %{connection: connection} =
+      personal_ai_connection_fixture(%{account: account, worker: worker})
+
+    start_responder(workspace.id, worker,
+      catalog_result:
+        catalog_result(%{
+          status: "enumeration_unsupported",
+          models: [
+            catalog_model(%{
+              model: "worker-proven-current",
+              display_name: "Worker Proven Current",
+              current: true,
+              default: false,
+              efforts: ["medium"]
+            })
+          ]
+        })
+    )
+
+    {:ok, view, _html} = live(conn, ~p"/ai-connections")
+    view |> element("#catalog-#{connection.id} [data-refresh-catalog]") |> render_click()
+    html = render_async(view, 1_000)
+
+    assert has_element?(view, "#catalog-#{connection.id} [data-catalog-limited]")
+    assert html =~ "Worker Proven Current"
+    assert html =~ "medium"
+    refute html =~ "guessed"
+  end
+
+  test "fails safely on malformed catalog output and marks expired snapshots stale", %{conn: conn} do
+    %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn})
+    {:ok, workspace} = Devices.establish_workspace()
+    worker = personal_ai_worker_fixture(%{device_workspace_id: workspace.id})
+
+    %{connection: malformed_connection} =
+      personal_ai_connection_fixture(%{account: account, worker: worker, label: "Malformed"})
+
+    stale_time = DateTime.utc_now() |> DateTime.add(-600, :second) |> DateTime.truncate(:second)
+
+    %{connection: stale_connection} =
+      model_catalog_snapshot_fixture(%{
+        account: account,
+        worker: worker,
+        label: "Expired",
+        worker_profile_ref: "expired-profile",
+        now: stale_time,
+        ttl_seconds: 300
+      })
+
+    start_responder(workspace.id, worker,
+      catalog_result: Map.put(catalog_result(), "provider_email", "provider@example.test")
+    )
+
+    {:ok, view, _html} = live(conn, ~p"/ai-connections")
+    assert has_element?(view, "#catalog-#{stale_connection.id} [data-catalog-stale]")
+
+    view
+    |> element("#catalog-#{malformed_connection.id} [data-refresh-catalog]")
+    |> render_click()
+
+    html = render_async(view, 1_000)
+    assert has_element?(view, ~s([data-catalog-result="error"]))
+    assert html =~ "could not be refreshed safely"
+    refute html =~ "provider@example.test"
+    refute html =~ malformed_connection.worker_profile_ref
+  end
+
   defp start_responder(workspace_id, worker, opts \\ []) do
     parent = self()
     ready_ref = make_ref()
@@ -269,7 +443,7 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
       spawn(fn ->
         contract = %{
           protocol_version: Keyword.get(opts, :protocol_version, "personal-ai/1"),
-          capabilities: Keyword.get(opts, :capabilities, ["connection/1"])
+          capabilities: Keyword.get(opts, :capabilities, ["catalog/1", "connection/1"])
         }
 
         result = PersonalWorkerRPC.attach(workspace_id, worker.id, contract)
@@ -287,15 +461,7 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
       {:ai_request, envelope, caller, request_ref, _deadline} ->
         Process.sleep(Keyword.get(opts, :delay_ms, 0))
 
-        authentication_mode = envelope["params"]["authentication_mode"]
-
-        result = %{
-          "worker_profile_ref" => "profile-e2e-#{count + 1}",
-          "provider" => "openai_codex",
-          "authentication_mode" => authentication_mode,
-          "availability" => "available",
-          "adapter_compatibility_version" => "connection/1"
-        }
+        result = responder_result(envelope, opts, count)
 
         send(caller, {PersonalWorkerRPC, request_ref, {:ok, result}})
         responder_loop(opts, count + 1)
@@ -303,6 +469,66 @@ defmodule SddOrchestratorWeb.AIConnectionsLiveTest do
       {:cancel_ai_request, _request_id} ->
         responder_loop(opts, count)
     end
+  end
+
+  defp responder_result(%{"capability" => "connection/1"} = envelope, _opts, count) do
+    authentication_mode = envelope["params"]["authentication_mode"]
+
+    %{
+      "worker_profile_ref" => "profile-e2e-#{count + 1}",
+      "provider" => "openai_codex",
+      "authentication_mode" => authentication_mode,
+      "availability" => "available",
+      "adapter_compatibility_version" => "connection/1"
+    }
+  end
+
+  defp responder_result(%{"capability" => "catalog/1"}, opts, count) do
+    case Keyword.get(opts, :catalog_results) do
+      results when is_list(results) and results != [] ->
+        Enum.at(results, count, List.last(results))
+
+      _other ->
+        Keyword.get_lazy(opts, :catalog_result, &catalog_result/0)
+    end
+  end
+
+  defp catalog_result(attrs \\ %{}) do
+    %{
+      "status" => Map.get(attrs, :status, "enumerated"),
+      "provider" => "openai_codex",
+      "source" => "official_client",
+      "source_method" => "model/list",
+      "source_version" => "codex-cli 0.live.0|schema:" <> String.duplicate("9", 64),
+      "retrieved_at" =>
+        attrs
+        |> Map.get_lazy(:retrieved_at, fn -> DateTime.utc_now() end)
+        |> DateTime.truncate(:second)
+        |> DateTime.to_iso8601(),
+      "models" => Map.get_lazy(attrs, :models, fn -> [catalog_model()] end)
+    }
+  end
+
+  defp catalog_model(attrs \\ %{}) do
+    model = Map.get(attrs, :model, "provider-live-default")
+    efforts = Map.get(attrs, :efforts, ["low", "medium", "high"])
+    default_effort = if "medium" in efforts, do: "medium", else: hd(efforts)
+
+    %{
+      "id" => "catalog-#{model}",
+      "model" => model,
+      "display_name" => Map.get(attrs, :display_name, "Provider Live Default"),
+      "current" => Map.get(attrs, :current, false),
+      "default" => Map.get(attrs, :default, true),
+      "default_reasoning_effort" => Map.get(attrs, :default_reasoning_effort, default_effort),
+      "supported_reasoning_efforts" =>
+        Enum.map(efforts, fn effort ->
+          %{
+            "reasoning_effort" => effort,
+            "description" => "Authenticated #{effort} reasoning"
+          }
+        end)
+    }
   end
 
   defp stop_responder(workspace_id, worker_id) do

@@ -64,6 +64,7 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
           | :app_server_error
 
   @type server :: GenServer.server()
+  @type verified_compatibility :: %{codex_version: String.t(), schema_digest: String.t()}
 
   @doc "Starts one adapter after verifying its installed-version/schema pair."
   @spec start_link(keyword()) :: GenServer.on_start() | {:error, error()}
@@ -75,7 +76,13 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
 
     with :ok <- validate_transport(transport),
          :ok <- Compatibility.verify(version, digest, registry),
-         {:ok, pid} <- start_adapter(opts) do
+         {:ok, pid} <-
+           start_adapter(
+             Keyword.put(opts, :verified_compatibility, %{
+               codex_version: version,
+               schema_digest: String.downcase(digest)
+             })
+           ) do
       case await_ready(pid, Keyword.get(opts, :initialization_timeout_ms, @default_timeout_ms)) do
         :ok ->
           {:ok, pid}
@@ -85,6 +92,15 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
           {:error, reason}
       end
     end
+  end
+
+  @doc "Returns the exact installed-version/schema pair verified before startup."
+  @spec compatibility(server()) ::
+          {:ok, verified_compatibility()} | {:error, :process_unavailable}
+  def compatibility(server) do
+    GenServer.call(server, :compatibility)
+  catch
+    :exit, _reason -> {:error, :process_unavailable}
   end
 
   @doc "Waits until the current App Server process completes initialization."
@@ -188,7 +204,8 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
           "title" => "SDD Orchestrator",
           "version" => "1"
         }),
-      stopping?: false
+      stopping?: false,
+      verified_compatibility: Keyword.fetch!(opts, :verified_compatibility)
     }
 
     case start_process(state) do
@@ -198,6 +215,10 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
   end
 
   @impl true
+  def handle_call(:compatibility, _from, state) do
+    {:reply, {:ok, state.verified_compatibility}, state}
+  end
+
   def handle_call(:await_ready, _from, %{ready?: true} = state), do: {:reply, :ok, state}
 
   def handle_call(:await_ready, from, state) do
@@ -415,7 +436,13 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
 
   defp receive_frame(%{"id" => id, "error" => error} = frame, state)
        when map_size(frame) == 2 and is_integer(id) and id >= 0 and is_map(error) do
-    reason = if credential_shaped?(error), do: :credential_content, else: :app_server_error
+    reason =
+      cond do
+        credential_shaped?(error) -> :credential_content
+        error["code"] === -32_601 -> :unsupported_method
+        true -> :app_server_error
+      end
+
     resolve_response(id, {:error, reason}, state)
   end
 

@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 7, 8, 1, and 9 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, account-owned personal AI connection foundation, and account-level AI Connections workflow are delivered on `slice/11-ai-runtime-governance`, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Task 2 (live model catalog and compatible effort selection) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
+Tasks 7, 8, 1, 9, and 2 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, account-owned personal AI connection foundation, account-level AI Connections workflow, and live model catalog with compatible effort validation are delivered on `slice/11-ai-runtime-governance`, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Task 3 (live quota and token-activity normalization) is the next executable task. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
 
 ## Active Slice
 
@@ -120,13 +120,14 @@ Traceability:
   - Proof: Focused LiveView and desktop and mobile browser tests cover link, label, duplicate label, multiple connections, worker selection, missing, unavailable, incompatible, ChatGPT handoff, API-key local-entry handoff, pending, success, failure, rename, inspect, revoke, secret-field absence, raw-account absence, keyboard, focus, accessibility, and responsive behavior.
   - Delivered: Authenticated `AIConnectionsLive` at `/ai-connections` with a Projects navigation entry, current-device worker discovery, negotiated `personal-ai/1` and `connection/1` readiness checks, workspace re-authorization before link, labelled ChatGPT and API-key worker-local handoffs, pending and typed result states, account-scoped rename, immediate revocation request, safe availability, actionable worker recovery, explicit unknown catalog and quota panels, and responsive keyboard-accessible presentation. The compile-gated browser harness drives the real personal-worker RPC with exact safe adapter results; no secret field, raw worker reference, provider account identity, plan detail, credential, or raw adapter error is rendered.
 
-- [ ] Task 2 — Deliver live model catalog and compatible effort selection.
+- [x] Task 2 — Deliver live model catalog and compatible effort selection.
   - Size: Standard
   - Depends on: Task 1, Task 8, Task 9
   - Purpose: Present only models and effort choices proven by the authenticated worker-local Codex profile.
   - Owned surfaces: `ModelCatalogSnapshot`, provider-neutral catalog adapter, Codex `model/list` integration, live refresh, current and default designation, supported reasoning-effort choices, model and effort compatibility, enumeration-unsupported result, unknown-compatibility denial, provenance, expiry metadata, AI Connections projection, input and output validation, fixtures, and deterministic adapter double.
   - Owns: AC-02, AC-03, entity:ModelCatalogSnapshot
   - Proof: Focused live enumeration, official-client, no-hardcode, no-plan-inference, current, default, effort, compatible, unknown, unsupported, stale, malformed, oversized, provenance, safe-settings projection, and deterministic adapter tests pass.
+  - Delivered: `ModelCatalogSnapshot` and its migration persist one short-lived, minimized, account-and-connection-scoped projection of authenticated model, reasoning-effort, current/default, provenance, retrieval, and expiry facts. `ModelCatalogAdapter` enforces an exact provider-neutral contract; its `RPC` adapter uses only the authenticated `catalog/1` personal-worker capability, and its Codex adapter pages the verified `model/list` interface with `includeHidden: false`, rejects generated-schema drift, repeated cursors, oversized or credential-shaped content, and derives provenance from the App Server's verified Codex-version and schema-digest pair. `ModelCatalogs` invalidates prior evidence before refresh, re-authorizes the account and connection before persistence or selection, revalidates stored provenance on every projection, and fails closed for stale, unknown, unsupported, malformed, incompatible, or unproven model-effort selections. `AIConnectionsLive` refreshes and renders only safe authenticated model and effort facts with current/default, source, retrieval, and expiry labels and clears prior rendered evidence when a later refresh fails. Quota, runtime-session persistence, execution-time compatibility revalidation, and lifecycle enforcement remain owned by Tasks 3, 4, and 16.
 
 - [ ] Task 3 — Normalize live quota and token-activity facts.
   - Size: Standard

@@ -13,7 +13,7 @@ defmodule SddOrchestratorWeb.AIConnectionsLive do
 
   alias Phoenix.LiveView.JS
 
-  alias SddOrchestrator.AIRuntime.{PersonalConnections, PersonalWorkerRPC}
+  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, PersonalWorkerRPC}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.Pairing
 
@@ -32,9 +32,39 @@ defmodule SddOrchestratorWeb.AIConnectionsLive do
      |> assign(:rename_result, nil)
      |> assign(:revocation_results, %{})
      |> assign(:revoking_ids, MapSet.new())
+     |> assign(:catalogs, %{})
+     |> assign(:catalog_results, %{})
+     |> assign(:catalog_refreshing_ids, MapSet.new())
      |> refresh_workers()
      |> reset_create_form()
      |> refresh_connections()}
+  end
+
+  @impl true
+  def handle_event("refresh_catalog", %{"id" => id}, socket) do
+    account = socket.assigns.current_account
+
+    cond do
+      MapSet.member?(socket.assigns.catalog_refreshing_ids, id) ->
+        {:noreply, socket}
+
+      is_nil(PersonalConnections.get_connection(account, id)) ->
+        {:noreply, put_catalog_result(socket, id, {:error, :not_found})}
+
+      true ->
+        {:noreply,
+         socket
+         |> update(:catalog_refreshing_ids, &MapSet.put(&1, id))
+         |> update(:catalogs, &Map.put(&1, id, {:error, :unknown}))
+         |> put_catalog_result(id, :pending)
+         |> start_async({:refresh_catalog, id}, fn ->
+           ModelCatalogs.refresh(account, id)
+         end)}
+    end
+  end
+
+  def handle_event("refresh_catalog", _params, socket) do
+    {:noreply, put_catalog_result(socket, "invalid", {:error, :not_found})}
   end
 
   @impl true
@@ -206,12 +236,42 @@ defmodule SddOrchestratorWeb.AIConnectionsLive do
      |> put_revocation_result(connection_id, {:error, :worker_unavailable})}
   end
 
+  def handle_async({:refresh_catalog, connection_id}, {:ok, {:ok, catalog}}, socket) do
+    {:noreply,
+     socket
+     |> update(:catalog_refreshing_ids, &MapSet.delete(&1, connection_id))
+     |> update(:catalogs, &Map.put(&1, connection_id, {:ok, catalog}))
+     |> put_catalog_result(connection_id, :ok)}
+  end
+
+  def handle_async({:refresh_catalog, connection_id}, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> update(:catalog_refreshing_ids, &MapSet.delete(&1, connection_id))
+     |> update(:catalogs, &Map.put(&1, connection_id, {:error, :unknown}))
+     |> put_catalog_result(connection_id, {:error, reason})}
+  end
+
+  def handle_async({:refresh_catalog, connection_id}, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> update(:catalog_refreshing_ids, &MapSet.delete(&1, connection_id))
+     |> update(:catalogs, &Map.put(&1, connection_id, {:error, :unknown}))
+     |> put_catalog_result(connection_id, {:error, :worker_unavailable})}
+  end
+
   defp refresh_connections(socket) do
-    assign(
-      socket,
-      :connections,
-      PersonalConnections.list_connections(socket.assigns.current_account)
-    )
+    account = socket.assigns.current_account
+    connections = PersonalConnections.list_connections(account)
+
+    catalogs =
+      Map.new(connections, fn connection ->
+        {connection.id, ModelCatalogs.current_catalog(account, connection.id)}
+      end)
+
+    socket
+    |> assign(:connections, connections)
+    |> assign(:catalogs, catalogs)
   end
 
   defp refresh_workers(socket) do
@@ -345,6 +405,10 @@ defmodule SddOrchestratorWeb.AIConnectionsLive do
     update(socket, :revocation_results, &Map.put(&1, id, result))
   end
 
+  defp put_catalog_result(socket, id, result) do
+    update(socket, :catalog_results, &Map.put(&1, id, result))
+  end
+
   defp link_result_message({:pending, "api_key"}),
     do: "Waiting for the local worker. Enter the API key only in the worker window."
 
@@ -373,6 +437,35 @@ defmodule SddOrchestratorWeb.AIConnectionsLive do
 
   defp error_message(:not_found), do: "That connection is no longer available."
   defp error_message(_reason), do: "The connection could not be changed. Try again."
+
+  defp catalog_error_message(:stale),
+    do: "The last catalog expired. Refresh it before selecting a model."
+
+  defp catalog_error_message(:enumeration_unsupported),
+    do: "This worker could not prove a current or default model."
+
+  defp catalog_error_message(:incompatible),
+    do: "The local worker needs a compatible catalog update."
+
+  defp catalog_error_message(:revoking), do: "This connection is being revoked."
+  defp catalog_error_message(:revoked), do: "This connection is revoked."
+  defp catalog_error_message(:unavailable), do: "This connection is unavailable."
+
+  defp catalog_error_message(:timeout),
+    do: "The local worker did not return the catalog in time."
+
+  defp catalog_error_message(:worker_unavailable),
+    do: "The local worker is unavailable. Open it and try again."
+
+  defp catalog_error_message(_reason),
+    do: "The authenticated catalog could not be refreshed safely."
+
+  defp catalog_source_label("official_client"), do: "Official client"
+  defp catalog_source_label("provider_api"), do: "Provider API"
+
+  defp catalog_time(%DateTime{} = value) do
+    Calendar.strftime(value, "%Y-%m-%d %H:%M UTC")
+  end
 
   defp worker_state_label(:ready), do: "Ready"
   defp worker_state_label(:unavailable), do: "Unavailable"
@@ -609,9 +702,140 @@ defmodule SddOrchestratorWeb.AIConnectionsLive do
           <aside class="space-y-4" aria-label="Connection facts">
             <section data-catalog-panel class="rounded-xl border border-line bg-surface p-4 sm:p-5">
               <h2 class="text-sm font-bold text-ink">Model catalog</h2>
-              <p class="mt-2 text-sm leading-6 text-ink-muted">
-                Model and effort facts are currently unavailable. Live authenticated catalog details will appear here when supported.
+              <p :if={@connections == []} class="mt-2 text-sm leading-6 text-ink-muted">
+                Model and effort facts are currently unavailable. Add a connection before retrieving authenticated facts.
               </p>
+
+              <div :if={@connections != []} class="mt-3 space-y-4">
+                <article
+                  :for={connection <- @connections}
+                  id={"catalog-#{connection.id}"}
+                  data-catalog-connection
+                  class="rounded-lg border border-line bg-canvas p-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <h3 class="truncate text-sm font-semibold text-ink">{connection.label}</h3>
+                      <p class="mt-0.5 text-xs text-ink-muted">Authenticated catalog only</p>
+                    </div>
+                    <.button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      phx-click="refresh_catalog"
+                      phx-value-id={connection.id}
+                      disabled={
+                        connection.availability != "available" or
+                          connection.revocation_state != "active" or
+                          MapSet.member?(@catalog_refreshing_ids, connection.id)
+                      }
+                      data-refresh-catalog
+                    >
+                      <.lucide
+                        :if={MapSet.member?(@catalog_refreshing_ids, connection.id)}
+                        name="loader"
+                        class="size-4 motion-safe:animate-spin"
+                      />
+                      {if MapSet.member?(@catalog_refreshing_ids, connection.id),
+                        do: "Refreshing",
+                        else: "Refresh"}
+                    </.button>
+                  </div>
+
+                  <p
+                    :if={Map.get(@catalogs, connection.id) in [nil, {:error, :unknown}]}
+                    class="mt-3 text-xs leading-5 text-ink-muted"
+                    data-catalog-unknown
+                  >
+                    Model and effort compatibility is unknown until a live refresh succeeds.
+                  </p>
+
+                  <p
+                    :if={match?({:error, :stale}, Map.get(@catalogs, connection.id))}
+                    class="mt-3 text-xs leading-5 text-warn-fg"
+                    data-catalog-stale
+                  >
+                    The last catalog expired. Refresh it before selecting a model.
+                  </p>
+
+                  <div :for={{:ok, catalog} <- [Map.get(@catalogs, connection.id)]} class="mt-3">
+                    <p
+                      :if={catalog.status == "enumeration_unsupported"}
+                      class="mb-3 text-xs leading-5 text-warn-fg"
+                      data-catalog-limited
+                    >
+                      Enumeration is unsupported. Only the worker-proven current or default model is shown.
+                    </p>
+
+                    <ul class="space-y-3" data-catalog-models>
+                      <li
+                        :for={model <- catalog.models}
+                        class="rounded-md border border-line bg-surface p-3"
+                        data-catalog-model
+                        data-model={model.model}
+                      >
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class="text-sm font-semibold text-ink">{model.display_name}</span>
+                          <.badge :if={model.current} variant="ok">Current</.badge>
+                          <.badge :if={model.default} variant="neutral">Default</.badge>
+                        </div>
+                        <p class="mt-1 break-all text-xs text-ink-muted">{model.model}</p>
+
+                        <div class="mt-2 flex flex-wrap gap-1.5" data-effort-choices>
+                          <span
+                            :for={effort <- model.supported_reasoning_efforts}
+                            class="rounded-full border border-line-strong bg-canvas px-2 py-1 text-xs text-ink"
+                            data-effort={effort.reasoning_effort}
+                            title={effort.description}
+                          >
+                            {effort.reasoning_effort}
+                            <span
+                              :if={model.default_reasoning_effort == effort.reasoning_effort}
+                              class="text-ink-muted"
+                            >
+                              · default
+                            </span>
+                          </span>
+                        </div>
+                      </li>
+                    </ul>
+
+                    <p class="mt-3 text-[11px] leading-4 text-ink-muted" data-catalog-provenance>
+                      {catalog_source_label(catalog.provenance.source)} · {catalog.provenance.method} · retrieved {catalog_time(
+                        catalog.provenance.retrieved_at
+                      )} · expires {catalog_time(catalog.expires_at)}
+                    </p>
+                  </div>
+
+                  <p
+                    :if={Map.get(@catalog_results, connection.id) == :pending}
+                    class="mt-3 text-xs text-ink-muted"
+                    role="status"
+                    aria-live="polite"
+                    data-catalog-result="pending"
+                  >
+                    Requesting the live catalog from the local worker…
+                  </p>
+                  <p
+                    :if={Map.get(@catalog_results, connection.id) == :ok}
+                    class="mt-3 text-xs text-ok-fg"
+                    role="status"
+                    aria-live="polite"
+                    data-catalog-result="ok"
+                  >
+                    Live model and effort facts refreshed.
+                  </p>
+                  <p
+                    :for={{:error, reason} <- [Map.get(@catalog_results, connection.id)]}
+                    class="mt-3 text-xs text-err-fg"
+                    role="alert"
+                    aria-live="polite"
+                    data-catalog-result="error"
+                  >
+                    {catalog_error_message(reason)}
+                  </p>
+                </article>
+              </div>
             </section>
             <section data-quota-panel class="rounded-xl border border-line bg-surface p-4 sm:p-5">
               <h2 class="text-sm font-bold text-ink">Quota</h2>
