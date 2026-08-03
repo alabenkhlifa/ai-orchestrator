@@ -1,5 +1,20 @@
 # Repository Execution Profile Progress Log
 
+### 2026-08-03 - Task 11 preflight restored the missing cache-provenance handoff
+
+- Completed: Task 11 implementation preflight confirmed Tasks 9 and 10 and all external capabilities are ready, then found that the approved `RepositoryAssessment` cache provenance and Task 11 presentation had no authoritative handoff: Task 9 returned provenance only inside the worker process, while completed Task 3 persisted no provenance fields. No Task 11 application file changed.
+- Remaining: Implement Task 13's strict minimized cache-provenance handoff and authoritative storage parity, then resume Task 11's owner and participant review workflow. Tasks 4 and 12 remain downstream of Task 11.
+- Failed checks: No mechanical check failed. The delivery-coverage and sequence gate stopped Task 11 because truthful fresh-scan versus complete-cache provenance could not be recovered from the stored assessment and must not be inferred.
+- Spec updates: Added focused Task 13 before Task 11, made AC-07 explicitly include the already-approved minimized provenance, recorded the exact provenance fields and lifecycle, and corrected Task 2 to depend on its actual Task 8 assessment-domain prerequisite rather than the independent Task 1 UI. The slice remains standard with eleven tasks and an eight-task critical path; capabilities, release gates, and approved product outcome are unchanged.
+
+### 2026-08-03 - Tasks 9 and 10 reconciled in the Slice 14 worktree
+
+- Completed: Merged the Task 9 cache commit `c388a54` and Task 10 profile commit `15f7817` into `slice/14-repository-execution-profile`, preserved both task-boundary write-backs, resolved only their shared status and progress-log conflict, and confirmed the cache and profile foundations compile and pass together.
+- Reconciliation checks: Task 9's focused cache suite passes 7 tests; Task 10's focused profile suite passes 8 tests; Task 10's directly affected assessment-store regression suites pass 26 tests; and the integrated warnings-as-errors compile exits 0. All commands ran through the task proof runner with their recorded partitions and shared dependency path.
+- Final checks: `git diff --check`, `python3 .agents/scripts/validate_spec.py specs/14-repository-execution-profile`, and `python3 .agents/scripts/validate_spec.py --all specs` pass on the integrated branch.
+- Remaining: Task 11 is now executable. Tasks 4 and 12 remain downstream of Task 11, and the slice verification gate remains incomplete.
+- Spec updates: Recorded both tasks complete and advanced Task 11 as the next executable task. Requirements, design, acceptance criteria, task dependencies, capability edges, proof scope, and release gates are unchanged.
+
 ### 2026-08-03 - Task 10 complete: immutable owner-approved profile versions
 
 - Completed: Added the transient strict profile proposal, immutable `RepositoryExecutionProfile`, owner-only propose, approve and reject services, hosted schema and append-only adapter, device-authoritative adapter and strict device-store callbacks, and newest-assessment lookup for both authorities. Proposal input cannot replace the assessment-owned project, repository, root, commit, digest, or instruction precedence; commands and scopes are normalized, evidence-gated, and refuse controls, credential assignments, path escape, or embedded absolute POSIX and Windows paths.

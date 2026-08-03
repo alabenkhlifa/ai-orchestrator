@@ -46,7 +46,7 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 4. Through the authorized worker boundary, the owner selects one root inside the connected repository. The worker proves the repository identity, normalizes the root, resolves its current full commit, and returns only a short-lived minimized binding without scanning repository content.
 5. The product shows the verified repository, selected root, exact commit, limits, and processing boundary, then the owner explicitly authorizes assessment.
 6. The authorized worker scans only the approved high-signal surfaces under configured limits, reports progress, supports cancellation, and reuses an unchanged commit cache without uploading a whole-repository index.
-7. The product shows detected instructions, project commands, verification evidence, repository structure, gaps, and conflicts with source anchors.
+7. The product shows detected instructions, project commands, verification evidence, repository structure, minimized cache provenance, gaps, and conflicts with source anchors.
 8. The product proposes an execution profile. Existing repository instructions remain authoritative, and the owner reviews and explicitly approves or rejects the proposal.
 9. The product shows assistant, specification, agent-execution, and release readiness separately.
 10. The owner selects one current Orchestrator feature specification as the pilot. No repository issue or backlog item is imported unless a separate explicit import workflow is later authorized.
@@ -65,6 +65,8 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - Scanning is read-only, bounded by configured file, byte, time, and path limits, cancellable, and cached only by project, repository identity, selected root, scanner contract version, and exact commit.
 - The worker inspects only approved high-signal instruction, contribution, manifest, CI, check, and structure surfaces. It must not traverse ignored secrets, dependency stores, build outputs, binary content, or unrelated source to build a hosted index.
 - Raw repository content and the scan index remain worker-local. The authoritative project store receives only the minimized structured assessment, approved profile, source-relative evidence anchors, outcome metadata, and any explicitly disclosed necessary excerpt.
+- A completed assessment records only the worker-reported cache source (`fresh_scan` or `complete_cache`), deterministic cache-key and evidence digests, and whether the complete evidence remained cached. The product must not infer provenance from assessment contents. Canceled and failed assessments record no cache provenance.
+- A completion created before the provenance handoff or received without verifiable worker-reported provenance cannot be backfilled or used for a new profile approval. The owner must run a new assessment under the current contract.
 - The product must show the processing disclosure before the first assessment and again only when the worker, model, processor, content-transfer, or retention boundary changes.
 - Canceling or failing an assessment creates no approved profile and does not reuse incomplete results as a successful cache entry.
 - Existing `AGENTS.md`, `CLAUDE.md`, contribution rules, CI requirements, security rules, and project conventions remain authoritative repository instructions.
@@ -88,7 +90,7 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - [AC-04] Given an assessment is canceled or fails, when processing stops, then no approved profile or successful cache entry is created and repository state is unchanged.
 - [AC-05] Given the same root, scanner contract, and exact commit were completely assessed, when assessment is requested again, then the worker may reuse the complete cache; any relevant change requires a new assessment.
 - [AC-06] Given existing instructions, commands, CI rules, or repository structure are detected, when results appear, then findings include worker-verified source-relative anchors and existing repository instructions remain authoritative.
-- [AC-07] Given the scan proposes an execution profile, when the owner reviews it, then root, base revision, instruction precedence, required checks, project commands, allowed scope, gaps, and conflicts are visible before approval.
+- [AC-07] Given the scan proposes an execution profile, when the owner reviews it, then the completed-assessment and minimized cache provenance, root, base revision, instruction precedence, required checks, project commands, allowed scope, gaps, and conflicts are visible before approval.
 - [AC-08] Given a stale commit, changed root, unresolved instruction conflict, unsupported multi-root boundary, or missing reliable checks, when approval or readiness is evaluated, then the affected agent-execution or verification state remains blocked with an actionable reason.
 - [AC-09] Given a repository conflict prevents autonomous execution, when the read-only assistant is otherwise authorized, then assistant readiness remains independently available and does not claim agent-execution readiness.
 - [AC-10] Given the owner selects a pilot, when selection commits, then it references one current authoritative specification and revision and imports or changes no repository backlog item.

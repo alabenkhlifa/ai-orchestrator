@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7, 8, 1, 2, 3, and 10 are complete. Task 9 remains in its isolated task worktree pending reconciliation. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, 1, 2, 3, 9, and 10 are complete. Task 13 is the next executable task and must persist the already-approved minimized cache provenance before Task 11 can present it truthfully. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -29,8 +29,8 @@ Provides:
 
 ## Task Size Gate
 
-- All ten tasks are standard, own one primary outcome, have at most three acceptance criteria and two entities, and have focused proof expected to run in about ten minutes.
-- The longest `Depends on:` path contains eight tasks: Task 7, Task 8, Task 1, Task 2, Task 3, Task 10, Task 11, then Task 4 or Task 12.
+- All eleven tasks are standard, own one primary outcome, have at most three acceptance criteria and two entities, and have focused proof expected to run in about ten minutes.
+- The longest `Depends on:` path contains eight tasks: Task 7, Task 8, Task 2, Task 3, Task 9, Task 13, Task 11, then Task 4 or Task 12.
 - No exception is required.
 
 ## Proof Scope Gate
@@ -116,7 +116,7 @@ Traceability:
 - [x] Task 2 — Implement bounded worker-local repository assessment.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 1
+  - Depends on: Task 8
   - Purpose: Gather the smallest reliable repository evidence without executing content or uploading a whole-repository index.
   - Owned surfaces: Read-only worker command, root-containment and exact-commit guards, high-signal allowlist, ignored and prohibited paths, byte/file/time limits, progress, cancellation, structured findings, and no repository mutation enforcement.
   - Owns: AC-03, AC-04
@@ -133,7 +133,7 @@ Traceability:
   - Proof: Focused result-shape, pending-to-terminal, hosted/device adapter, source-anchor, exact-binding, stale-commit, duplicate, canceled, failed, cross-project, cross-workspace, minimized-field, and raw-content negative tests pass.
   - Delivered: `RepositoryAssessmentResult` accepts only exact command-bound completed, canceled, or allowlisted failed outcomes; caps findings, structure, anchors, counters, line counts, and the aggregate serialized value; and stores no source content, absolute path, credential, index, or raw diagnostic. Pending assessments now own the scanner version and exact limit contract. `RepositoryAssessments.finish_assessment/5` performs one strict pending-to-terminal transition through transactionally locked hosted storage or one serialized device-store compare-and-swap, rechecking current authority and repository binding, rejecting terminal inserts and repeats, and preserving legacy device pending records through strict normalization.
 
-- [ ] Task 9 — Reuse only complete exact-commit worker evidence.
+- [x] Task 9 — Reuse only complete exact-commit worker evidence.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
@@ -141,6 +141,16 @@ Traceability:
   - Owned surfaces: Worker-local cache value and adapter, complete-only insertion, cache key over project, repository identity, root, exact commit, scanner contract and limit contract, deterministic provenance, incomplete and unsuccessful exclusion, relevant-key invalidation, bounded storage, and no authoritative or hosted raw index copy.
   - Owns: AC-05
   - Proof: Focused complete hit, miss, exact-key reuse, project, repository, root, commit, scanner and limit invalidation, incomplete, failed and canceled exclusion, bounded-storage, restart-policy, and no-hosted-copy tests pass.
+  - Delivered: `WorkerRepositoryAssessmentCacheEntry` accepts only strict completed `RepositoryAssessmentResult` evidence, keys it by cache-contract version, project, repository identity, normalized root, full commit, scan protocol, scanner digest, and every limit field, and emits deterministic cache-key and evidence digests. `WorkerRepositoryAssessmentCache` provides an explicitly worker-owned memory-only LRU process bounded by entry count and encoded bytes, revalidates and rebinds a hit to the current command, refuses conflicting, incomplete, failed, canceled, malformed, or oversized values, and deliberately discards all entries on restart. It persists no repository content, raw index, hosted row, device-authoritative value, filesystem entry, or application-supervised state.
+
+- [ ] Task 13 — Persist truthful minimized cache provenance with completed results.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 9
+  - Purpose: Carry the actual worker cache outcome into the completed authoritative assessment so later owner and participant review never infers whether evidence was freshly scanned or reused.
+  - Owned surfaces: Strict cache-provenance value, `fresh_scan` and `complete_cache` source allowlist, exact command cache-key digest, exact completed-evidence digest, cache-stored flag, completed-result handoff, hosted schema addition, hosted and device-authoritative assessment persistence parity, legacy completion and profile-proposal refusal with reassessment requirement, missing, malformed, inferred, mismatched, unsuccessful, stale, duplicate, cross-project and cross-workspace refusal, and no raw cache entry, repository index, repository source, credential, absolute path or diagnostic persistence.
+  - Owns: none (cache-provenance handoff invariant)
+  - Proof: Focused provenance-shape, fresh-scan, complete-cache, cache-not-stored, exact command and evidence binding, hosted/device adapter, restart, legacy-completion reassessment, proposal refusal, missing, malformed, inferred, mismatch, canceled, failed, stale, duplicate, cross-project, cross-workspace, minimized-field, and raw-content negative tests pass.
 
 - [x] Task 10 — Propose and append immutable owner-approved profile versions.
   - Size: Standard
@@ -155,7 +165,7 @@ Traceability:
 - [ ] Task 11 — Let the owner review and approve the proposed profile.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 9, Task 10
+  - Depends on: Task 10, Task 13
   - Purpose: Show every managed-runtime field and blocker before an explicit owner approval without making repository instructions appear replaced.
   - Owned surfaces: Completed-assessment and cache-provenance presentation, profile proposal and version history LiveView, root, base revision, instruction precedence, command, required-check, allowed-scope, gap, conflict and multi-root presentation, managed-runtime-only explanation, owner approve and reject interactions, participant read-only access, stale recovery, and focused desktop/mobile browser scenario.
   - Owns: AC-07

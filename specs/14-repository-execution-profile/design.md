@@ -12,7 +12,7 @@ Before creating an assessment, show the processing disclosure and require confir
 
 Create a worker-local scanner that receives the authorized `RepositoryAssessment` binding, scan contract version, limits, and processing confirmation. It inspects an allowlisted set of high-signal files, produces source-anchored structured findings, and retains any raw index only in the worker boundary. Complete results may be cached for the exact commit and contract.
 
-Persist a minimized terminal `RepositoryAssessment` result and immutable approved `RepositoryExecutionProfile` in the project's authoritative storage mode. The profile normalizes the root, base revision, existing instruction precedence, project commands, required-check contract, allowed execution scope, and readiness blockers without replacing repository rules. Link one pilot to an existing authoritative specification identity and revision.
+Persist a minimized terminal `RepositoryAssessment` result and immutable approved `RepositoryExecutionProfile` in the project's authoritative storage mode. A completed assessment also persists the worker-reported cache source, deterministic cache-key and evidence digests, and whether the complete evidence remained cached; canceled and failed outcomes persist no cache provenance. The profile normalizes the root, base revision, existing instruction precedence, project commands, required-check contract, allowed execution scope, and readiness blockers without replacing repository rules. Link one pilot to an existing authoritative specification identity and revision.
 
 Publish the approved-pilot and independent-readiness handoffs to `specs/30-repository-execution-profile-completion/`. That focused continuation enforces privacy and lifecycle controls and publishes the final profile capability for a later `update-spec` change to Slice 07. Neither specification silently changes Slice 07's approved manifest.
 
@@ -30,7 +30,7 @@ Publish the approved-pilot and independent-readiness handoffs to `specs/30-repos
 ## Data and Access Boundaries
 
 - `RepositoryBindingPreparation`: one short-lived, single-use worker-verified value bound to the owning project, canonical repository identity, normalized repository-relative root, current full commit, scanner-contract and processing-boundary digests, opaque worker reference, nonce, and issue and expiry times. It is not authoritative project data and contains no absolute path, source content, Git history, remote URL, credential, or raw diagnostic.
-- `RepositoryAssessment`: one project-scoped read-only assessment request and terminal result bound to repository identity, selected root, exact commit, scanner contract version, limits, structured findings, evidence anchors, readiness outcomes, and cache provenance.
+- `RepositoryAssessment`: one project-scoped read-only assessment request and terminal result bound to repository identity, selected root, exact commit, scanner contract version, limits, structured findings, evidence anchors, readiness outcomes, and minimized cache provenance. Cache provenance contains only the worker-reported `fresh_scan` or `complete_cache` source, SHA-256 cache-key and evidence digests, and a cache-stored boolean, and exists only for a completed result.
 - `RepositoryExecutionProfile`: one immutable approved profile version containing selected root, base revision, instruction precedence, allowed execution scope, normalized project commands, required-check contract, blockers, approval actor, and the referenced pilot specification and revision when selected.
 
 Required boundaries:
@@ -50,6 +50,7 @@ Required boundaries:
 - Repository-binding preparation interface: consume an owner confirmation and explicit worker selection, prove the project's canonical repository identity inside the worker boundary, select and normalize one contained root, resolve the current full commit, return only the minimized short-lived value, and revalidate it unchanged on single-use consumption without scanning content or mutating the repository.
 - Worker assessment command: authorize project and worker, validate normalized root containment and exact commit, apply the allowlist and limits, support cancellation, and return structured findings with source-relative anchors.
 - Worker cache interface: store only complete assessment results under the project, repository identity, root, exact commit, scanner version, and limit contract; reject incomplete or stale reuse.
+- Cache-provenance handoff: require the worker cache result to supply its strict minimized provenance with a completed terminal result, validate the provenance against the exact command and evidence, persist it through the authoritative assessment adapter, and never infer a fresh scan or cache hit from stored findings.
 - Assessment-store interface: persist request state and minimized structured results through equivalent hosted and device-authoritative adapters.
 - Profile approval interface: compare the current commit and assessment, show every field and blocker, require owner approval, and append an immutable profile version.
 - Pilot-selection interface: resolve one current specification and revision through the shared store and add only their stable references to the approved profile.
@@ -95,6 +96,12 @@ Required boundaries:
 - Reason: Whole-repository upload is unnecessary for this workflow and would expand privacy, security, retention, and processor exposure.
 - Consequence: Remote support or model analysis receives only explicitly disclosed allowlisted content.
 
+### Minimized Cache Provenance In Authoritative Results
+
+- Choice: Persist the worker-reported cache source, deterministic cache-key and evidence digests, and cache-stored flag with completed authoritative assessment results; keep cache entries and raw indexes worker-local.
+- Reason: Owners and participants need truthful provenance during profile review, while Task 9's ephemeral worker return cannot support later or cross-participant review by itself.
+- Consequence: The digests and source flag become confidential project data governed by the project's authoritative storage mode and lifecycle; unsuccessful results contain none, and the control plane must reject missing, malformed, mismatched, or inferred provenance. Earlier completions without provenance remain immutable, cannot be backfilled or approved into a new profile, and require a new assessment.
+
 ### Confirmed Binding Before Assessment Authorization
 
 - Choice: Separate processing-boundary confirmation, short-lived worker repository binding, and final assessment authorization. The metadata-only preparation runs only after confirmation, returns one normalized root and full commit, and is revalidated when authorization consumes it.
@@ -106,6 +113,7 @@ Required boundaries:
 - High-signal files may not describe the real build. Surface uncertainty and require owner confirmation rather than claiming readiness.
 - Malicious repository instructions may attempt prompt injection. Treat all scanned text as untrusted evidence, never execute it during scanning, and preserve fixed tool and safety policy above repository content.
 - A stale cache may approve obsolete commands. Bind reuse to exact commit, root, scanner contract, and completed result.
+- Cache provenance may be detached from the evidence it describes. Validate the worker-reported cache key and evidence digests against the exact completed command and result before authoritative persistence, and never reconstruct the source flag after the fact.
 - A prepared binding may become stale before authorization. Make it short-lived and single-use, and require worker revalidation of repository identity, root, and full commit when it is consumed.
 - Profile approval may be mistaken for repository approval. Show that the profile governs managed runtime only and does not change repository policy.
 - Source anchors or excerpts may expose confidential data. Minimize, redact, access-control, and keep raw content worker-local.
