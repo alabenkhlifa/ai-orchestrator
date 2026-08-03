@@ -32,6 +32,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   }
 
   alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.RepositoryAssessments.RepositoryAssessment
 
   alias SddOrchestrator.Specifications.{
     DeviceProjectSpecification,
@@ -126,6 +127,24 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   @impl SddOrchestrator.Devices.DeviceStore
   def current_specifications(project_id) do
     GenServer.call(__MODULE__, {:current_specifications, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def put_repository_assessment(project_id, assessment_id, value) do
+    GenServer.call(
+      __MODULE__,
+      {:put_repository_assessment, project_id, assessment_id, value}
+    )
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def get_repository_assessment(project_id, assessment_id) do
+    GenServer.call(__MODULE__, {:get_repository_assessment, project_id, assessment_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def repository_assessment_count(project_id) do
+    GenServer.call(__MODULE__, {:repository_assessment_count, project_id})
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
@@ -316,6 +335,41 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   def handle_call({:current_specifications, project_id}, _from, state) do
     {:reply, current_specifications_from_table(state.table, project_id), state}
+  end
+
+  def handle_call(
+        {:put_repository_assessment, project_id, assessment_id, value},
+        _from,
+        state
+      ) do
+    reply =
+      put_repository_assessment(state.table, project_id, assessment_id, value)
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:get_repository_assessment, project_id, assessment_id}, _from, state) do
+    reply =
+      case :dets.lookup(state.table, {:repository_assessment, project_id, assessment_id}) do
+        [{{:repository_assessment, ^project_id, ^assessment_id}, value}] -> {:ok, value}
+        [] -> {:error, :not_found}
+      end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:repository_assessment_count, project_id}, _from, state) do
+    count =
+      :dets.foldl(
+        fn
+          {{:repository_assessment, ^project_id, _assessment_id}, _value}, acc -> acc + 1
+          _other, acc -> acc
+        end,
+        0,
+        state.table
+      )
+
+    {:reply, count, state}
   end
 
   def handle_call({:commit_delivery, project_id, writes}, _from, state) do
@@ -704,6 +758,37 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     do: DateTime.compare(value, boundary) in [:lt, :eq]
 
   defp on_or_before?(_value, _boundary), do: false
+
+  # ---- repository assessments ----
+
+  defp put_repository_assessment(table, project_id, assessment_id, value)
+       when is_map(value) do
+    key = {:repository_assessment, project_id, assessment_id}
+
+    with {:ok, assessment} <- RepositoryAssessment.from_value(value),
+         [
+           {{:project, ^project_id}, %{storage_mode: "device", status: "connected"} = project}
+         ] <-
+           :dets.lookup(table, {:project, project_id}),
+         ^project_id <- assessment.project_id,
+         ^assessment_id <- assessment.id,
+         true <-
+           canonical_repository_identity(project) ==
+             {assessment.repository_provider, assessment.repository_id},
+         false <- :dets.member(table, key) do
+      normalized = RepositoryAssessment.to_value(assessment)
+      :ok = :dets.insert(table, {key, normalized})
+      :ok = :dets.sync(table)
+      {:ok, normalized}
+    else
+      true -> {:error, :already_exists}
+      [] -> {:error, :not_found}
+      _invalid -> {:error, :invalid_assessment}
+    end
+  end
+
+  defp put_repository_assessment(_table, _project_id, _assessment_id, _value),
+    do: {:error, :invalid_assessment}
 
   # ---- specifications ----
 

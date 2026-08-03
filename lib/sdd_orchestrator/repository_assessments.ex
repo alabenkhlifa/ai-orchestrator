@@ -1,12 +1,13 @@
 defmodule SddOrchestrator.RepositoryAssessments do
   @moduledoc """
-  Owner-controlled preparation of exact repository bindings for assessment.
+  Owner-controlled preparation and start of exact repository assessments.
 
   Preparation is metadata-only and transient. It checks project authority,
   disclosure confirmation, worker workspace authorization, and reachability
   before invoking the configured worker adapter. Consumption is single-use and
-  revalidates the same identity, root, and commit before Task 1 may persist an
-  assessment.
+  revalidates the same identity, root, and commit before the authoritative
+  assessment store persists one pending request. Starting the request does not
+  issue a scan command.
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
@@ -16,7 +17,9 @@ defmodule SddOrchestrator.RepositoryAssessments do
   alias SddOrchestrator.Repo
 
   alias SddOrchestrator.RepositoryAssessments.{
+    AssessmentStore,
     BindingStore,
+    RepositoryAssessment,
     RepositoryBindingPreparation,
     RepositoryMetadataAdapter
   }
@@ -46,6 +49,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
           | :expired
           | :stale
           | :unknown_or_replayed
+          | :persistence_failed
 
   @spec prepare_binding(authority(), String.t(), map(), keyword()) ::
           {:ok, RepositoryBindingPreparation.t()} | {:error, error()}
@@ -109,6 +113,34 @@ defmodule SddOrchestrator.RepositoryAssessments do
       {:error, :expired} -> {:error, :expired}
       {:error, :unauthorized} -> {:error, :unauthorized}
       _changed_or_unavailable -> {:error, :stale}
+    end
+  end
+
+  @doc """
+  Consumes one unchanged trusted binding and persists exactly one pending
+  assessment in the project's authoritative destination.
+
+  Binding consumption performs owner, device-workspace, project, worker,
+  identity, root, commit, expiry, and replay checks before the adapter is
+  allowed to write. This transition deliberately has no scanner or command
+  transport dependency.
+  """
+  @spec start_assessment(authority(), String.t(), RepositoryBindingPreparation.t(), keyword()) ::
+          {:ok, RepositoryAssessment.t()} | {:error, error()}
+  def start_assessment(authority, project_id, preparation, opts \\ []) do
+    assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
+    started_at = now(opts)
+
+    with {:ok, consumed} <- consume_binding(authority, project_id, preparation, opts),
+         {:ok, assessment} <- RepositoryAssessment.pending(consumed, started_at),
+         {:ok, persisted} <- assessment_store.put(authority, assessment) do
+      {:ok, persisted}
+    else
+      {:error, reason} when reason in [:unauthorized, :expired, :stale, :unknown_or_replayed] ->
+        {:error, reason}
+
+      _invalid_or_unavailable_store ->
+        {:error, :persistence_failed}
     end
   end
 

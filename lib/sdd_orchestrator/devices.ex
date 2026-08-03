@@ -197,6 +197,21 @@ defmodule SddOrchestrator.Devices do
   @doc "Returns all current device-authoritative specifications for one project."
   def current_specifications(project_id), do: adapter().current_specifications(project_id)
 
+  @doc "Stores one minimized repository assessment in the device authority."
+  def put_repository_assessment(project_id, assessment_id, value) do
+    adapter().put_repository_assessment(project_id, assessment_id, value)
+  end
+
+  @doc "Reads one device-authoritative repository assessment value."
+  def get_repository_assessment(project_id, assessment_id) do
+    adapter().get_repository_assessment(project_id, assessment_id)
+  end
+
+  @doc "Counts one project's device-authoritative repository assessments."
+  def repository_assessment_count(project_id) do
+    adapter().repository_assessment_count(project_id)
+  end
+
   @doc "Stores one vault-sealed device-local import attempt."
   def put_import_attempt(%ImportAttempt{} = attempt), do: adapter().put_import_attempt(attempt)
 

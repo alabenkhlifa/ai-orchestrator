@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Task 7 is complete, and Task 8 is the next executable task establishing the authoritative assessment state that Task 1 presents. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7 and 8 are complete, and Task 1 is the next executable task presenting the authoritative assessment state and owner-controlled start workflow. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -91,7 +91,7 @@ Traceability:
   - Owns: entity:RepositoryBindingPreparation
   - Proof: Focused domain, authorization, adapter-contract, expiry, replay, stale, identity-mismatch, root-containment, exact-commit, cross-project, cross-workspace, no-hosted-copy, no-scan-command, and unchanged-repository tests pass without modifying the personal AI socket, channel, or Endpoint.
 
-- [ ] Task 8 — Establish authoritative repository-assessment state and storage parity.
+- [x] Task 8 — Establish authoritative repository-assessment state and storage parity.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 7
@@ -99,6 +99,7 @@ Traceability:
   - Owned surfaces: `RepositoryAssessment` value and state transition, hosted schema and migration, hosted and device-authoritative assessment-store adapters, device-store contract, owner and device authority, project and exact-binding isolation, changed-boundary confirmation record, pending-scan creation, stale and replay refusal, no durable hosted copy for device projects, and no-command or repository-mutation contract.
   - Owns: entity:RepositoryAssessment
   - Proof: Focused domain, migration, owner and device authorization, hosted/device adapter-contract, restart persistence, cross-project, cross-workspace, stale, replay, no-hosted-copy, no-command, and unchanged-repository tests pass.
+  - Delivered: `RepositoryAssessments.start_assessment/4` consumes one unchanged Task 7 binding and creates one minimized `pending_scan` value; `RepositoryAssessment` and the hosted migration constrain the exact repository, scanner and disclosure digests, worker reference, confirmation time, and sole Task 8 state; `AssessmentStore.Hosted` persists only owner-authorized hosted projects in PostgreSQL while `AssessmentStore.Device` persists only connected projects owned by the current device workspace through strict allowlisted `DeviceStore`/DETS callbacks. Device values survive adapter restart and create no hosted row; stale, expired, replayed, cross-project, cross-workspace, wrong-authority, malformed, or repository-mismatched input persists nothing, and no scanner, command transport, repository path, content, raw diagnostic, or repository mutation was introduced.
 
 - [ ] Task 1 — Establish assessment state and owner-controlled start.
   - Size: Standard

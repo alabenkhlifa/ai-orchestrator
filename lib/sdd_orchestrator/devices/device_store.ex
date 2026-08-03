@@ -100,6 +100,17 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Returns all current device-authoritative specifications for one project."
   @callback current_specifications(String.t()) :: [SpecificationStore.current()]
 
+  @doc "Stores one minimized repository assessment under its device project."
+  @callback put_repository_assessment(String.t(), String.t(), map()) ::
+              {:ok, map()} | {:error, :not_found | :already_exists | :invalid_assessment}
+
+  @doc "Reads one device-authoritative repository assessment value."
+  @callback get_repository_assessment(String.t(), String.t()) ::
+              {:ok, map()} | {:error, :not_found}
+
+  @doc "Counts one project's device-authoritative repository assessments."
+  @callback repository_assessment_count(String.t()) :: non_neg_integer()
+
   @doc "Stores one vault-sealed device-local import attempt."
   @callback put_import_attempt(ImportAttempt.t()) ::
               {:ok, ImportAttempt.t()} | {:error, term()}
