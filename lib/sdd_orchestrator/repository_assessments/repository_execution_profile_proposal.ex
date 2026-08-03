@@ -51,6 +51,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
   @spec new(RepositoryAssessment.t(), map()) :: {:ok, t()} | {:error, :invalid_proposal}
   def new(%RepositoryAssessment{state: "completed"} = assessment, attrs) when is_map(attrs) do
     with true <- RepositoryAssessment.strict?(assessment),
+         true <- RepositoryAssessment.cache_provenance_complete?(assessment),
          {:ok, input} <- normalize_input(attrs),
          {:ok, commands} <- normalize_commands(input.commands),
          {:ok, required_checks} <- normalize_commands(input.required_checks),
@@ -194,6 +195,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
         %RepositoryAssessment{state: "completed"} = assessment
       ) do
     valid?(proposal) and RepositoryAssessment.strict?(assessment) and
+      RepositoryAssessment.cache_provenance_complete?(assessment) and
       proposal.assessment_id == assessment.id and
       proposal.assessment_digest == assessment_digest(assessment) and
       proposal.project_id == assessment.project_id and

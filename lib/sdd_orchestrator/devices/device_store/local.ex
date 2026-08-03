@@ -973,6 +973,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
            :dets.lookup(table, {:repository_assessment, project_id, assessment_id}),
          {:ok, assessment} <- RepositoryAssessment.from_value(assessment_value),
          true <- assessment.state == "completed",
+         true <- RepositoryAssessment.cache_provenance_complete?(assessment),
          {:ok, latest_value} <- latest_repository_assessment(table, project_id),
          {:ok, latest} <- RepositoryAssessment.from_value(latest_value),
          true <- latest.id == assessment.id,

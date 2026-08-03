@@ -9,11 +9,10 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
   """
 
   alias SddOrchestrator.RepositoryAssessments.{
+    RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult
   }
-
-  @cache_contract_version 1
 
   @enforce_keys [
     :key,
@@ -41,18 +40,13 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
           encoded_bytes: pos_integer()
         }
 
-  @type provenance :: %{
-          required(:source) => String.t(),
-          required(:cache_key_sha256) => String.t(),
-          required(:evidence_sha256) => String.t(),
-          required(:cache_stored) => boolean()
-        }
-
   @doc "Builds a cache entry only from one strict completed terminal result."
   @spec new(term()) :: {:ok, t()} | {:error, :incomplete_result | :invalid_result}
   def new(%RepositoryAssessmentResult{status: "completed"} = result) do
-    if RepositoryAssessmentResult.valid?(result) do
-      key = key_from_result(result)
+    with true <- RepositoryAssessmentResult.valid?(result),
+         {:ok, key} <- RepositoryAssessmentCacheProvenance.cache_key(result),
+         {:ok, cache_key_sha256} <- RepositoryAssessmentCacheProvenance.cache_key_sha256(result),
+         {:ok, evidence_sha256} <- RepositoryAssessmentCacheProvenance.evidence_sha256(result) do
       evidence = evidence(result)
 
       entry = %__MODULE__{
@@ -60,14 +54,14 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
         findings: result.findings,
         structure: result.structure,
         stats: result.stats,
-        cache_key_sha256: digest({:cache_key, key}),
-        evidence_sha256: digest({:evidence, evidence}),
+        cache_key_sha256: cache_key_sha256,
+        evidence_sha256: evidence_sha256,
         encoded_bytes: encoded_size({key, evidence})
       }
 
       {:ok, entry}
     else
-      {:error, :invalid_result}
+      _invalid -> {:error, :invalid_result}
     end
   end
 
@@ -82,9 +76,10 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
   @doc "Returns the exact cache key for a valid current command."
   @spec key(term()) :: {:ok, key()} | {:error, :invalid_command}
   def key(%RepositoryAssessmentCommand{} = command) do
-    if RepositoryAssessmentCommand.valid?(command),
-      do: {:ok, key_from_command(command)},
-      else: {:error, :invalid_command}
+    case RepositoryAssessmentCacheProvenance.cache_key(command) do
+      {:ok, cache_key} -> {:ok, cache_key}
+      {:error, :invalid_cache_binding} -> {:error, :invalid_command}
+    end
   end
 
   def key(_command), do: {:error, :invalid_command}
@@ -108,84 +103,35 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
   def reuse(_entry, _command), do: {:error, :invalid_entry}
 
   @doc false
-  @spec provenance(t(), String.t(), boolean()) :: provenance()
+  @spec provenance(t(), String.t(), boolean()) ::
+          RepositoryAssessmentCacheProvenance.t() | {:error, :invalid_cache_provenance}
   def provenance(%__MODULE__{} = entry, source, stored?)
       when source in ["fresh_scan", "complete_cache"] and is_boolean(stored?) do
-    %{
-      source: source,
-      cache_key_sha256: entry.cache_key_sha256,
-      evidence_sha256: entry.evidence_sha256,
-      cache_stored: stored?
-    }
+    case RepositoryAssessmentCacheProvenance.new(%{
+           source: source,
+           cache_key_sha256: entry.cache_key_sha256,
+           evidence_sha256: entry.evidence_sha256,
+           cache_stored: stored?
+         }) do
+      {:ok, provenance} -> provenance
+      {:error, :invalid_cache_provenance} = error -> error
+    end
   end
 
-  defp key_from_result(result) do
-    key_from_fields(
-      result.project_id,
-      result.repository_provider,
-      result.repository_id,
-      result.root,
-      result.commit,
-      result.version,
-      result.scanner_contract_digest,
-      result.limits
-    )
-  end
-
-  defp key_from_command(command) do
-    key_from_fields(
-      command.project_id,
-      command.repository_provider,
-      command.repository_id,
-      command.root,
-      command.commit,
-      command.version,
-      command.scanner_contract_digest,
-      command.limits
-    )
-  end
-
-  defp key_from_fields(
-         project_id,
-         repository_provider,
-         repository_id,
-         root,
-         commit,
-         scan_protocol_version,
-         scanner_contract_digest,
-         limits
-       ) do
-    {
-      @cache_contract_version,
-      project_id,
-      repository_provider,
-      repository_id,
-      root,
-      commit,
-      scan_protocol_version,
-      scanner_contract_digest,
-      limits_tuple(limits)
-    }
-  end
-
-  defp limits_tuple(limits) do
-    {
-      limits.max_paths,
-      limits.max_files,
-      limits.max_total_bytes,
-      limits.max_file_bytes,
-      limits.timeout_ms
-    }
-  end
+  def provenance(_entry, _source, _stored?), do: {:error, :invalid_cache_provenance}
 
   defp evidence(result) do
     {result.findings, result.structure, result.stats}
   end
 
   defp valid_digests?(entry) do
-    entry.cache_key_sha256 == digest({:cache_key, entry.key}) and
+    entry.cache_key_sha256 == RepositoryAssessmentCacheProvenance.cache_key_digest(entry.key) and
       entry.evidence_sha256 ==
-        digest({:evidence, {entry.findings, entry.structure, entry.stats}}) and
+        RepositoryAssessmentCacheProvenance.evidence_sha256(
+          entry.findings,
+          entry.structure,
+          entry.stats
+        ) and
       entry.encoded_bytes ==
         encoded_size({entry.key, {entry.findings, entry.structure, entry.stats}})
   end
@@ -227,13 +173,6 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
       inspected_files: stats["inspected_files"],
       bytes_read: stats["bytes_read"]
     }
-  end
-
-  defp digest(value) do
-    value
-    |> :erlang.term_to_binary([:deterministic])
-    |> then(&:crypto.hash(:sha256, &1))
-    |> Base.encode16(case: :lower)
   end
 
   defp encoded_size(value) do

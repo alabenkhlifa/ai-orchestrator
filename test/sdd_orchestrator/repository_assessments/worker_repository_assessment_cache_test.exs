@@ -5,6 +5,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheT
 
   alias SddOrchestrator.RepositoryAssessments.{
     RepositoryAssessment,
+    RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult,
     WorkerRepositoryAssessmentCache,
@@ -75,6 +76,26 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheT
 
     assert {:ok, rebound_result} = RepositoryAssessmentResult.completed(second_command, reused)
     assert RepositoryAssessmentResult.matches_command?(rebound_result, second_command)
+
+    assert {:ok, ^cache_provenance} =
+             RepositoryAssessmentCacheProvenance.validate(
+               cache_provenance,
+               second_command,
+               rebound_result
+             )
+  end
+
+  test "cache entry provenance fails closed for an impossible complete-cache storage outcome" do
+    command = command!()
+    assert {:ok, result} = RepositoryAssessmentResult.completed(command, completed_scan(command))
+    assert {:ok, entry} = WorkerRepositoryAssessmentCacheEntry.new(result)
+
+    assert {:error, :invalid_cache_provenance} =
+             WorkerRepositoryAssessmentCacheEntry.provenance(
+               entry,
+               "complete_cache",
+               false
+             )
   end
 
   test "project, repository, root, commit, and scanner contract changes are misses" do

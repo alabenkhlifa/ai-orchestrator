@@ -136,6 +136,10 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
         stats: terminal.stats,
         failure_code: terminal.failure_code,
         terminal_at: terminal.terminal_at,
+        cache_source: terminal.cache_source,
+        cache_key_sha256: terminal.cache_key_sha256,
+        evidence_sha256: terminal.evidence_sha256,
+        cache_stored: terminal.cache_stored,
         updated_at: terminal.updated_at
       ]
     )

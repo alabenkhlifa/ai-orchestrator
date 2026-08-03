@@ -24,6 +24,7 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Device do
          {:ok, project} <- authorize(authority, assessment.project_id),
          true <- exact_binding?(project, assessment),
          true <- RepositoryAssessment.strict?(assessment) and assessment.state == "completed",
+         true <- RepositoryAssessment.cache_provenance_complete?(assessment),
          true <- RepositoryExecutionProfileProposal.matches_assessment?(proposal, assessment),
          {:ok, value} <-
            Devices.append_repository_execution_profile(

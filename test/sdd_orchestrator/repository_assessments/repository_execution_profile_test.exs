@@ -14,6 +14,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
     AssessmentStore,
     ProfileStore,
     RepositoryAssessment,
+    RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult,
     RepositoryBindingPreparation,
@@ -345,6 +346,174 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
     assert ProfileStore.count({:hosted, other_account.id}, other_project.id) == 0
   end
 
+  test "legacy hosted completions remain readable but require reassessment before profile decisions",
+       context do
+    completed = put_completed!(context, :hosted)
+    proposal = propose!(context, :hosted, completed, proposal_attrs())
+
+    {1, _rows} =
+      RepositoryAssessment
+      |> where([assessment], assessment.id == ^completed.id)
+      |> Repo.update_all(
+        set: [
+          cache_source: nil,
+          cache_key_sha256: nil,
+          evidence_sha256: nil,
+          cache_stored: nil
+        ]
+      )
+
+    legacy = Repo.get!(RepositoryAssessment, completed.id)
+    assert RepositoryAssessment.strict?(legacy)
+    refute RepositoryAssessment.cache_provenance_complete?(legacy)
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.propose_profile(
+               hosted_authority(context),
+               legacy.project_id,
+               legacy.id,
+               proposal_attrs()
+             )
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.approve_profile(
+               hosted_authority(context),
+               legacy.project_id,
+               proposal,
+               now: context.now
+             )
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.reject_profile(
+               hosted_authority(context),
+               legacy.project_id,
+               proposal,
+               now: context.now
+             )
+
+    assert {:error, :stale_assessment} =
+             SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted.append(
+               hosted_authority(context),
+               legacy,
+               proposal,
+               context.account.id,
+               context.now
+             )
+
+    assert ProfileStore.count(hosted_authority(context), legacy.project_id) == 0
+  end
+
+  test "legacy device completions survive restart but profile boundaries require reassessment",
+       context do
+    completed = put_completed!(context, :device)
+    proposal = propose!(context, :device, completed, proposal_attrs())
+
+    legacy_value =
+      completed
+      |> RepositoryAssessment.to_value()
+      |> Map.drop(~w(cache_source cache_key_sha256 evidence_sha256 cache_stored))
+
+    table = :sys.get_state(Local).table
+    key = {:repository_assessment, completed.project_id, completed.id}
+    :ok = :dets.insert(table, {key, legacy_value})
+    :ok = :dets.sync(table)
+
+    stop_supervised!(Local)
+    start_supervised!({Local, path: context.store_path})
+    {:ok, workspace} = Devices.get_workspace()
+    authority = {:device, workspace}
+
+    assert {:ok, legacy} = AssessmentStore.fetch(authority, completed.project_id, completed.id)
+    assert RepositoryAssessment.strict?(legacy)
+    refute RepositoryAssessment.cache_provenance_complete?(legacy)
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.propose_profile(
+               authority,
+               legacy.project_id,
+               legacy.id,
+               proposal_attrs()
+             )
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.approve_profile(
+               authority,
+               legacy.project_id,
+               proposal,
+               now: context.now
+             )
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.reject_profile(
+               authority,
+               legacy.project_id,
+               proposal,
+               now: context.now
+             )
+
+    assert {:error, :stale_assessment} =
+             SddOrchestrator.RepositoryAssessments.ProfileStore.Device.append(
+               authority,
+               legacy,
+               proposal,
+               workspace.id,
+               context.now
+             )
+
+    assert ProfileStore.count(authority, legacy.project_id) == 0
+  end
+
+  test "persisted digest corruption is never strict or eligible for a profile decision",
+       context do
+    completed = put_completed!(context, :hosted)
+    proposal = propose!(context, :hosted, completed, proposal_attrs())
+
+    {1, _rows} =
+      RepositoryAssessment
+      |> where([assessment], assessment.id == ^completed.id)
+      |> Repo.update_all(set: [cache_key_sha256: String.duplicate("0", 64)])
+
+    corrupted = Repo.get!(RepositoryAssessment, completed.id)
+    refute RepositoryAssessment.strict?(corrupted)
+    refute RepositoryAssessment.cache_provenance_complete?(corrupted)
+
+    assert {:error, :invalid_proposal} =
+             RepositoryExecutionProfileProposal.new(corrupted, proposal_attrs())
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.propose_profile(
+               hosted_authority(context),
+               corrupted.project_id,
+               corrupted.id,
+               proposal_attrs()
+             )
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.approve_profile(
+               hosted_authority(context),
+               corrupted.project_id,
+               proposal,
+               now: context.now
+             )
+
+    assert {:error, :stale_assessment} =
+             RepositoryAssessments.reject_profile(
+               hosted_authority(context),
+               corrupted.project_id,
+               proposal,
+               now: context.now
+             )
+
+    assert {:error, :stale_assessment} =
+             SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted.append(
+               hosted_authority(context),
+               corrupted,
+               proposal,
+               context.account.id,
+               context.now
+             )
+  end
+
   test "the migration exposes version, binding, uniqueness, and immutability constraints" do
     columns =
       Repo.query!("""
@@ -439,12 +608,15 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
           result
       end
 
+    provenance = if status == "completed", do: provenance!(command, result), else: nil
+
     assert {:ok, terminal} =
              RepositoryAssessments.finish_assessment(
                authority(context, kind),
                pending.project_id,
                command,
                result,
+               provenance,
                now: context.now
              )
 
@@ -555,4 +727,19 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
   defp authority(context, :device), do: device_authority(context)
   defp hosted_authority(context), do: {:hosted, context.account.id}
   defp device_authority(context), do: {:device, context.device_workspace}
+
+  defp provenance!(command, result) do
+    {:ok, cache_key_sha256} = RepositoryAssessmentCacheProvenance.cache_key_sha256(command)
+    {:ok, evidence_sha256} = RepositoryAssessmentCacheProvenance.evidence_sha256(result)
+
+    assert {:ok, provenance} =
+             RepositoryAssessmentCacheProvenance.new(%{
+               source: "fresh_scan",
+               cache_key_sha256: cache_key_sha256,
+               evidence_sha256: evidence_sha256,
+               cache_stored: true
+             })
+
+    provenance
+  end
 end

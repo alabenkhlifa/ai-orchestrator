@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7, 8, 1, 2, 3, 9, and 10 are complete. Task 13 is the next executable task and must persist the already-approved minimized cache provenance before Task 11 can present it truthfully. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, 1, 2, 3, 9, 10, and 13 are complete. Task 11 is the next executable task and can now present the authoritative completed-assessment provenance before owner approval. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -143,7 +143,7 @@ Traceability:
   - Proof: Focused complete hit, miss, exact-key reuse, project, repository, root, commit, scanner and limit invalidation, incomplete, failed and canceled exclusion, bounded-storage, restart-policy, and no-hosted-copy tests pass.
   - Delivered: `WorkerRepositoryAssessmentCacheEntry` accepts only strict completed `RepositoryAssessmentResult` evidence, keys it by cache-contract version, project, repository identity, normalized root, full commit, scan protocol, scanner digest, and every limit field, and emits deterministic cache-key and evidence digests. `WorkerRepositoryAssessmentCache` provides an explicitly worker-owned memory-only LRU process bounded by entry count and encoded bytes, revalidates and rebinds a hit to the current command, refuses conflicting, incomplete, failed, canceled, malformed, or oversized values, and deliberately discards all entries on restart. It persists no repository content, raw index, hosted row, device-authoritative value, filesystem entry, or application-supervised state.
 
-- [ ] Task 13 — Persist truthful minimized cache provenance with completed results.
+- [x] Task 13 — Persist truthful minimized cache provenance with completed results.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 9
@@ -151,6 +151,7 @@ Traceability:
   - Owned surfaces: Strict cache-provenance value, `fresh_scan` and `complete_cache` source allowlist, exact command cache-key digest, exact completed-evidence digest, cache-stored flag, completed-result handoff, hosted schema addition, hosted and device-authoritative assessment persistence parity, legacy completion and profile-proposal refusal with reassessment requirement, missing, malformed, inferred, mismatched, unsuccessful, stale, duplicate, cross-project and cross-workspace refusal, and no raw cache entry, repository index, repository source, credential, absolute path or diagnostic persistence.
   - Owns: none (cache-provenance handoff invariant)
   - Proof: Focused provenance-shape, fresh-scan, complete-cache, cache-not-stored, exact command and evidence binding, hosted/device adapter, restart, legacy-completion reassessment, proposal refusal, missing, malformed, inferred, mismatch, canceled, failed, stale, duplicate, cross-project, cross-workspace, minimized-field, and raw-content negative tests pass.
+  - Delivered: `RepositoryAssessmentCacheProvenance` centralizes the exact Task 9 cache-key and evidence digest contract and accepts only worker-reported `fresh_scan` or `complete_cache` outcomes with a strict cache-stored flag. Completed assessment finishing now requires that value and recomputes both bindings before one atomic hosted or device-authoritative transition persists only the four minimized fields; canceled and failed outcomes persist none. The additive hosted migration constrains all-or-none, source, digest, complete-cache and completed-only shapes without backfilling legacy rows. Stored completions revalidate provenance against their reconstructed command and result before proposal or approval, and legacy or corrupted completions remain readable but require a new assessment.
 
 - [x] Task 10 — Propose and append immutable owner-approved profile versions.
   - Size: Standard

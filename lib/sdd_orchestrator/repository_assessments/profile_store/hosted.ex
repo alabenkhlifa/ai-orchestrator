@@ -26,6 +26,7 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted do
     with true <- actor_ref == account_id,
          true <- RepositoryAssessment.strict?(assessment),
          true <- assessment.state == "completed",
+         true <- RepositoryAssessment.cache_provenance_complete?(assessment),
          true <- RepositoryExecutionProfileProposal.matches_assessment?(proposal, assessment) do
       append_transaction(account_id, assessment, proposal, actor_ref, approved_at)
     else
@@ -65,6 +66,7 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted do
                 true <- owned.id == project.id,
                 true <- active_binding?(project, assessment),
                 %RepositoryAssessment{} = current <- lock_assessment(assessment),
+                true <- RepositoryAssessment.cache_provenance_complete?(current),
                 %RepositoryAssessment{id: current_id} <- latest_assessment(assessment.project_id),
                 true <- current_id == current.id,
                 true <- RepositoryExecutionProfileProposal.matches_assessment?(proposal, current) do

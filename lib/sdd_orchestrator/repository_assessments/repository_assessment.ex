@@ -13,6 +13,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
   import Ecto.Changeset
 
   alias SddOrchestrator.RepositoryAssessments.{
+    RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult,
     RepositoryBindingPreparation
@@ -50,9 +51,23 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
     :terminal_at
   ]
 
-  @persisted_fields [:state | @binding_fields ++ @result_fields]
+  @cache_provenance_fields [
+    :cache_source,
+    :cache_key_sha256,
+    :evidence_sha256,
+    :cache_stored
+  ]
+
+  @persisted_fields [:state | @binding_fields ++ @result_fields ++ @cache_provenance_fields]
 
   @value_keys MapSet.new(Enum.map(@persisted_fields, &Atom.to_string/1))
+
+  @legacy_terminal_value_keys MapSet.new(
+                                Enum.map(
+                                  [:state | @binding_fields ++ @result_fields],
+                                  &Atom.to_string/1
+                                )
+                              )
 
   @legacy_pending_value_keys MapSet.new(
                                Enum.map(
@@ -94,6 +109,10 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
     field :stats, :map
     field :failure_code, :string
     field :terminal_at, :utc_datetime_usec
+    field :cache_source, :string
+    field :cache_key_sha256, :string
+    field :evidence_sha256, :string
+    field :cache_stored, :boolean
 
     belongs_to :project, SddOrchestrator.Projects.Project
 
@@ -138,13 +157,16 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
           t(),
           RepositoryAssessmentCommand.t(),
           RepositoryAssessmentResult.t(),
+          RepositoryAssessmentCacheProvenance.t() | nil,
           DateTime.t()
         ) ::
-          {:ok, t()} | {:error, :already_terminal | :invalid_result | :stale}
+          {:ok, t()}
+          | {:error, :already_terminal | :invalid_cache_provenance | :invalid_result | :stale}
   def terminal(
         %__MODULE__{state: @pending_state} = assessment,
         %RepositoryAssessmentCommand{} = command,
         %RepositoryAssessmentResult{} = result,
+        provenance,
         %DateTime{} = now
       ) do
     cond do
@@ -158,27 +180,43 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
         {:error, :stale}
 
       true ->
-        now = DateTime.truncate(now, :microsecond)
+        with {:ok, provenance_attrs} <- terminal_provenance(result, command, provenance) do
+          now = DateTime.truncate(now, :microsecond)
 
-        assessment
-        |> Map.take(@persisted_fields)
-        |> Map.merge(%{
-          state: result.status,
-          findings: result.findings,
-          structure: result.structure,
-          stats: result.stats,
-          failure_code: result.failure_code,
-          terminal_at: now,
-          updated_at: now
-        })
-        |> build()
+          assessment
+          |> Map.take(@persisted_fields)
+          |> Map.merge(%{
+            state: result.status,
+            findings: result.findings,
+            structure: result.structure,
+            stats: result.stats,
+            failure_code: result.failure_code,
+            terminal_at: now,
+            updated_at: now
+          })
+          |> Map.merge(provenance_attrs)
+          |> build()
+        end
     end
   end
 
-  def terminal(%__MODULE__{}, _command, _result, %DateTime{}),
+  def terminal(%__MODULE__{}, _command, _result, _provenance, %DateTime{}),
     do: {:error, :already_terminal}
 
-  def terminal(_assessment, _command, _result, _now), do: {:error, :invalid_result}
+  def terminal(_assessment, _command, _result, _provenance, _now),
+    do: {:error, :invalid_result}
+
+  @doc false
+  @spec terminal(
+          t(),
+          RepositoryAssessmentCommand.t(),
+          RepositoryAssessmentResult.t(),
+          DateTime.t()
+        ) ::
+          {:ok, t()}
+          | {:error, :already_terminal | :invalid_cache_provenance | :invalid_result | :stale}
+  def terminal(assessment, command, result, %DateTime{} = now),
+    do: terminal(assessment, command, result, nil, now)
 
   @doc "Serializes the exact device-store value without Ecto metadata."
   @spec to_value(t()) :: map()
@@ -198,6 +236,11 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
       @value_keys ->
         build_from_value(value)
 
+      @legacy_terminal_value_keys ->
+        value
+        |> Map.merge(empty_cache_provenance_value())
+        |> build_from_value()
+
       @legacy_pending_value_keys ->
         value
         |> Map.merge(%{
@@ -209,6 +252,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
           "failure_code" => nil,
           "terminal_at" => nil
         })
+        |> Map.merge(empty_cache_provenance_value())
         |> build_from_value()
 
       _unknown_shape ->
@@ -242,6 +286,17 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
   @spec terminal_state?(term()) :: boolean()
   def terminal_state?(state), do: state in @terminal_states
 
+  @doc "Reports whether a completed assessment has validated minimized provenance."
+  @spec cache_provenance_complete?(term()) :: boolean()
+  def cache_provenance_complete?(%__MODULE__{state: "completed"} = assessment) do
+    match?(
+      {:ok, %RepositoryAssessmentCacheProvenance{}},
+      validated_cache_provenance(assessment)
+    )
+  end
+
+  def cache_provenance_complete?(_assessment), do: false
+
   @doc false
   @spec same_binding?(t(), t()) :: boolean()
   def same_binding?(%__MODULE__{} = left, %__MODULE__{} = right) do
@@ -263,6 +318,9 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
     |> validate_format(:commit, ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/)
     |> validate_format(:scanner_contract_digest, ~r/\A[0-9a-f]{64}\z/)
     |> validate_format(:disclosure_digest, ~r/\A[0-9a-f]{64}\z/)
+    |> validate_inclusion(:cache_source, ["fresh_scan", "complete_cache"])
+    |> validate_format(:cache_key_sha256, ~r/\A[0-9a-f]{64}\z/)
+    |> validate_format(:evidence_sha256, ~r/\A[0-9a-f]{64}\z/)
     |> apply_action(:insert)
     |> case do
       {:ok, assessment} -> validate_payload(assessment)
@@ -278,7 +336,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
 
   defp validate_payload(%__MODULE__{state: @pending_state} = assessment) do
     with true <- valid_scan_contract?(assessment),
-         true <- Enum.all?(@result_fields, &is_nil(Map.get(assessment, &1))) do
+         true <-
+           Enum.all?(@result_fields ++ @cache_provenance_fields, &is_nil(Map.get(assessment, &1))) do
       {:ok, assessment}
     else
       _invalid -> {:error, :invalid_assessment}
@@ -291,7 +350,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
          true <-
            Enum.all?(@result_fields -- [:failure_code], &(not is_nil(Map.get(assessment, &1)))),
          {:ok, result} <- RepositoryAssessmentResult.from_value(result_value(assessment)),
-         true <- result.status == assessment.state do
+         true <- result.status == assessment.state,
+         true <- valid_terminal_provenance?(assessment) do
       {:ok, assessment}
     else
       _invalid -> {:error, :invalid_assessment}
@@ -321,6 +381,74 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
     }
   end
 
+  defp terminal_provenance(
+         %RepositoryAssessmentResult{status: "completed"} = result,
+         command,
+         provenance
+       ) do
+    with {:ok, provenance} <-
+           RepositoryAssessmentCacheProvenance.validate(provenance, command, result) do
+      {:ok,
+       %{
+         cache_source: provenance.source,
+         cache_key_sha256: provenance.cache_key_sha256,
+         evidence_sha256: provenance.evidence_sha256,
+         cache_stored: provenance.cache_stored
+       }}
+    end
+  end
+
+  defp terminal_provenance(%RepositoryAssessmentResult{}, _command, nil),
+    do: {:ok, empty_cache_provenance_attrs()}
+
+  defp terminal_provenance(%RepositoryAssessmentResult{}, _command, _provenance),
+    do: {:error, :invalid_cache_provenance}
+
+  defp valid_terminal_provenance?(%__MODULE__{state: "completed"} = assessment) do
+    case validated_cache_provenance(assessment) do
+      {:ok, nil} -> true
+      {:ok, %RepositoryAssessmentCacheProvenance{}} -> true
+      {:error, :invalid_cache_provenance} -> false
+    end
+  end
+
+  defp valid_terminal_provenance?(assessment) do
+    match?({:ok, nil}, cache_provenance(assessment))
+  end
+
+  defp validated_cache_provenance(assessment) do
+    with {:ok, provenance} <- cache_provenance(assessment),
+         %RepositoryAssessmentCacheProvenance{} <- provenance,
+         {:ok, command} <- command_from_assessment(assessment),
+         {:ok, result} <- RepositoryAssessmentResult.from_value(result_value(assessment)) do
+      RepositoryAssessmentCacheProvenance.validate(provenance, command, result)
+    else
+      nil -> {:ok, nil}
+      _invalid -> {:error, :invalid_cache_provenance}
+    end
+  end
+
+  defp cache_provenance(assessment) do
+    values = Map.take(assessment, @cache_provenance_fields)
+
+    if Enum.all?(@cache_provenance_fields, &is_nil(Map.get(values, &1))) do
+      {:ok, nil}
+    else
+      RepositoryAssessmentCacheProvenance.new(%{
+        source: values.cache_source,
+        cache_key_sha256: values.cache_key_sha256,
+        evidence_sha256: values.evidence_sha256,
+        cache_stored: values.cache_stored
+      })
+    end
+  end
+
+  defp empty_cache_provenance_attrs, do: Map.new(@cache_provenance_fields, &{&1, nil})
+
+  defp empty_cache_provenance_value do
+    Map.new(@cache_provenance_fields, &{Atom.to_string(&1), nil})
+  end
+
   defp command_binding?(assessment, command) do
     RepositoryAssessmentCommand.valid?(command) and
       assessment.id == command.assessment_id and
@@ -337,14 +465,20 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
   end
 
   defp valid_scan_contract?(assessment) do
-    with true <- assessment.scan_protocol_version == RepositoryAssessmentCommand.version(),
-         limits when is_map(limits) <- atomize_limits(assessment.scan_limits),
-         {:ok, command} <-
-           RepositoryAssessmentCommand.new(%{assessment | state: @pending_state}, limits) do
+    with {:ok, command} <- command_from_assessment(assessment) do
       command.version == assessment.scan_protocol_version and
         stringify_limits(command.limits) == assessment.scan_limits
     else
       _invalid -> false
+    end
+  end
+
+  defp command_from_assessment(assessment) do
+    with true <- assessment.scan_protocol_version == RepositoryAssessmentCommand.version(),
+         limits when is_map(limits) <- atomize_limits(assessment.scan_limits) do
+      RepositoryAssessmentCommand.new(%{assessment | state: @pending_state}, limits)
+    else
+      _invalid -> {:error, :invalid_command}
     end
   end
 

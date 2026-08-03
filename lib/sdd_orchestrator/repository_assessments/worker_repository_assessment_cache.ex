@@ -11,6 +11,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
   use GenServer
 
   alias SddOrchestrator.RepositoryAssessments.{
+    RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentResult,
     WorkerRepositoryAssessment,
     WorkerRepositoryAssessmentCacheEntry
@@ -38,7 +39,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
 
   @doc "Returns complete evidence only for the exact current cache key."
   @spec fetch(server(), term()) ::
-          {:hit, map(), WorkerRepositoryAssessmentCacheEntry.provenance()} | :miss
+          {:hit, map(), RepositoryAssessmentCacheProvenance.t()} | :miss
   def fetch(server, command) do
     case WorkerRepositoryAssessmentCacheEntry.key(command) do
       {:ok, key} -> GenServer.call(server, {:fetch, key, command})
@@ -48,7 +49,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
 
   @doc "Inserts only one strict completed result."
   @spec put(server(), term()) ::
-          {:ok, WorkerRepositoryAssessmentCacheEntry.provenance()} | {:error, cache_error()}
+          {:ok, RepositoryAssessmentCacheProvenance.t()} | {:error, cache_error()}
   def put(server, result) do
     with {:ok, entry} <- WorkerRepositoryAssessmentCacheEntry.new(result) do
       GenServer.call(server, {:put, entry})
@@ -57,7 +58,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
 
   @doc "Uses a complete hit or scans once and stores only the validated completion."
   @spec scan(server(), Path.t(), term(), keyword()) ::
-          {:ok, map(), WorkerRepositoryAssessmentCacheEntry.provenance()}
+          {:ok, map(), RepositoryAssessmentCacheProvenance.t()}
           | {:error, atom()}
   def scan(server, repository_path, command, opts \\ []) do
     case fetch(server, command) do

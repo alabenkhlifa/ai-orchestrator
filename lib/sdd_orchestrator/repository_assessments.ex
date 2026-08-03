@@ -21,6 +21,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
     BindingStore,
     ProfileStore,
     RepositoryAssessment,
+    RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult,
     RepositoryBindingPreparation,
@@ -55,6 +56,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
           | :stale
           | :unknown_or_replayed
           | :already_terminal
+          | :invalid_cache_provenance
           | :invalid_result
           | :invalid_proposal
           | :stale_assessment
@@ -167,9 +169,37 @@ defmodule SddOrchestrator.RepositoryAssessments do
           String.t(),
           RepositoryAssessmentCommand.t(),
           RepositoryAssessmentResult.t(),
+          RepositoryAssessmentCacheProvenance.t() | map() | nil | keyword()
+        ) :: {:ok, RepositoryAssessment.t()} | {:error, error()}
+  def finish_assessment(authority, project_id, command, result, provenance_or_opts \\ [])
+
+  def finish_assessment(authority, project_id, command, result, opts) when is_list(opts) do
+    do_finish_assessment(authority, project_id, command, result, nil, opts)
+  end
+
+  def finish_assessment(authority, project_id, command, result, provenance)
+      when is_map(provenance) do
+    do_finish_assessment(authority, project_id, command, result, provenance, [])
+  end
+
+  def finish_assessment(authority, project_id, command, result, provenance) do
+    do_finish_assessment(authority, project_id, command, result, provenance, [])
+  end
+
+  @spec finish_assessment(
+          authority(),
+          String.t(),
+          RepositoryAssessmentCommand.t(),
+          RepositoryAssessmentResult.t(),
+          RepositoryAssessmentCacheProvenance.t() | map() | nil,
           keyword()
         ) :: {:ok, RepositoryAssessment.t()} | {:error, error()}
-  def finish_assessment(authority, project_id, command, result, opts \\ []) do
+  def finish_assessment(authority, project_id, command, result, provenance, opts)
+      when is_list(opts) do
+    do_finish_assessment(authority, project_id, command, result, provenance, opts)
+  end
+
+  defp do_finish_assessment(authority, project_id, command, result, provenance, opts) do
     assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
     terminal_at = now(opts)
 
@@ -178,7 +208,8 @@ defmodule SddOrchestrator.RepositoryAssessments do
          %RepositoryAssessmentResult{} <- result,
          true <- command.project_id == project_id and result.project_id == project_id,
          {:ok, pending} <- assessment_store.fetch(authority, project_id, command.assessment_id),
-         {:ok, terminal} <- RepositoryAssessment.terminal(pending, command, result, terminal_at),
+         {:ok, terminal} <-
+           RepositoryAssessment.terminal(pending, command, result, provenance, terminal_at),
          {:ok, persisted} <- assessment_store.transition(authority, pending, terminal) do
       {:ok, persisted}
     else
@@ -186,7 +217,14 @@ defmodule SddOrchestrator.RepositoryAssessments do
         {:error, :invalid_result}
 
       {:error, reason}
-      when reason in [:not_found, :unauthorized, :already_terminal, :invalid_result, :stale] ->
+      when reason in [
+             :not_found,
+             :unauthorized,
+             :already_terminal,
+             :invalid_cache_provenance,
+             :invalid_result,
+             :stale
+           ] ->
         {:error, reason}
 
       _invalid_or_unavailable_store ->
@@ -275,6 +313,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
        ) do
     with true <- RepositoryAssessment.strict?(assessment),
          true <- assessment.state == "completed",
+         true <- RepositoryAssessment.cache_provenance_complete?(assessment),
          {:ok, latest} <- assessment_store.latest(authority, assessment.project_id),
          true <- latest.id == assessment.id,
          {:ok, identity} <- repository_identity(project),
