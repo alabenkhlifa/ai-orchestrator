@@ -202,6 +202,16 @@ defmodule SddOrchestrator.Devices do
     adapter().put_repository_assessment(project_id, assessment_id, value)
   end
 
+  @doc "Atomically moves one device assessment from its expected state to a terminal value."
+  def transition_repository_assessment(project_id, assessment_id, expected_state, value) do
+    adapter().transition_repository_assessment(
+      project_id,
+      assessment_id,
+      expected_state,
+      value
+    )
+  end
+
   @doc "Reads one device-authoritative repository assessment value."
   def get_repository_assessment(project_id, assessment_id) do
     adapter().get_repository_assessment(project_id, assessment_id)

@@ -104,6 +104,11 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @callback put_repository_assessment(String.t(), String.t(), map()) ::
               {:ok, map()} | {:error, :not_found | :already_exists | :invalid_assessment}
 
+  @doc "Atomically replaces one assessment only while its stored state matches."
+  @callback transition_repository_assessment(String.t(), String.t(), String.t(), map()) ::
+              {:ok, map()}
+              | {:error, :not_found | :stale | :invalid_assessment}
+
   @doc "Reads one device-authoritative repository assessment value."
   @callback get_repository_assessment(String.t(), String.t()) ::
               {:ok, map()} | {:error, :not_found}

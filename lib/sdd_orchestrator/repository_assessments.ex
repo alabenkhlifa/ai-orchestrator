@@ -20,6 +20,8 @@ defmodule SddOrchestrator.RepositoryAssessments do
     AssessmentStore,
     BindingStore,
     RepositoryAssessment,
+    RepositoryAssessmentCommand,
+    RepositoryAssessmentResult,
     RepositoryBindingPreparation,
     RepositoryMetadataAdapter
   }
@@ -49,6 +51,9 @@ defmodule SddOrchestrator.RepositoryAssessments do
           | :expired
           | :stale
           | :unknown_or_replayed
+          | :already_terminal
+          | :invalid_result
+          | :not_found
           | :persistence_failed
 
   @spec prepare_binding(authority(), String.t(), map(), keyword()) ::
@@ -137,6 +142,46 @@ defmodule SddOrchestrator.RepositoryAssessments do
       {:ok, persisted}
     else
       {:error, reason} when reason in [:unauthorized, :expired, :stale, :unknown_or_replayed] ->
+        {:error, reason}
+
+      _invalid_or_unavailable_store ->
+        {:error, :persistence_failed}
+    end
+  end
+
+  @doc """
+  Atomically records one exact command-bound terminal assessment result.
+
+  The pending row remains authoritative for project, repository, root, commit,
+  scanner, disclosure, worker, and limit selection. The result must match the
+  same strict command, and the selected authoritative adapter may move that row
+  only once from `pending_scan` to a terminal state.
+  """
+  @spec finish_assessment(
+          authority(),
+          String.t(),
+          RepositoryAssessmentCommand.t(),
+          RepositoryAssessmentResult.t(),
+          keyword()
+        ) :: {:ok, RepositoryAssessment.t()} | {:error, error()}
+  def finish_assessment(authority, project_id, command, result, opts \\ []) do
+    assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
+    terminal_at = now(opts)
+
+    with true <- is_binary(project_id),
+         %RepositoryAssessmentCommand{} <- command,
+         %RepositoryAssessmentResult{} <- result,
+         true <- command.project_id == project_id and result.project_id == project_id,
+         {:ok, pending} <- assessment_store.fetch(authority, project_id, command.assessment_id),
+         {:ok, terminal} <- RepositoryAssessment.terminal(pending, command, result, terminal_at),
+         {:ok, persisted} <- assessment_store.transition(authority, pending, terminal) do
+      {:ok, persisted}
+    else
+      false ->
+        {:error, :invalid_result}
+
+      {:error, reason}
+      when reason in [:not_found, :unauthorized, :already_terminal, :invalid_result, :stale] ->
         {:error, reason}
 
       _invalid_or_unavailable_store ->

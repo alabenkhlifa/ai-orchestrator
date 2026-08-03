@@ -138,6 +138,14 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
+  def transition_repository_assessment(project_id, assessment_id, expected_state, value) do
+    GenServer.call(
+      __MODULE__,
+      {:transition_repository_assessment, project_id, assessment_id, expected_state, value}
+    )
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
   def get_repository_assessment(project_id, assessment_id) do
     GenServer.call(__MODULE__, {:get_repository_assessment, project_id, assessment_id})
   end
@@ -344,6 +352,23 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       ) do
     reply =
       put_repository_assessment(state.table, project_id, assessment_id, value)
+
+    {:reply, reply, state}
+  end
+
+  def handle_call(
+        {:transition_repository_assessment, project_id, assessment_id, expected_state, value},
+        _from,
+        state
+      ) do
+    reply =
+      transition_repository_assessment(
+        state.table,
+        project_id,
+        assessment_id,
+        expected_state,
+        value
+      )
 
     {:reply, reply, state}
   end
@@ -766,6 +791,8 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     key = {:repository_assessment, project_id, assessment_id}
 
     with {:ok, assessment} <- RepositoryAssessment.from_value(value),
+         true <- RepositoryAssessment.strict?(assessment),
+         true <- assessment.state == RepositoryAssessment.pending_state(),
          [
            {{:project, ^project_id}, %{storage_mode: "device", status: "connected"} = project}
          ] <-
@@ -789,6 +816,52 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   defp put_repository_assessment(_table, _project_id, _assessment_id, _value),
     do: {:error, :invalid_assessment}
+
+  defp transition_repository_assessment(
+         table,
+         project_id,
+         assessment_id,
+         expected_state,
+         value
+       )
+       when is_binary(expected_state) and is_map(value) do
+    key = {:repository_assessment, project_id, assessment_id}
+
+    with true <- expected_state == RepositoryAssessment.pending_state(),
+         {:ok, terminal} <- RepositoryAssessment.from_value(value),
+         true <- RepositoryAssessment.strict?(terminal),
+         true <- RepositoryAssessment.terminal_state?(terminal.state),
+         [{{:project, ^project_id}, %{storage_mode: "device", status: "connected"} = project}] <-
+           :dets.lookup(table, {:project, project_id}),
+         [{{:repository_assessment, ^project_id, ^assessment_id}, current_value}] <-
+           :dets.lookup(table, key),
+         {:ok, current} <- RepositoryAssessment.from_value(current_value),
+         ^expected_state <- current.state,
+         ^project_id <- terminal.project_id,
+         ^assessment_id <- terminal.id,
+         true <- RepositoryAssessment.same_binding?(current, terminal),
+         true <-
+           canonical_repository_identity(project) ==
+             {terminal.repository_provider, terminal.repository_id} do
+      normalized = RepositoryAssessment.to_value(terminal)
+      :ok = :dets.insert(table, {key, normalized})
+      :ok = :dets.sync(table)
+      {:ok, normalized}
+    else
+      [] -> {:error, :not_found}
+      {:error, :invalid_assessment} -> {:error, :invalid_assessment}
+      _stale_or_mismatch -> {:error, :stale}
+    end
+  end
+
+  defp transition_repository_assessment(
+         _table,
+         _project_id,
+         _assessment_id,
+         _expected_state,
+         _value
+       ),
+       do: {:error, :invalid_assessment}
 
   # ---- specifications ----
 

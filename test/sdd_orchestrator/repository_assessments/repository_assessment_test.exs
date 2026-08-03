@@ -453,7 +453,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
     assert assessment.state == "pending_scan"
   end
 
-  test "the migration exposes the authoritative fields and pending-state constraint" do
+  test "the migrations expose authoritative binding and terminal-state constraints" do
     columns =
       Repo.query!("""
       SELECT column_name, data_type
@@ -466,6 +466,10 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
     assert columns["worker_ref"] == "uuid"
     assert columns["root"] == "text"
     assert columns["boundary_confirmed_at"] == "timestamp without time zone"
+    assert columns["scan_protocol_version"] == "integer"
+    assert columns["scan_limits"] == "jsonb"
+    assert columns["findings"] == "ARRAY"
+    assert columns["terminal_at"] == "timestamp without time zone"
 
     constraints =
       Repo.query!("""
@@ -475,7 +479,11 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
       """).rows
       |> Enum.map(&hd/1)
 
-    assert "repository_assessments_pending_state" in constraints
+    refute "repository_assessments_pending_state" in constraints
+    assert "repository_assessments_state" in constraints
+    assert "repository_assessments_scan_contract" in constraints
+    assert "repository_assessments_terminal_shape" in constraints
+    assert "repository_assessments_failure_code" in constraints
     assert "repository_assessments_commit_shape" in constraints
     assert "repository_assessments_digest_shape" in constraints
   end

@@ -12,7 +12,9 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
         {:device, %DeviceWorkspace{} = authority},
         %RepositoryAssessment{} = assessment
       ) do
-    with {:ok, project} <- authorize(authority, assessment.project_id),
+    with true <- RepositoryAssessment.strict?(assessment),
+         true <- assessment.state == RepositoryAssessment.pending_state(),
+         {:ok, project} <- authorize(authority, assessment.project_id),
          true <- exact_binding?(project, assessment),
          {:ok, value} <-
            Devices.put_repository_assessment(
@@ -29,6 +31,36 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
   end
 
   def put(_authority, _assessment), do: {:error, :unsupported_authority}
+
+  @impl true
+  def transition(
+        {:device, %DeviceWorkspace{} = authority},
+        %RepositoryAssessment{} = pending,
+        %RepositoryAssessment{} = terminal
+      ) do
+    with true <- RepositoryAssessment.strict?(pending),
+         true <- RepositoryAssessment.strict?(terminal),
+         {:ok, project} <- authorize(authority, pending.project_id),
+         true <- exact_binding?(project, pending),
+         true <- pending.state == RepositoryAssessment.pending_state(),
+         true <- RepositoryAssessment.terminal_state?(terminal.state),
+         true <- RepositoryAssessment.same_binding?(pending, terminal),
+         {:ok, value} <-
+           Devices.transition_repository_assessment(
+             pending.project_id,
+             pending.id,
+             RepositoryAssessment.pending_state(),
+             RepositoryAssessment.to_value(terminal)
+           ) do
+      RepositoryAssessment.from_value(value)
+    else
+      false -> {:error, :stale}
+      {:error, :not_found} -> {:error, :unauthorized}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def transition(_authority, _pending, _terminal), do: {:error, :unsupported_authority}
 
   @impl true
   def fetch({:device, %DeviceWorkspace{} = authority}, project_id, assessment_id) do

@@ -14,6 +14,8 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
 
   @callback put(authority(), RepositoryAssessment.t()) ::
               {:ok, RepositoryAssessment.t()} | {:error, atom() | Ecto.Changeset.t()}
+  @callback transition(authority(), RepositoryAssessment.t(), RepositoryAssessment.t()) ::
+              {:ok, RepositoryAssessment.t()} | {:error, atom() | Ecto.Changeset.t()}
   @callback fetch(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, RepositoryAssessment.t()} | {:error, :not_found}
   @callback count(authority(), Ecto.UUID.t()) :: non_neg_integer()
@@ -27,6 +29,17 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
     do: Device.put(authority, assessment)
 
   def put(_authority, _assessment), do: {:error, :unsupported_authority}
+
+  @doc "Atomically replaces one pending assessment with its exact terminal value."
+  @spec transition(authority(), RepositoryAssessment.t(), RepositoryAssessment.t()) ::
+          {:ok, RepositoryAssessment.t()} | {:error, atom() | Ecto.Changeset.t()}
+  def transition({:hosted, _account_id} = authority, pending, terminal),
+    do: Hosted.transition(authority, pending, terminal)
+
+  def transition({:device, %DeviceWorkspace{}} = authority, pending, terminal),
+    do: Device.transition(authority, pending, terminal)
+
+  def transition(_authority, _pending, _terminal), do: {:error, :unsupported_authority}
 
   @spec fetch(authority(), Ecto.UUID.t(), Ecto.UUID.t()) ::
           {:ok, RepositoryAssessment.t()} | {:error, :not_found}

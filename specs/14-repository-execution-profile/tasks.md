@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved. Tasks 7, 8, 1, and 2 are complete. Task 3 is the next executable task and now owns only terminal assessment results and source anchors; cache, profile domain, review UI, pilot, and readiness work are separate focused tasks. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved. Tasks 7, 8, 1, 2, and 3 are complete. Tasks 9 and 10 are the next executable tasks: Task 9 owns worker-local exact-commit cache reuse, while Task 10 owns profile proposal and immutable owner approval. Privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -123,7 +123,7 @@ Traceability:
   - Proof: Focused worker protocol, malicious-content, path-escape, ignored-secret, binary, limit, cancellation, mutation-negative, and structured-result tests pass.
   - Delivered: `RepositoryAssessmentCommand` serializes one strict minimized pending-assessment command bound to the project, canonical repository, selected root, exact commit, scanner and disclosure digests, opaque worker, and capped path, file, byte, per-file, and time limits without a filesystem path or credential. `WorkerRepositoryAssessment.scan/3` verifies current `HEAD`, requires the selected root to be a tree at that commit, enumerates and reads only exact-commit Git objects, restricts findings to allowlisted instruction, contribution, manifest, CI, check, and top-level structure signals, excludes secrets, generated and dependency stores, symlinks, binaries, unsafe paths, and untracked or modified working-tree content, reports content-free progress, cooperatively cancels without a result, and returns deterministic repository-relative digests and counts without raw content, absolute paths, cache, persistence, transport, or repository mutation.
 
-- [ ] Task 3 — Persist one terminal minimized assessment result.
+- [x] Task 3 — Persist one terminal minimized assessment result.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -131,6 +131,7 @@ Traceability:
   - Owned surfaces: Strict terminal-result value, pending-to-terminal transition, exact project, repository, root, commit, scanner and limit binding, complete, canceled and failed outcome rules, source-relative finding anchors, result allowlist and size limits, hosted and device-authoritative terminal update parity, stale, duplicate, cross-project and cross-workspace refusal, and no raw source, index, absolute path, credential, or raw diagnostic persistence.
   - Owns: AC-06
   - Proof: Focused result-shape, pending-to-terminal, hosted/device adapter, source-anchor, exact-binding, stale-commit, duplicate, canceled, failed, cross-project, cross-workspace, minimized-field, and raw-content negative tests pass.
+  - Delivered: `RepositoryAssessmentResult` accepts only exact command-bound completed, canceled, or allowlisted failed outcomes; caps findings, structure, anchors, counters, line counts, and the aggregate serialized value; and stores no source content, absolute path, credential, index, or raw diagnostic. Pending assessments now own the scanner version and exact limit contract. `RepositoryAssessments.finish_assessment/5` performs one strict pending-to-terminal transition through transactionally locked hosted storage or one serialized device-store compare-and-swap, rechecking current authority and repository binding, rejecting terminal inserts and repeats, and preserving legacy device pending records through strict normalization.
 
 - [ ] Task 9 — Reuse only complete exact-commit worker evidence.
   - Size: Standard
