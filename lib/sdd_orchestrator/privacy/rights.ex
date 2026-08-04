@@ -8,9 +8,10 @@ defmodule SddOrchestrator.Privacy.Rights do
     * `export_account/1` — access and portability: gathers the account's
       identities, workspace, projects, repository connections, passwordless
       attempts, session metadata, the short-lived model catalog and quota
-      snapshots still held for it, and the pinned runtime configurations and
-      ceiling ledgers still retained for project accountability, into a
-      structured, credential-free map.
+      snapshots still held for it, the pinned runtime configurations and
+      ceiling ledgers still retained for project accountability, and the
+      minimized agent runtime observations still within their operational
+      window, into a structured, credential-free map.
     * `erase_account/2` — erasure: atomically deletes the hosted workspace root
       and account, cascading to identities, credentials, sessions, the personal
       profile, projects, repository connections, hosted storage, onboarding
@@ -30,6 +31,10 @@ defmodule SddOrchestrator.Privacy.Rights do
       over one pinned runtime configuration. Correction is refused because the
       pin is the record of what actually ran; restriction and objection carry
       the same verified operator assessment a restored project does.
+    * `assess_runtime_observation_request/3` — the disposition for a rights
+      request over one runtime observation. Correction is refused because the
+      observation is the record of what was observed; restriction and objection
+      carry the same verified operator assessment a pinned session does.
     * `retire_runtime_consumers/2` — the deletion handoff for a retired consumer.
       A session names its consumer as a kind and an opaque reference, so the
       owning project or conversation deletion path is the only authority that
@@ -71,6 +76,7 @@ defmodule SddOrchestrator.Privacy.Rights do
   }
 
   alias SddOrchestrator.AIRuntime.{
+    AgentRuntimeObservation,
     AIRuntimeSession,
     ModelCatalogSnapshot,
     PersonalAIConnection,
@@ -129,6 +135,7 @@ defmodule SddOrchestrator.Privacy.Rights do
            quota_snapshots: export_quota_snapshots(account_id),
            ai_runtime_sessions: export_ai_runtime_sessions(account_id),
            runtime_cost_ledgers: export_runtime_cost_ledgers(account_id),
+           agent_runtime_observations: export_agent_runtime_observations(account_id),
            projects: export_projects(account_id),
            sessions: export_sessions(account_id),
            hosted_sessions: export_hosted_sessions(account_id)
@@ -233,12 +240,20 @@ defmodule SddOrchestrator.Privacy.Rights do
   # window and loses only the opaque reference, which is deleted with the
   # connection that named it. The counts are aggregate and identify no session,
   # so the operator can see what termination retained without reading it.
+  #
+  # The observation trail is retained on the same reasoning: it is minimized
+  # usage of work that already ran, it follows its session exactly as the ledger
+  # does, and it keeps its own shorter window. Catalog and quota snapshots are
+  # purged above rather than counted here because they describe a live
+  # connection's current entitlement, which no longer exists; an observation
+  # describes what already happened, which termination cannot undo.
   defp retained_runtime_records(opts) do
     scope = account_scope(opts)
 
     %{
       sessions: count_scoped(AIRuntimeSession, scope),
       cost_ledgers: count_scoped(RuntimeCostLedger, scope),
+      observations: count_scoped(AgentRuntimeObservation, scope),
       disposition: :retained_for_project_accountability
     }
   end
@@ -438,6 +453,40 @@ defmodule SddOrchestrator.Privacy.Rights do
   end
 
   def assess_runtime_session_request(_account_or_id, _session_id, _action),
+    do: {:error, :not_found}
+
+  @doc """
+  Returns the verified disposition for a rights request over one observation.
+
+  An observation records what was observed at a moment in time. Correction is
+  refused rather than applied, because rewriting it would destroy the very
+  record the person is entitled to see, and the entity carries no update path at
+  all: `AgentRuntimeObservation` exposes only a create changeset, its
+  `(session_id, sequence)` and `(session_id, event_key)` indexes are both unique
+  so history cannot be reordered or restated, and replaying one event key with
+  different facts is refused by the ingest boundary. Access, portability,
+  erasure, restriction, and objection remain available and are named in the
+  refusal. Restriction and objection require the same case-specific operator
+  decision a pinned session does. A foreign or unknown observation is not
+  found rather than disclosed.
+  """
+  @spec assess_runtime_observation_request(
+          Account.t() | String.t(),
+          String.t(),
+          :correction | :restriction | :objection
+        ) :: {:ok, map()} | {:error, :not_found}
+  def assess_runtime_observation_request(account_or_id, observation_id, action)
+      when action in [:correction, :restriction, :objection] do
+    case scoped_runtime_observation(account_or_id, observation_id) do
+      nil ->
+        {:error, :not_found}
+
+      %AgentRuntimeObservation{} = observation ->
+        {:ok, runtime_observation_disposition(observation, action)}
+    end
+  end
+
+  def assess_runtime_observation_request(_account_or_id, _observation_id, _action),
     do: {:error, :not_found}
 
   @doc """
@@ -845,6 +894,57 @@ defmodule SddOrchestrator.Privacy.Rights do
   defp stored_reservations(%{outstanding_reservations: reservations}),
     do: RuntimeCostLedger.decode_reservations(reservations)
 
+  # The observation holds no prompt or completion content, no provider account
+  # identity, no credential, no raw provider error, and no worker-profile
+  # reference, so the access copy reports every stored field. The label each
+  # value carries is exported beside the value itself, so an estimated cost can
+  # never be read as a provider invoice and an unobserved counter can never be
+  # read as a zero. `unknown_fields` stays in the copy for the same reason: a
+  # value the source did not report must remain explicitly absent rather than
+  # look like a missing key. The stored estimate basis and quota references are
+  # decoded, because an access copy has to be readable rather than raw jsonb.
+  defp export_agent_runtime_observations(account_id) do
+    from(observation in AgentRuntimeObservation,
+      where: observation.account_id == ^account_id,
+      order_by: [asc: observation.observed_at, asc: observation.sequence, asc: observation.id],
+      select: %{
+        id: observation.id,
+        session_id: observation.session_id,
+        sequence: observation.sequence,
+        event_key: observation.event_key,
+        observed_at: observation.observed_at,
+        elapsed_seconds: observation.elapsed_seconds,
+        elapsed_source: observation.elapsed_source,
+        input_tokens: observation.input_tokens,
+        output_tokens: observation.output_tokens,
+        total_tokens: observation.total_tokens,
+        tokens_source: observation.tokens_source,
+        estimated_cost_amount: observation.estimated_cost_amount,
+        estimated_cost_currency: observation.estimated_cost_currency,
+        estimated_cost_basis: observation.estimated_cost_basis,
+        cost_source: observation.cost_source,
+        quota_refs: observation.quota_refs,
+        quota_source: observation.quota_source,
+        status: observation.status,
+        status_source: observation.status_source,
+        pause_reason: observation.pause_reason,
+        unknown_fields: observation.unknown_fields,
+        inserted_at: observation.inserted_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&stored_observation/1)
+  end
+
+  defp stored_observation(observation) do
+    %{
+      observation
+      | estimated_cost_basis:
+          AgentRuntimeObservation.decode_basis(observation.estimated_cost_basis),
+        quota_refs: AgentRuntimeObservation.decode_buckets(observation.quota_refs)
+    }
+  end
+
   # A deleted project must leave no pinned configuration still naming it. The
   # project is the authority for its own reference in either consumer kind; a run
   # or conversation reference the project does not itself record is retired by
@@ -883,6 +983,16 @@ defmodule SddOrchestrator.Privacy.Rights do
 
     {:ok, counts} =
       Repo.transaction(fn ->
+        # The operational trail has no purpose without the run it observed. The
+        # session cascade would remove it either way, but it could not report
+        # what this pass removed, and a project or conversation deletion must be
+        # able to say what it deleted.
+        {observations, _} =
+          Repo.delete_all(
+            from observation in AgentRuntimeObservation,
+              where: observation.session_id in subquery(retired)
+          )
+
         {cost_ledgers, _} =
           Repo.delete_all(
             from ledger in RuntimeCostLedger, where: ledger.session_id in subquery(retired)
@@ -893,7 +1003,7 @@ defmodule SddOrchestrator.Privacy.Rights do
             from session in AIRuntimeSession, where: session.id in subquery(retired)
           )
 
-        %{sessions: sessions, cost_ledgers: cost_ledgers}
+        %{sessions: sessions, cost_ledgers: cost_ledgers, observations: observations}
       end)
 
     Map.merge(counts, %{action: :erasure, propagation: deletion_propagation(:hosted)})
@@ -916,7 +1026,13 @@ defmodule SddOrchestrator.Privacy.Rights do
   end
 
   defp no_runtime_records do
-    %{action: :erasure, sessions: 0, cost_ledgers: 0, propagation: deletion_propagation(:hosted)}
+    %{
+      action: :erasure,
+      sessions: 0,
+      cost_ledgers: 0,
+      observations: 0,
+      propagation: deletion_propagation(:hosted)
+    }
   end
 
   # Nothing is written, so the refusal reports the access boundary it leaves
@@ -939,6 +1055,40 @@ defmodule SddOrchestrator.Privacy.Rights do
       disposition: :verified_operator_assessment_required,
       propagation: review_propagation(:hosted)
     }
+  end
+
+  # The same refusal shape as the pinned session's, over the record of what was
+  # observed rather than the record of what was configured.
+  defp runtime_observation_disposition(observation, :correction) do
+    %{
+      action: :correction,
+      observation_id: observation.id,
+      disposition: :refused_immutable_operational_record,
+      reason: :observation_is_the_record_of_what_was_observed,
+      available_actions: [:access, :portability, :erasure, :restriction, :objection],
+      propagation: access_propagation(:hosted)
+    }
+  end
+
+  defp runtime_observation_disposition(observation, action) do
+    %{
+      action: action,
+      observation_id: observation.id,
+      disposition: :verified_operator_assessment_required,
+      propagation: review_propagation(:hosted)
+    }
+  end
+
+  defp scoped_runtime_observation(account_or_id, observation_id) do
+    with {:ok, account_id} <- runtime_account_id(account_or_id),
+         {:ok, observation_id} <- cast_runtime_id(observation_id) do
+      Repo.one(
+        from observation in AgentRuntimeObservation,
+          where: observation.account_id == ^account_id and observation.id == ^observation_id
+      )
+    else
+      _unidentified -> nil
+    end
   end
 
   defp scoped_runtime_session(account_or_id, session_id) do

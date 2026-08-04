@@ -49,6 +49,14 @@ defmodule SddOrchestrator.Privacy.Retention do
       ledger stay intact and resumable for their whole window. This sweep runs
       after the connection delete and under its own advisory lock, so a session
       detached earlier in the same pass is judged as detached in that pass.
+    * Agent runtime observations — the operational trail of one run is deleted
+      30 days after it was observed, which is shorter than the accountability
+      window its own session and ledger serve. Operating and pausing work
+      safely, and answering a near-term question about what a run was doing,
+      are near-term purposes; the account of what the run executed under and
+      what it cost is held elsewhere and outlives the trail. This sweep runs
+      last and under its own advisory lock, so it never recounts an observation
+      the session cascade already removed earlier in the same pass.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -64,6 +72,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
 
   alias SddOrchestrator.AIRuntime.{
+    AgentRuntimeObservation,
     AIRuntimeSession,
     ModelCatalogSnapshot,
     PersonalAIConnection,
@@ -96,6 +105,10 @@ defmodule SddOrchestrator.Privacy.Retention do
   # runtime accountability sweep neither waits on nor silently suppresses them.
   @runtime_advisory_lock_key 384_612_907
 
+  # Deliberately distinct from all four keys above, so the observation sweep
+  # neither waits on nor silently suppresses any of them.
+  @observation_advisory_lock_key 271_058_349
+
   # A pinned configuration answers one question for the project that ran the
   # work: which model, at which reasoning effort, under which owner opt-ins and
   # which approved ceiling, produced this run or conversation. Ninety days is the
@@ -110,6 +123,22 @@ defmodule SddOrchestrator.Privacy.Retention do
   # lifecycle in this module keeps for 30 days.
   @detached_runtime_session_window 30 * @day
 
+  # An observation is the operational trail of one agent's run: elapsed time,
+  # token counters, an estimated cost, the quota that applied, and the status at
+  # that moment. Its purpose is operating and pausing work safely and answering
+  # a near-term question about what a run was doing, which is the same purpose
+  # and lifetime the deployment fixes for its operational security log at 30
+  # days in `DeploymentPrivacyProfile.retention_requirements()`. Thirty days
+  # after the observation that purpose is spent. What accountability still needs
+  # — the configuration the run executed under and the cost reconciled against
+  # its ceiling — is held by the session and its ledger for their own longer
+  # windows, so deleting the per-observation trail earlier removes detail
+  # without removing the account of the run. It is its own constant rather than
+  # a read of the profile because this is stored data governed by this module
+  # and not a log the deployment infrastructure expires, which is the same
+  # reason the two session windows above are stated here.
+  @runtime_observation_window 30 * @day
+
   @typedoc "Rows deleted by one catalog and quota snapshot sweep."
   @type snapshot_counts :: %{
           expired_model_catalog_snapshots: non_neg_integer(),
@@ -121,6 +150,9 @@ defmodule SddOrchestrator.Privacy.Retention do
           expired_ai_runtime_sessions: non_neg_integer(),
           expired_runtime_cost_ledgers: non_neg_integer()
         }
+
+  @typedoc "Rows deleted by one runtime observation sweep."
+  @type observation_counts :: %{expired_agent_runtime_observations: non_neg_integer()}
 
   @doc "Runs every retention rule and returns the number of rows deleted per category."
   @spec prune_all(DateTime.t()) :: %{atom() => non_neg_integer()}
@@ -144,6 +176,7 @@ defmodule SddOrchestrator.Privacy.Retention do
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
+    |> Map.merge(observation_counts(now))
   end
 
   @doc false
@@ -153,6 +186,10 @@ defmodule SddOrchestrator.Privacy.Retention do
   @doc false
   @spec runtime_advisory_lock_key() :: pos_integer()
   def runtime_advisory_lock_key, do: @runtime_advisory_lock_key
+
+  @doc false
+  @spec observation_advisory_lock_key() :: pos_integer()
+  def observation_advisory_lock_key, do: @observation_advisory_lock_key
 
   @doc """
   Deletes every pinned runtime session whose accountability window has passed.
@@ -194,6 +231,32 @@ defmodule SddOrchestrator.Privacy.Retention do
         expired_model_catalog_snapshots: delete_unusable_snapshots(ModelCatalogSnapshot, now),
         expired_quota_snapshots: delete_unusable_snapshots(QuotaSnapshot, now)
       }
+    end)
+  end
+
+  @doc """
+  Deletes every agent runtime observation whose operational window has passed.
+
+  An observation is due once the window has elapsed since it was observed,
+  independently of the accountability window its session and ledger serve.
+  Returns `:locked` when another instance is sweeping; a contended sweep deletes
+  nothing rather than duplicating the work. The delete is one bounded statement
+  and therefore atomic, so an interrupted pass leaves no partial state and
+  re-running converges.
+  """
+  @spec prune_ai_runtime_observations(DateTime.t()) :: observation_counts() | :locked
+  def prune_ai_runtime_observations(now \\ DateTime.utc_now()) do
+    now = DateTime.truncate(now, :second)
+    cutoff = DateTime.add(now, -@runtime_observation_window, :second)
+
+    with_advisory_lock(@observation_advisory_lock_key, "runtime observation sweep", fn ->
+      {count, _} =
+        Repo.delete_all(
+          from observation in AgentRuntimeObservation,
+            where: observation.observed_at <= ^cutoff
+        )
+
+      %{expired_agent_runtime_observations: count}
     end)
   end
 
@@ -268,6 +331,18 @@ defmodule SddOrchestrator.Privacy.Retention do
       end)
 
     counts
+  end
+
+  # The observation sweep runs last, after the session sweep, for the same
+  # reason the snapshot sweep runs after the terminal-connection delete: a
+  # session deleted earlier in this pass has already cascaded its observations
+  # away, so this count reports only the rows the observation window itself
+  # removed and never double-counts what the cascade removed.
+  defp observation_counts(now) do
+    case prune_ai_runtime_observations(now) do
+      :locked -> %{expired_agent_runtime_observations: 0}
+      counts -> counts
+    end
   end
 
   defp with_snapshot_lock(sweep) do

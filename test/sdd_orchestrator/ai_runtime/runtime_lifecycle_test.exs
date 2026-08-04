@@ -419,6 +419,7 @@ defmodule SddOrchestrator.AIRuntime.RuntimeLifecycleTest do
       assert termination.personal_ai_runtime == %{
                sessions: 1,
                cost_ledgers: 1,
+               observations: 0,
                disposition: :retained_for_project_accountability
              }
 
