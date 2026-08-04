@@ -2,9 +2,11 @@
 
 ## Status
 
-In Progress
+Verified
 
-The product and technical contracts are approved and every task is complete. `capability:repository-profile-review` is ready for `specs/30-repository-execution-profile-completion/`. The slice verification gate is unrun and still owns the full repository, browser-matrix, security, production, and release commands. Pilot selection, independent readiness, privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+Every task is complete and the verification gate passes: `mix check` with the full suite, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, the desktop and mobile browser matrix, the production asset and release build, and both specification validators. `capability:repository-profile-review` is ready for `specs/30-repository-execution-profile-completion/`.
+
+Release readiness is separate and remains blocked. A production managed run still requires the approved Slice 07 consumer edge and manifest contract, a live configured worker smoke proof for each supported deployment profile, and the deployment-specific controller, processor, model, worker, region, transfer, notice, retention-enforcement, incident, and accountable privacy or legal evidence. Pilot selection, independent readiness, privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -195,16 +197,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria AC-01 through AC-07 pass; AC-08 through AC-13 remain owned by `specs/30-repository-execution-profile-completion/`.
-- [ ] Hosted and device-authoritative adapter contracts pass.
-- [ ] Worker scanner safety, cancellation, cache, and no-mutation suites pass.
-- [ ] Authorization and project-isolation suites pass.
-- [ ] Desktop and mobile assessment and profile-approval browser scenarios pass.
-- [ ] `mix check` and all explicit project code-quality commands pass.
-- [ ] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
-- [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
-- [ ] Specification validator and global capability graph pass.
-- [ ] `capability:repository-profile-review` is ready for `specs/30-repository-execution-profile-completion/`; Slice 07 consumption remains unimplemented until its explicit `update-spec` change is approved.
+- [x] Active-slice acceptance criteria AC-01 through AC-07 pass; AC-08 through AC-13 remain owned by `specs/30-repository-execution-profile-completion/`.
+- [x] Hosted and device-authoritative adapter contracts pass.
+- [x] Worker scanner safety, cancellation, cache, and no-mutation suites pass.
+- [x] Authorization and project-isolation suites pass.
+- [x] Desktop and mobile assessment and profile-approval browser scenarios pass.
+- [x] `mix check` and all explicit project code-quality commands pass.
+- [x] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
+- [x] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
+- [x] Specification validator and global capability graph pass.
+- [x] `capability:repository-profile-review` is ready for `specs/30-repository-execution-profile-completion/`; Slice 07 consumption remains unimplemented until its explicit `update-spec` change is approved.
 
 ## Blocked Decisions
 
