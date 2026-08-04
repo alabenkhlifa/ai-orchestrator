@@ -6,6 +6,12 @@ defmodule SddOrchestrator.AIRuntime.QuotaSnapshot do
   normalized quota, reset-credit, paid-continuation, and token-activity facts;
   worker profile references, provider account identity, plan detail, raw
   errors, and credentials never belong in this schema.
+
+  Every row carries the expiry its refresh derived from the source's retrieval
+  timestamp, and the database refuses a row that does not expire after it was
+  retrieved. The row is storage-limited by that value: retention deletes it once
+  the expiry has passed, and deletes it outright once its connection is terminal
+  or scheduled for deletion. Deleting the account or the connection cascades.
   """
 
   use Ecto.Schema

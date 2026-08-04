@@ -7,17 +7,21 @@ defmodule SddOrchestrator.Privacy.Rights do
 
     * `export_account/1` — access and portability: gathers the account's
       identities, workspace, projects, repository connections, passwordless
-      attempts, and session metadata into a structured, credential-free map.
+      attempts, session metadata, and the short-lived model catalog and quota
+      snapshots still held for it into a structured, credential-free map.
     * `erase_account/2` — erasure: atomically deletes the hosted workspace root
       and account, cascading to identities, credentials, sessions, the personal
       profile, projects, repository connections, hosted storage, onboarding
-      attempts, and personal AI connection references, while explicitly deleting
-      passwordless attempts keyed to the account's verified email. Before that
-      transaction it asks every paired worker to remove the credential it holds
-      locally, and reports the outcome as counts and typed reasons.
+      attempts, and personal AI connection references together with the model
+      catalog and quota snapshots that hang off both the account and those
+      connections, while explicitly deleting passwordless attempts keyed to the
+      account's verified email. Before that transaction it asks every paired
+      worker to remove the credential it holds locally, and reports the outcome
+      as counts and typed reasons.
     * `terminate_personal_ai_service/1` — service termination: revokes every
-      personal AI connection, requests worker-local credential removal, and
-      hands the acknowledged references to retention.
+      personal AI connection, requests worker-local credential removal, deletes
+      the catalog and quota evidence in the same scope, and hands the
+      acknowledged references to retention.
     * Portability project operations — authorized access and portability export,
       project-name and specification correction through their normal write
       boundaries, project erasure, and explicit restriction or objection
@@ -54,7 +58,13 @@ defmodule SddOrchestrator.Privacy.Rights do
     Workspace
   }
 
-  alias SddOrchestrator.AIRuntime.{PersonalAIConnection, PersonalConnectionRevocations}
+  alias SddOrchestrator.AIRuntime.{
+    ModelCatalogSnapshot,
+    PersonalAIConnection,
+    PersonalConnectionRevocations,
+    QuotaSnapshot
+  }
+
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking.WorkspaceMergeRecord
   alias SddOrchestrator.Participation
@@ -98,6 +108,8 @@ defmodule SddOrchestrator.Privacy.Rights do
            magic_link_attempts: export_account_magic_link_attempts(account_id),
            import_attempts: export_import_attempts(account_id),
            personal_ai_connections: export_personal_ai_connections(account_id),
+           model_catalog_snapshots: export_model_catalog_snapshots(account_id),
+           quota_snapshots: export_quota_snapshots(account_id),
            projects: export_projects(account_id),
            sessions: export_sessions(account_id),
            hosted_sessions: export_hosted_sessions(account_id)
@@ -156,7 +168,10 @@ defmodule SddOrchestrator.Privacy.Rights do
 
   Termination is the same two guarantees revocation always makes, applied at
   once: no connection can fund new work from this point, and every worker is
-  asked to remove the credential it holds. Scope it to one account with
+  asked to remove the credential it holds. The catalog and quota evidence in the
+  same scope is deleted rather than left for the next retention pass, because no
+  connection it describes can still be presented or selected, and the returned
+  counts are aggregate. Scope it to one account with
   `account: account_or_id`. Returns `{:error, :busy}` when another
   reconciliation sweep already holds the lock; the operation is idempotent, so
   running it again is the correct response.
@@ -169,12 +184,47 @@ defmodule SddOrchestrator.Privacy.Rights do
          %{
            action: :service_termination,
            personal_ai_connections: summary,
+           personal_ai_snapshots: purge_personal_ai_snapshots(opts),
            propagation: deletion_propagation(:hosted)
          }}
 
       :locked ->
         {:error, :busy}
     end
+  end
+
+  # Termination leaves no connection in scope able to fund work, so the catalog
+  # and quota evidence in that scope describes nothing that may still be
+  # presented or selected. Retention would delete it on its next pass; the
+  # purpose that justified holding it ends here, so termination deletes it now.
+  # The counts are aggregate and name no connection.
+  defp purge_personal_ai_snapshots(opts) do
+    scope = snapshot_scope(opts)
+
+    %{
+      model_catalogs: delete_scoped_snapshots(ModelCatalogSnapshot, scope),
+      quotas: delete_scoped_snapshots(QuotaSnapshot, scope)
+    }
+  end
+
+  defp snapshot_scope(opts) do
+    case Keyword.fetch(opts, :account) do
+      {:ok, %Account{id: account_id}} -> account_id
+      {:ok, account_id} when is_binary(account_id) -> account_id
+      :error -> :all
+    end
+  end
+
+  defp delete_scoped_snapshots(schema, :all) do
+    {count, _} = Repo.delete_all(schema)
+    count
+  end
+
+  defp delete_scoped_snapshots(schema, account_id) do
+    {count, _} =
+      Repo.delete_all(from snapshot in schema, where: snapshot.account_id == ^account_id)
+
+    count
   end
 
   @doc "Exports one restored project through its current authoritative boundary."
@@ -573,6 +623,62 @@ defmodule SddOrchestrator.Privacy.Rights do
     )
     |> Repo.all()
   end
+
+  # Catalog and quota snapshots are personal data for exactly as long as they are
+  # held, so the access copy reports them explicitly instead of omitting them as
+  # a cache. It reports what is actually stored, which includes a snapshot whose
+  # lifetime has passed but which the retention sweep has not deleted yet; the
+  # stored expiry is exported alongside it so the copy is not read as current.
+  defp export_model_catalog_snapshots(account_id) do
+    from(snapshot in ModelCatalogSnapshot,
+      where: snapshot.account_id == ^account_id,
+      order_by: [asc: snapshot.retrieved_at, asc: snapshot.id],
+      select: %{
+        id: snapshot.id,
+        connection_id: snapshot.connection_id,
+        provider: snapshot.provider,
+        status: snapshot.status,
+        source: snapshot.source,
+        source_method: snapshot.source_method,
+        source_version: snapshot.source_version,
+        retrieved_at: snapshot.retrieved_at,
+        expires_at: snapshot.expires_at,
+        models: snapshot.models,
+        inserted_at: snapshot.inserted_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&%{&1 | models: stored_items(&1.models)})
+  end
+
+  defp export_quota_snapshots(account_id) do
+    from(snapshot in QuotaSnapshot,
+      where: snapshot.account_id == ^account_id,
+      order_by: [asc: snapshot.retrieved_at, asc: snapshot.id],
+      select: %{
+        id: snapshot.id,
+        connection_id: snapshot.connection_id,
+        provider: snapshot.provider,
+        authentication_mode: snapshot.authentication_mode,
+        status: snapshot.status,
+        source: snapshot.source,
+        source_methods: snapshot.source_methods,
+        source_version: snapshot.source_version,
+        retrieved_at: snapshot.retrieved_at,
+        expires_at: snapshot.expires_at,
+        buckets: snapshot.buckets,
+        reset_credits: snapshot.reset_credits,
+        token_activity: snapshot.token_activity,
+        unknown_fields: snapshot.unknown_fields,
+        inserted_at: snapshot.inserted_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&%{&1 | buckets: stored_items(&1.buckets)})
+  end
+
+  defp stored_items(%{"items" => items}) when is_list(items), do: items
+  defp stored_items(_other), do: []
 
   defp export_magic_link_attempts(email_keys) do
     from(attempt in MagicLinkAttempt,

@@ -5,6 +5,12 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogSnapshot do
   Snapshots are account and personal-connection scoped. They contain only
   proven model compatibility and bounded provenance; worker-local profile and
   provider-account identity never belong in this schema.
+
+  Every row carries the expiry its refresh derived from the source's retrieval
+  timestamp, and the database refuses a row that does not expire after it was
+  retrieved. The row is storage-limited by that value: retention deletes it once
+  the expiry has passed, and deletes it outright once its connection is terminal
+  or scheduled for deletion. Deleting the account or the connection cascades.
   """
 
   use Ecto.Schema

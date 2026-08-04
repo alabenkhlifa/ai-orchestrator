@@ -5,6 +5,18 @@ defmodule SddOrchestrator.AIRuntime.Quotas do
   Refresh invalidates prior evidence before contacting the worker, then
   re-authorizes the account and connection under lock before persistence.
   Reads refuse expired, malformed, cross-account, or binding-mismatched facts.
+
+  Quota facts describe an account at one moment and are never a durable
+  entitlement. Their lifetime comes from
+  `config :sdd_orchestrator, :quota_snapshot_ttl_seconds`, defaults to 300
+  seconds, and may not exceed 3600; a configured or requested value outside
+  that range fails the refresh closed rather than widening the window. The
+  stored `expires_at` is derived from the source's own retrieval timestamp, so
+  a slow or backdated source shortens the window instead of extending it. A
+  snapshot is current strictly before `expires_at`; at that instant and after it
+  is refused as stale rather than read as unlimited, zero, safe, or exhausted.
+  The supervised retention sweep then deletes the row, and deletes it outright
+  once the connection is terminal.
   """
 
   import Ecto.Query

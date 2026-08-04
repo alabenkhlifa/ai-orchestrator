@@ -30,6 +30,14 @@ defmodule SddOrchestrator.Privacy.Retention do
       control-plane reference is then deleted once its configured lifetime has
       passed. A connection with no acknowledgement is never deleted on a timer,
       because deleting the reference would not remove the worker's credential.
+    * Model catalog and quota snapshots — deleted once the short configured
+      lifetime written into each row has passed, and deleted outright for a
+      connection that has reached a terminal revocation state or is already
+      scheduled for deletion. Catalog and quota facts are personal data refreshed
+      from the authenticated source, never a durable entitlement, so a withdrawn
+      model or an old account fact must not outlive its stated lifetime. This
+      sweep runs last and under its own advisory lock, so a connection that
+      becomes terminal earlier in the same pass loses its evidence in that pass.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -39,9 +47,18 @@ defmodule SddOrchestrator.Privacy.Retention do
   """
   import Ecto.Query
 
+  require Logger
+
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
-  alias SddOrchestrator.AIRuntime.{PersonalAIConnection, PersonalConnectionRevocations}
+
+  alias SddOrchestrator.AIRuntime.{
+    ModelCatalogSnapshot,
+    PersonalAIConnection,
+    PersonalConnectionRevocations,
+    QuotaSnapshot
+  }
+
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Participation.Invitations
@@ -55,6 +72,18 @@ defmodule SddOrchestrator.Privacy.Retention do
   # Terminal invitations and departed authorization-to-identity links are removed
   # within 30 days of reaching their approved lifecycle boundary.
   @participation_window 30 * @day
+
+  # A stable, arbitrary key so every instance contends for the same lock. It is
+  # deliberately distinct from the whole-pruner key and from the personal
+  # connection revocation sweep's key, so a contended revocation sweep never
+  # silently suppresses snapshot expiry and neither one waits on the other.
+  @snapshot_advisory_lock_key 529_140_776
+
+  @typedoc "Rows deleted by one catalog and quota snapshot sweep."
+  @type snapshot_counts :: %{
+          expired_model_catalog_snapshots: non_neg_integer(),
+          expired_quota_snapshots: non_neg_integer()
+        }
 
   @doc "Runs every retention rule and returns the number of rows deleted per category."
   @spec prune_all(DateTime.t()) :: %{atom() => non_neg_integer()}
@@ -76,6 +105,92 @@ defmodule SddOrchestrator.Privacy.Retention do
       acknowledged_personal_ai_connections: reconcile_personal_ai_connections(now),
       revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now)
     }
+    |> Map.merge(snapshot_counts(now))
+  end
+
+  @doc false
+  @spec snapshot_advisory_lock_key() :: pos_integer()
+  def snapshot_advisory_lock_key, do: @snapshot_advisory_lock_key
+
+  @doc """
+  Deletes every catalog and quota snapshot that may no longer be presented.
+
+  A snapshot is unusable once the short lifetime stored on the row has passed,
+  or once its connection is terminal or already scheduled for deletion. Returns
+  the deleted count per table, or `:locked` when another instance is sweeping;
+  a contended sweep deletes nothing rather than duplicating the work. Both
+  deletes are single bounded statements, so an interrupted pass leaves no
+  partial state and re-running converges without touching current evidence.
+  """
+  @spec prune_ai_runtime_snapshots(DateTime.t()) :: snapshot_counts() | :locked
+  def prune_ai_runtime_snapshots(now \\ DateTime.utc_now()) do
+    now = DateTime.truncate(now, :second)
+
+    with_snapshot_lock(fn ->
+      %{
+        expired_model_catalog_snapshots: delete_unusable_snapshots(ModelCatalogSnapshot, now),
+        expired_quota_snapshots: delete_unusable_snapshots(QuotaSnapshot, now)
+      }
+    end)
+  end
+
+  # The sweep runs after reconciliation and after the terminal-reference delete,
+  # so a connection that becomes terminal in this pass loses its evidence now and
+  # the reported counts never double-count a row the connection cascade removed.
+  defp snapshot_counts(now) do
+    case prune_ai_runtime_snapshots(now) do
+      :locked -> %{expired_model_catalog_snapshots: 0, expired_quota_snapshots: 0}
+      counts -> counts
+    end
+  end
+
+  defp delete_unusable_snapshots(schema, now) do
+    {count, _} =
+      Repo.delete_all(
+        from snapshot in schema,
+          where:
+            snapshot.expires_at <= ^now or
+              snapshot.connection_id in subquery(terminal_connection_ids())
+      )
+
+    count
+  end
+
+  # Terminal means the worker confirmed the credential removal, or the reference
+  # is already counting down to deletion. Either way the connection can fund no
+  # further work, so its catalog and quota evidence has no remaining purpose.
+  defp terminal_connection_ids do
+    from connection in PersonalAIConnection,
+      where:
+        connection.revocation_state == "acknowledged" or
+          not is_nil(connection.deletion_scheduled_at),
+      select: connection.id
+  end
+
+  # The lock is session-scoped, so it must be taken and released on the same
+  # checked-out connection.
+  defp with_snapshot_lock(sweep) do
+    Repo.checkout(fn ->
+      case Repo.query("SELECT pg_try_advisory_lock($1)", [@snapshot_advisory_lock_key]) do
+        {:ok, %{rows: [[true]]}} ->
+          try do
+            sweep.()
+          after
+            Repo.query("SELECT pg_advisory_unlock($1)", [@snapshot_advisory_lock_key])
+          end
+
+        {:ok, _not_acquired} ->
+          :locked
+
+        {:error, reason} ->
+          Logger.warning(
+            "catalog and quota snapshot sweep could not acquire advisory lock: " <>
+              inspect(reason)
+          )
+
+          :locked
+      end
+    end)
   end
 
   # Reconciliation runs before the delete for the same reason invitation expiry

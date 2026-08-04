@@ -5,6 +5,18 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogs do
   A refresh re-authorizes the connection, validates one exact adapter result,
   and stores only minimized compatibility and provenance facts. Reads and
   selection checks refuse expired snapshots and unknown compatibility.
+
+  A snapshot is never a durable entitlement. Its lifetime comes from
+  `config :sdd_orchestrator, :model_catalog_ttl_seconds`, defaults to 300
+  seconds, and may not exceed 3600; a configured or requested value outside
+  that range fails the refresh closed rather than widening the window.
+  The stored `expires_at` is derived from the source's own retrieval timestamp,
+  so a slow or backdated source shortens the window instead of extending it. A
+  snapshot is current strictly before `expires_at`; at that instant and after it
+  is neither projected nor selectable, and cannot pin a runtime session. The
+  supervised retention sweep then deletes the row, and deletes it outright once
+  the connection is terminal, so a withdrawn model cannot be presented as
+  available from stored evidence.
   """
 
   import Ecto.Query
