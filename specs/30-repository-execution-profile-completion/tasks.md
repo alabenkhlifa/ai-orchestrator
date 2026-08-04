@@ -51,7 +51,7 @@ Included:
 
 Excluded:
 
-- Repository scanning, cache-key behavior, assessment-result creation, proposal-envelope generation or persistence, and profile proposal, review or approval behavior owned by Slice 14.
+- Repository scanning, cache-key behavior, assessment-result creation, proposal-payload derivation or caching, current-assessment envelope generation or persistence, and profile proposal, review or approval behavior owned by Slice 14.
 - Slice 07 manifest changes, managed-run execution, repository mutation, kit installation, backlog import, deployment, merge, or release execution.
 
 Deferred after this slice:
@@ -96,8 +96,8 @@ Traceability:
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 12
-  - Purpose: Keep every assessment, proposal-envelope, cache, profile, pilot, readiness, and disclosure value inside its approved purpose, authority, access, and lifecycle boundary.
-  - Owned surfaces: Processing inventory and field-purpose map, hosted and device-authoritative parity, project and role access, raw-source and index locality, minimized result and proposal-envelope allowlists, worker-cache lifecycle, changed-boundary records, retention, project and account deletion, rights behavior, backup expiry, structured log redaction, processor and transfer controls, analytics absence, secondary-use prohibition, and no durable hosted copy for device-authoritative data.
+  - Purpose: Keep every assessment, worker-local proposal-payload, proposal-envelope, cache, profile, pilot, readiness, and disclosure value inside its approved purpose, authority, access, and lifecycle boundary.
+  - Owned surfaces: Processing inventory and field-purpose map, hosted and device-authoritative parity, project and role access, raw-source, index and proposal-payload locality, minimized result and current-assessment proposal-envelope allowlists, worker-cache lifecycle, changed-boundary records, retention, project and account deletion, rights behavior, backup expiry, structured log redaction, processor and transfer controls, analytics absence, secondary-use prohibition, and no durable hosted copy for device-authoritative data.
   - Owns: AC-01
   - Proof: Focused inventory, field-purpose, hosted/device parity, project isolation, role access, raw-content and index negative, cache lifecycle, deletion, retention, rights, backup, log-redaction, processor, transfer, no-hosted-copy, no-analytics, and no-secondary-use tests pass.
 

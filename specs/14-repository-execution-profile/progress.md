@@ -1,5 +1,13 @@
 # Repository Execution Profile Progress Log
 
+### 2026-08-04 - Cache-stable proposal payload separated from current assessment envelope
+
+- Completed: Task 14 implementation preflight found that Task 9 intentionally reuses evidence across assessment ids, disclosure digests, and worker references, so one byte-identical cached envelope could not also be bound to each current assessment command. Approved one cache-stable six-field `RepositoryExecutionProfileProposalPayload` plus digest and one separately rebuilt current-assessment envelope. Confirmed Task 9 and both required external capabilities are complete, the Elixir environment is available, and no application file changed.
+- Scope classification: Focused standard Slice 14 with eleven tasks and an eight-task critical path. Task 14 still owns one worker-local derivation and cache-parity invariant with one payload entity and focused proof; Task 15 remains the sole authoritative envelope-persistence task. No size or proof-scope exception is required.
+- Remaining: In a later implementation request, implement Task 14's payload derivation, cache parity, current-command envelope binding, focused negative coverage, proof receipts, and task-boundary commit; then continue with Tasks 15 and 11.
+- Failed checks: No mechanical check failed. The delivery-coverage and sequence gate stopped application work before coding because the prior cache-stable and current-assessment envelope requirements were mutually exclusive.
+- Spec updates: Replaced byte-identical envelope reuse with byte-identical six-field payload and payload-digest reuse, added the worker-local payload entity and Task 14 ownership, required every delivery envelope to rebind the current assessment command, and added prior-binding refusal without changing the accepted product outcome, capability graph, or release gates.
+
 ### 2026-08-04 - Worker-generated minimized proposal envelope approved
 
 - Completed: Approved the authorized worker as the sole source of the six minimized proposal fields while raw evidence remains worker-local. The envelope is deterministic, exact-assessment and Task 9 digest bound, persisted in the project's authoritative storage mode, reusable only with the same complete cache evidence, participant-readable, and reconstructs Task 10's transient proposal without browser or control-plane replacement fields. Moved the still-unimplemented pilot-selection and independent-readiness tasks into `specs/30-repository-execution-profile-completion/` so the active Slice 14 plan remains focused and within its size gate.

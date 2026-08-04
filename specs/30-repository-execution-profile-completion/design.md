@@ -2,7 +2,7 @@
 
 ## Context
 
-`specs/14-repository-execution-profile/` owns the repository-binding, assessment, cache, minimized proposal-envelope, immutable profile, and owner-review workflow. Its proposal-envelope refinement moved the still-unimplemented pilot and independent-readiness outcomes here so Slice 14 can publish one focused profile-review capability without exceeding its critical-path limit.
+`specs/14-repository-execution-profile/` owns the repository-binding, assessment, cache-stable minimized proposal payload, current-assessment proposal envelope, immutable profile, and owner-review workflow. Its proposal-envelope refinement moved the still-unimplemented pilot and independent-readiness outcomes here so Slice 14 can publish one focused profile-review capability without exceeding its critical-path limit.
 
 The project already provides hosted and device-authoritative storage governance and project-specification governance. This continuation consumes the single Slice 14 profile-review capability without copying its assessment, envelope, profile schema, or authority.
 
@@ -27,13 +27,13 @@ Then build one immutable allowlisted managed-runtime value from the exact approv
 
 ## Data and Access Boundaries
 
-No new top-level profile authority is introduced. This continuation consumes the existing `RepositoryAssessment`, `RepositoryExecutionProfileProposalEnvelope`, `RepositoryExecutionProfile`, and worker-local cache provenance; it owns the stable pilot reference and readiness value needed for final publication without redefining upstream schemas or profile lifecycle transitions.
+No new top-level profile authority is introduced. This continuation consumes the existing `RepositoryAssessment`, `RepositoryExecutionProfileProposalEnvelope`, `RepositoryExecutionProfile`, and worker-local cache provenance; it governs but does not persist the worker-local `RepositoryExecutionProfileProposalPayload`, and owns the stable pilot reference and readiness value needed for final publication without redefining upstream schemas or profile lifecycle transitions.
 
 Required boundaries:
 
 - Hosted records remain in PostgreSQL under current project authorization; device-authoritative records remain in the owning device store with no durable hosted copy.
 - Raw repository content, scan indexes, absolute paths, credentials, raw worker diagnostics, and repository archives remain outside authoritative project storage and the managed-runtime value.
-- The worker cache stores only complete bounded structured results under the exact key and follows the approved worker-local lifecycle; incomplete, failed, canceled, or stale values are never reusable.
+- The worker cache stores only complete bounded structured results and their cache-stable minimized proposal payload under the exact key and follows the approved worker-local lifecycle; assessment-bound envelopes, incomplete, failed, canceled, or stale values are never reusable.
 - Rights, project deletion, retention, backup expiry, access revocation, and log redaction cover assessment, proposal-envelope, profile, pilot, readiness, cache metadata, and derived compatibility values.
 - The managed-runtime value references one authoritative specification identity and revision and never copies `requirements.md`, `design.md`, or `tasks.md` content.
 - Release evidence remains inside the deployment-governance boundary and is represented here only by readiness state.
