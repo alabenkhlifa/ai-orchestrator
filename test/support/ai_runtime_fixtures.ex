@@ -9,6 +9,7 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
     ModelCatalogs,
     PersonalConnections,
     Quotas,
+    RuntimeCosts,
     RuntimeSessions
   }
 
@@ -360,6 +361,94 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
 
     session
   end
+
+  @doc "Builds one exact Task 11 versioned official-price registration."
+  def official_price_snapshot(attrs \\ %{}) do
+    %{
+      version: Map.get(attrs, :version, "2026-08-01"),
+      source: Map.get(attrs, :source, "official_price_list"),
+      published_at: Map.get(attrs, :published_at, ~U[2026-08-01 00:00:00Z]),
+      expires_at: Map.get(attrs, :expires_at, ~U[2026-09-01 00:00:00Z]),
+      currency: Map.get(attrs, :currency, "USD"),
+      models:
+        Map.get(attrs, :models, %{
+          Map.get(attrs, :model, "codex-test-model") => %{
+            input: Map.get(attrs, :input, "2.00"),
+            output: Map.get(attrs, :output, "10.00")
+          }
+        })
+    }
+  end
+
+  @doc "Builds one versioned official-price registry keyed by version."
+  def official_price_snapshots(attrs \\ %{}) do
+    snapshot = official_price_snapshot(attrs)
+    %{snapshot.version => snapshot}
+  end
+
+  @doc "Creates one pinned API-key session with a current catalog and quota."
+  def runtime_cost_context_fixture(attrs \\ %{}) do
+    now = Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z])
+
+    context =
+      attrs
+      |> Map.put(:now, now)
+      |> Map.put_new(:authentication_mode, "api_key")
+      |> Map.put_new(:label, "API Key Codex")
+      |> Map.put_new_lazy(:worker_profile_ref, fn ->
+        "profile-api-key-#{System.unique_integer([:positive])}"
+      end)
+      |> runtime_session_context_fixture()
+
+    session =
+      ai_runtime_session_fixture(context, %{
+        now: now,
+        consumer_ref:
+          Map.get_lazy(attrs, :consumer_ref, fn ->
+            "run-cost-#{System.unique_integer([:positive])}"
+          end),
+        spending_ceiling: Map.get(attrs, :spending_ceiling, default_cost_ceiling(attrs))
+      })
+
+    Map.put(context, :session, session)
+  end
+
+  @doc "Builds one exact Task 11 bounded request configuration."
+  def runtime_cost_open_request(attrs \\ %{}) do
+    %{
+      max_input_tokens: Map.get(attrs, :max_input_tokens, 100_000),
+      max_output_tokens: Map.get(attrs, :max_output_tokens, 10_000)
+    }
+  end
+
+  @doc "Builds one exact Task 11 bounded reservation request."
+  def runtime_cost_reserve_request(attrs \\ %{}) do
+    attrs
+    |> runtime_cost_open_request()
+    |> Map.put(
+      :idempotency_key,
+      Map.get_lazy(attrs, :idempotency_key, fn ->
+        "turn-#{System.unique_integer([:positive])}"
+      end)
+    )
+  end
+
+  @doc "Opens one strict ceiling row through the public cost boundary."
+  def runtime_cost_ledger_fixture(context, attrs \\ %{}) do
+    {:ok, ledger} =
+      RuntimeCosts.open_ledger(
+        context.account,
+        context.session.session_id,
+        runtime_cost_open_request(attrs),
+        now: Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z]),
+        snapshots: Map.get_lazy(attrs, :snapshots, fn -> official_price_snapshots() end)
+      )
+
+    ledger
+  end
+
+  defp default_cost_ceiling(attrs),
+    do: %{amount: Decimal.new(Map.get(attrs, :ceiling, "1.00")), currency: "USD"}
 
   defp default_spending_ceiling(%{connection: %{authentication_mode: "api_key"}}),
     do: %{amount: Decimal.new("25.00"), currency: "USD"}
