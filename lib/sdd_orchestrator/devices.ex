@@ -197,6 +197,75 @@ defmodule SddOrchestrator.Devices do
   @doc "Returns all current device-authoritative specifications for one project."
   def current_specifications(project_id), do: adapter().current_specifications(project_id)
 
+  @doc "Stores one minimized repository assessment in the device authority."
+  def put_repository_assessment(project_id, assessment_id, value) do
+    adapter().put_repository_assessment(project_id, assessment_id, value)
+  end
+
+  @doc """
+  Atomically moves one device assessment from its expected state to a terminal value.
+
+  A completed transition carries the exact minimized proposal-envelope value and
+  the adapter stores both or neither. An unsuccessful transition carries none.
+  """
+  def transition_repository_assessment(
+        project_id,
+        assessment_id,
+        expected_state,
+        value,
+        envelope_value \\ nil
+      ) do
+    adapter().transition_repository_assessment(
+      project_id,
+      assessment_id,
+      expected_state,
+      value,
+      envelope_value
+    )
+  end
+
+  @doc "Reads one device-authoritative proposal-envelope value."
+  def get_repository_assessment_proposal_envelope(project_id, assessment_id) do
+    adapter().get_repository_assessment_proposal_envelope(project_id, assessment_id)
+  end
+
+  @doc "Reads one device-authoritative repository assessment value."
+  def get_repository_assessment(project_id, assessment_id) do
+    adapter().get_repository_assessment(project_id, assessment_id)
+  end
+
+  @doc "Counts one project's device-authoritative repository assessments."
+  def repository_assessment_count(project_id) do
+    adapter().repository_assessment_count(project_id)
+  end
+
+  @doc "Reads the newest device-authoritative repository assessment value."
+  def latest_repository_assessment(project_id) do
+    adapter().latest_repository_assessment(project_id)
+  end
+
+  @doc "Atomically appends one immutable device-authoritative profile version."
+  def append_repository_execution_profile(
+        project_id,
+        assessment_id,
+        proposal,
+        approval_actor_ref,
+        approved_at
+      ) do
+    adapter().append_repository_execution_profile(
+      project_id,
+      assessment_id,
+      proposal,
+      approval_actor_ref,
+      approved_at
+    )
+  end
+
+  @doc "Lists one project's immutable device-authoritative profile versions."
+  def list_repository_execution_profiles(project_id) do
+    adapter().list_repository_execution_profiles(project_id)
+  end
+
   @doc "Stores one vault-sealed device-local import attempt."
   def put_import_attempt(%ImportAttempt{} = attempt), do: adapter().put_import_attempt(attempt)
 

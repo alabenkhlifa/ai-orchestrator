@@ -830,6 +830,11 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
                ~s([data-nav-destination="features"][href="/projects/#{project.id}/features"])
              )
 
+      assert has_element?(
+               view,
+               ~s([data-nav-destination="assessment"][href="/projects/#{project.id}/assessment"])
+             )
+
       # The `Project` back button the navigation replaced is gone.
       assert count(html, ~s(href="/projects/#{project.id}/overview")) == 1
     end
@@ -846,6 +851,7 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
         conn |> hosted_conn(access) |> live(~p"/projects/#{project.id}/participation")
 
       refute has_element?(view, ~s([data-nav-destination="overview"]))
+      refute has_element?(view, ~s([data-nav-destination="assessment"]))
       assert has_element?(view, ~s([data-nav-destination="features"]))
       assert has_element?(view, ~s([data-nav-destination="people"][data-nav-current]))
     end
@@ -866,7 +872,7 @@ defmodule SddOrchestratorWeb.ParticipationLiveTest do
         |> then(&Regex.scan(~r/href="([^"]+)"/, &1, capture: :all_but_first))
         |> List.flatten()
 
-      assert length(hrefs) == 3
+      assert length(hrefs) == 4
       assert Enum.all?(hrefs, &String.starts_with?(&1, "/projects/#{project.id}/"))
     end
   end

@@ -5,6 +5,38 @@
 # in the router, which only gates its route, because this endpoint establishes
 # authenticated sessions.
 if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
+  defmodule SddOrchestratorWeb.E2ERepositoryMetadataAdapter do
+    @moduledoc """
+    Deterministic metadata-only repository binding for the browser harness.
+
+    It returns only the identity already present in the authorized request, the
+    selected relative root, and one full commit. It implements no scan command
+    and is excluded from production by the same compile-time gate as the
+    session bootstrap that configures it.
+    """
+    @behaviour SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter
+
+    @commit "0123456789abcdef0123456789abcdef01234567"
+
+    def commit, do: @commit
+
+    @impl true
+    def prepare(request), do: response(request)
+
+    @impl true
+    def revalidate(request), do: response(request)
+
+    defp response(request) do
+      {:ok,
+       %{
+         repository_provider: request.repository_provider,
+         repository_id: request.repository_id,
+         root: request.selected_root,
+         commit: @commit
+       }}
+    end
+  end
+
   defmodule SddOrchestratorWeb.E2EPreviewAdapter do
     @moduledoc """
     A deterministic preview provider for the browser suite.
@@ -79,6 +111,8 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     use SddOrchestratorWeb, :controller
 
     alias SddOrchestrator.Accounts
+    alias SddOrchestrator.Devices
+    alias SddOrchestrator.Devices.Pairing
 
     alias SddOrchestrator.Delivery.{
       AgentRun,
@@ -100,7 +134,26 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.Projects
     alias SddOrchestrator.Projects.Project
     alias SddOrchestrator.Repo
-    alias SddOrchestratorWeb.{E2EPreviewAdapter, HostedUserAuth, UserAuth}
+
+    alias SddOrchestrator.RepositoryAssessments
+
+    alias SddOrchestrator.RepositoryAssessments.{
+      AssessmentStore,
+      BindingStore,
+      RepositoryAssessment,
+      RepositoryAssessmentCacheProvenance,
+      RepositoryAssessmentResult,
+      RepositoryBindingPreparation,
+      RepositoryExecutionProfileProposalPayload,
+      WorkerRepositoryExecutionProfileProposalEnvelope
+    }
+
+    alias SddOrchestratorWeb.{
+      E2EPreviewAdapter,
+      E2ERepositoryMetadataAdapter,
+      HostedUserAuth,
+      UserAuth
+    }
 
     @columns ~w(draft ready_for_development in_development ready_for_review done)
     @owner_name "Robin Owner"
@@ -140,6 +193,24 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     @preview_checks ["mix test"]
     @preview_commit "9d3e1c07ab5642f8e0c1937bd4a5f26e0187cc34"
     @preview_provider "e2e-preview"
+
+    # The exact commit the seeded execution-profile assessment is bound to, and
+    # the reviewable proposal that assessment's evidence supports: project
+    # commands and one required check were found, no repository instruction was,
+    # and the evidence was ambiguous.
+    @profile_commit "5c1d0e7a93b46f28ad0e5b71c4f39268ba07de51"
+    @profile_check "mix test"
+    @profile_gap "missing_repository_instructions"
+    @profile_conflict "ambiguous_command_evidence"
+
+    @profile_proposal %{
+      commands: ["make check", @profile_check],
+      required_checks: [@profile_check],
+      allowed_scope: [".", "lib"],
+      gaps: [@profile_gap],
+      conflicts: [@profile_conflict],
+      multi_root_blockers: []
+    }
 
     # One real 1x1 PNG, so the stored screenshot genuinely is the content type it
     # declares and survives the store's own digest and content-type checks rather
@@ -359,6 +430,56 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # One configured hosted project plus one reachable paired worker for the
+    # disclosure-confirmed repository-assessment start flow. The adapter is the
+    # compile-time-gated metadata-only double above; no scanner or command
+    # transport is configured by this scenario.
+    defp run(conn, "repository_assessment", _params) do
+      owner = new_owner()
+      project = registered_project(owner)
+      save_owner_profile(project, owner)
+      {:ok, device_workspace} = Devices.establish_workspace()
+      worker = reachable_worker(device_workspace.id)
+      :ok = BindingStore.reset()
+
+      Application.put_env(
+        :sdd_orchestrator,
+        :repository_metadata_adapter,
+        E2ERepositoryMetadataAdapter
+      )
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        project_id: project.id,
+        project_name: project.name,
+        worker_id: worker.id,
+        commit: E2ERepositoryMetadataAdapter.commit()
+      })
+    end
+
+    # One configured hosted project whose newest assessment completed and stored
+    # its worker proposal envelope, so the owner-review screen has a real
+    # reviewable proposal. Every value is produced by the assessment domain
+    # itself — binding, command, completed result, cache provenance, and the
+    # worker envelope — rather than inserted.
+    defp run(conn, "repository_execution_profile", _params) do
+      owner = new_owner()
+      project = registered_project(owner)
+      save_owner_profile(project, owner)
+      completed = seed_completed_assessment(owner, project)
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        project_id: project.id,
+        commit: completed.commit,
+        command: @profile_check,
+        gap: @profile_gap,
+        conflict: @profile_conflict
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -379,6 +500,98 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       {:ok, _invitation} = Invitations.create(project, owner.account.id, pending)
 
       %{project: project, owner: owner, participant: participant, pending: pending}
+    end
+
+    defp seed_completed_assessment(owner, project) do
+      authority = {:hosted, owner.account.id}
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      {:ok, preparation} =
+        RepositoryBindingPreparation.new(%{
+          project_id: project.id,
+          repository_provider: project.repository_provider,
+          repository_id: project.canonical_repository_id,
+          root: ".",
+          commit: @profile_commit,
+          scanner_contract_digest: content_digest("e2e-profile-scanner"),
+          disclosure_digest: content_digest("e2e-profile-disclosure"),
+          worker_ref: Ecto.UUID.generate(),
+          nonce: Ecto.UUID.generate(),
+          issued_at: now,
+          expires_at: DateTime.add(now, 120, :second)
+        })
+
+      {:ok, pending} = RepositoryAssessment.pending(preparation, now)
+      {:ok, stored} = AssessmentStore.put(authority, pending)
+      {:ok, command} = RepositoryAssessment.command(stored)
+      {:ok, result} = RepositoryAssessmentResult.completed(command, profile_scan(command))
+      {:ok, payload} = RepositoryExecutionProfileProposalPayload.new(result, @profile_proposal)
+
+      {:ok, envelope} =
+        WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
+
+      {:ok, cache_key_sha256} = RepositoryAssessmentCacheProvenance.cache_key_sha256(command)
+      {:ok, evidence_sha256} = RepositoryAssessmentCacheProvenance.evidence_sha256(result)
+
+      {:ok, provenance} =
+        RepositoryAssessmentCacheProvenance.new(%{
+          source: "fresh_scan",
+          cache_key_sha256: cache_key_sha256,
+          evidence_sha256: evidence_sha256,
+          cache_stored: true
+        })
+
+      {:ok, completed} =
+        RepositoryAssessments.finish_assessment(
+          authority,
+          project.id,
+          command,
+          result,
+          provenance,
+          now: now,
+          proposal_envelope: envelope
+        )
+
+      completed
+    end
+
+    defp profile_scan(command) do
+      %{
+        protocol_version: command.version,
+        assessment_id: command.assessment_id,
+        project_id: command.project_id,
+        repository: %{provider: command.repository_provider, id: command.repository_id},
+        root: command.root,
+        commit: command.commit,
+        scanner_contract_digest: command.scanner_contract_digest,
+        status: "completed",
+        findings: [
+          %{
+            category: "check",
+            path: "Makefile",
+            bytes: 24,
+            sha256: content_digest("e2e-profile-makefile"),
+            line_count: 3
+          }
+        ],
+        structure: [%{path: "lib", kind: "directory"}],
+        stats: %{discovered_paths: 4, inspected_files: 1, bytes_read: 24}
+      }
+    end
+
+    defp reachable_worker(device_workspace_id) do
+      {:ok, %{code: code}} = Pairing.start_pairing(device_workspace_id)
+
+      {:ok, %{worker: worker}} =
+        Pairing.complete_pairing(code, %{
+          os_family: "macos",
+          os_major: "15",
+          app_version: "1.0.0",
+          protocol_version: "1"
+        })
+
+      {:ok, worker} = Pairing.mark_seen(worker)
+      worker
     end
 
     # The participant joins the way a real one does: the owner invites the

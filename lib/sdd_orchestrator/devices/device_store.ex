@@ -100,6 +100,53 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Returns all current device-authoritative specifications for one project."
   @callback current_specifications(String.t()) :: [SpecificationStore.current()]
 
+  @doc "Stores one minimized repository assessment under its device project."
+  @callback put_repository_assessment(String.t(), String.t(), map()) ::
+              {:ok, map()} | {:error, :not_found | :already_exists | :invalid_assessment}
+
+  @doc """
+  Atomically replaces one assessment only while its stored state matches.
+
+  A completed value must arrive with its exact minimized proposal-envelope
+  value, and both are stored together or not at all. An unsuccessful value must
+  arrive with `nil`.
+  """
+  @callback transition_repository_assessment(
+              String.t(),
+              String.t(),
+              String.t(),
+              map(),
+              map() | nil
+            ) ::
+              {:ok, map()}
+              | {:error, :not_found | :stale | :invalid_assessment | :invalid_proposal_envelope}
+
+  @doc "Reads one device-authoritative repository assessment value."
+  @callback get_repository_assessment(String.t(), String.t()) ::
+              {:ok, map()} | {:error, :not_found}
+
+  @doc "Reads one device-authoritative proposal-envelope value."
+  @callback get_repository_assessment_proposal_envelope(String.t(), String.t()) ::
+              {:ok, map()} | {:error, :not_found}
+
+  @doc "Counts one project's device-authoritative repository assessments."
+  @callback repository_assessment_count(String.t()) :: non_neg_integer()
+
+  @doc "Reads the newest device-authoritative repository assessment value."
+  @callback latest_repository_assessment(String.t()) :: {:ok, map()} | {:error, :not_found}
+
+  @doc "Atomically appends one immutable execution profile from an exact assessment proposal."
+  @callback append_repository_execution_profile(
+              String.t(),
+              String.t(),
+              map(),
+              String.t(),
+              String.t()
+            ) :: {:ok, map()} | {:error, atom()}
+
+  @doc "Lists one project's immutable execution profile values in version order."
+  @callback list_repository_execution_profiles(String.t()) :: [map()]
+
   @doc "Stores one vault-sealed device-local import attempt."
   @callback put_import_attempt(ImportAttempt.t()) ::
               {:ok, ImportAttempt.t()} | {:error, term()}
