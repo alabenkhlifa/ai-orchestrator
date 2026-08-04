@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import shlex
@@ -13,6 +14,9 @@ from collections.abc import Sequence
 
 
 ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$", re.DOTALL)
+MIX_TEST_PARTITION = "MIX_TEST_PARTITION"
+PARTITION_FLOOR = 100_000
+PARTITION_SPAN = 900_000
 FOCUSED_MIX_TEST_FLAGS = {"--failed", "--stale"}
 FOCUSED_MIX_TEST_PREFIXES = ("--only=",)
 FOCUSED_MIX_TEST_PATH_RE = re.compile(r"\.exs(?::\d+)?$")
@@ -151,6 +155,54 @@ def validate_task_command(command: Sequence[str], environment: dict[str, str]) -
             )
 
 
+def worktree_root(start: str | None = None) -> str:
+    """Return the absolute root of the git worktree the proof runs in."""
+    directory = os.path.realpath(start if start is not None else os.getcwd())
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return directory
+    root = completed.stdout.strip()
+    if completed.returncode != 0 or not root:
+        return directory
+    return os.path.realpath(root)
+
+
+def worktree_partition(root: str) -> int:
+    """Derive one stable `mix test` partition from a worktree root path."""
+    digest = hashlib.blake2b(root.encode("utf-8"), digest_size=8).digest()
+    return PARTITION_FLOOR + int.from_bytes(digest, "big") % PARTITION_SPAN
+
+
+def is_mix_test(command: Sequence[str]) -> bool:
+    """Return whether the command invokes `mix test`."""
+    return len(command) >= 2 and os.path.basename(command[0]) == "mix" and command[1] == "test"
+
+
+def apply_test_partition(
+    command: Sequence[str],
+    environment: dict[str, str],
+    root: str | None = None,
+) -> tuple[int, str] | None:
+    """Give `mix test` one stable database per worktree unless the caller set one.
+
+    The partition is injected into the child environment only, so the receipt
+    keeps rendering the caller's original command.
+    """
+    if not is_mix_test(command) or MIX_TEST_PARTITION in environment:
+        return None
+    resolved = worktree_root() if root is None else os.path.realpath(root)
+    partition = worktree_partition(resolved)
+    environment[MIX_TEST_PARTITION] = str(partition)
+    return partition, resolved
+
+
 def receipt(
     scope: str,
     task: int | None,
@@ -203,6 +255,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             validate_task_command(command, environment)
     except ProofCommandError as error:
         parser.error(str(error))
+
+    if arguments.scope == "task":
+        injected = apply_test_partition(command, environment)
+        if injected is not None:
+            partition, root = injected
+            print(
+                f"proof: {MIX_TEST_PARTITION}={partition} derived for worktree {root}",
+                file=sys.stderr,
+            )
 
     try:
         completed = subprocess.run(command, env=environment, check=False)

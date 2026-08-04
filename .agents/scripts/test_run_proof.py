@@ -15,8 +15,21 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("run_proof.py")
 
+sys.path.insert(0, str(SCRIPT.parent))
 
-class RunProofTests(unittest.TestCase):
+import run_proof  # noqa: E402
+import validate_spec  # noqa: E402
+
+
+REPORT_PARTITION = """
+import os
+print(os.environ.get("MIX_TEST_PARTITION", "<unset>"))
+"""
+
+
+class ProofRunnerHarness(unittest.TestCase):
+    """Shared fixtures for driving `run_proof.py` as a real subprocess."""
+
     def run_proof(
         self,
         *arguments: str,
@@ -39,12 +52,26 @@ class RunProofTests(unittest.TestCase):
         executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
         return executable
 
+    def environment_without_partition(self, *path_entries: str) -> dict[str, str]:
+        environment = os.environ.copy()
+        environment.pop("MIX_TEST_PARTITION", None)
+        if path_entries:
+            environment["PATH"] = os.pathsep.join(
+                [*path_entries, os.environ.get("PATH", "")]
+            )
+        return environment
+
+    def derived_partition(self) -> str:
+        return str(run_proof.worktree_partition(run_proof.worktree_root()))
+
     def assert_rejected(self, *command: str) -> None:
         result = self.run_proof("task", "--task", "35", "--", *command)
         self.assertEqual(2, result.returncode, result)
         self.assertIn("task proof rejects", result.stderr)
         self.assertNotIn("Proof receipt", result.stdout)
 
+
+class RunProofTests(ProofRunnerHarness):
     def test_task_scope_allows_focused_mix_test_paths_and_selectors(self) -> None:
         allowed_commands = (
             ("mix", "test", "test/example_test.exs"),
@@ -284,6 +311,211 @@ class RunProofTests(unittest.TestCase):
         self.assertEqual(2, invalid.returncode, invalid)
         self.assertNotIn("Proof receipt", missing.stdout)
         self.assertNotIn("Proof receipt", invalid.stdout)
+
+
+class WorktreePartitionTests(unittest.TestCase):
+    WORKTREE_ROOTS = (
+        "/Users/example/IdeaProjects/sdd-orchestrator",
+        "/Users/example/IdeaProjects/sdd-orchestrator-s08",
+        "/Users/example/IdeaProjects/sdd-orchestrator-s11",
+        "/Users/example/IdeaProjects/sdd-orchestrator-s14",
+        "/Users/example/IdeaProjects/sdd-orchestrator-s25",
+        "/Users/other/IdeaProjects/sdd-orchestrator",
+    )
+
+    def test_derivation_repeats_for_the_same_worktree_root(self) -> None:
+        for root in self.WORKTREE_ROOTS:
+            with self.subTest(root=root):
+                self.assertEqual(
+                    run_proof.worktree_partition(root),
+                    run_proof.worktree_partition(root),
+                )
+
+    def test_derivation_differs_across_worktree_roots_and_stays_in_range(self) -> None:
+        derived = [run_proof.worktree_partition(root) for root in self.WORKTREE_ROOTS]
+        self.assertEqual(len(set(derived)), len(derived), derived)
+        for partition in derived:
+            with self.subTest(partition=partition):
+                self.assertGreaterEqual(partition, 100_000)
+                self.assertLess(partition, 1_000_000)
+
+    def test_derivation_is_stable_across_interpreter_processes(self) -> None:
+        root = self.WORKTREE_ROOTS[0]
+        program = (
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "import run_proof; print(run_proof.worktree_partition(sys.argv[2]))"
+        )
+        seeds = ("0", "1", "random")
+        outputs = set()
+        for seed in seeds:
+            environment = os.environ.copy()
+            environment["PYTHONHASHSEED"] = seed
+            completed = subprocess.run(
+                [sys.executable, "-c", program, str(SCRIPT.parent), root],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            self.assertEqual(0, completed.returncode, completed)
+            outputs.add(completed.stdout.strip())
+        self.assertEqual({str(run_proof.worktree_partition(root))}, outputs)
+
+    def test_worktree_root_resolves_the_current_git_worktree(self) -> None:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(SCRIPT.parent),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            self.skipTest("not inside a git worktree")
+        self.assertEqual(
+            os.path.realpath(completed.stdout.strip()),
+            run_proof.worktree_root(str(SCRIPT.parent)),
+        )
+
+    def test_worktree_root_falls_back_to_the_directory_outside_git(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            environment = os.environ.copy()
+            environment["PATH"] = temporary_directory
+            program = (
+                "import sys; sys.path.insert(0, sys.argv[1]); "
+                "import run_proof; print(run_proof.worktree_root(sys.argv[2]))"
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", program, str(SCRIPT.parent), temporary_directory],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            self.assertEqual(0, completed.returncode, completed)
+            self.assertEqual(
+                os.path.realpath(temporary_directory),
+                completed.stdout.strip(),
+            )
+
+
+class TestPartitionInjectionTests(ProofRunnerHarness):
+    def test_focused_mix_test_receives_a_stable_worktree_partition(self) -> None:
+        expected = self.derived_partition()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            self.make_executable(Path(temporary_directory), REPORT_PARTITION, name="mix")
+            environment = self.environment_without_partition(temporary_directory)
+            first = self.run_proof(
+                "task", "--task", "35", "--",
+                "mix", "test", "test/example_test.exs",
+                environment=environment,
+            )
+            second = self.run_proof(
+                "task", "--task", "35", "--",
+                "mix", "test", "test/example_test.exs",
+                environment=environment,
+            )
+
+        self.assertEqual(0, first.returncode, first)
+        self.assertEqual(expected, first.stdout.splitlines()[0])
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertIn(f"MIX_TEST_PARTITION={expected}", first.stderr)
+
+    def test_derived_partition_never_reaches_the_rendered_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            self.make_executable(Path(temporary_directory), REPORT_PARTITION, name="mix")
+            environment = self.environment_without_partition(temporary_directory)
+            result = self.run_proof(
+                "task", "--task", "35", "--",
+                "mix", "test", "test/example_test.exs",
+                environment=environment,
+            )
+
+        self.assertEqual(0, result.returncode, result)
+        receipt_line = result.stdout.splitlines()[-1]
+        self.assertEqual(
+            "- Proof receipt: `Task 35` — scope `Focused` — "
+            "command `mix test test/example_test.exs` — exit `0`.",
+            receipt_line,
+        )
+        match = validate_spec.PROOF_RECEIPT_RE.match(receipt_line)
+        self.assertIsNotNone(match, receipt_line)
+        self.assertEqual("Task 35", match.group("task"))
+        self.assertEqual("Focused", match.group("scope"))
+        self.assertEqual("mix test test/example_test.exs", match.group("command"))
+        self.assertNotIn("MIX_TEST_PARTITION", match.group("command"))
+
+    def test_caller_supplied_partition_wins_over_derivation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            self.make_executable(Path(temporary_directory), REPORT_PARTITION, name="mix")
+            environment = self.environment_without_partition(temporary_directory)
+            assigned = self.run_proof(
+                "task", "--task", "35", "--",
+                "MIX_TEST_PARTITION=110",
+                "mix", "test", "test/example_test.exs",
+                environment=environment,
+            )
+            inherited = self.run_proof(
+                "task", "--task", "35", "--",
+                "mix", "test", "test/example_test.exs",
+                environment=dict(environment, MIX_TEST_PARTITION="207"),
+            )
+
+        self.assertEqual(0, assigned.returncode, assigned)
+        self.assertEqual("110", assigned.stdout.splitlines()[0])
+        self.assertEqual("", assigned.stderr)
+        self.assertEqual(
+            "- Proof receipt: `Task 35` — scope `Focused` — "
+            "command `MIX_TEST_PARTITION=110 mix test test/example_test.exs` — exit `0`.",
+            assigned.stdout.splitlines()[-1],
+        )
+        self.assertEqual(0, inherited.returncode, inherited)
+        self.assertEqual("207", inherited.stdout.splitlines()[0])
+        self.assertEqual("", inherited.stderr)
+
+    def test_non_mix_test_commands_receive_no_partition(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            self.make_executable(temporary_path, REPORT_PARTITION, name="mix")
+            self.make_executable(temporary_path, REPORT_PARTITION, name="npm")
+            environment = self.environment_without_partition(temporary_directory)
+            for command in (
+                ("mix", "format", "--check-formatted"),
+                ("npm", "--prefix", "assets", "run", "test:e2e", "--", "--last-failed"),
+            ):
+                with self.subTest(command=command):
+                    result = self.run_proof(
+                        "task", "--task", "35", "--", *command, environment=environment
+                    )
+                    self.assertEqual(0, result.returncode, result)
+                    self.assertEqual("<unset>", result.stdout.splitlines()[0])
+                    self.assertEqual("", result.stderr)
+
+    def test_slice_scope_receives_no_partition(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            self.make_executable(Path(temporary_directory), REPORT_PARTITION, name="mix")
+            environment = self.environment_without_partition(temporary_directory)
+            result = self.run_proof("slice", "--", "mix", "test", environment=environment)
+
+        self.assertEqual(0, result.returncode, result)
+        self.assertEqual("<unset>", result.stdout.splitlines()[0])
+        self.assertEqual("", result.stderr)
+
+    def test_broad_task_scope_still_receives_the_worktree_partition(self) -> None:
+        expected = self.derived_partition()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            self.make_executable(Path(temporary_directory), REPORT_PARTITION, name="mix")
+            environment = self.environment_without_partition(temporary_directory)
+            result = self.run_proof(
+                "task", "--task", "35", "--broad", "--", "mix", "test",
+                environment=environment,
+            )
+
+        self.assertEqual(0, result.returncode, result)
+        self.assertEqual(expected, result.stdout.splitlines()[0])
+        self.assertEqual(
+            "- Proof receipt: `Task 35` — scope `Broad` — command `mix test` — exit `0`.",
+            result.stdout.splitlines()[-1],
+        )
 
 
 if __name__ == "__main__":
