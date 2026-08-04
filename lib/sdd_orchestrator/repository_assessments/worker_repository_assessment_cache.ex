@@ -13,8 +13,10 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
   alias SddOrchestrator.RepositoryAssessments.{
     RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentResult,
+    RepositoryExecutionProfileProposalPayload,
     WorkerRepositoryAssessment,
-    WorkerRepositoryAssessmentCacheEntry
+    WorkerRepositoryAssessmentCacheEntry,
+    WorkerRepositoryExecutionProfileProposalEnvelope
   }
 
   @hard_max_entries 64
@@ -47,11 +49,33 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
     end
   end
 
+  @doc "Returns cached evidence, the stable payload, and a newly bound current envelope."
+  @spec fetch_with_proposal(server(), term()) ::
+          {:hit, map(), RepositoryExecutionProfileProposalPayload.t(),
+           WorkerRepositoryExecutionProfileProposalEnvelope.t(),
+           RepositoryAssessmentCacheProvenance.t()}
+          | :miss
+  def fetch_with_proposal(server, command) do
+    case WorkerRepositoryAssessmentCacheEntry.key(command) do
+      {:ok, key} -> GenServer.call(server, {:fetch_with_proposal, key, command})
+      {:error, :invalid_command} -> :miss
+    end
+  end
+
   @doc "Inserts only one strict completed result."
   @spec put(server(), term()) ::
           {:ok, RepositoryAssessmentCacheProvenance.t()} | {:error, cache_error()}
   def put(server, result) do
     with {:ok, entry} <- WorkerRepositoryAssessmentCacheEntry.new(result) do
+      GenServer.call(server, {:put, entry})
+    end
+  end
+
+  @doc "Inserts one completed result with its exact cache-stable proposal payload."
+  @spec put_with_proposal(server(), term(), term()) ::
+          {:ok, RepositoryAssessmentCacheProvenance.t()} | {:error, cache_error()}
+  def put_with_proposal(server, result, payload) do
+    with {:ok, entry} <- WorkerRepositoryAssessmentCacheEntry.new(result, payload) do
       GenServer.call(server, {:put, entry})
     end
   end
@@ -67,6 +91,22 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
 
       :miss ->
         scan_and_cache(server, repository_path, command, opts)
+    end
+  end
+
+  @doc "Uses a proposal-aware hit or scans once and stores only minimized evidence and payload."
+  @spec scan_with_proposal(server(), Path.t(), term(), keyword()) ::
+          {:ok, map(), RepositoryExecutionProfileProposalPayload.t(),
+           WorkerRepositoryExecutionProfileProposalEnvelope.t(),
+           RepositoryAssessmentCacheProvenance.t()}
+          | {:error, atom()}
+  def scan_with_proposal(server, repository_path, command, opts \\ []) do
+    case fetch_with_proposal(server, command) do
+      {:hit, worker_result, payload, envelope, provenance} ->
+        {:ok, worker_result, payload, envelope, provenance}
+
+      :miss ->
+        scan_and_cache_with_proposal(server, repository_path, command, opts)
     end
   end
 
@@ -99,6 +139,34 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
               )
 
             {:reply, {:hit, worker_result, provenance}, state}
+
+          {:error, _invalid} ->
+            {:reply, :miss, delete_entry(state, key)}
+        end
+
+      :error ->
+        {:reply, :miss, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:fetch_with_proposal, key, command}, _from, state) do
+    case Map.fetch(state.entries, key) do
+      {:ok, cached} ->
+        case WorkerRepositoryAssessmentCacheEntry.reuse_with_proposal(cached.entry, command) do
+          {:ok, worker_result, payload, envelope} ->
+            access = state.access + 1
+            cached = %{cached | last_access: access}
+            state = %{state | entries: Map.put(state.entries, key, cached), access: access}
+
+            provenance =
+              WorkerRepositoryAssessmentCacheEntry.provenance(
+                cached.entry,
+                "complete_cache",
+                true
+              )
+
+            {:reply, {:hit, worker_result, payload, envelope, provenance}, state}
 
           {:error, _invalid} ->
             {:reply, :miss, delete_entry(state, key)}
@@ -163,20 +231,81 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
     end
   end
 
+  defp scan_and_cache_with_proposal(server, repository_path, command, opts) do
+    {scanner, scanner_opts} =
+      Keyword.pop(opts, :scanner, &WorkerRepositoryAssessment.scan_with_proposal/3)
+
+    if is_function(scanner, 3) do
+      with {:ok, worker_result, %RepositoryExecutionProfileProposalPayload{} = payload} <-
+             scanner.(repository_path, command, scanner_opts),
+           {:ok, result} <- RepositoryAssessmentResult.completed(command, worker_result),
+           true <- RepositoryExecutionProfileProposalPayload.valid_for?(payload, command, result),
+           {:ok, envelope} <-
+             WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result),
+           {:ok, entry} <- WorkerRepositoryAssessmentCacheEntry.new(result, payload) do
+        case put_with_proposal(server, result, payload) do
+          {:ok, _provenance} ->
+            {:ok, worker_result, payload, envelope,
+             WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", true)}
+
+          {:error, :entry_too_large} ->
+            {:ok, worker_result, payload, envelope,
+             WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", false)}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      else
+        false -> {:error, :invalid_proposal_payload}
+        {:error, reason} -> {:error, reason}
+        _invalid -> {:error, :invalid_proposal_payload}
+      end
+    else
+      {:error, :invalid_command}
+    end
+  end
+
   defp put_entry(state, entry) do
     case Map.fetch(state.entries, entry.key) do
       {:ok, %{entry: existing}} when existing.evidence_sha256 != entry.evidence_sha256 ->
         {:reply, {:error, :conflicting_evidence}, state}
 
-      existing ->
-        access = state.access + 1
-        state = replace_entry(state, entry, existing, access)
-        state = evict_to_limits(state)
+      {:ok, %{entry: existing}} ->
+        cond do
+          payload_conflict?(existing, entry) ->
+            {:reply, {:error, :conflicting_evidence}, state}
 
-        provenance =
-          WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", true)
+          not is_nil(existing.proposal_payload) and is_nil(entry.proposal_payload) ->
+            store_entry(state, existing)
 
-        {:reply, {:ok, provenance}, state}
+          true ->
+            store_entry(state, entry)
+        end
+
+      :error ->
+        store_entry(state, entry)
+    end
+  end
+
+  defp store_entry(state, entry) do
+    existing = Map.fetch(state.entries, entry.key)
+    access = state.access + 1
+    state = replace_entry(state, entry, existing, access)
+    state = evict_to_limits(state)
+
+    provenance = WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", true)
+
+    {:reply, {:ok, provenance}, state}
+  end
+
+  defp payload_conflict?(existing, entry) do
+    case {existing.proposal_payload, entry.proposal_payload} do
+      {%RepositoryExecutionProfileProposalPayload{payload_digest: left},
+       %RepositoryExecutionProfileProposalPayload{payload_digest: right}} ->
+        left != right
+
+      _other ->
+        false
     end
   end
 

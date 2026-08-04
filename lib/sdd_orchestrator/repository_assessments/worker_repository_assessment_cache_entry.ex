@@ -11,7 +11,9 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
   alias SddOrchestrator.RepositoryAssessments.{
     RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
-    RepositoryAssessmentResult
+    RepositoryAssessmentResult,
+    RepositoryExecutionProfileProposalPayload,
+    WorkerRepositoryExecutionProfileProposalEnvelope
   }
 
   @enforce_keys [
@@ -19,6 +21,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
     :findings,
     :structure,
     :stats,
+    :proposal_payload,
     :cache_key_sha256,
     :evidence_sha256,
     :encoded_bytes
@@ -35,6 +38,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
           findings: [map()],
           structure: [map()],
           stats: map(),
+          proposal_payload: RepositoryExecutionProfileProposalPayload.t() | nil,
           cache_key_sha256: String.t(),
           evidence_sha256: String.t(),
           encoded_bytes: pos_integer()
@@ -42,11 +46,19 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
 
   @doc "Builds a cache entry only from one strict completed terminal result."
   @spec new(term()) :: {:ok, t()} | {:error, :incomplete_result | :invalid_result}
-  def new(%RepositoryAssessmentResult{status: "completed"} = result) do
+  def new(result), do: new(result, nil)
+
+  @doc "Builds a Task 14 cache entry with one exact cache-stable proposal payload."
+  @spec new(term(), term()) :: {:ok, t()} | {:error, :incomplete_result | :invalid_result}
+  def new(
+        %RepositoryAssessmentResult{status: "completed"} = result,
+        proposal_payload
+      ) do
     with true <- RepositoryAssessmentResult.valid?(result),
          {:ok, key} <- RepositoryAssessmentCacheProvenance.cache_key(result),
          {:ok, cache_key_sha256} <- RepositoryAssessmentCacheProvenance.cache_key_sha256(result),
-         {:ok, evidence_sha256} <- RepositoryAssessmentCacheProvenance.evidence_sha256(result) do
+         {:ok, evidence_sha256} <- RepositoryAssessmentCacheProvenance.evidence_sha256(result),
+         true <- valid_payload?(proposal_payload, result) do
       evidence = evidence(result)
 
       entry = %__MODULE__{
@@ -54,9 +66,10 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
         findings: result.findings,
         structure: result.structure,
         stats: result.stats,
+        proposal_payload: proposal_payload,
         cache_key_sha256: cache_key_sha256,
         evidence_sha256: evidence_sha256,
-        encoded_bytes: encoded_size({key, evidence})
+        encoded_bytes: encoded_size({key, evidence, proposal_payload})
       }
 
       {:ok, entry}
@@ -65,13 +78,13 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
     end
   end
 
-  def new(%RepositoryAssessmentResult{} = result) do
+  def new(%RepositoryAssessmentResult{} = result, _proposal_payload) do
     if RepositoryAssessmentResult.valid?(result),
       do: {:error, :incomplete_result},
       else: {:error, :invalid_result}
   end
 
-  def new(_result), do: {:error, :invalid_result}
+  def new(_result, _proposal_payload), do: {:error, :invalid_result}
 
   @doc "Returns the exact cache key for a valid current command."
   @spec key(term()) :: {:ok, key()} | {:error, :invalid_command}
@@ -101,6 +114,33 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
   end
 
   def reuse(_entry, _command), do: {:error, :invalid_entry}
+
+  @doc "Rebinds cached evidence and its stable payload to the current assessment command."
+  @spec reuse_with_proposal(t(), term()) ::
+          {:ok, map(), RepositoryExecutionProfileProposalPayload.t(),
+           WorkerRepositoryExecutionProfileProposalEnvelope.t()}
+          | {:error, :stale | :invalid_entry | :missing_proposal_payload}
+  def reuse_with_proposal(
+        %__MODULE__{proposal_payload: %RepositoryExecutionProfileProposalPayload{} = payload} =
+          entry,
+        %RepositoryAssessmentCommand{} = command
+      ) do
+    with {:ok, worker_result} <- reuse(entry, command),
+         {:ok, result} <- RepositoryAssessmentResult.completed(command, worker_result),
+         true <- RepositoryExecutionProfileProposalPayload.valid_for?(payload, command, result),
+         {:ok, envelope} <-
+           WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result) do
+      {:ok, worker_result, payload, envelope}
+    else
+      {:error, :stale} -> {:error, :stale}
+      _invalid -> {:error, :invalid_entry}
+    end
+  end
+
+  def reuse_with_proposal(%__MODULE__{proposal_payload: nil}, _command),
+    do: {:error, :missing_proposal_payload}
+
+  def reuse_with_proposal(_entry, _command), do: {:error, :invalid_entry}
 
   @doc false
   @spec provenance(t(), String.t(), boolean()) ::
@@ -132,9 +172,32 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheE
           entry.structure,
           entry.stats
         ) and
+      valid_cached_payload?(entry) and
       entry.encoded_bytes ==
-        encoded_size({entry.key, {entry.findings, entry.structure, entry.stats}})
+        encoded_size(
+          {entry.key, {entry.findings, entry.structure, entry.stats}, entry.proposal_payload}
+        )
   end
+
+  defp valid_payload?(nil, _result), do: true
+
+  defp valid_payload?(%RepositoryExecutionProfileProposalPayload{} = payload, result) do
+    RepositoryExecutionProfileProposalPayload.valid_for_result?(payload, result)
+  end
+
+  defp valid_payload?(_payload, _result), do: false
+
+  defp valid_cached_payload?(%__MODULE__{proposal_payload: nil}), do: true
+
+  defp valid_cached_payload?(%__MODULE__{
+         proposal_payload: %RepositoryExecutionProfileProposalPayload{} = payload,
+         cache_key_sha256: cache_key_sha256,
+         evidence_sha256: evidence_sha256
+       }) do
+    payload.cache_key_sha256 == cache_key_sha256 and payload.evidence_sha256 == evidence_sha256
+  end
+
+  defp valid_cached_payload?(_entry), do: false
 
   defp worker_result(entry, command) do
     %{

@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved and Tasks 7, 8, 1, 2, 3, 9, 10, and 13 are complete. Task 14 is the next executable task and owns worker-local proposal-payload derivation, cache parity, and current-command envelope binding; Task 15 then persists the exact minimized envelope before Task 11 review. Pilot selection, independent readiness, privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved and Tasks 7, 8, 1, 2, 3, 9, 10, 13, and 14 are complete. Task 15 is the next executable task and persists the exact minimized envelope before Task 11 review. Pilot selection, independent readiness, privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -153,7 +153,7 @@ Traceability:
   - Proof: Focused provenance-shape, fresh-scan, complete-cache, cache-not-stored, exact command and evidence binding, hosted/device adapter, restart, legacy-completion reassessment, proposal refusal, missing, malformed, inferred, mismatch, canceled, failed, stale, duplicate, cross-project, cross-workspace, minimized-field, and raw-content negative tests pass.
   - Delivered: `RepositoryAssessmentCacheProvenance` centralizes the exact Task 9 cache-key and evidence digest contract and accepts only worker-reported `fresh_scan` or `complete_cache` outcomes with a strict cache-stored flag. Completed assessment finishing now requires that value and recomputes both bindings before one atomic hosted or device-authoritative transition persists only the four minimized fields; canceled and failed outcomes persist none. The additive hosted migration constrains all-or-none, source, digest, complete-cache and completed-only shapes without backfilling legacy rows. Stored completions revalidate provenance against their reconstructed command and result before proposal or approval, and legacy or corrupted completions remain readable but require a new assessment.
 
-- [ ] Task 14 — Derive and cache the minimized profile-proposal payload.
+- [x] Task 14 — Derive and cache the minimized profile-proposal payload.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 9
@@ -161,6 +161,7 @@ Traceability:
   - Owned surfaces: `RepositoryExecutionProfileProposalPayload` worker-local value and payload digest contract, deterministic derivation of normalized commands, required checks, allowed scope, gaps, conflicts and multi-root blockers from approved high-signal evidence, stable ambiguity and missing-evidence blocker codes, Task 9 cache-key and evidence binding, current command, assessment, repository, root, commit, scanner and limit envelope binding, complete-cache entry extension, fresh-scan/cache-hit payload parity, prior-assessment binding refusal, malformed, mismatched, incomplete, canceled and failed exclusion, and no model call, source excerpt return, index transfer, absolute path, credential, raw diagnostic, analytics, repository mutation, authoritative persistence, or Slice 11 transport change.
   - Owns: entity:RepositoryExecutionProfileProposalPayload
   - Proof: Focused deterministic derivation, explicit command and required-check evidence, allowed-scope and multi-root evidence, ambiguity and missing-evidence blockers, malicious-content non-execution, fresh/cache payload and digest parity, current-command envelope rebinding, exact payload, evidence, command and result digest binding, prior-binding refusal, malformed, mismatch, incomplete, canceled, failed, raw-content negative, no-model, no-analytics, no-authoritative-write, no-repository-write, and no-Slice-11-transport tests pass.
+  - Delivered: `RepositoryExecutionProfileProposalPayload` validates exact completed high-signal evidence while its raw content remains inside the worker, deterministically minimizes explicit commands, required checks, allowed scope, gaps, conflicts and multi-root blockers, and binds the stable payload digest to Task 9's cache-key and evidence digests. `WorkerRepositoryAssessmentCache` stores only that minimized payload beside complete evidence, returns the byte-identical payload on an exact hit, and rebuilds a transient `WorkerRepositoryExecutionProfileProposalEnvelope` for the current assessment command, disclosure, worker, limits and completed-result digest. Missing, ambiguous, malicious, malformed, mismatched, incomplete, canceled, failed, legacy and prior-bound values fail closed without repository execution or mutation, model or analytics calls, authoritative persistence, raw-content transfer, or Slice 11 transport changes.
 
 - [ ] Task 15 — Persist the exact minimized proposal envelope in authoritative project storage.
   - Size: Standard

@@ -4,6 +4,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentTest d
   alias SddOrchestrator.RepositoryAssessments.{
     RepositoryAssessment,
     RepositoryAssessmentCommand,
+    RepositoryExecutionProfileProposalPayload,
     WorkerRepositoryAssessment
   }
 
@@ -151,6 +152,70 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentTest d
       refute serialized =~ "Never execute"
       refute serialized =~ "touch "
       refute File.exists?(context.malicious_marker)
+    end
+
+    test "derives only minimized explicit proposal evidence while source content stays local",
+         context do
+      command = command!(context)
+      before = repository_snapshot(context.repository)
+
+      assert {:ok, result, %RepositoryExecutionProfileProposalPayload{} = payload} =
+               WorkerRepositoryAssessment.scan_with_proposal(context.repository, command)
+
+      assert payload.commands == ["make test", "mix test"]
+      assert payload.required_checks == ["make test", "mix test"]
+      assert payload.allowed_scope == ["."]
+      assert payload.gaps == []
+      assert payload.conflicts == ["ambiguous_command_evidence"]
+      assert payload.multi_root_blockers == ["apps/api"]
+      assert Regex.match?(~r/\A[0-9a-f]{64}\z/, payload.cache_key_sha256)
+      assert Regex.match?(~r/\A[0-9a-f]{64}\z/, payload.evidence_sha256)
+      assert Regex.match?(~r/\A[0-9a-f]{64}\z/, payload.payload_digest)
+
+      assert RepositoryExecutionProfileProposalPayload.valid_for?(
+               payload,
+               command,
+               completed_result!(command, result)
+             )
+
+      serialized = inspect(payload)
+      refute serialized =~ context.repository
+      refute serialized =~ context.base
+      refute serialized =~ context.malicious_marker
+      refute serialized =~ "touch"
+      refute serialized =~ "Never execute"
+      refute Map.has_key?(payload, :assessment_id)
+      refute Map.has_key?(payload, :disclosure_digest)
+      refute Map.has_key?(payload, :worker_ref)
+      refute File.exists?(context.malicious_marker)
+      assert repository_snapshot(context.repository) == before
+    end
+
+    test "returns stable missing-evidence blockers instead of inventing commands", context do
+      root = "apps/empty"
+      write!(context.repository, "#{root}/README.md", "No approved command evidence.\n")
+      git!(context.repository, ["add", "#{root}/README.md"])
+      git!(context.repository, ["commit", "-q", "-m", "empty root"])
+      commit = git!(context.repository, ["rev-parse", "HEAD"])
+
+      command =
+        command!(%{context | commit: commit}, %{root: root})
+
+      assert {:ok, _result, payload} =
+               WorkerRepositoryAssessment.scan_with_proposal(context.repository, command)
+
+      assert payload.commands == []
+      assert payload.required_checks == []
+      assert payload.allowed_scope == [root]
+
+      assert payload.gaps == [
+               "missing_project_commands",
+               "missing_repository_instructions",
+               "missing_required_checks"
+             ]
+
+      assert payload.conflicts == []
+      assert payload.multi_root_blockers == []
     end
 
     test "scans an exact contained sub-root and returns paths relative to it", context do
@@ -313,6 +378,16 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentTest d
              RepositoryAssessmentCommand.new(assessment(context, assessment_overrides), limits)
 
     command
+  end
+
+  defp completed_result!(command, worker_result) do
+    assert {:ok, result} =
+             SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResult.completed(
+               command,
+               worker_result
+             )
+
+    result
   end
 
   defp assessment(context, overrides \\ %{}) do

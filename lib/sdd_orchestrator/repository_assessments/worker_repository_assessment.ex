@@ -4,10 +4,15 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
 
   Repository content is treated as untrusted data and is never executed. The
   scanner reads allowlisted blobs directly from the authorized Git commit,
-  emits only minimized metadata, and performs no checkout or repository write.
+  emits only minimized metadata and a strict worker-local proposal payload, and
+  performs no checkout or repository write.
   """
 
-  alias SddOrchestrator.RepositoryAssessments.RepositoryAssessmentCommand
+  alias SddOrchestrator.RepositoryAssessments.{
+    RepositoryAssessmentCommand,
+    RepositoryAssessmentResult,
+    RepositoryExecutionProfileProposalPayload
+  }
 
   @generated_segments MapSet.new(~w(
     .cache .git .gradle .idea .next .pytest_cache .terraform .venv _build
@@ -60,6 +65,40 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
 
   def scan(repository_path, %RepositoryAssessmentCommand{} = command, opts)
       when is_binary(repository_path) and is_list(opts) do
+    case do_scan(repository_path, command, opts) do
+      {:ok, worker_result, _worker_local_evidence} -> {:ok, worker_result}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def scan(_repository_path, _command, _opts), do: {:error, :invalid_command}
+
+  @doc "Scans once and derives the cache-stable proposal while raw evidence remains local."
+  @spec scan_with_proposal(Path.t(), RepositoryAssessmentCommand.t(), keyword()) ::
+          {:ok, map(), RepositoryExecutionProfileProposalPayload.t()} | {:error, error() | atom()}
+  def scan_with_proposal(repository_path, command, opts \\ [])
+
+  def scan_with_proposal(repository_path, %RepositoryAssessmentCommand{} = command, opts)
+      when is_binary(repository_path) and is_list(opts) do
+    with {:ok, worker_result, worker_local_evidence} <- do_scan(repository_path, command, opts),
+         {:ok, result} <- RepositoryAssessmentResult.completed(command, worker_result),
+         {:ok, payload} <-
+           RepositoryExecutionProfileProposalPayload.derive(
+             command,
+             result,
+             worker_local_evidence
+           ) do
+      {:ok, worker_result, payload}
+    else
+      {:error, :invalid_proposal_payload} -> {:error, :invalid_proposal_payload}
+      {:error, :invalid_result} -> {:error, :invalid_result}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def scan_with_proposal(_repository_path, _command, _opts), do: {:error, :invalid_command}
+
+  defp do_scan(repository_path, command, opts) do
     cancelled? = Keyword.get(opts, :cancelled?, fn -> false end)
     on_progress = Keyword.get(opts, :on_progress, fn _progress -> :ok end)
     now_ms = Keyword.get(opts, :now_ms, fn -> System.monotonic_time(:millisecond) end)
@@ -79,7 +118,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
          {:ok, candidates, structure} <- select_entries(entries, command.root),
          :ok <- enforce_file_limits(candidates, command.limits),
          :ok <- progress(on_progress, "enumerating", 0, 0, length(entries)),
-         {:ok, findings, inspected_files, bytes_read} <-
+         {:ok, findings, worker_local_evidence, inspected_files, bytes_read} <-
            inspect_candidates(
              repository_root,
              candidates,
@@ -92,27 +131,28 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
            ),
          :ok <- active(cancelled?, now_ms, started_at, command.limits.timeout_ms),
          :ok <- progress(on_progress, "completed", inspected_files, bytes_read, length(entries)) do
-      {:ok,
-       %{
-         protocol_version: command.version,
-         assessment_id: command.assessment_id,
-         project_id: command.project_id,
-         repository: %{
-           provider: command.repository_provider,
-           id: command.repository_id
-         },
-         root: command.root,
-         commit: command.commit,
-         scanner_contract_digest: command.scanner_contract_digest,
-         status: "completed",
-         findings: findings,
-         structure: structure,
-         stats: %{
-           discovered_paths: length(entries),
-           inspected_files: inspected_files,
-           bytes_read: bytes_read
-         }
-       }}
+      worker_result = %{
+        protocol_version: command.version,
+        assessment_id: command.assessment_id,
+        project_id: command.project_id,
+        repository: %{
+          provider: command.repository_provider,
+          id: command.repository_id
+        },
+        root: command.root,
+        commit: command.commit,
+        scanner_contract_digest: command.scanner_contract_digest,
+        status: "completed",
+        findings: findings,
+        structure: structure,
+        stats: %{
+          discovered_paths: length(entries),
+          inspected_files: inspected_files,
+          bytes_read: bytes_read
+        }
+      }
+
+      {:ok, worker_result, worker_local_evidence}
     else
       false -> {:error, :invalid_command}
       {:error, reason} when is_atom(reason) -> {:error, reason}
@@ -123,8 +163,6 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
   catch
     _kind, _reason -> {:error, :repository_unavailable}
   end
-
-  def scan(_repository_path, _command, _opts), do: {:error, :invalid_command}
 
   defp repository_root(repository_path) do
     case git(repository_path, ["rev-parse", "--show-toplevel"]) do
@@ -282,7 +320,8 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
          started_at,
          discovered_paths
        ) do
-    Enum.reduce_while(candidates, {:ok, [], 0, 0}, fn entry, {:ok, findings, files, bytes} ->
+    Enum.reduce_while(candidates, {:ok, [], [], 0, 0}, fn entry,
+                                                          {:ok, findings, evidence, files, bytes} ->
       with :ok <- active(cancelled?, now_ms, started_at, command.limits.timeout_ms),
            {:ok, content} <-
              git(repository_root, ["cat-file", "blob", entry.object_id], trim: false),
@@ -291,16 +330,21 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
            true <- next_bytes <= command.limits.max_total_bytes,
            finding <- finding(entry, content),
            next_findings <- if(finding, do: [finding | findings], else: findings),
+           next_evidence <-
+             if(finding,
+               do: [proposal_evidence(entry, content) | evidence],
+               else: evidence
+             ),
            :ok <- progress(on_progress, "scanning", files + 1, next_bytes, discovered_paths) do
-        {:cont, {:ok, next_findings, files + 1, next_bytes}}
+        {:cont, {:ok, next_findings, next_evidence, files + 1, next_bytes}}
       else
         false -> {:halt, {:error, :repository_unavailable}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
     |> case do
-      {:ok, findings, files, bytes} ->
-        {:ok, Enum.sort_by(findings, & &1.path), files, bytes}
+      {:ok, findings, evidence, files, bytes} ->
+        {:ok, Enum.sort_by(findings, & &1.path), Enum.sort_by(evidence, & &1.path), files, bytes}
 
       error ->
         error
@@ -321,6 +365,10 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
         line_count: line_count(content)
       }
     end
+  end
+
+  defp proposal_evidence(entry, content) do
+    %{category: entry.category, path: entry.relative_path, content: content}
   end
 
   defp binary?(content),

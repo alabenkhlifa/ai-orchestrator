@@ -8,8 +8,10 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheT
     RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult,
+    RepositoryExecutionProfileProposalPayload,
     WorkerRepositoryAssessmentCache,
-    WorkerRepositoryAssessmentCacheEntry
+    WorkerRepositoryAssessmentCacheEntry,
+    WorkerRepositoryExecutionProfileProposalEnvelope
   }
 
   @scanner_digest String.duplicate("a", 64)
@@ -83,6 +85,181 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheT
                second_command,
                rebound_result
              )
+  end
+
+  test "proposal cache hits keep the payload stable and rebind the current assessment envelope" do
+    cache = start_cache()
+    first_command = command!()
+
+    second_command =
+      command!(%{
+        assessment_id: Ecto.UUID.generate(),
+        disclosure_digest: String.duplicate("d", 64),
+        worker_ref: Ecto.UUID.generate()
+      })
+
+    scanner = fn _repository_path, command, _opts ->
+      worker_result = completed_scan(command)
+      {:ok, worker_result, proposal_payload!(command, worker_result)}
+    end
+
+    assert {:ok, fresh, fresh_payload, fresh_envelope, fresh_provenance} =
+             WorkerRepositoryAssessmentCache.scan_with_proposal(
+               cache,
+               "/worker/repository",
+               first_command,
+               scanner: scanner
+             )
+
+    scanner_must_not_run = fn _path, _command, _opts ->
+      flunk("an exact complete proposal cache hit must not invoke the scanner")
+    end
+
+    assert {:ok, reused, ^fresh_payload, reused_envelope, reused_provenance} =
+             WorkerRepositoryAssessmentCache.scan_with_proposal(
+               cache,
+               "/worker/repository",
+               second_command,
+               scanner: scanner_must_not_run
+             )
+
+    assert fresh.assessment_id == first_command.assessment_id
+    assert reused.assessment_id == second_command.assessment_id
+    assert fresh_payload.commands == ["mix test"]
+    assert fresh_payload.required_checks == ["mix test"]
+    assert fresh_payload.payload_digest == reused_envelope.payload_digest
+    assert fresh_envelope.assessment_id == first_command.assessment_id
+    assert reused_envelope.assessment_id == second_command.assessment_id
+    assert fresh_envelope.disclosure_digest == first_command.disclosure_digest
+    assert reused_envelope.disclosure_digest == second_command.disclosure_digest
+    assert fresh_envelope.worker_ref == first_command.worker_ref
+    assert reused_envelope.worker_ref == second_command.worker_ref
+    refute fresh_envelope.envelope_digest == reused_envelope.envelope_digest
+    refute fresh_envelope.result_sha256 == reused_envelope.result_sha256
+    assert fresh_provenance.source == "fresh_scan"
+    assert reused_provenance.source == "complete_cache"
+    assert fresh_provenance.cache_key_sha256 == reused_provenance.cache_key_sha256
+    assert fresh_provenance.evidence_sha256 == reused_provenance.evidence_sha256
+
+    assert {:ok, rebound_result} = RepositoryAssessmentResult.completed(second_command, reused)
+
+    refute WorkerRepositoryExecutionProfileProposalEnvelope.valid_for?(
+             fresh_envelope,
+             fresh_payload,
+             second_command,
+             rebound_result
+           )
+
+    assert WorkerRepositoryExecutionProfileProposalEnvelope.valid_for?(
+             reused_envelope,
+             fresh_payload,
+             second_command,
+             rebound_result
+           )
+
+    state_text = cache |> :sys.get_state() |> inspect(limit: :infinity)
+    refute state_text =~ first_command.assessment_id
+    refute state_text =~ second_command.assessment_id
+    refute state_text =~ first_command.disclosure_digest
+    refute state_text =~ second_command.disclosure_digest
+    refute state_text =~ first_command.worker_ref
+    refute state_text =~ second_command.worker_ref
+    refute state_text =~ "/worker/repository"
+    refute state_text =~ "raw source"
+    refute state_text =~ "SECRET"
+  end
+
+  test "proposal-aware reuse refuses legacy entries and corrupted payloads" do
+    cache = start_cache()
+    command = command!()
+    worker_result = completed_scan(command)
+
+    assert {:ok, result} = RepositoryAssessmentResult.completed(command, worker_result)
+    assert {:ok, _provenance} = WorkerRepositoryAssessmentCache.put(cache, result)
+    assert :miss = WorkerRepositoryAssessmentCache.fetch_with_proposal(cache, command)
+
+    payload = proposal_payload!(command, worker_result)
+    corrupted = %{payload | commands: ["mix test", "touch /tmp/secret"]}
+
+    assert {:error, :invalid_result} =
+             WorkerRepositoryAssessmentCache.put_with_proposal(cache, result, corrupted)
+
+    assert :miss = WorkerRepositoryAssessmentCache.fetch_with_proposal(cache, command)
+  end
+
+  test "proposal-aware scans refuse unsuccessful, incomplete, malformed, and mismatched values" do
+    cache = start_cache()
+    command = command!()
+    worker_result = completed_scan(command)
+    payload = proposal_payload!(command, worker_result)
+
+    assert {:ok, canceled} = RepositoryAssessmentResult.canceled(command)
+    assert {:ok, failed} = RepositoryAssessmentResult.failed(command, :stale_commit)
+
+    assert {:error, :invalid_proposal_payload} =
+             RepositoryExecutionProfileProposalPayload.new(canceled, proposal_fields(payload))
+
+    assert {:error, :invalid_proposal_payload} =
+             RepositoryExecutionProfileProposalPayload.new(failed, proposal_fields(payload))
+
+    assert {:error, :incomplete_result} =
+             WorkerRepositoryAssessmentCache.put_with_proposal(cache, canceled, payload)
+
+    assert {:error, :incomplete_result} =
+             WorkerRepositoryAssessmentCache.put_with_proposal(cache, failed, payload)
+
+    for reason <- [:canceled, :time_limit_exceeded] do
+      unsuccessful_scanner = fn _path, _command, _opts -> {:error, reason} end
+
+      assert {:error, ^reason} =
+               WorkerRepositoryAssessmentCache.scan_with_proposal(
+                 cache,
+                 "/worker/repository",
+                 command,
+                 scanner: unsuccessful_scanner
+               )
+    end
+
+    incomplete_scanner = fn _path, _command, _opts ->
+      {:ok, Map.delete(worker_result, :stats), payload}
+    end
+
+    assert {:error, :invalid_result} =
+             WorkerRepositoryAssessmentCache.scan_with_proposal(
+               cache,
+               "/worker/repository",
+               command,
+               scanner: incomplete_scanner
+             )
+
+    malformed_scanner = fn _path, _command, _opts -> {:ok, worker_result, %{}} end
+
+    assert {:error, :invalid_proposal_payload} =
+             WorkerRepositoryAssessmentCache.scan_with_proposal(
+               cache,
+               "/worker/repository",
+               command,
+               scanner: malformed_scanner
+             )
+
+    mismatched_command = command!(%{commit: String.duplicate("2", 40)})
+    mismatched_result = completed_scan(mismatched_command)
+    mismatched_payload = proposal_payload!(mismatched_command, mismatched_result)
+
+    mismatched_scanner = fn _path, _command, _opts ->
+      {:ok, worker_result, mismatched_payload}
+    end
+
+    assert {:error, :invalid_proposal_payload} =
+             WorkerRepositoryAssessmentCache.scan_with_proposal(
+               cache,
+               "/worker/repository",
+               command,
+               scanner: mismatched_scanner
+             )
+
+    assert :miss = WorkerRepositoryAssessmentCache.fetch_with_proposal(cache, command)
+    assert WorkerRepositoryAssessmentCache.stats(cache).entries == 0
   end
 
   test "cache entry provenance fails closed for an impossible complete-cache storage outcome" do
@@ -371,5 +548,25 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCacheT
       structure: [%{path: "lib", kind: "directory"}],
       stats: %{discovered_paths: 3, inspected_files: 1, bytes_read: 10}
     }
+  end
+
+  defp proposal_payload!(command, worker_result) do
+    assert {:ok, result} = RepositoryAssessmentResult.completed(command, worker_result)
+
+    assert {:ok, payload} =
+             RepositoryExecutionProfileProposalPayload.new(result, %{
+               commands: ["mix test"],
+               required_checks: ["mix test"],
+               allowed_scope: [command.root],
+               gaps: ["missing_repository_instructions"],
+               conflicts: [],
+               multi_root_blockers: []
+             })
+
+    payload
+  end
+
+  defp proposal_fields(payload) do
+    RepositoryExecutionProfileProposalPayload.proposal_fields(payload)
   end
 end
