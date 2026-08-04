@@ -186,7 +186,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
         |> then(&Regex.scan(~r/href="([^"]+)"/, &1, capture: :all_but_first))
         |> List.flatten()
 
-      assert length(hrefs) == 3
+      assert length(hrefs) == 4
       assert Enum.all?(hrefs, &String.starts_with?(&1, "/projects/#{project.id}/"))
     end
   end
