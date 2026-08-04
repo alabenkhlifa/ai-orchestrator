@@ -229,8 +229,12 @@ defmodule SddOrchestrator.Privacy.SpecificationGovernanceTest do
     {:ok, %{rows: table_rows}} =
       Repo.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
 
-    table_text = table_rows |> List.flatten() |> Enum.join(" ") |> String.downcase()
-    refute Regex.match?(~r/specification.*(cache|snapshot|analytic|telemetry)/, table_text)
+    table_names = table_rows |> List.flatten() |> Enum.map(&String.downcase/1)
+
+    refute Enum.any?(
+             table_names,
+             &Regex.match?(~r/specification.*(cache|snapshot|analytic|telemetry)/, &1)
+           )
 
     assert DeploymentPrivacyProfile.retention_requirements() == %{
              operational_security_logs_days: 30,
