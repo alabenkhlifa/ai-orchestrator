@@ -10,11 +10,13 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
     PersonalConnections,
     Quotas,
     RuntimeCosts,
+    RuntimeObservations,
     RuntimeSessions
   }
 
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.ModelCatalogAdapterDouble
+  alias SddOrchestrator.ObservationAdapterDouble
   alias SddOrchestrator.PersonalConnectionAdapterDouble
   alias SddOrchestrator.QuotaAdapterDouble
 
@@ -445,6 +447,104 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
       )
 
     ledger
+  end
+
+  @doc "Builds one applicable quota bucket reference for an observation."
+  def observation_quota_bucket(attrs \\ %{}) do
+    %{
+      id: Map.get(attrs, :id, "general"),
+      scope: Map.get(attrs, :scope, "general"),
+      model: Map.get(attrs, :model)
+    }
+  end
+
+  @doc "Builds the versioned basis one local cost estimate was calculated from."
+  def observation_estimate_basis(attrs \\ %{}) do
+    %{
+      price_version: Map.get(attrs, :price_version, "2026-08-01"),
+      price_source: Map.get(attrs, :price_source, "official_price_list"),
+      model: Map.get(attrs, :model, "codex-test-model"),
+      input_tokens: Map.get(attrs, :input_tokens, 1_200),
+      output_tokens: Map.get(attrs, :output_tokens, 300),
+      input_unit_price: Map.get(attrs, :input_unit_price, "2.00"),
+      output_unit_price: Map.get(attrs, :output_unit_price, "10.00")
+    }
+  end
+
+  @doc "Builds one exact Task 12 provider-neutral observation adapter result."
+  def observation_adapter_result(attrs \\ %{}) do
+    %{
+      provider: Map.get(attrs, :provider, "openai_codex"),
+      source: Map.get(attrs, :source, "official_client"),
+      source_version: Map.get(attrs, :source_version, @catalog_source_version),
+      event_key:
+        Map.get_lazy(attrs, :event_key, fn ->
+          "event-#{System.unique_integer([:positive])}"
+        end),
+      sequence: Map.get(attrs, :sequence, 1),
+      observed_at: Map.get(attrs, :observed_at, ~U[2026-08-03 12:00:30Z]),
+      elapsed: Map.get(attrs, :elapsed, %{seconds: 30, source: "worker_observed"}),
+      tokens:
+        Map.get(attrs, :tokens, %{
+          input: 1_200,
+          output: 300,
+          total: 1_500,
+          source: "worker_observed"
+        }),
+      estimated_cost:
+        Map.get(attrs, :estimated_cost, %{
+          amount: "0.0054",
+          currency: "USD",
+          basis: observation_estimate_basis(),
+          source: "local_estimate"
+        }),
+      quota:
+        Map.get(attrs, :quota, %{
+          buckets: [observation_quota_bucket()],
+          source: "provider_fact"
+        }),
+      status:
+        Map.get(attrs, :status, %{
+          state: "available",
+          pause_reason: nil,
+          source: "provider_fact"
+        }),
+      unknown_fields: Map.get(attrs, :unknown_fields, [])
+    }
+  end
+
+  @doc "Creates one connection, catalog, quota, and pinned session ready to observe."
+  def runtime_observation_context_fixture(attrs \\ %{}) do
+    now = Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z])
+
+    context =
+      attrs
+      |> Map.put(:now, now)
+      |> runtime_session_context_fixture()
+
+    session =
+      ai_runtime_session_fixture(context, %{
+        now: now,
+        consumer: Map.get(attrs, :consumer, :working_agent),
+        consumer_ref:
+          Map.get_lazy(attrs, :consumer_ref, fn ->
+            "run-observation-#{System.unique_integer([:positive])}"
+          end)
+      })
+
+    Map.put(context, :session, session)
+  end
+
+  @doc "Appends one observation through the public ordered-append boundary."
+  def runtime_observation_fixture(context, attrs \\ %{}) do
+    {:ok, observation} =
+      RuntimeObservations.ingest(context.account, context.session.session_id,
+        adapter: ObservationAdapterDouble,
+        adapter_result: {:ok, observation_adapter_result(attrs)},
+        now: Map.get(attrs, :now, ~U[2026-08-03 12:05:00Z])
+      )
+
+    observation
   end
 
   defp default_cost_ceiling(attrs),
