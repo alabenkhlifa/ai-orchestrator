@@ -4,23 +4,25 @@
 
 Blocked
 
-The product and technical agreements are approved. Task 1 is blocked until Slice 14 publishes both the approved-pilot and independent-readiness capabilities. The storage and specification governance prerequisites are already ready.
+The product and technical agreements are approved. Task 4 is blocked until Slice 14 publishes `capability:repository-profile-review`; Task 12 follows the selected pilot. The storage and specification-store governance prerequisites are already ready.
 
 ## Active Slice
 
-Enforce the privacy, lifecycle, storage, and no-secondary-use contract over the completed repository assessment and profile workflow, then publish one deterministic allowlisted managed-runtime capability without copying specifications or changing repository files.
+Select one authoritative pilot and present independent readiness for an owner-reviewed repository profile, enforce the privacy, lifecycle, storage, and no-secondary-use contract, then publish one deterministic allowlisted managed-runtime capability without copying specifications or changing repository files.
 
 ## Cross-Specification Dependencies
 
 Requires:
 
-- `capability:repository-approved-pilot` — provider `specs/14-repository-execution-profile#Task 4` — required before `Task 1`.
-- `capability:repository-profile-readiness` — provider `specs/14-repository-execution-profile#Task 12` — required before `Task 1`.
+- `capability:repository-profile-review` — provider `specs/14-repository-execution-profile#Task 11` — required before `Task 4`.
+- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 4`.
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 1`.
 - `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 1`.
 
 Provides:
 
+- `capability:repository-approved-pilot` — ready after `Task 4`.
+- `capability:repository-profile-readiness` — ready after `Task 12`.
 - `capability:repository-execution-profile` — ready after `Task 2`.
 
 ## Slice Size Gate
@@ -29,8 +31,8 @@ Provides:
 
 ## Task Size Gate
 
-- Both tasks are standard, each owns one independently provable governance or publication invariant, has no new data entity, and has focused proof expected to run in about ten minutes.
-- The slice contains two tasks and its longest `Depends on:` path contains two tasks.
+- All four tasks are standard, each owns one independently provable pilot, readiness, governance, or publication outcome and has focused proof expected to run in about ten minutes.
+- The slice contains four tasks and its longest `Depends on:` path contains four tasks: Task 4, Task 12, Task 1, then Task 2.
 - No exception is required.
 
 ## Proof Scope Gate
@@ -41,13 +43,15 @@ Provides:
 
 Included:
 
+- One current authoritative specification and revision pilot reference with owner-only selection, participant read access, and no specification copy or backlog import.
+- Independent assistant, specification, agent-execution, and release readiness with stable reason codes, earliest blocked stage, stale-state checks, conflict and multi-root behavior, and reliable required-check enforcement.
 - Hosted and device-authoritative privacy, security, access, lifecycle, processor, transfer, logging, backup, analytics, and secondary-use controls for Slice 14 values.
 - Worker-local cache and raw-index locality enforcement.
 - Deterministic allowlisted managed-runtime profile serialization, digest, compatibility proof, and final capability publication.
 
 Excluded:
 
-- Repository scanning, cache-key behavior, assessment-result creation, profile proposal or approval, pilot selection, and readiness behavior owned by Slice 14.
+- Repository scanning, cache-key behavior, assessment-result creation, proposal-envelope generation or persistence, and profile proposal, review or approval behavior owned by Slice 14.
 - Slice 07 manifest changes, managed-run execution, repository mutation, kit installation, backlog import, deployment, merge, or release execution.
 
 Deferred after this slice:
@@ -69,13 +73,31 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Enforce privacy, lifecycle, and storage-boundary controls.
-  - Status: Blocked until both Slice 14 capabilities named for Task 1 are ready.
+- [ ] Task 4 — Select one authoritative pilot specification revision.
+  - Status: Blocked until `capability:repository-profile-review` is ready.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
-  - Purpose: Keep every assessment, cache, profile, pilot, readiness, and disclosure value inside its approved purpose, authority, access, and lifecycle boundary.
-  - Owned surfaces: Processing inventory and field-purpose map, hosted and device-authoritative parity, project and role access, raw-source and index locality, minimized result allowlist, worker-cache lifecycle, changed-boundary records, retention, project and account deletion, rights behavior, backup expiry, structured log redaction, processor and transfer controls, analytics absence, secondary-use prohibition, and no durable hosted copy for device-authoritative data.
+  - Purpose: Bound adoption to one current authoritative Orchestrator feature without copying specifications or importing repository backlog items.
+  - Owned surfaces: Profile-review capability consumer, shared-store specification and current revision selector, owner-only pilot selection, stable pilot reference, stale-revision refusal, no specification-document copy, no repository issue or backlog import, hosted and device-authoritative persistence parity, participant read-only access, focused LiveView interaction, `capability:repository-approved-pilot` provider, and readiness write-back.
+  - Owns: AC-10
+  - Proof: Focused profile-review and specification-store consumers, current and stale revision, owner, participant read-only, hosted/device adapter, stable-reference, no-copy, no-import, LiveView, and browser tests pass.
+
+- [ ] Task 12 — Present independent repository readiness and verification blockers.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 4
+  - Purpose: Explain separately what the assistant, specification workflow, autonomous agent, and release may safely do without inventing a reliable check contract.
+  - Owned surfaces: Profile-review capability consumer, assistant, specification, agent-execution and release readiness value and UI, earliest blocking stage and actionable reason codes, stale commit and changed-root behavior, unresolved instruction and safety conflict behavior, unsupported multi-root behavior, reliable required-check contract gate, verified-completion and `Ready for review` denial, read-only assistant independence, participant read-only access, `capability:repository-profile-readiness` provider, and readiness write-back.
+  - Owns: AC-08, AC-09, AC-11
+  - Proof: Focused profile-review consumer, stale-commit, changed-root, conflict, safety-conflict, multi-root, missing and unreliable check, assistant independence, participant read-only, earliest-stage reason, LiveView, and browser tests pass.
+
+- [ ] Task 1 — Enforce privacy, lifecycle, and storage-boundary controls.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 12
+  - Purpose: Keep every assessment, proposal-envelope, cache, profile, pilot, readiness, and disclosure value inside its approved purpose, authority, access, and lifecycle boundary.
+  - Owned surfaces: Processing inventory and field-purpose map, hosted and device-authoritative parity, project and role access, raw-source and index locality, minimized result and proposal-envelope allowlists, worker-cache lifecycle, changed-boundary records, retention, project and account deletion, rights behavior, backup expiry, structured log redaction, processor and transfer controls, analytics absence, secondary-use prohibition, and no durable hosted copy for device-authoritative data.
   - Owns: AC-01
   - Proof: Focused inventory, field-purpose, hosted/device parity, project isolation, role access, raw-content and index negative, cache lifecycle, deletion, retention, rights, backup, log-redaction, processor, transfer, no-hosted-copy, no-analytics, and no-secondary-use tests pass.
 
@@ -90,8 +112,9 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Both Slice 14 capability providers are complete with matching focused proof and readiness write-back.
-- [ ] AC-01 and AC-02 pass in hosted and device-authoritative modes.
+- [ ] Slice 14 `capability:repository-profile-review` is complete with matching focused proof and readiness write-back.
+- [ ] AC-01, AC-02, and AC-08 through AC-11 pass in their applicable hosted and device-authoritative modes.
+- [ ] Pilot-selection, stale-revision, no-copy, no-import, four-axis readiness, conflict, multi-root, missing-check, participant-read, and browser scenarios pass.
 - [ ] Privacy inventory, access, lifecycle, deletion, rights, processor, transfer, redaction, cache-locality, no-analytics, and no-secondary-use suites pass.
 - [ ] Managed-runtime allowlist, serialization, digest, specification-reference, runtime-skill, no-copy, no-repository-mutation, and downstream compatibility suites pass.
 - [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
@@ -104,14 +127,14 @@ Traceability:
 
 ## Blocked Decisions
 
-- Task 1 is implementation-blocked on `capability:repository-approved-pilot` and `capability:repository-profile-readiness`; no product or technical decision is unresolved.
+- Task 4 is implementation-blocked on `capability:repository-profile-review`; Task 12 waits for Task 4. No product or technical decision is unresolved.
 
 ## Progress Log
 
-### 2026-08-03 - Focused completion continuation approved
+### 2026-08-04 - Pilot and readiness moved behind the profile-review handoff
 
-- Completed: Moved independently verifiable privacy and lifecycle enforcement plus final managed-runtime serialization and capability publication out of oversized Slice 14 work. Preserved Slice 14 authority for assessment, cache, profile, pilot, and readiness behavior and changed downstream provider edges to this final completion task.
-- Scope classification: Focused standard completion specification with two tasks and a two-task critical path.
-- Remaining: Wait for both Slice 14 capabilities, implement Task 1 and Task 2 with focused proof and task-boundary commits, run the full slice verification gate, and publish final readiness.
-- Failed checks: None. The slice begins blocked only on unavailable implementation capabilities; deployment-specific evidence remains release-blocked.
-- Spec updates: Created the approved requirements, design, capability edges, task ownership, proof scope, traceability, verification gate, and release boundary without implementing application code.
+- Completed: Preserved Slice 14 authority for assessment, cache, proposal-envelope, immutable profile, and owner review; moved the still-unimplemented stable pilot-selection and independent-readiness tasks here; and replaced the two unavailable provider edges with one focused `capability:repository-profile-review` prerequisite. Tasks 4 and 12 preserve their stable labels and acceptance-criterion ownership.
+- Scope classification: Focused standard completion specification with four tasks and a four-task critical path. Pilot selection establishes the exact feature context for readiness, then governance and deterministic final publication follow.
+- Remaining: Wait for Slice 14 Task 11, implement Tasks 4, 12, 1, and 2 in dependency order with focused proof and task-boundary commits, run the full slice verification gate, and publish final readiness.
+- Failed checks: None. The slice remains blocked only on one unavailable implementation capability; deployment-specific evidence remains release-blocked.
+- Spec updates: Added pilot and readiness requirements, design surfaces, AC-08 through AC-11 ownership, stable Tasks 4 and 12, project-specification-store consumption, three capability providers, updated governance coverage, and the profile-review dependency without implementing application code.

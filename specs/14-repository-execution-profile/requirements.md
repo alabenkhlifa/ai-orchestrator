@@ -6,13 +6,13 @@ Approved
 
 ## Outcome
 
-A project owner can authorize a bounded read-only assessment of one mature repository at one exact commit, review and approve a reliable execution profile, and select one pilot feature for managed SDD work without changing repository files or importing the existing backlog.
+A project owner can authorize a bounded read-only assessment of one mature repository at one exact commit and review and approve a reliable execution profile without changing repository files.
 
 ## Users
 
 - Project owners authorizing repository inspection and approving how managed agents work.
 - Developers and technical contributors reviewing existing instructions, commands, repository structure, and conflicts.
-- Business analysts, product owners, and project managers selecting a pilot feature and reading clear readiness explanations without needing to understand repository internals.
+- Business analysts, product owners, and project managers reading clear assessment and profile explanations without needing to understand repository internals.
 
 ## In Scope
 
@@ -21,11 +21,9 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - A short-lived, owner-requested worker preparation that proves the connected repository identity, normalizes one selected root, and resolves its current full commit only after the required processing-boundary confirmation.
 - A worker-local, commit-bound, bounded, cancellable, and commit-cached read-only scan.
 - High-signal inspection of existing agent instructions, contribution rules, project manifests, CI definitions, test and build commands, and repository structure.
-- A structured assessment and owner-approved execution profile.
+- A structured assessment, one worker-generated minimized profile-proposal envelope, and an owner-approved execution profile.
 - Existing repository instructions as the authoritative repository rules.
-- Visible conflicts, missing checks, and separate assistant, specification, agent-execution, and release readiness.
-- Selection of one existing Orchestrator feature specification as the pilot; unrelated repository backlog remains untouched.
-- Managed runtime SDD compatibility without permanent repository mutation.
+- Visible conflicts, missing checks, and multi-root blockers before profile approval.
 
 ## Out of Scope
 
@@ -36,7 +34,7 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - Automatically inventing missing verification commands or resolving a safety conflict.
 - Multiple independently configured roots or monorepo subprojects in the first executable slice.
 - Changing the approved Slice 07 execution-manifest contract in this specification.
-- Privacy and lifecycle enforcement plus final `capability:repository-execution-profile` publication, which are owned by `specs/30-repository-execution-profile-completion/` after this slice publishes its approved-pilot and readiness handoffs.
+- Pilot selection, independent readiness, privacy and lifecycle enforcement, and final `capability:repository-execution-profile` publication, which are owned by `specs/30-repository-execution-profile-completion/` after this slice publishes `capability:repository-profile-review`.
 
 ## Primary Workflow
 
@@ -46,16 +44,16 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 4. Through the authorized worker boundary, the owner selects one root inside the connected repository. The worker proves the repository identity, normalizes the root, resolves its current full commit, and returns only a short-lived minimized binding without scanning repository content.
 5. The product shows the verified repository, selected root, exact commit, limits, and processing boundary, then the owner explicitly authorizes assessment.
 6. The authorized worker scans only the approved high-signal surfaces under configured limits, reports progress, supports cancellation, and reuses an unchanged commit cache without uploading a whole-repository index.
-7. The product shows detected instructions, project commands, verification evidence, repository structure, minimized cache provenance, gaps, and conflicts with source anchors.
-8. The product proposes an execution profile. Existing repository instructions remain authoritative, and the owner reviews and explicitly approves or rejects the proposal.
-9. The product shows assistant, specification, agent-execution, and release readiness separately.
-10. The owner selects one current Orchestrator feature specification as the pilot. No repository issue or backlog item is imported unless a separate explicit import workflow is later authorized.
-11. The approved profile becomes available to managed runtime consumers without changing the repository; permanent kit integration is offered only through its separate workflow after the pilot reaches its required milestone.
+7. While the approved high-signal evidence remains worker-local, the worker deterministically derives one minimized profile-proposal envelope containing only normalized commands, required checks, allowed scope, gaps, conflicts, and multi-root blockers; ambiguous or unsupported evidence becomes a visible blocker rather than a guess.
+8. The completed assessment, cache provenance, and proposal envelope are bound to the same exact evidence and stored in the project's authoritative storage mode without transferring raw repository content or the scan index.
+9. The product shows detected instructions, verification evidence, repository structure, minimized cache provenance, every proposal field, gaps, and conflicts with source anchors. Existing repository instructions remain authoritative, and the owner explicitly approves or rejects the proposal.
+10. `specs/30-repository-execution-profile-completion/` presents assistant, specification, agent-execution, and release readiness separately and lets the owner select one current authoritative specification revision as the pilot without importing repository backlog.
+11. After that continuation's privacy, lifecycle, and compatibility proof passes, the approved profile becomes available to managed runtime consumers without changing the repository; permanent kit integration remains a separate workflow.
 
 ## Business Rules
 
 - Assessment requires a repository with at least one commit. An unborn local repository routes to empty-repository initialization because the existing local repository identity requires a root commit.
-- Only the project owner may confirm the processing boundary, request repository-binding preparation, authorize a first assessment, approve or replace an execution profile, change its root, or select the pilot feature.
+- Only the project owner may confirm the processing boundary, request repository-binding preparation, authorize a first assessment, approve or replace an execution profile, or change its root.
 - Repository-binding preparation requires a currently authorized paired worker. A device-authoritative project uses its owning device workspace; a hosted project requires the owner to explicitly select a currently available device workspace and worker for this operation. Neither path creates an implicit account-to-device association.
 - The worker must prove that the selected repository is the project's connected canonical repository before it returns a binding. Unknown, malformed, mismatched, cross-project, cross-workspace, unavailable, expired, replayed, or changed repository state fails closed.
 - A binding preparation contains only the project and repository identities, normalized repository-relative root, full exact commit, scanner-contract and disclosure digests, opaque worker reference, nonce, and issue and expiry times. Absolute paths, repository content, Git history, remote URLs, credentials, and raw worker diagnostics remain worker-local. The preparation is short-lived, single-use, not authoritative project data, and creates no durable hosted copy for a device-authoritative project.
@@ -64,13 +62,15 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - The first slice supports one root. A detected multi-root or monorepo structure remains visible and blocks autonomous execution when one reliable root cannot represent the pilot.
 - Scanning is read-only, bounded by configured file, byte, time, and path limits, cancellable, and cached only by project, repository identity, selected root, scanner contract version, and exact commit.
 - The worker inspects only approved high-signal instruction, contribution, manifest, CI, check, and structure surfaces. It must not traverse ignored secrets, dependency stores, build outputs, binary content, or unrelated source to build a hosted index.
-- Raw repository content and the scan index remain worker-local. The authoritative project store receives only the minimized structured assessment, approved profile, source-relative evidence anchors, outcome metadata, and any explicitly disclosed necessary excerpt.
-- A completed assessment records only the worker-reported cache source (`fresh_scan` or `complete_cache`), deterministic cache-key and evidence digests, and whether the complete evidence remained cached. The product must not infer provenance from assessment contents. Canceled and failed assessments record no cache provenance.
-- A completion created before the provenance handoff or received without verifiable worker-reported provenance cannot be backfilled or used for a new profile approval. The owner must run a new assessment under the current contract.
+- Raw repository content and the scan index remain worker-local. The authoritative project store receives only the minimized structured assessment, source-relative evidence anchors, outcome metadata, the strict minimized proposal envelope, the approved profile, and any explicitly disclosed necessary excerpt.
+- The authorized worker, not the control plane, owner input, or a model processor, derives the proposal envelope deterministically from the approved high-signal scan evidence without executing repository content. It may emit only normalized `commands`, `required_checks`, `allowed_scope`, `gaps`, `conflicts`, and `multi_root_blockers`; missing or ambiguous evidence must produce stable blocker codes instead of invented commands or checks.
+- A successful fresh scan and an unchanged complete-cache hit return the same exact proposal envelope. The envelope is bound to the project, repository identity, selected root, exact commit, scanner and limit contracts, assessment result, cache-key digest, evidence digest, and its own deterministic digest before authoritative persistence. Canceled and failed assessments persist no proposal envelope.
+- A completed assessment records the worker-reported cache source (`fresh_scan` or `complete_cache`), deterministic cache-key and evidence digests, whether the complete evidence remained cached, and the exact bound proposal-envelope reference. The product must not infer provenance or proposal fields from assessment contents.
+- A completion created before either minimized handoff, or received without verifiable worker-reported provenance and proposal-envelope bindings, cannot be backfilled or used for a new profile approval. The owner must run a new assessment under the current contract.
 - The product must show the processing disclosure before the first assessment and again only when the worker, model, processor, content-transfer, or retention boundary changes.
 - Canceling or failing an assessment creates no approved profile and does not reuse incomplete results as a successful cache entry.
 - Existing `AGENTS.md`, `CLAUDE.md`, contribution rules, CI requirements, security rules, and project conventions remain authoritative repository instructions.
-- A proposed profile may normalize discovered commands and scope but cannot silently weaken, replace, or reinterpret an existing repository instruction.
+- The review workflow reconstructs Task 10's transient proposal only from the persisted exact envelope and assessment-owned binding. Neither a browser, control-plane caller, participant, nor owner may supply replacement proposal fields. The proposal may normalize discovered commands and scope but cannot silently weaken, replace, or reinterpret an existing repository instruction.
 - A conflict between existing instructions and autonomous execution must remain visible and block agent-execution readiness until the owner resolves it in the repository or approves a compatible documented profile. A safety conflict cannot be overridden in the product.
 - A conflict that blocks autonomous execution does not by itself block the read-only project assistant from answering within its authorized tools and evidence.
 - Missing or unreliable required checks blocks verified completion and `Ready for review`. The product must not invent a passing verification contract; an approved project check contract is required before a managed agent can make that claim.
@@ -79,8 +79,8 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - Repository issues, tickets, TODOs, and backlog items remain untouched. Import requires a future explicit workflow that previews scope and duplicates before mutation.
 - Managed runtime skills and authoritative specification revisions are sufficient for Orchestrator-managed SDD. Permanent repository files are not required.
 - Before Slice 07 consumes `capability:repository-execution-profile`, its approved execution-manifest requirements, design, tasks, and capability edge must be changed through `update-spec` after the current Slice 07 work completes.
-- Assessment and profile data are confidential project data, follow the project's authoritative storage mode, are available only to current authorized project participants according to role, and are prohibited from analytics, advertising, model training, or unrelated reuse.
-- This specification owns assessment completion, exact-commit caching, owner-approved profile versions, one pilot reference, and independent readiness. `specs/30-repository-execution-profile-completion/` owns the separately verifiable privacy and lifecycle controls and publishes the final managed-runtime capability without redefining these records or workflows.
+- Assessment, proposal-envelope, and profile data are confidential project data, follow the project's authoritative storage mode, are available only to current authorized project participants according to role, and are prohibited from analytics, advertising, model training, or unrelated reuse.
+- This specification owns assessment completion, exact-commit caching, the minimized proposal-envelope handoff, and owner-approved profile versions. `specs/30-repository-execution-profile-completion/` owns pilot selection, independent readiness, the separately verifiable privacy and lifecycle controls, and final managed-runtime capability publication without redefining the assessment, envelope, or profile authority.
 
 ## Acceptance Criteria
 
@@ -90,7 +90,7 @@ A project owner can authorize a bounded read-only assessment of one mature repos
 - [AC-04] Given an assessment is canceled or fails, when processing stops, then no approved profile or successful cache entry is created and repository state is unchanged.
 - [AC-05] Given the same root, scanner contract, and exact commit were completely assessed, when assessment is requested again, then the worker may reuse the complete cache; any relevant change requires a new assessment.
 - [AC-06] Given existing instructions, commands, CI rules, or repository structure are detected, when results appear, then findings include worker-verified source-relative anchors and existing repository instructions remain authoritative.
-- [AC-07] Given the scan proposes an execution profile, when the owner reviews it, then the completed-assessment and minimized cache provenance, root, base revision, instruction precedence, required checks, project commands, allowed scope, gaps, and conflicts are visible before approval.
+- [AC-07] Given the worker produced a strict minimized profile-proposal envelope from the exact completed evidence, when the owner reviews it, then the completed assessment and cache provenance, root, base revision, instruction precedence, required checks, project commands, allowed scope, gaps, conflicts, and multi-root blockers are visible before approval, and no review caller may replace those fields.
 - [AC-08] Given a stale commit, changed root, unresolved instruction conflict, unsupported multi-root boundary, or missing reliable checks, when approval or readiness is evaluated, then the affected agent-execution or verification state remains blocked with an actionable reason.
 - [AC-09] Given a repository conflict prevents autonomous execution, when the read-only assistant is otherwise authorized, then assistant readiness remains independently available and does not claim agent-execution readiness.
 - [AC-10] Given the owner selects a pilot, when selection commits, then it references one current authoritative specification and revision and imports or changes no repository backlog item.
