@@ -6,6 +6,14 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
   exact adapter projection, and persists only the minimized opaque binding.
   Consumer resolution always requires an explicit connection id; this module
   has no funded or implicit fallback path.
+
+  Revocation is two separate guarantees. Requesting it ends eligibility for new
+  work immediately, in the control plane, before any worker is contacted: that
+  denial cannot depend on a reachable device. Removing the credential itself
+  happens where the credential lives, so the request stays outstanding until the
+  worker acknowledges it. An unreachable worker therefore leaves a connection
+  denied but pending rather than falsely reported as cleaned up, and
+  `SddOrchestrator.AIRuntime.PersonalConnectionRevocations` retries it.
   """
 
   import Ecto.Query
@@ -23,6 +31,10 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
 
   @consumer_kinds [:support_assistant, :working_agent]
   @link_keys [:label, :provider, :authentication_mode]
+
+  # A terminal connection's opaque reference is kept only long enough for the
+  # owner to see that the revocation completed, then deleted by retention.
+  @default_revoked_reference_lifetime_seconds 24 * 60 * 60
 
   @doc "Links one labelled worker-local profile after current authority checks."
   @spec link_personal_connection(
@@ -166,11 +178,20 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
   def resolve_working_agent_connection(account_or_id, connection_id),
     do: resolve_for_consumer(account_or_id, connection_id, :working_agent)
 
-  @doc "Idempotently records that the owning account requested revocation."
+  @doc """
+  Idempotently ends eligibility and asks the worker to remove its local credential.
+
+  The control-plane denial is committed first and never depends on the worker
+  answering. The bounded removal request follows outside that transaction; a
+  failure leaves the connection pending with one typed reason.
+  """
   @spec request_revocation(Account.t() | Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
           {:ok, PersonalAIConnection.t()} | {:error, :not_found}
   def request_revocation(account_or_id, connection_id, opts \\ []) do
-    transition_revocation(account_or_id, connection_id, :request, opts)
+    case transition_revocation(account_or_id, connection_id, :request, opts) do
+      {:ok, connection} -> {:ok, reconcile_revocation(connection, opts)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc "Idempotently acknowledges a previously requested worker-local revocation."
@@ -179,6 +200,41 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
           | {:error, :not_found | :revocation_not_requested}
   def acknowledge_revocation(account_or_id, connection_id, opts \\ []) do
     transition_revocation(account_or_id, connection_id, :acknowledge, opts)
+  end
+
+  @doc """
+  Attempts one bounded worker-local credential removal for a pending connection.
+
+  Safe to call repeatedly: a connection that is not pending is returned
+  untouched, and an acknowledgement reached by a concurrent attempt wins.
+  Always returns a connection rather than an error, because the caller's
+  decision — keep retrying — does not change with the typed reason.
+  """
+  @spec reconcile_revocation(PersonalAIConnection.t(), keyword()) :: PersonalAIConnection.t()
+  def reconcile_revocation(connection, opts \\ [])
+
+  def reconcile_revocation(
+        %PersonalAIConnection{revocation_state: "requested"} = connection,
+        opts
+      ) do
+    at = Keyword.get(opts, :at, now()) |> DateTime.truncate(:second)
+
+    case call_revocation_adapter(connection, opts) do
+      {:ok, %{credential_removal: outcome}} -> record_acknowledgement(connection, outcome, at)
+      {:error, reason} -> record_removal_failure(connection, reason, at)
+    end
+  end
+
+  def reconcile_revocation(%PersonalAIConnection{} = connection, _opts), do: connection
+
+  @doc "Configured lifetime of a terminal connection's opaque control-plane reference."
+  @spec revoked_reference_lifetime_seconds() :: non_neg_integer()
+  def revoked_reference_lifetime_seconds do
+    Application.get_env(
+      :sdd_orchestrator,
+      :revoked_personal_connection_lifetime_seconds,
+      @default_revoked_reference_lifetime_seconds
+    )
   end
 
   defp persist_link(account_id, worker_id, label, result) do
@@ -257,6 +313,7 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
     with {:ok, account_id} <- entity_id(account_or_id, Account),
          {:ok, connection_id} <- cast_id(connection_id) do
       requested_at = Keyword.get(opts, :at, now()) |> DateTime.truncate(:second)
+      outcome = removal_outcome(opts)
 
       Repo.transaction(fn ->
         case locked_scoped_connection(account_id, connection_id) do
@@ -264,12 +321,97 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
             Repo.rollback(:not_found)
 
           connection ->
-            apply_revocation_transition(connection, transition, requested_at)
+            apply_revocation_transition(connection, transition, requested_at, outcome)
         end
       end)
       |> unwrap_transaction()
     else
       _ -> {:error, :not_found}
+    end
+  end
+
+  defp removal_outcome(opts) do
+    case Keyword.get(opts, :credential_removal, "removed") do
+      outcome when is_binary(outcome) ->
+        if outcome in PersonalAIConnection.credential_removal_results(),
+          do: outcome,
+          else: "removed"
+
+      _other ->
+        "removed"
+    end
+  end
+
+  defp call_revocation_adapter(connection, opts) do
+    adapter = Keyword.get(opts, :adapter, RPC)
+    adapter_opts = Keyword.drop(opts, [:adapter, :at, :credential_removal])
+    request = %{worker_profile_ref: connection.worker_profile_ref}
+
+    with %Account{} = account <- Repo.get(Account, connection.account_id),
+         %LocalWorker{state: "active"} = worker <- Repo.get(LocalWorker, connection.worker_id) do
+      invoke_revocation_adapter(adapter, account, worker, request, adapter_opts)
+    else
+      _no_account_or_reachable_worker -> {:error, :worker_unavailable}
+    end
+  end
+
+  defp invoke_revocation_adapter(adapter, account, worker, request, adapter_opts) do
+    case adapter.revoke(account, worker, request, adapter_opts) do
+      {:ok, result} -> PersonalConnectionAdapter.validate_revocation_result(result, request)
+      {:error, reason} -> {:error, PersonalConnectionAdapter.normalize_error(reason)}
+      _other -> {:error, :invalid_response}
+    end
+  rescue
+    _exception -> {:error, :invalid_response}
+  catch
+    _kind, _reason -> {:error, :invalid_response}
+  end
+
+  # Both bookkeeping writes re-read the row under a row lock, so a concurrent
+  # reconciliation pass cannot overwrite an acknowledgement with a stale attempt.
+  defp record_acknowledgement(connection, outcome, at) do
+    update_locked_pending(connection, fn locked ->
+      PersonalAIConnection.update_changeset(locked, %{
+        revocation_state: "acknowledged",
+        revocation_acknowledged_at: at,
+        credential_removal_result: outcome,
+        credential_removal_failure_reason: nil,
+        credential_removal_attempts: locked.credential_removal_attempts + 1,
+        credential_removal_attempted_at: at,
+        deletion_scheduled_at: DateTime.add(at, revoked_reference_lifetime_seconds(), :second)
+      })
+    end)
+  end
+
+  defp record_removal_failure(connection, reason, at) do
+    update_locked_pending(connection, fn locked ->
+      PersonalAIConnection.update_changeset(locked, %{
+        credential_removal_attempts: locked.credential_removal_attempts + 1,
+        credential_removal_attempted_at: at,
+        credential_removal_failure_reason: typed_failure_reason(reason)
+      })
+    end)
+  end
+
+  defp typed_failure_reason(reason) do
+    reason = to_string(PersonalConnectionAdapter.normalize_error(reason))
+
+    if reason in PersonalAIConnection.credential_removal_failure_reasons(),
+      do: reason,
+      else: "invalid_response"
+  end
+
+  defp update_locked_pending(connection, build_changeset) do
+    Repo.transaction(fn ->
+      case locked_connection(connection.id) do
+        nil -> Repo.rollback(:not_found)
+        %{revocation_state: "requested"} = locked -> Repo.update!(build_changeset.(locked))
+        settled -> settled
+      end
+    end)
+    |> case do
+      {:ok, updated} -> updated
+      {:error, _unavailable} -> connection
     end
   end
 
@@ -302,7 +444,12 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
 
   defp normalize_label(_label), do: {:error, :invalid_label}
 
-  defp apply_revocation_transition(%{revocation_state: "active"} = connection, :request, at) do
+  defp apply_revocation_transition(
+         %{revocation_state: "active"} = connection,
+         :request,
+         at,
+         _outcome
+       ) do
     connection
     |> PersonalAIConnection.update_changeset(%{
       revocation_state: "requested",
@@ -311,19 +458,29 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
     |> Repo.update!()
   end
 
-  defp apply_revocation_transition(%{revocation_state: state} = connection, :request, _at)
+  defp apply_revocation_transition(
+         %{revocation_state: state} = connection,
+         :request,
+         _at,
+         _outcome
+       )
        when state in ["requested", "acknowledged"],
        do: connection
 
   defp apply_revocation_transition(
          %{revocation_state: "requested"} = connection,
          :acknowledge,
-         at
+         at,
+         outcome
        ) do
     connection
     |> PersonalAIConnection.update_changeset(%{
       revocation_state: "acknowledged",
-      revocation_acknowledged_at: at
+      revocation_acknowledged_at: at,
+      credential_removal_result: outcome,
+      credential_removal_failure_reason: nil,
+      credential_removal_attempted_at: at,
+      deletion_scheduled_at: DateTime.add(at, revoked_reference_lifetime_seconds(), :second)
     })
     |> Repo.update!()
   end
@@ -331,11 +488,12 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
   defp apply_revocation_transition(
          %{revocation_state: "acknowledged"} = connection,
          :acknowledge,
-         _at
+         _at,
+         _outcome
        ),
        do: connection
 
-  defp apply_revocation_transition(%{revocation_state: "active"}, :acknowledge, _at),
+  defp apply_revocation_transition(%{revocation_state: "active"}, :acknowledge, _at, _outcome),
     do: Repo.rollback(:revocation_not_requested)
 
   defp call_adapter(adapter, account, worker, request, opts) do
@@ -455,6 +613,17 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
     Repo.one(
       from connection in PersonalAIConnection,
         where: connection.account_id == ^account_id and connection.id == ^connection_id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  # Removal bookkeeping is a system-owned lifecycle write. It runs for a
+  # connection already selected under its owning account, including one whose
+  # account is disabled or being erased, so it locks by identity alone.
+  defp locked_connection(connection_id) do
+    Repo.one(
+      from connection in PersonalAIConnection,
+        where: connection.id == ^connection_id,
         lock: "FOR UPDATE"
     )
   end

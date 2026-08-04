@@ -32,6 +32,11 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionsTest do
                  :adapter_compatibility_version,
                  :authentication_mode,
                  :availability,
+                 :credential_removal_attempted_at,
+                 :credential_removal_attempts,
+                 :credential_removal_failure_reason,
+                 :credential_removal_result,
+                 :deletion_scheduled_at,
                  :id,
                  :inserted_at,
                  :label,
@@ -386,10 +391,18 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionsTest do
                )
     end
 
+    # The worker-local removal is held unreachable here so this proof stays on
+    # the control-plane transitions; the removal lifecycle itself is proven in
+    # `PersonalConnectionRevocationsTest`.
     test "request and acknowledgement are scoped idempotent state transitions", context do
       assert {:ok, connection} = link(context)
       requested_at = ~U[2026-08-03 11:00:00Z]
       later = DateTime.add(requested_at, 60, :second)
+
+      pending = [
+        adapter: PersonalConnectionAdapterDouble,
+        revoke_result: {:error, :worker_unavailable}
+      ]
 
       assert {:error, :revocation_not_requested} =
                PersonalConnections.acknowledge_revocation(context.account, connection.id,
@@ -397,8 +410,10 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionsTest do
                )
 
       assert {:ok, requested} =
-               PersonalConnections.request_revocation(context.account, connection.id,
-                 at: requested_at
+               PersonalConnections.request_revocation(
+                 context.account,
+                 connection.id,
+                 [at: requested_at] ++ pending
                )
 
       assert requested.revocation_state == "requested"
@@ -406,7 +421,11 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionsTest do
       assert requested.revocation_acknowledged_at == nil
 
       assert {:ok, repeated_request} =
-               PersonalConnections.request_revocation(context.account, connection.id, at: later)
+               PersonalConnections.request_revocation(
+                 context.account,
+                 connection.id,
+                 [at: later] ++ pending
+               )
 
       assert repeated_request.revocation_requested_at == requested_at
 

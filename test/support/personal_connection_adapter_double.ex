@@ -4,6 +4,11 @@ defmodule SddOrchestrator.PersonalConnectionAdapterDouble do
 
   Tests explicitly provide a safe result or typed failure. Calls can be sent to
   the owning test process without retaining global state.
+
+  Linking reads `:adapter_result`; revocation reads `:revoke_result`, or
+  `:worker_credential_removal` to pick only the acknowledged outcome. The two
+  operations never read each other's option, so one set of options can drive a
+  full link-then-revoke lifecycle.
   """
 
   @behaviour SddOrchestrator.AIRuntime.PersonalConnectionAdapter
@@ -20,6 +25,19 @@ defmodule SddOrchestrator.PersonalConnectionAdapterDouble do
          authentication_mode: request.authentication_mode,
          availability: Keyword.get(opts, :availability, "available"),
          adapter_compatibility_version: Keyword.get(opts, :adapter_version, "connection/1")
+       }}
+    end)
+  end
+
+  @impl true
+  def revoke(account, worker, request, opts) do
+    notify(opts, {:adapter_revoke, account, worker, request})
+
+    Keyword.get_lazy(opts, :revoke_result, fn ->
+      {:ok,
+       %{
+         worker_profile_ref: request.worker_profile_ref,
+         credential_removal: Keyword.get(opts, :worker_credential_removal, "removed")
        }}
     end)
   end

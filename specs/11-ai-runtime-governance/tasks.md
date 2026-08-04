@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 7, 8, 1, 9, 2, 3, 10, and 4 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, account-owned personal AI connection foundation, account-level AI Connections workflow, live model catalog with compatible effort validation, live quota and token-activity normalization, explicit quota and paid-use policy, and immutable provider-neutral runtime-session pinning are delivered on `slice/11-ai-runtime-governance`. Task 13 is In Progress under the recorded intra-slice ownership partition below, Tasks 11 and 16 are executable, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
+Tasks 7, 8, 1, 9, 2, 3, 10, 4, and 13 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, account-owned personal AI connection foundation, account-level AI Connections workflow, live model catalog with compatible effort validation, live quota and token-activity normalization, explicit quota and paid-use policy, immutable provider-neutral runtime-session pinning, and personal-connection cleanup with credential-revocation reconciliation are delivered on `slice/11-ai-runtime-governance`. Tasks 4 and 13 were delivered in parallel under the recorded intra-slice ownership partition below. Tasks 11 and 16 are now executable, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. One slice-gate blocker is recorded in the progress log: the Slice 09 specification-governance table assertion produces a false positive introduced by Task 2's migration and needs an owning task before the verification gate can pass. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
 
 ## Active Slice
 
@@ -184,13 +184,14 @@ Traceability:
   - Owns: AC-13
   - Proof: Focused owner, participant, safe field, forbidden-field absence, stale, removed, cross-project, cross-account, support, working-agent, exact-versus-safe, capability-contract, and readiness tests pass without adding Slice 07 or Slice 12 UI.
 
-- [ ] Task 13 — Enforce personal-connection cleanup and credential-revocation reconciliation.
+- [x] Task 13 — Enforce personal-connection cleanup and credential-revocation reconciliation.
   - Size: Standard
   - Depends on: Task 1, Task 9
   - Purpose: End new execution immediately and prove worker-local credentials are removed without retaining raw revocation diagnostics.
   - Owned surfaces: Immediate control-plane revocation, new-session denial, worker-local credential-removal request, bounded acknowledgement, unavailable-worker pending state, retry and reconciliation, terminal opaque-reference deletion schedule, account erasure, service termination, idempotency, fixtures, and rights integration for `PersonalAIConnection`.
   - Owns: none (connection lifecycle mechanism)
   - Proof: Focused immediate denial, acknowledgement, pending, retry, worker unavailable, idempotency, account erasure, service termination, schedule, credential and raw-error absence, and rights tests pass.
+  - Delivered: `request_revocation/3` now commits the `requested` transition before contacting the worker, so `resolve_for_consumer/3` denies new support-assistant and working-agent execution immediately and independently of any device reachability. `PersonalConnectionAdapter` gained a `revoke/4` callback carried over the existing authenticated `connection/1` capability; its acknowledgement has an exact two-key shape whose echoed worker-profile reference must equal the addressed one, and every typed error, unknown error, extra field, mismatch, exception, and throw collapses to the typed vocabulary so no credential, provider identity, or raw adapter error can be persisted. `PersonalConnectionRevocations` owns pending retention, idempotent retry, reconciliation, terminal deletion scheduling, and `terminate_service/1`; the migration adds only typed attempt counts, timestamps, a constrained failure-reason vocabulary, a `removed`/`absent` result, and a deletion schedule, with a check constraint making `acknowledged` the only state that may carry a result and a schedule. `Privacy.Retention.prune_all/1` reconciles before its delete pass so the already-supervised pruner drives retries, and `Privacy.Rights` requests worker-local removal before erasing an account, reporting only counts and typed outstanding reasons. An unreachable worker leaves the connection pending indefinitely rather than falsely claiming a credential was destroyed.
 
 - [ ] Task 16 — Enforce model-catalog and quota-snapshot expiry.
   - Size: Standard

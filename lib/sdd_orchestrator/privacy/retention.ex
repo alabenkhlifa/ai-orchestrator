@@ -24,6 +24,12 @@ defmodule SddOrchestrator.Privacy.Retention do
       stable hosted identity is erased no later than 30 days after departure.
       Active participation is never touched, and the departed row itself remains
       as governed project history.
+    * Personal AI connections — an outstanding worker-local credential removal is
+      retried first, so a connection the worker acknowledges in this pass starts
+      its own terminal window now. An acknowledged connection's opaque
+      control-plane reference is then deleted once its configured lifetime has
+      passed. A connection with no acknowledgement is never deleted on a timer,
+      because deleting the reference would not remove the worker's credential.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -35,6 +41,7 @@ defmodule SddOrchestrator.Privacy.Retention do
 
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
+  alias SddOrchestrator.AIRuntime.{PersonalAIConnection, PersonalConnectionRevocations}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Participation.Invitations
@@ -65,8 +72,36 @@ defmodule SddOrchestrator.Privacy.Retention do
       merge_records: IdentityLinking.prune_merge_records(now),
       expired_invitations: Invitations.expire_due(now),
       terminal_invitations: prune_terminal_invitations(now),
-      departed_participant_links: prune_departed_participant_links(now)
+      departed_participant_links: prune_departed_participant_links(now),
+      acknowledged_personal_ai_connections: reconcile_personal_ai_connections(now),
+      revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now)
     }
+  end
+
+  # Reconciliation runs before the delete for the same reason invitation expiry
+  # does: a connection that becomes terminal in this pass starts its own
+  # retention window now rather than being deleted the instant it completes.
+  # A worker that cannot be reached is an environment fact, not a retention
+  # failure, so it never stops the rest of the pass.
+  defp reconcile_personal_ai_connections(now) do
+    case PersonalConnectionRevocations.reconcile(now) do
+      {:ok, %{acknowledged: acknowledged}} -> acknowledged
+      :locked -> 0
+    end
+  catch
+    :exit, _unavailable_worker_transport -> 0
+  end
+
+  defp prune_revoked_personal_ai_connections(now) do
+    {count, _} =
+      Repo.delete_all(
+        from connection in PersonalAIConnection,
+          where:
+            not is_nil(connection.deletion_scheduled_at) and
+              connection.deletion_scheduled_at <= ^now
+      )
+
+    count
   end
 
   # A terminal invitation already lost its credential at the transition itself, so

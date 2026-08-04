@@ -1,10 +1,17 @@
 defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
   @moduledoc """
-  Provider-neutral boundary for linking one worker-local personal AI profile.
+  Provider-neutral boundary for linking and revoking one worker-local personal
+  AI profile.
 
   Implementations receive only provider and authentication-mode choices. They
   return one exact, bounded safe result; unknown fields and values are rejected
   before the result can reach persistence.
+
+  Revocation asks the worker to remove the credential it holds locally. The
+  acknowledgement is deliberately the smallest fact that proves the outcome —
+  which profile was addressed, and whether a local credential was removed or
+  was already absent. There is no field a credential, provider identity, plan
+  detail, or raw provider error could travel in.
   """
 
   alias SddOrchestrator.Accounts.Account
@@ -15,6 +22,10 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
     worker_profile_ref provider authentication_mode availability
     adapter_compatibility_version
   )
+
+  @revocation_result_keys ~w(worker_profile_ref credential_removal)
+
+  @credential_removals ~w(removed absent)
 
   @typedoc "Safe adapter failures exposed to the control plane."
   @type error ::
@@ -37,7 +48,17 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
           adapter_compatibility_version: String.t()
         }
 
+  @type revocation_request :: %{worker_profile_ref: String.t()}
+
+  @type revocation_result :: %{
+          worker_profile_ref: String.t(),
+          credential_removal: String.t()
+        }
+
   @callback link(Account.t(), LocalWorker.t(), request(), keyword()) ::
+              {:ok, map()} | {:error, term()}
+
+  @callback revoke(Account.t(), LocalWorker.t(), revocation_request(), keyword()) ::
               {:ok, map()} | {:error, term()}
 
   @doc "Validates and normalizes an adapter result against the requested provider choice."
@@ -59,6 +80,31 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
   end
 
   def validate_result(_result, _request), do: {:error, :invalid_response}
+
+  @doc "The bounded worker-local credential-removal outcomes an acknowledgement may report."
+  @spec credential_removals() :: [String.t()]
+  def credential_removals, do: @credential_removals
+
+  @doc """
+  Validates one worker-local credential-removal acknowledgement.
+
+  The echoed profile reference must be the one that was addressed, so a reply
+  can never acknowledge removal for a different worker-local profile.
+  """
+  @spec validate_revocation_result(map(), revocation_request()) ::
+          {:ok, revocation_result()} | {:error, :invalid_response}
+  def validate_revocation_result(result, request) when is_map(result) and is_map(request) do
+    with {:ok, normalized} <- normalize_exact_revocation_result(result),
+         :ok <- bounded_string(normalized.worker_profile_ref, profile_ref_max_length()),
+         true <- normalized.worker_profile_ref == request[:worker_profile_ref],
+         true <- normalized.credential_removal in @credential_removals do
+      {:ok, normalized}
+    else
+      _ -> {:error, :invalid_response}
+    end
+  end
+
+  def validate_revocation_result(_result, _request), do: {:error, :invalid_response}
 
   @doc "Collapses arbitrary adapter failures to the small safe error vocabulary."
   @spec normalize_error(term()) :: error()
@@ -90,6 +136,28 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
            authentication_mode: result.authentication_mode,
            availability: result.availability,
            adapter_compatibility_version: result.adapter_compatibility_version
+         }}
+
+      true ->
+        {:error, :invalid_response}
+    end
+  end
+
+  defp normalize_exact_revocation_result(result) do
+    cond do
+      Enum.sort(Map.keys(result)) == Enum.sort(@revocation_result_keys) ->
+        {:ok,
+         %{
+           worker_profile_ref: result["worker_profile_ref"],
+           credential_removal: result["credential_removal"]
+         }}
+
+      Enum.sort(Map.keys(result)) ==
+          Enum.sort(Enum.map(@revocation_result_keys, &String.to_atom/1)) ->
+        {:ok,
+         %{
+           worker_profile_ref: result.worker_profile_ref,
+           credential_removal: result.credential_removal
          }}
 
       true ->

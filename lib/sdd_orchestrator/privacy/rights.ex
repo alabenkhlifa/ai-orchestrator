@@ -8,11 +8,16 @@ defmodule SddOrchestrator.Privacy.Rights do
     * `export_account/1` — access and portability: gathers the account's
       identities, workspace, projects, repository connections, passwordless
       attempts, and session metadata into a structured, credential-free map.
-    * `erase_account/1` — erasure: atomically deletes the hosted workspace root
+    * `erase_account/2` — erasure: atomically deletes the hosted workspace root
       and account, cascading to identities, credentials, sessions, the personal
-      profile, projects, repository connections, hosted storage, and onboarding
-      attempts while explicitly deleting passwordless attempts keyed to the
-      account's verified email.
+      profile, projects, repository connections, hosted storage, onboarding
+      attempts, and personal AI connection references, while explicitly deleting
+      passwordless attempts keyed to the account's verified email. Before that
+      transaction it asks every paired worker to remove the credential it holds
+      locally, and reports the outcome as counts and typed reasons.
+    * `terminate_personal_ai_service/1` — service termination: revokes every
+      personal AI connection, requests worker-local credential removal, and
+      hands the acknowledged references to retention.
     * Portability project operations — authorized access and portability export,
       project-name and specification correction through their normal write
       boundaries, project erasure, and explicit restriction or objection
@@ -49,6 +54,7 @@ defmodule SddOrchestrator.Privacy.Rights do
     Workspace
   }
 
+  alias SddOrchestrator.AIRuntime.{PersonalAIConnection, PersonalConnectionRevocations}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking.WorkspaceMergeRecord
   alias SddOrchestrator.Participation
@@ -91,6 +97,7 @@ defmodule SddOrchestrator.Privacy.Rights do
            hosted_identity: export_hosted_identity(account_id),
            magic_link_attempts: export_account_magic_link_attempts(account_id),
            import_attempts: export_import_attempts(account_id),
+           personal_ai_connections: export_personal_ai_connections(account_id),
            projects: export_projects(account_id),
            sessions: export_sessions(account_id),
            hosted_sessions: export_hosted_sessions(account_id)
@@ -102,10 +109,16 @@ defmodule SddOrchestrator.Privacy.Rights do
   Erases an account, its hosted workspace root, and every record that cascades
   from them. Returns
   `{:error, :not_found}` for an unknown account.
+
+  Worker-local AI credentials are asked for first, because once the account row
+  is gone nothing remains that could name which worker profile still holds one.
+  An unreachable worker does not block or delay the erasure; the returned
+  `:personal_ai_connections` summary reports how many removals are still
+  outstanding and why, as counts and typed reasons only.
   """
-  @spec erase_account(String.t()) ::
+  @spec erase_account(String.t(), keyword()) ::
           {:ok, %{account_id: String.t(), propagation: map()}} | {:error, :not_found}
-  def erase_account(account_id) when is_binary(account_id) do
+  def erase_account(account_id, opts \\ []) when is_binary(account_id) do
     case Repo.get(Account, account_id) do
       nil ->
         {:error, :not_found}
@@ -113,6 +126,9 @@ defmodule SddOrchestrator.Privacy.Rights do
       %Account{} = account ->
         workspace = Repo.get_by(PersonalWorkspace, account_id: account.id)
         email_keys = email_subject_keys(account.id)
+
+        credential_removal =
+          PersonalConnectionRevocations.request_account_credential_removal(account.id, opts)
 
         Multi.new()
         |> delete_magic_link_attempts(email_keys)
@@ -125,12 +141,39 @@ defmodule SddOrchestrator.Privacy.Rights do
             {:ok,
              %{
                account_id: account.id,
+               personal_ai_connections: credential_removal,
                propagation: deletion_propagation(:hosted)
              }}
 
           {:error, _step, _reason, _changes} ->
             {:error, :not_found}
         end
+    end
+  end
+
+  @doc """
+  Ends the personal AI connection service and hands off its stored references.
+
+  Termination is the same two guarantees revocation always makes, applied at
+  once: no connection can fund new work from this point, and every worker is
+  asked to remove the credential it holds. Scope it to one account with
+  `account: account_or_id`. Returns `{:error, :busy}` when another
+  reconciliation sweep already holds the lock; the operation is idempotent, so
+  running it again is the correct response.
+  """
+  @spec terminate_personal_ai_service(keyword()) :: {:ok, map()} | {:error, :busy}
+  def terminate_personal_ai_service(opts \\ []) do
+    case PersonalConnectionRevocations.terminate_service(opts) do
+      {:ok, summary} ->
+        {:ok,
+         %{
+           action: :service_termination,
+           personal_ai_connections: summary,
+           propagation: deletion_propagation(:hosted)
+         }}
+
+      :locked ->
+        {:error, :busy}
     end
   end
 
@@ -499,6 +542,33 @@ defmodule SddOrchestrator.Privacy.Rights do
         expires_at: attempt.expires_at,
         inserted_at: attempt.inserted_at,
         updated_at: attempt.updated_at
+      }
+    )
+    |> Repo.all()
+  end
+
+  # The opaque worker-profile reference is deliberately absent. It names the
+  # worker-local profile that holds the credential and serves no purpose in an
+  # access copy; the account already knows which of its own devices is paired.
+  defp export_personal_ai_connections(account_id) do
+    from(connection in PersonalAIConnection,
+      where: connection.account_id == ^account_id,
+      order_by: [asc: connection.inserted_at, asc: connection.id],
+      select: %{
+        id: connection.id,
+        worker_id: connection.worker_id,
+        label: connection.label,
+        provider: connection.provider,
+        authentication_mode: connection.authentication_mode,
+        availability: connection.availability,
+        adapter_compatibility_version: connection.adapter_compatibility_version,
+        revocation_state: connection.revocation_state,
+        revocation_requested_at: connection.revocation_requested_at,
+        revocation_acknowledged_at: connection.revocation_acknowledged_at,
+        credential_removal_result: connection.credential_removal_result,
+        credential_removal_failure_reason: connection.credential_removal_failure_reason,
+        deletion_scheduled_at: connection.deletion_scheduled_at,
+        inserted_at: connection.inserted_at
       }
     )
     |> Repo.all()
