@@ -255,4 +255,58 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
 
     Map.put(connection_fixture, :quota, quota)
   end
+
+  @doc "Builds one exact Task 10 quota-policy request."
+  def quota_policy_request(context, attrs \\ %{}) do
+    %{
+      connection_id: Map.get(attrs, :connection_id, context.connection.id),
+      model: Map.get(attrs, :model, "codex-test-model"),
+      effort: Map.get(attrs, :effort, "medium"),
+      scarcity: Map.get(attrs, :scarcity, :standard),
+      choices: Map.get(attrs, :choices, [])
+    }
+  end
+
+  @doc "Builds one bounded owner choice tied to a connection, model, and cost boundary."
+  def quota_policy_choice(context, kind, attrs \\ %{}) do
+    now = Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z])
+    kind = normalize_policy_choice_kind(kind)
+
+    {bucket_id, cost_boundary} =
+      case kind do
+        :scarce_model ->
+          {nil, :scarce_model}
+
+        :model_specific_quota ->
+          {Map.get(attrs, :bucket_id, "model-bucket"), :quota}
+
+        :provider_paid_continuation ->
+          {Map.get(attrs, :bucket_id, "general"), :provider_paid_continuation}
+      end
+
+    %{
+      id:
+        Map.get_lazy(attrs, :id, fn ->
+          "choice-#{kind}-#{System.unique_integer([:positive])}"
+        end),
+      kind: kind,
+      owner_account_id: Map.get(attrs, :owner_account_id, context.account.id),
+      connection_id: Map.get(attrs, :connection_id, context.connection.id),
+      model: Map.get(attrs, :model, "codex-test-model"),
+      bucket_id: Map.get(attrs, :bucket_id, bucket_id),
+      cost_boundary: Map.get(attrs, :cost_boundary, cost_boundary),
+      valid_from: Map.get(attrs, :valid_from, now),
+      expires_at: Map.get(attrs, :expires_at, DateTime.add(now, 900, :second))
+    }
+  end
+
+  defp normalize_policy_choice_kind(kind)
+       when kind in [:scarce_model, :model_specific_quota, :provider_paid_continuation],
+       do: kind
+
+  defp normalize_policy_choice_kind("scarce_model"), do: :scarce_model
+  defp normalize_policy_choice_kind("model_specific_quota"), do: :model_specific_quota
+
+  defp normalize_policy_choice_kind("provider_paid_continuation"),
+    do: :provider_paid_continuation
 end
