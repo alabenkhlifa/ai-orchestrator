@@ -47,18 +47,15 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Device do
 
   @impl true
   def list({:device, %DeviceWorkspace{} = authority}, project_id) do
-    with {:ok, _project} <- authorize(authority, project_id) do
-      project_id
-      |> Devices.list_repository_execution_profiles()
-      |> Enum.reduce_while([], fn value, profiles ->
-        case RepositoryExecutionProfile.from_value(value) do
-          {:ok, profile} -> {:cont, [profile | profiles]}
-          {:error, :invalid_profile} -> {:halt, []}
-        end
-      end)
-      |> Enum.sort_by(& &1.version)
-    else
-      _missing -> []
+    case authorize(authority, project_id) do
+      {:ok, _project} ->
+        project_id
+        |> Devices.list_repository_execution_profiles()
+        |> Enum.reduce_while([], &collect_profile/2)
+        |> Enum.sort_by(& &1.version)
+
+      _missing ->
+        []
     end
   end
 
@@ -66,6 +63,15 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Device do
 
   @impl true
   def count(authority, project_id), do: length(list(authority, project_id))
+
+  # One unreadable stored profile discards the whole listing, so a tampered or
+  # truncated device record can never be presented as a partial history.
+  defp collect_profile(value, profiles) do
+    case RepositoryExecutionProfile.from_value(value) do
+      {:ok, profile} -> {:cont, [profile | profiles]}
+      {:error, :invalid_profile} -> {:halt, []}
+    end
+  end
 
   defp authorize(%DeviceWorkspace{id: authority_id} = authority, project_id) do
     with {:ok, %DeviceWorkspace{id: ^authority_id}} <- Devices.get_workspace(),

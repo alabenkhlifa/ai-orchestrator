@@ -141,22 +141,8 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
   end
 
   defp transition_pending(pending, terminal) do
-    pending_state = RepositoryAssessment.pending_state()
-
-    RepositoryAssessment
-    |> where(
-      [a],
-      a.id == ^pending.id and a.project_id == ^pending.project_id and
-        a.state == ^pending_state and
-        a.repository_provider == ^pending.repository_provider and
-        a.repository_id == ^pending.repository_id and a.root == ^pending.root and
-        a.commit == ^pending.commit and
-        a.scanner_contract_digest == ^pending.scanner_contract_digest and
-        a.disclosure_digest == ^pending.disclosure_digest and
-        a.worker_ref == ^pending.worker_ref and
-        a.scan_protocol_version == ^pending.scan_protocol_version and
-        a.scan_limits == ^pending.scan_limits
-    )
+    pending
+    |> unchanged_pending_row()
     |> Repo.update_all(
       set: [
         state: terminal.state,
@@ -176,23 +162,36 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
     )
   end
 
+  # Every command-bound field must still hold its pending value, so a rebound or
+  # re-planned assessment can never absorb this terminal outcome.
+  defp unchanged_pending_row(pending) do
+    pending_state = RepositoryAssessment.pending_state()
+
+    RepositoryAssessment
+    |> where([a], a.id == ^pending.id and a.project_id == ^pending.project_id)
+    |> where([a], a.state == ^pending_state)
+    |> where(
+      [a],
+      a.repository_provider == ^pending.repository_provider and
+        a.repository_id == ^pending.repository_id
+    )
+    |> where([a], a.root == ^pending.root and a.commit == ^pending.commit)
+    |> where(
+      [a],
+      a.scanner_contract_digest == ^pending.scanner_contract_digest and
+        a.disclosure_digest == ^pending.disclosure_digest
+    )
+    |> where([a], a.worker_ref == ^pending.worker_ref)
+    |> where(
+      [a],
+      a.scan_protocol_version == ^pending.scan_protocol_version and
+        a.scan_limits == ^pending.scan_limits
+    )
+  end
+
   defp transactionally_transition(account_id, pending, terminal, envelope) do
     case Repo.transaction(fn ->
-           with %Project{} = project <- lock_project_binding(pending.project_id),
-                {:ok, owned} <- Participation.owned_project(account_id, pending.project_id),
-                true <- owned.id == project.id,
-                true <- active_hosted_binding?(project, pending),
-                {1, _rows} <- transition_pending(pending, terminal),
-                %RepositoryAssessment{} = persisted <-
-                  Repo.get(RepositoryAssessment, pending.id),
-                :ok <- insert_envelope(persisted, envelope) do
-             persisted
-           else
-             {0, _rows} -> Repo.rollback(:stale)
-             false -> Repo.rollback(:stale)
-             {:error, :invalid_proposal_envelope} -> Repo.rollback(:invalid_proposal_envelope)
-             _invalid -> Repo.rollback(:unauthorized)
-           end
+           locked_transition(account_id, pending, terminal, envelope)
          end) do
       {:ok, %RepositoryAssessment{} = persisted} ->
         {:ok, persisted}
@@ -203,6 +202,23 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
 
       {:error, _reason} ->
         {:error, :stale}
+    end
+  end
+
+  defp locked_transition(account_id, pending, terminal, envelope) do
+    with %Project{} = project <- lock_project_binding(pending.project_id),
+         {:ok, owned} <- Participation.owned_project(account_id, pending.project_id),
+         true <- owned.id == project.id,
+         true <- active_hosted_binding?(project, pending),
+         {1, _rows} <- transition_pending(pending, terminal),
+         %RepositoryAssessment{} = persisted <- Repo.get(RepositoryAssessment, pending.id),
+         :ok <- insert_envelope(persisted, envelope) do
+      persisted
+    else
+      {0, _rows} -> Repo.rollback(:stale)
+      false -> Repo.rollback(:stale)
+      {:error, :invalid_proposal_envelope} -> Repo.rollback(:invalid_proposal_envelope)
+      _invalid -> Repo.rollback(:unauthorized)
     end
   end
 

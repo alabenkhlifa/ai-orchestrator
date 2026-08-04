@@ -1080,26 +1080,13 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
           {:ok, existing}
 
         :error ->
-          version = next_repository_execution_profile_version(table, project_id)
-
-          with {:ok, profile} <-
-                 RepositoryExecutionProfile.approved(
-                   proposal,
-                   approval_actor_ref,
-                   version,
-                   approved_at
-                 ) do
-            value = RepositoryExecutionProfile.to_value(profile)
-
-            :ok =
-              :dets.insert(
-                table,
-                {{:repository_execution_profile, project_id, profile.id}, value}
-              )
-
-            :ok = :dets.sync(table)
-            {:ok, value}
-          end
+          insert_repository_execution_profile(
+            table,
+            project_id,
+            proposal,
+            approval_actor_ref,
+            approved_at
+          )
       end
     else
       [] -> {:error, :not_found}
@@ -1119,6 +1106,30 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
          _approved_at
        ),
        do: {:error, :invalid_profile}
+
+  defp insert_repository_execution_profile(
+         table,
+         project_id,
+         proposal,
+         approval_actor_ref,
+         approved_at
+       ) do
+    version = next_repository_execution_profile_version(table, project_id)
+
+    with {:ok, profile} <-
+           RepositoryExecutionProfile.approved(
+             proposal,
+             approval_actor_ref,
+             version,
+             approved_at
+           ) do
+      value = RepositoryExecutionProfile.to_value(profile)
+
+      :ok = :dets.insert(table, {{:repository_execution_profile, project_id, profile.id}, value})
+      :ok = :dets.sync(table)
+      {:ok, value}
+    end
+  end
 
   defp existing_repository_execution_profile(table, project_id, proposal_digest) do
     case Enum.find(

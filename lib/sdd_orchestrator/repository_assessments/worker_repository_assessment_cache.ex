@@ -179,12 +179,10 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
 
   @impl true
   def handle_call({:put, entry}, _from, state) do
-    cond do
-      entry.encoded_bytes > state.max_bytes ->
-        {:reply, {:error, :entry_too_large}, state}
-
-      true ->
-        put_entry(state, entry)
+    if entry.encoded_bytes > state.max_bytes do
+      {:reply, {:error, :entry_too_large}, state}
+    else
+      put_entry(state, entry)
     end
   end
 
@@ -213,21 +211,27 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
       with {:ok, worker_result} <- scanner.(repository_path, command, scanner_opts),
            {:ok, result} <- RepositoryAssessmentResult.completed(command, worker_result),
            {:ok, entry} <- WorkerRepositoryAssessmentCacheEntry.new(result) do
-        case put(server, result) do
-          {:ok, _provenance} ->
-            {:ok, worker_result,
-             WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", true)}
-
-          {:error, :entry_too_large} ->
-            {:ok, worker_result,
-             WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", false)}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
+        store_fresh_scan(server, result, entry, worker_result)
       end
     else
       {:error, :invalid_command}
+    end
+  end
+
+  # A rejected oversized entry is still a valid fresh scan; only its stored flag
+  # changes, so provenance never claims a cache write that did not happen.
+  defp store_fresh_scan(server, result, entry, worker_result) do
+    case put(server, result) do
+      {:ok, _provenance} ->
+        {:ok, worker_result,
+         WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", true)}
+
+      {:error, :entry_too_large} ->
+        {:ok, worker_result,
+         WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", false)}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -243,18 +247,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
            {:ok, envelope} <-
              WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result),
            {:ok, entry} <- WorkerRepositoryAssessmentCacheEntry.new(result, payload) do
-        case put_with_proposal(server, result, payload) do
-          {:ok, _provenance} ->
-            {:ok, worker_result, payload, envelope,
-             WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", true)}
-
-          {:error, :entry_too_large} ->
-            {:ok, worker_result, payload, envelope,
-             WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", false)}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
+        store_fresh_scan_with_proposal(server, result, payload, envelope, entry, worker_result)
       else
         false -> {:error, :invalid_proposal_payload}
         {:error, reason} -> {:error, reason}
@@ -262,6 +255,21 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache 
       end
     else
       {:error, :invalid_command}
+    end
+  end
+
+  defp store_fresh_scan_with_proposal(server, result, payload, envelope, entry, worker_result) do
+    case put_with_proposal(server, result, payload) do
+      {:ok, _provenance} ->
+        {:ok, worker_result, payload, envelope,
+         WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", true)}
+
+      {:error, :entry_too_large} ->
+        {:ok, worker_result, payload, envelope,
+         WorkerRepositoryAssessmentCacheEntry.provenance(entry, "fresh_scan", false)}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

@@ -269,21 +269,7 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
   end
 
   defp select_entries(entries, root) do
-    {candidates, structure} =
-      Enum.reduce(entries, {[], MapSet.new()}, fn entry, {selected, structure} ->
-        relative = entry.relative_path
-
-        if prohibited?(relative) do
-          {selected, structure}
-        else
-          structure = MapSet.put(structure, top_level(relative))
-
-          case category(relative) do
-            nil -> {selected, structure}
-            category -> {[Map.put(entry, :category, category) | selected], structure}
-          end
-        end
-      end)
+    {candidates, structure} = Enum.reduce(entries, {[], MapSet.new()}, &select_entry/2)
 
     structure =
       structure
@@ -292,6 +278,23 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
       |> Enum.map(fn path -> %{path: path, kind: structure_kind(entries, root, path)} end)
 
     {:ok, Enum.sort_by(candidates, & &1.relative_path), structure}
+  end
+
+  # A prohibited path contributes neither a candidate nor a structure entry, so
+  # excluded areas stay invisible in the disclosed structure.
+  defp select_entry(entry, {selected, structure}) do
+    relative = entry.relative_path
+
+    if prohibited?(relative) do
+      {selected, structure}
+    else
+      structure = MapSet.put(structure, top_level(relative))
+
+      case category(relative) do
+        nil -> {selected, structure}
+        category -> {[Map.put(entry, :category, category) | selected], structure}
+      end
+    end
   end
 
   defp enforce_file_limits(candidates, limits) do
@@ -329,12 +332,8 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
            next_bytes <- bytes + entry.size,
            true <- next_bytes <= command.limits.max_total_bytes,
            finding <- finding(entry, content),
-           next_findings <- if(finding, do: [finding | findings], else: findings),
-           next_evidence <-
-             if(finding,
-               do: [proposal_evidence(entry, content) | evidence],
-               else: evidence
-             ),
+           next_findings <- prepend_finding(finding, findings),
+           next_evidence <- prepend_evidence(finding, entry, content, evidence),
            :ok <- progress(on_progress, "scanning", files + 1, next_bytes, discovered_paths) do
         {:cont, {:ok, next_findings, next_evidence, files + 1, next_bytes}}
       else
@@ -366,6 +365,16 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessment do
       }
     end
   end
+
+  defp prepend_finding(nil, findings), do: findings
+  defp prepend_finding(finding, findings), do: [finding | findings]
+
+  # Proposal evidence is kept for exactly the entries that produced a finding, so
+  # the two lists stay one-to-one.
+  defp prepend_evidence(nil, _entry, _content, evidence), do: evidence
+
+  defp prepend_evidence(_finding, entry, content, evidence),
+    do: [proposal_evidence(entry, content) | evidence]
 
   defp proposal_evidence(entry, content) do
     %{category: entry.category, path: entry.relative_path, content: content}

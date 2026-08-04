@@ -105,16 +105,17 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryMetadata do
 
     Enum.reduce_while(components, {:ok, base}, fn component, {:ok, parent} ->
       case File.read_link(Path.join(parent, component)) do
-        {:ok, target} ->
-          case real_path(Path.expand(target, parent), hops + 1) do
-            {:ok, resolved} -> {:cont, {:ok, resolved}}
-            {:error, _reason} = error -> {:halt, error}
-          end
-
-        {:error, _not_a_link} ->
-          {:cont, {:ok, Path.join(parent, component)}}
+        {:ok, target} -> follow_link(target, parent, hops)
+        {:error, _not_a_link} -> {:cont, {:ok, Path.join(parent, component)}}
       end
     end)
+  end
+
+  defp follow_link(target, parent, hops) do
+    case real_path(Path.expand(target, parent), hops + 1) do
+      {:ok, resolved} -> {:cont, {:ok, resolved}}
+      {:error, _reason} = error -> {:halt, error}
+    end
   end
 
   defp git(path, args) do

@@ -123,23 +123,25 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryBindingPreparation do
         {:error, :invalid_root}
 
       true ->
-        segments = Path.split(trimmed)
-
-        if Enum.any?(segments, &(&1 == "..")) do
-          {:error, :invalid_root}
-        else
-          normalized =
-            case Enum.reject(segments, &(&1 == ".")) do
-              [] -> ""
-              safe_segments -> Path.join(safe_segments)
-            end
-
-          {:ok, if(normalized == "", do: ".", else: normalized)}
-        end
+        normalize_segments(Path.split(trimmed))
     end
   end
 
   def normalize_root(_root), do: {:error, :invalid_root}
+
+  defp normalize_segments(segments) do
+    if Enum.any?(segments, &(&1 == "..")) do
+      {:error, :invalid_root}
+    else
+      normalized =
+        case Enum.reject(segments, &(&1 == ".")) do
+          [] -> ""
+          safe_segments -> Path.join(safe_segments)
+        end
+
+      {:ok, if(normalized == "", do: ".", else: normalized)}
+    end
+  end
 
   @spec full_commit(term()) :: {:ok, String.t()} | {:error, :invalid_commit}
   def full_commit(commit) when is_binary(commit) do

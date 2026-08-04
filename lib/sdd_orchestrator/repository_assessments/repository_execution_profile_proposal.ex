@@ -101,29 +101,31 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
   def from_value(value) when is_map(value) do
     expected = MapSet.new(Enum.map(@fields, &Atom.to_string/1))
 
-    with true <- MapSet.new(Map.keys(value)) == expected do
-      proposal =
-        struct!(__MODULE__, %{
-          assessment_id: value["assessment_id"],
-          assessment_digest: value["assessment_digest"],
-          project_id: value["project_id"],
-          repository_provider: value["repository_provider"],
-          repository_id: value["repository_id"],
-          root: value["root"],
-          base_revision: value["base_revision"],
-          instruction_precedence: value["instruction_precedence"],
-          commands: value["commands"],
-          required_checks: value["required_checks"],
-          allowed_scope: value["allowed_scope"],
-          gaps: value["gaps"],
-          conflicts: value["conflicts"],
-          multi_root_blockers: value["multi_root_blockers"],
-          proposal_digest: value["proposal_digest"]
-        })
+    case MapSet.new(Map.keys(value)) == expected do
+      true ->
+        proposal =
+          struct!(__MODULE__, %{
+            assessment_id: value["assessment_id"],
+            assessment_digest: value["assessment_digest"],
+            project_id: value["project_id"],
+            repository_provider: value["repository_provider"],
+            repository_id: value["repository_id"],
+            root: value["root"],
+            base_revision: value["base_revision"],
+            instruction_precedence: value["instruction_precedence"],
+            commands: value["commands"],
+            required_checks: value["required_checks"],
+            allowed_scope: value["allowed_scope"],
+            gaps: value["gaps"],
+            conflicts: value["conflicts"],
+            multi_root_blockers: value["multi_root_blockers"],
+            proposal_digest: value["proposal_digest"]
+          })
 
-      if valid?(proposal), do: {:ok, proposal}, else: {:error, :invalid_proposal}
-    else
-      _invalid -> {:error, :invalid_proposal}
+        if valid?(proposal), do: {:ok, proposal}, else: {:error, :invalid_proposal}
+
+      _invalid ->
+        {:error, :invalid_proposal}
     end
   rescue
     _error -> {:error, :invalid_proposal}
@@ -194,15 +196,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
         %__MODULE__{} = proposal,
         %RepositoryAssessment{state: "completed"} = assessment
       ) do
-    valid?(proposal) and RepositoryAssessment.strict?(assessment) and
-      RepositoryAssessment.cache_provenance_complete?(assessment) and
-      proposal.assessment_id == assessment.id and
-      proposal.assessment_digest == assessment_digest(assessment) and
-      proposal.project_id == assessment.project_id and
-      proposal.repository_provider == assessment.repository_provider and
-      proposal.repository_id == assessment.repository_id and
-      proposal.root == assessment.root and proposal.base_revision == assessment.commit and
-      proposal.instruction_precedence == instruction_precedence(assessment) and
+    valid?(proposal) and strict_provenanced?(assessment) and
+      assessment_fields_match?(proposal, assessment) and
       evidence_supports?(
         assessment,
         proposal.commands,
@@ -213,6 +208,21 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
   end
 
   def matches_assessment?(_proposal, _assessment), do: false
+
+  defp strict_provenanced?(assessment) do
+    RepositoryAssessment.strict?(assessment) and
+      RepositoryAssessment.cache_provenance_complete?(assessment)
+  end
+
+  defp assessment_fields_match?(proposal, assessment) do
+    proposal.assessment_id == assessment.id and
+      proposal.assessment_digest == assessment_digest(assessment) and
+      proposal.project_id == assessment.project_id and
+      proposal.repository_provider == assessment.repository_provider and
+      proposal.repository_id == assessment.repository_id and
+      proposal.root == assessment.root and proposal.base_revision == assessment.commit and
+      proposal.instruction_precedence == instruction_precedence(assessment)
+  end
 
   @doc false
   @spec assessment_digest(RepositoryAssessment.t()) :: String.t()

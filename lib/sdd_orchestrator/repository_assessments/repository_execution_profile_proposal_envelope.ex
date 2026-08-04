@@ -228,15 +228,14 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
   end
 
   defp validate_proposal_lists(envelope) do
-    if Enum.all?(@proposal_fields, fn field ->
-         values = Map.get(envelope, field)
-         is_list(values) and Enum.all?(values, &is_binary/1)
-       end) do
+    if Enum.all?(@proposal_fields, &binary_list?(Map.get(envelope, &1))) do
       {:ok, envelope}
     else
       {:error, :invalid_proposal_envelope}
     end
   end
+
+  defp binary_list?(values), do: is_list(values) and Enum.all?(values, &is_binary/1)
 
   defp changeset(envelope, attrs) do
     envelope

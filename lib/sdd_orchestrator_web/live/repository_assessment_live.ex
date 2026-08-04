@@ -270,21 +270,23 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   end
 
   defp reachable_workers do
-    with {:ok, %DeviceWorkspace{id: workspace_id}} <- Devices.get_workspace() do
-      workspace_id
-      |> Pairing.active_workers()
-      |> Enum.filter(&(WorkerDiscovery.status([&1]) == :detected))
-      |> Enum.sort_by(& &1.inserted_at, DateTime)
-      |> Enum.with_index(1)
-      |> Enum.map(fn {worker, index} ->
-        %{
-          id: worker.id,
-          device_workspace_id: worker.device_workspace_id,
-          label: worker_label(worker, index)
-        }
-      end)
-    else
-      _unavailable -> []
+    case Devices.get_workspace() do
+      {:ok, %DeviceWorkspace{id: workspace_id}} ->
+        workspace_id
+        |> Pairing.active_workers()
+        |> Enum.filter(&(WorkerDiscovery.status([&1]) == :detected))
+        |> Enum.sort_by(& &1.inserted_at, DateTime)
+        |> Enum.with_index(1)
+        |> Enum.map(fn {worker, index} ->
+          %{
+            id: worker.id,
+            device_workspace_id: worker.device_workspace_id,
+            label: worker_label(worker, index)
+          }
+        end)
+
+      _unavailable ->
+        []
     end
   rescue
     _error -> []

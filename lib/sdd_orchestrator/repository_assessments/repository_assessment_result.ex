@@ -498,11 +498,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResult do
 
     cond do
       path == "" or byte_size(path) > @max_anchor_bytes -> {:error, :invalid_result}
-      not String.valid?(path) -> {:error, :invalid_result}
-      String.trim(path) != path -> {:error, :invalid_result}
-      Path.type(path) != :relative -> {:error, :invalid_result}
-      String.contains?(path, ["\\", <<0>>]) -> {:error, :invalid_result}
-      String.match?(path, ~r/[\x00-\x1f\x7f]/u) -> {:error, :invalid_result}
+      not plain_relative_path?(path) -> {:error, :invalid_result}
       Enum.any?(segments, &(&1 in [".", "..", ""])) -> {:error, :invalid_result}
       Path.join(segments) != path -> {:error, :invalid_result}
       true -> {:ok, path}
@@ -510,6 +506,14 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResult do
   end
 
   defp safe_anchor(_path), do: {:error, :invalid_result}
+
+  # Ordered so the encoding check runs before anything that would interpret the
+  # bytes as text.
+  defp plain_relative_path?(path) do
+    String.valid?(path) and String.trim(path) == path and Path.type(path) == :relative and
+      not String.contains?(path, ["\\", <<0>>]) and
+      not String.match?(path, ~r/[\x00-\x1f\x7f]/u)
+  end
 
   defp digest(value) when is_binary(value) do
     if Regex.match?(~r/\A[0-9a-f]{64}\z/, value), do: {:ok, value}, else: :error

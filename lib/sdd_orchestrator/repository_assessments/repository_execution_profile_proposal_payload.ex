@@ -183,15 +183,9 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
        )
        when map_size(entry) == 3 and is_binary(category) and is_binary(path) and
               is_binary(content) do
-    sha256 = :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+    finding = Enum.find(findings, &finding_matches?(&1, category, path))
 
-    finding =
-      Enum.find(findings, fn finding ->
-        finding["category"] == category and finding["path"] == path
-      end)
-
-    if String.valid?(content) and is_map(finding) and finding["bytes"] == byte_size(content) and
-         finding["sha256"] == sha256 and finding["line_count"] == line_count(content) do
+    if content_matches_finding?(finding, content) do
       %{category: category, path: path, content: content}
     else
       :invalid
@@ -199,6 +193,18 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
   end
 
   defp validate_evidence_entry(_entry, _findings), do: :invalid
+
+  defp finding_matches?(finding, category, path),
+    do: finding["category"] == category and finding["path"] == path
+
+  # Evidence is only accepted when it reproduces the finding's own byte count,
+  # digest, and line count, so disclosed content cannot be substituted.
+  defp content_matches_finding?(finding, content) do
+    sha256 = :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+
+    String.valid?(content) and is_map(finding) and finding["bytes"] == byte_size(content) and
+      finding["sha256"] == sha256 and finding["line_count"] == line_count(content)
+  end
 
   defp derive_fields(command, result, evidence) do
     signals = Enum.map(evidence, &commands_from_evidence/1)
@@ -263,26 +269,28 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
   defp package_commands(content) do
     case Jason.decode(content) do
       {:ok, %{"scripts" => scripts}} when is_map(scripts) ->
-        Enum.reduce(scripts, empty_signal(), fn {name, body}, signal ->
-          command = "npm run #{name}"
-
-          cond do
-            not safe_script_name?(name) or not is_binary(body) ->
-              %{signal | ambiguous?: true}
-
-            not safe_script_body?(body) ->
-              %{signal | ambiguous?: true}
-
-            true ->
-              add_command(signal, command, check_name?(name) or check_command?(body))
-          end
-        end)
+        Enum.reduce(scripts, empty_signal(), &package_script/2)
 
       {:ok, _other} ->
         empty_signal()
 
       {:error, _decode} ->
         %{empty_signal() | ambiguous?: true}
+    end
+  end
+
+  defp package_script({name, body}, signal) do
+    command = "npm run #{name}"
+
+    cond do
+      not safe_script_name?(name) or not is_binary(body) ->
+        %{signal | ambiguous?: true}
+
+      not safe_script_body?(body) ->
+        %{signal | ambiguous?: true}
+
+      true ->
+        add_command(signal, command, check_name?(name) or check_command?(body))
     end
   end
 
@@ -318,16 +326,20 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
           {signal, false}
 
         in_tasks? ->
-          case Regex.run(~r/^  ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/u, line) do
-            [_, name] -> {add_command(signal, "task #{name}", check_name?(name)), true}
-            _other -> {signal, true}
-          end
+          {taskfile_task(signal, line), true}
 
         true ->
           {signal, false}
       end
     end)
     |> elem(0)
+  end
+
+  defp taskfile_task(signal, line) do
+    case Regex.run(~r/^  ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/u, line) do
+      [_, name] -> add_command(signal, "task #{name}", check_name?(name))
+      _other -> signal
+    end
   end
 
   defp ci_commands(content) do
@@ -383,21 +395,22 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfilePropos
       |> String.split("\n")
       |> Enum.reduce({[], nil}, fn line, {blocks, current} ->
         case Regex.run(header_pattern, line) do
-          [_, name] ->
-            blocks = if current, do: [current | blocks], else: blocks
-            {blocks, {name, ""}}
-
-          _other ->
-            case current do
-              {name, body} -> {blocks, {name, body <> "\n" <> line}}
-              nil -> {blocks, nil}
-            end
+          [_, name] -> {close_recipe(blocks, current), {name, ""}}
+          _other -> append_recipe_line(blocks, current, line)
         end
       end)
 
-    blocks = if current, do: [current | blocks], else: blocks
-    Enum.reverse(blocks)
+    blocks
+    |> close_recipe(current)
+    |> Enum.reverse()
   end
+
+  defp close_recipe(blocks, nil), do: blocks
+  defp close_recipe(blocks, current), do: [current | blocks]
+
+  # Lines before the first recipe header belong to no recipe and are dropped.
+  defp append_recipe_line(blocks, {name, body}, line), do: {blocks, {name, body <> "\n" <> line}}
+  defp append_recipe_line(blocks, nil, _line), do: {blocks, nil}
 
   defp add_command(signal, command, required?) do
     normalized = normalize_command(command)

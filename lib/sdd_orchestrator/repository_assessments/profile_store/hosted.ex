@@ -41,13 +41,15 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted do
 
   @impl true
   def list(viewer, project_id) do
-    with {:ok, project} <- authorize_viewer(viewer, project_id) do
-      RepositoryExecutionProfile
-      |> where([profile], profile.project_id == ^project.id)
-      |> order_by([profile], asc: profile.version)
-      |> Repo.all()
-    else
-      _missing -> []
+    case authorize_viewer(viewer, project_id) do
+      {:ok, project} ->
+        RepositoryExecutionProfile
+        |> where([profile], profile.project_id == ^project.id)
+        |> order_by([profile], asc: profile.version)
+        |> Repo.all()
+
+      _missing ->
+        []
     end
   rescue
     Ecto.Query.CastError -> []
@@ -83,26 +85,30 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted do
 
   defp append_transaction(account_id, assessment, proposal, actor_ref, approved_at) do
     case Repo.transaction(fn ->
-           with %Project{} = project <- lock_project_binding(assessment.project_id),
-                {:ok, owned} <- Participation.owned_project(account_id, assessment.project_id),
-                true <- owned.id == project.id,
-                true <- active_binding?(project, assessment),
-                %RepositoryAssessment{} = current <- lock_assessment(assessment),
-                true <- RepositoryAssessment.cache_provenance_complete?(current),
-                %RepositoryAssessment{id: current_id} <- latest_assessment(assessment.project_id),
-                true <- current_id == current.id,
-                true <- RepositoryExecutionProfileProposal.matches_assessment?(proposal, current) do
-             append_or_replay(proposal, actor_ref, approved_at)
-           else
-             false -> Repo.rollback(:stale_assessment)
-             nil -> Repo.rollback(:stale_assessment)
-             _invalid -> Repo.rollback(:unauthorized)
-           end
+           locked_append(account_id, assessment, proposal, actor_ref, approved_at)
          end) do
       {:ok, %RepositoryExecutionProfile{} = profile} -> {:ok, profile}
       {:error, reason} when reason in [:stale_assessment, :unauthorized] -> {:error, reason}
       {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
       {:error, _reason} -> {:error, :persistence_failed}
+    end
+  end
+
+  defp locked_append(account_id, assessment, proposal, actor_ref, approved_at) do
+    with %Project{} = project <- lock_project_binding(assessment.project_id),
+         {:ok, owned} <- Participation.owned_project(account_id, assessment.project_id),
+         true <- owned.id == project.id,
+         true <- active_binding?(project, assessment),
+         %RepositoryAssessment{} = current <- lock_assessment(assessment),
+         true <- RepositoryAssessment.cache_provenance_complete?(current),
+         %RepositoryAssessment{id: current_id} <- latest_assessment(assessment.project_id),
+         true <- current_id == current.id,
+         true <- RepositoryExecutionProfileProposal.matches_assessment?(proposal, current) do
+      append_or_replay(proposal, actor_ref, approved_at)
+    else
+      false -> Repo.rollback(:stale_assessment)
+      nil -> Repo.rollback(:stale_assessment)
+      _invalid -> Repo.rollback(:unauthorized)
     end
   end
 

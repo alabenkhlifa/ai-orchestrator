@@ -470,14 +470,21 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
   end
 
   defp command_binding?(assessment, command) do
-    RepositoryAssessmentCommand.valid?(command) and
-      assessment.id == command.assessment_id and
+    RepositoryAssessmentCommand.valid?(command) and identity_binding?(assessment, command) and
+      contract_binding?(assessment, command)
+  end
+
+  defp identity_binding?(assessment, command) do
+    assessment.id == command.assessment_id and
       assessment.project_id == command.project_id and
       assessment.repository_provider == command.repository_provider and
       assessment.repository_id == command.repository_id and
       assessment.root == command.root and
-      assessment.commit == command.commit and
-      assessment.scanner_contract_digest == command.scanner_contract_digest and
+      assessment.commit == command.commit
+  end
+
+  defp contract_binding?(assessment, command) do
+    assessment.scanner_contract_digest == command.scanner_contract_digest and
       assessment.disclosure_digest == command.disclosure_digest and
       assessment.worker_ref == command.worker_ref and
       assessment.scan_protocol_version == command.version and
@@ -485,11 +492,13 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
   end
 
   defp valid_scan_contract?(assessment) do
-    with {:ok, command} <- command_from_assessment(assessment) do
-      command.version == assessment.scan_protocol_version and
-        stringify_limits(command.limits) == assessment.scan_limits
-    else
-      _invalid -> false
+    case command_from_assessment(assessment) do
+      {:ok, command} ->
+        command.version == assessment.scan_protocol_version and
+          stringify_limits(command.limits) == assessment.scan_limits
+
+      _invalid ->
+        false
     end
   end
 

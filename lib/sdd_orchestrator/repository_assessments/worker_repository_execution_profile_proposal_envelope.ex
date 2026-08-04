@@ -51,34 +51,36 @@ defmodule SddOrchestrator.RepositoryAssessments.WorkerRepositoryExecutionProfile
         %RepositoryAssessmentCommand{} = command,
         %RepositoryAssessmentResult{status: "completed"} = result
       ) do
-    with true <- RepositoryExecutionProfileProposalPayload.valid_for?(payload, command, result) do
-      values = %{
-        version: @version,
-        assessment_id: command.assessment_id,
-        project_id: command.project_id,
-        repository_provider: command.repository_provider,
-        repository_id: command.repository_id,
-        root: command.root,
-        commit: command.commit,
-        scanner_contract_digest: command.scanner_contract_digest,
-        disclosure_digest: command.disclosure_digest,
-        worker_ref: command.worker_ref,
-        limits: command.limits,
-        cache_key_sha256: payload.cache_key_sha256,
-        evidence_sha256: payload.evidence_sha256,
-        result_sha256: RepositoryExecutionProfileProposalPayload.result_sha256(result),
-        payload_digest: payload.payload_digest,
-        commands: payload.commands,
-        required_checks: payload.required_checks,
-        allowed_scope: payload.allowed_scope,
-        gaps: payload.gaps,
-        conflicts: payload.conflicts,
-        multi_root_blockers: payload.multi_root_blockers
-      }
+    case RepositoryExecutionProfileProposalPayload.valid_for?(payload, command, result) do
+      true ->
+        values = %{
+          version: @version,
+          assessment_id: command.assessment_id,
+          project_id: command.project_id,
+          repository_provider: command.repository_provider,
+          repository_id: command.repository_id,
+          root: command.root,
+          commit: command.commit,
+          scanner_contract_digest: command.scanner_contract_digest,
+          disclosure_digest: command.disclosure_digest,
+          worker_ref: command.worker_ref,
+          limits: command.limits,
+          cache_key_sha256: payload.cache_key_sha256,
+          evidence_sha256: payload.evidence_sha256,
+          result_sha256: RepositoryExecutionProfileProposalPayload.result_sha256(result),
+          payload_digest: payload.payload_digest,
+          commands: payload.commands,
+          required_checks: payload.required_checks,
+          allowed_scope: payload.allowed_scope,
+          gaps: payload.gaps,
+          conflicts: payload.conflicts,
+          multi_root_blockers: payload.multi_root_blockers
+        }
 
-      {:ok, struct!(__MODULE__, Map.put(values, :envelope_digest, digest(values)))}
-    else
-      _invalid -> {:error, :invalid_proposal_envelope}
+        {:ok, struct!(__MODULE__, Map.put(values, :envelope_digest, digest(values)))}
+
+      _invalid ->
+        {:error, :invalid_proposal_envelope}
     end
   rescue
     _error -> {:error, :invalid_proposal_envelope}

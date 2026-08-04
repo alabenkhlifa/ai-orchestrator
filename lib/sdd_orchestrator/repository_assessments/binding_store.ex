@@ -35,9 +35,8 @@ defmodule SddOrchestrator.RepositoryAssessments.BindingStore do
 
   @spec take(Ecto.UUID.t(), binary()) :: {:ok, entry()} | {:error, :unknown_or_replayed}
   def take(nonce, fingerprint) do
-    with {:ok, _pid} <- ensure_started() do
-      GenServer.call(__MODULE__, {:take, nonce, fingerprint})
-    else
+    case ensure_started() do
+      {:ok, _pid} -> GenServer.call(__MODULE__, {:take, nonce, fingerprint})
       _error -> {:error, :unknown_or_replayed}
     end
   end
