@@ -1,9 +1,17 @@
 defmodule SddOrchestrator.AIRuntimeFixtures do
-  @moduledoc "Test fixtures for personal AI connections, catalogs, and quota snapshots."
+  @moduledoc """
+  Test fixtures for personal AI connections, catalogs, quotas, and sessions.
+  """
 
   import SddOrchestrator.AccountsFixtures
 
-  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, Quotas}
+  alias SddOrchestrator.AIRuntime.{
+    ModelCatalogs,
+    PersonalConnections,
+    Quotas,
+    RuntimeSessions
+  }
+
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.ModelCatalogAdapterDouble
   alias SddOrchestrator.PersonalConnectionAdapterDouble
@@ -299,6 +307,64 @@ defmodule SddOrchestrator.AIRuntimeFixtures do
       expires_at: Map.get(attrs, :expires_at, DateTime.add(now, 900, :second))
     }
   end
+
+  @doc "Creates one connection with a current catalog and quota snapshot."
+  def runtime_session_context_fixture(attrs \\ %{}) do
+    now = Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z])
+    ttl_seconds = Map.get(attrs, :ttl_seconds, 300)
+
+    connection_fixture =
+      Map.get_lazy(attrs, :connection_fixture, fn -> personal_ai_connection_fixture(attrs) end)
+
+    catalog_fixture =
+      model_catalog_snapshot_fixture(%{
+        connection_fixture: connection_fixture,
+        now: now,
+        models: Map.get_lazy(attrs, :models, fn -> [model_catalog_model()] end),
+        ttl_seconds: ttl_seconds
+      })
+
+    quota_snapshot_fixture(%{
+      connection_fixture: catalog_fixture,
+      now: now,
+      buckets: Map.get_lazy(attrs, :buckets, fn -> [quota_bucket()] end),
+      ttl_seconds: ttl_seconds
+    })
+  end
+
+  @doc "Builds one exact Task 4 runtime-session pin request."
+  def runtime_session_request(context, attrs \\ %{}) do
+    %{
+      consumer: Map.get(attrs, :consumer, :working_agent),
+      consumer_ref:
+        Map.get_lazy(attrs, :consumer_ref, fn ->
+          "run-#{System.unique_integer([:positive])}"
+        end),
+      connection_id: Map.get(attrs, :connection_id, context.connection.id),
+      model: Map.get(attrs, :model, "codex-test-model"),
+      effort: Map.get(attrs, :effort, "medium"),
+      scarcity: Map.get(attrs, :scarcity, :standard),
+      choices: Map.get(attrs, :choices, []),
+      spending_ceiling: Map.get(attrs, :spending_ceiling, default_spending_ceiling(context))
+    }
+  end
+
+  @doc "Pins one immutable runtime session through the public boundary."
+  def ai_runtime_session_fixture(context, attrs \\ %{}) do
+    {:ok, session} =
+      RuntimeSessions.pin_session(
+        context.account,
+        runtime_session_request(context, attrs),
+        now: Map.get(attrs, :now, ~U[2026-08-03 12:00:00Z])
+      )
+
+    session
+  end
+
+  defp default_spending_ceiling(%{connection: %{authentication_mode: "api_key"}}),
+    do: %{amount: Decimal.new("25.00"), currency: "USD"}
+
+  defp default_spending_ceiling(_context), do: nil
 
   defp normalize_policy_choice_kind(kind)
        when kind in [:scarce_model, :model_specific_quota, :provider_paid_continuation],

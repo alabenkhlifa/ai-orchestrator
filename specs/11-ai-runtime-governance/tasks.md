@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 7, 8, 1, 9, 2, 3, and 10 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, account-owned personal AI connection foundation, account-level AI Connections workflow, live model catalog with compatible effort validation, live quota and token-activity normalization, and explicit quota and paid-use policy are delivered on `slice/11-ai-runtime-governance`. Tasks 4, 13, and 16 are now executable, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
+Tasks 7, 8, 1, 9, 2, 3, 10, and 4 are complete: the personal-worker AI RPC transport, version-checked Codex App Server adapter, account-owned personal AI connection foundation, account-level AI Connections workflow, live model catalog with compatible effort validation, live quota and token-activity normalization, explicit quota and paid-use policy, and immutable provider-neutral runtime-session pinning are delivered on `slice/11-ai-runtime-governance`. Task 13 is In Progress under the recorded intra-slice ownership partition below, Tasks 11 and 16 are executable, and repository-wide verification remains serialized until the parallel Slice 14 work is reconciled. Remote and cloud worker setup, project-shared funding, consumer-owned per-agent presentation, and Slice 07 lifecycle integration are deferred to focused follow-up specifications.
 
 ## Active Slice
 
@@ -81,6 +81,10 @@ Traceability:
 - `specs/11-ai-runtime-governance#Task 7` exclusively owns the personal AI worker transport, including its socket, channel, and any Endpoint registration.
 - `specs/14-repository-execution-profile#Task 1` exclusively owns repository-assessment persistence and UI, including its migration, hosted and device-authoritative storage contracts, route and project navigation, assessment LiveView, and focused browser test.
 - Repository-wide verification is serialized after both task-scoped changes are reconciled. Each parallel task runs only its focused proof and must not modify the other task's owned surfaces.
+- Implementation is additionally partitioned by ownership between `Task 4` and `Task 13`, which share one working tree and are separated by disjoint paths, distinct test partitions, and distinct build paths.
+- `Task 4` exclusively owns `AIRuntimeSession`, its runtime-session boundary module and migration, its focused test, and `test/support/ai_runtime_fixtures.ex`. It consumes `PersonalConnections.resolve_for_consumer/3`, `ModelCatalogs.validate_selection/5`, and `QuotaPolicy.evaluate/3` as read-only callers and does not modify them.
+- `Task 13` exclusively owns `PersonalAIConnection`, `PersonalConnections`, the personal connection adapter and its RPC adapter, the revocation reconciliation module and its migration, `test/support/personal_connection_adapter_double.ex`, the existing personal-connections test, and the `PersonalAIConnection` entries in the privacy rights and retention modules. It does not modify `test/support/ai_runtime_fixtures.ex` or any runtime-session surface.
+- Neither parallel task modifies `AIConnectionsLive`, the personal-worker transport, the Codex App Server adapter, the catalog surfaces, or the quota surfaces.
 
 ## Tasks
 
@@ -147,13 +151,14 @@ Traceability:
   - Proof: Focused general, model-specific, scarce, paid, unknown, missing, opt-in, expiry, revocation, connection mismatch, model mismatch, no-fallback, no-paid-use, pause, and deterministic-policy tests pass.
   - Delivered: `QuotaPolicy` re-authorizes the active connection owner before and after evaluation, requires one exact connection, model and effort selection, and validates bounded owner choices tied to that connection, model, applicable bucket, cost boundary and validity window. `QuotaPolicyAdapter.Default` applies general buckets to every model, applies model-specific buckets only to their exact model, refuses provider-defined or missing applicability, unknown scarcity and capacity, stale or missing ChatGPT quota, and exhausted quota without the exact paid-continuation approval. The normalized result can only preserve the selection and return `proceed`, `proceed_to_cost_reservation` for API-key work, or a typed resumable `pause`; it has no fallback surface. The adapter contract independently re-runs the authoritative deterministic decision before accepting a double's output, while API-key quota remains unknown and cannot bypass Task 11's strict cost-reservation boundary.
 
-- [ ] Task 4 — Pin provider-neutral runtime sessions.
+- [x] Task 4 — Pin provider-neutral runtime sessions.
   - Size: Standard
   - Depends on: Task 2, Task 10
   - Purpose: Bind support conversations and working-agent runs to one reproducible configuration without preventing concurrent connection reuse.
   - Owned surfaces: `AIRuntimeSession`, migration and constraints, support and working-agent consumer kinds, connection eligibility, model and effort compatibility revalidation, catalog provenance, immutable configuration version, explicit opt-in references, API-key spending ceiling, concurrent reuse, stale catalog refusal, idempotent creation, fixtures, and consumer contract.
   - Owns: AC-07, AC-14, entity:AIRuntimeSession
   - Proof: Focused support, working agent, connection, model, effort, provenance, version, opt-in, ceiling, immutable pin, concurrent reuse, stale, incompatible, unknown, idempotent, and consumer-contract tests pass.
+  - Delivered: `AIRuntimeSession` and its migration persist one minimized immutable pinned configuration per consumer reference, with a `(account_id, consumer_kind, consumer_ref)` uniqueness key and a database trigger that freezes all eighteen pinned columns on update. `RuntimeSessions.pin_session/3` locks the account and connection rows, re-runs `PersonalConnections.resolve_for_consumer/3` inside the transaction so connection eligibility keeps its single authority, revalidates the model and effort through `ModelCatalogs.validate_selection/5`, and pins only the opt-in choices `QuotaPolicy.evaluate/3` reported as in force. Both consumer kinds run the identical connection, model, effort, compatibility, quota, fallback, and paid-continuation rule set. Catalog provenance is copied as frozen evidence rather than foreign-keyed, so a later catalog refresh cannot alter or invalidate an active pin. An API-key session requires a positive ceiling and ISO-4217 currency; a ChatGPT session must carry neither. Re-pinning the same consumer with an identical chosen configuration returns the existing session, while a different configuration fails closed as `configuration_conflict`. Cost reservation, capability readiness, retention, and rights remain owned by Tasks 11 and 14.
 
 - [ ] Task 11 — Enforce strict API-key cost reservations and publish runtime-session readiness.
   - Size: Standard
