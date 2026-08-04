@@ -7,8 +7,10 @@ defmodule SddOrchestrator.Privacy.Rights do
 
     * `export_account/1` — access and portability: gathers the account's
       identities, workspace, projects, repository connections, passwordless
-      attempts, session metadata, and the short-lived model catalog and quota
-      snapshots still held for it into a structured, credential-free map.
+      attempts, session metadata, the short-lived model catalog and quota
+      snapshots still held for it, and the pinned runtime configurations and
+      ceiling ledgers still retained for project accountability, into a
+      structured, credential-free map.
     * `erase_account/2` — erasure: atomically deletes the hosted workspace root
       and account, cascading to identities, credentials, sessions, the personal
       profile, projects, repository connections, hosted storage, onboarding
@@ -20,8 +22,18 @@ defmodule SddOrchestrator.Privacy.Rights do
       as counts and typed reasons.
     * `terminate_personal_ai_service/1` — service termination: revokes every
       personal AI connection, requests worker-local credential removal, deletes
-      the catalog and quota evidence in the same scope, and hands the
-      acknowledged references to retention.
+      the catalog and quota evidence in the same scope, hands the acknowledged
+      references to retention, and reports as aggregate counts the pinned
+      configurations and ceiling ledgers termination retains, because ending the
+      service is a revocation rather than an erasure request.
+    * `assess_runtime_session_request/3` — the disposition for a rights request
+      over one pinned runtime configuration. Correction is refused because the
+      pin is the record of what actually ran; restriction and objection carry
+      the same verified operator assessment a restored project does.
+    * `retire_runtime_consumers/2` — the deletion handoff for a retired consumer.
+      A session names its consumer as a kind and an opaque reference, so the
+      owning project or conversation deletion path is the only authority that
+      can say a consumer is gone; this boundary applies that decision.
     * Portability project operations — authorized access and portability export,
       project-name and specification correction through their normal write
       boundaries, project erasure, and explicit restriction or objection
@@ -59,10 +71,12 @@ defmodule SddOrchestrator.Privacy.Rights do
   }
 
   alias SddOrchestrator.AIRuntime.{
+    AIRuntimeSession,
     ModelCatalogSnapshot,
     PersonalAIConnection,
     PersonalConnectionRevocations,
-    QuotaSnapshot
+    QuotaSnapshot,
+    RuntimeCostLedger
   }
 
   alias SddOrchestrator.Devices
@@ -89,6 +103,9 @@ defmodule SddOrchestrator.Privacy.Rights do
 
   alias SddOrchestrator.SpecificationStore
 
+  @typedoc "One runtime consumer whose owning deletion path has retired it."
+  @type runtime_consumer :: {:support_assistant | :working_agent | String.t(), String.t()}
+
   @doc """
   Assembles a credential-free export of everything the deployment holds for an
   account. Returns `{:error, :not_found}` for an unknown account.
@@ -110,6 +127,8 @@ defmodule SddOrchestrator.Privacy.Rights do
            personal_ai_connections: export_personal_ai_connections(account_id),
            model_catalog_snapshots: export_model_catalog_snapshots(account_id),
            quota_snapshots: export_quota_snapshots(account_id),
+           ai_runtime_sessions: export_ai_runtime_sessions(account_id),
+           runtime_cost_ledgers: export_runtime_cost_ledgers(account_id),
            projects: export_projects(account_id),
            sessions: export_sessions(account_id),
            hosted_sessions: export_hosted_sessions(account_id)
@@ -185,6 +204,7 @@ defmodule SddOrchestrator.Privacy.Rights do
            action: :service_termination,
            personal_ai_connections: summary,
            personal_ai_snapshots: purge_personal_ai_snapshots(opts),
+           personal_ai_runtime: retained_runtime_records(opts),
            propagation: deletion_propagation(:hosted)
          }}
 
@@ -199,7 +219,7 @@ defmodule SddOrchestrator.Privacy.Rights do
   # purpose that justified holding it ends here, so termination deletes it now.
   # The counts are aggregate and name no connection.
   defp purge_personal_ai_snapshots(opts) do
-    scope = snapshot_scope(opts)
+    scope = account_scope(opts)
 
     %{
       model_catalogs: delete_scoped_snapshots(ModelCatalogSnapshot, scope),
@@ -207,7 +227,28 @@ defmodule SddOrchestrator.Privacy.Rights do
     }
   end
 
-  defp snapshot_scope(opts) do
+  # Termination is a revocation of every connection at once, not an erasure
+  # request. The pinned configurations and ceiling ledgers in scope are the
+  # project's account of what already ran; each keeps its own accountability
+  # window and loses only the opaque reference, which is deleted with the
+  # connection that named it. The counts are aggregate and identify no session,
+  # so the operator can see what termination retained without reading it.
+  defp retained_runtime_records(opts) do
+    scope = account_scope(opts)
+
+    %{
+      sessions: count_scoped(AIRuntimeSession, scope),
+      cost_ledgers: count_scoped(RuntimeCostLedger, scope),
+      disposition: :retained_for_project_accountability
+    }
+  end
+
+  defp count_scoped(schema, :all), do: Repo.aggregate(schema, :count)
+
+  defp count_scoped(schema, account_id),
+    do: Repo.aggregate(from(row in schema, where: row.account_id == ^account_id), :count)
+
+  defp account_scope(opts) do
     case Keyword.fetch(opts, :account) do
       {:ok, %Account{id: account_id}} -> account_id
       {:ok, account_id} when is_binary(account_id) -> account_id
@@ -342,11 +383,62 @@ defmodule SddOrchestrator.Privacy.Rights do
       {:ok,
        result
        |> Map.put(:action, :erasure)
+       |> Map.put(:runtime_records, retire_project_runtime_consumers(authority, project_id))
        |> Map.put(:propagation, deletion_propagation(boundary))}
     else
       _not_authorized_or_restored -> {:error, :not_found}
     end
   end
+
+  @doc """
+  Retires the pinned runtime records of consumers that no longer exist.
+
+  A session names its consumer as a kind and an opaque reference, so the owning
+  deletion path — the project or the conversation — is the only authority that
+  can say the consumer is gone. This boundary applies that decision inside one
+  account: it deletes each named consumer's pinned configuration and ceiling
+  ledger in one transaction, ignores a reference it does not hold, and converges
+  when the same decision is applied twice.
+  """
+  @spec retire_runtime_consumers(Account.t() | String.t(), [runtime_consumer()]) :: {:ok, map()}
+  def retire_runtime_consumers(account_or_id, consumers) when is_list(consumers) do
+    with {:ok, account_id} <- runtime_account_id(account_or_id),
+         [_named | _] = grouped <- group_runtime_consumers(consumers) do
+      {:ok, delete_runtime_consumers(account_id, grouped)}
+    else
+      _nothing_named -> {:ok, no_runtime_records()}
+    end
+  end
+
+  def retire_runtime_consumers(_account_or_id, _consumers), do: {:ok, no_runtime_records()}
+
+  @doc """
+  Returns the verified disposition for a rights request over one pinned session.
+
+  A pinned configuration is immutable accountability evidence: it records what a
+  support conversation or working-agent run actually executed under. Correction
+  is refused rather than applied, because rewriting it would destroy the very
+  record the person is entitled to see; access, portability, erasure,
+  restriction, and objection remain available and are named in the refusal. The
+  database refuses the rewrite as well, so no correction path can reach the pin
+  silently. Restriction and objection require the same case-specific operator
+  decision a restored project does.
+  """
+  @spec assess_runtime_session_request(
+          Account.t() | String.t(),
+          String.t(),
+          :correction | :restriction | :objection
+        ) :: {:ok, map()} | {:error, :not_found}
+  def assess_runtime_session_request(account_or_id, session_id, action)
+      when action in [:correction, :restriction, :objection] do
+    case scoped_runtime_session(account_or_id, session_id) do
+      nil -> {:error, :not_found}
+      %AIRuntimeSession{} = session -> {:ok, runtime_session_disposition(session, action)}
+    end
+  end
+
+  def assess_runtime_session_request(_account_or_id, _session_id, _action),
+    do: {:error, :not_found}
 
   @doc """
   Returns the verified operator disposition for restriction or objection.
@@ -679,6 +771,193 @@ defmodule SddOrchestrator.Privacy.Rights do
 
   defp stored_items(%{"items" => items}) when is_list(items), do: items
   defp stored_items(_other), do: []
+
+  # The pin is the person's own record of what ran, and it holds no credential,
+  # no provider account identity, no worker-profile reference, and no raw
+  # provider error, so the access copy reports every stored field. A session
+  # whose connection has been removed reports an absent reference rather than
+  # being omitted, because the run it accounts for still happened.
+  defp export_ai_runtime_sessions(account_id) do
+    from(session in AIRuntimeSession,
+      where: session.account_id == ^account_id,
+      order_by: [asc: session.pinned_at, asc: session.id],
+      select: %{
+        id: session.id,
+        connection_id: session.connection_id,
+        consumer_kind: session.consumer_kind,
+        consumer_ref: session.consumer_ref,
+        provider: session.provider,
+        authentication_mode: session.authentication_mode,
+        model: session.model,
+        reasoning_effort: session.reasoning_effort,
+        configuration_version: session.configuration_version,
+        catalog_snapshot_ref: session.catalog_snapshot_ref,
+        catalog_source: session.catalog_source,
+        catalog_source_method: session.catalog_source_method,
+        catalog_source_version: session.catalog_source_version,
+        catalog_retrieved_at: session.catalog_retrieved_at,
+        catalog_expires_at: session.catalog_expires_at,
+        opt_ins: session.opt_ins,
+        spending_ceiling_amount: session.spending_ceiling_amount,
+        spending_ceiling_currency: session.spending_ceiling_currency,
+        pinned_at: session.pinned_at,
+        inserted_at: session.inserted_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&%{&1 | opt_ins: AIRuntimeSession.decode_opt_ins(&1.opt_ins)})
+  end
+
+  # The ledger is the minimized usage record of one API-key session: the
+  # approved ceiling, the official price version the reservations were
+  # calculated from, what is reserved and observed against it, and whether the
+  # session is paused. It carries no provider invoice and no payment credential.
+  defp export_runtime_cost_ledgers(account_id) do
+    from(ledger in RuntimeCostLedger,
+      where: ledger.account_id == ^account_id,
+      order_by: [asc: ledger.inserted_at, asc: ledger.id],
+      select: %{
+        id: ledger.id,
+        session_id: ledger.session_id,
+        currency: ledger.currency,
+        ceiling: ledger.ceiling,
+        price_version: ledger.price_version,
+        price_source: ledger.price_source,
+        price_published_at: ledger.price_published_at,
+        price_expires_at: ledger.price_expires_at,
+        input_unit_price: ledger.input_unit_price,
+        output_unit_price: ledger.output_unit_price,
+        max_input_tokens: ledger.max_input_tokens,
+        max_output_tokens: ledger.max_output_tokens,
+        reserved_amount: ledger.reserved_amount,
+        observed_amount: ledger.observed_amount,
+        outstanding_reservations: ledger.outstanding_reservations,
+        paused: ledger.paused,
+        pause_reason: ledger.pause_reason,
+        paused_at: ledger.paused_at,
+        inserted_at: ledger.inserted_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&%{&1 | outstanding_reservations: stored_reservations(&1)})
+  end
+
+  defp stored_reservations(%{outstanding_reservations: reservations}),
+    do: RuntimeCostLedger.decode_reservations(reservations)
+
+  # A deleted project must leave no pinned configuration still naming it. The
+  # project is the authority for its own reference in either consumer kind; a run
+  # or conversation reference the project does not itself record is retired by
+  # that consumer's own deletion path through the same boundary. Device-held
+  # projects reach no hosted account scope, so they retire nothing here.
+  defp retire_project_runtime_consumers(%PersonalWorkspace{account_id: account_id}, project_id) do
+    {:ok, retired} =
+      retire_runtime_consumers(account_id, [
+        {:working_agent, project_id},
+        {:support_assistant, project_id}
+      ])
+
+    retired
+  end
+
+  defp retire_project_runtime_consumers(_authority, _project_id), do: no_runtime_records()
+
+  defp group_runtime_consumers(consumers) do
+    consumers
+    |> Enum.flat_map(&normalize_runtime_consumer/1)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.map(fn {kind, refs} -> {kind, Enum.uniq(refs)} end)
+  end
+
+  defp normalize_runtime_consumer({kind, ref}) when is_atom(kind) and is_binary(ref),
+    do: normalize_runtime_consumer({Atom.to_string(kind), ref})
+
+  defp normalize_runtime_consumer({kind, ref}) when is_binary(kind) and is_binary(ref) do
+    if kind in AIRuntimeSession.consumer_kinds(), do: [{kind, ref}], else: []
+  end
+
+  defp normalize_runtime_consumer(_consumer), do: []
+
+  defp delete_runtime_consumers(account_id, grouped) do
+    retired = retired_session_ids(account_id, grouped)
+
+    {:ok, counts} =
+      Repo.transaction(fn ->
+        {cost_ledgers, _} =
+          Repo.delete_all(
+            from ledger in RuntimeCostLedger, where: ledger.session_id in subquery(retired)
+          )
+
+        {sessions, _} =
+          Repo.delete_all(
+            from session in AIRuntimeSession, where: session.id in subquery(retired)
+          )
+
+        %{sessions: sessions, cost_ledgers: cost_ledgers}
+      end)
+
+    Map.merge(counts, %{action: :erasure, propagation: deletion_propagation(:hosted)})
+  end
+
+  defp retired_session_ids(account_id, grouped) do
+    named =
+      Enum.reduce(grouped, dynamic(false), fn {kind, refs}, acc ->
+        dynamic(
+          [session],
+          ^acc or (session.consumer_kind == ^kind and session.consumer_ref in ^refs)
+        )
+      end)
+
+    from(session in AIRuntimeSession,
+      where: session.account_id == ^account_id,
+      where: ^named,
+      select: session.id
+    )
+  end
+
+  defp no_runtime_records do
+    %{action: :erasure, sessions: 0, cost_ledgers: 0, propagation: deletion_propagation(:hosted)}
+  end
+
+  # Nothing is written, so the refusal reports the access boundary it leaves
+  # untouched rather than a pending decision.
+  defp runtime_session_disposition(session, :correction) do
+    %{
+      action: :correction,
+      session_id: session.id,
+      disposition: :refused_immutable_accountability_evidence,
+      reason: :pinned_configuration_is_the_record_of_what_ran,
+      available_actions: [:access, :portability, :erasure, :restriction, :objection],
+      propagation: access_propagation(:hosted)
+    }
+  end
+
+  defp runtime_session_disposition(session, action) do
+    %{
+      action: action,
+      session_id: session.id,
+      disposition: :verified_operator_assessment_required,
+      propagation: review_propagation(:hosted)
+    }
+  end
+
+  defp scoped_runtime_session(account_or_id, session_id) do
+    with {:ok, account_id} <- runtime_account_id(account_or_id),
+         {:ok, session_id} <- cast_runtime_id(session_id) do
+      Repo.one(
+        from session in AIRuntimeSession,
+          where: session.account_id == ^account_id and session.id == ^session_id
+      )
+    else
+      _unidentified -> nil
+    end
+  end
+
+  defp runtime_account_id(%Account{id: id}), do: cast_runtime_id(id)
+  defp runtime_account_id(id), do: cast_runtime_id(id)
+
+  defp cast_runtime_id(id) when is_binary(id), do: Ecto.UUID.cast(id)
+  defp cast_runtime_id(_id), do: :error
 
   defp export_magic_link_attempts(email_keys) do
     from(attempt in MagicLinkAttempt,

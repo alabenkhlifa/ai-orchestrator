@@ -38,6 +38,17 @@ defmodule SddOrchestrator.Privacy.Retention do
       model or an old account fact must not outlive its stated lifetime. This
       sweep runs last and under its own advisory lock, so a connection that
       becomes terminal earlier in the same pass loses its evidence in that pass.
+    * Pinned runtime sessions and their cost ledgers — a pinned configuration is
+      the project's account of what a support conversation or working-agent run
+      actually executed under, so it is kept for a bounded accountability window
+      from the moment it was pinned and deleted with its ledger at that
+      boundary. Removing the connection that funded the run detaches the opaque
+      reference instead of destroying the account of the run, and a detached
+      session serves a shorter window because no further execution can follow
+      it. Pause state is never a deletion trigger: a paused session and its
+      ledger stay intact and resumable for their whole window. This sweep runs
+      after the connection delete and under its own advisory lock, so a session
+      detached earlier in the same pass is judged as detached in that pass.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -53,10 +64,12 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
 
   alias SddOrchestrator.AIRuntime.{
+    AIRuntimeSession,
     ModelCatalogSnapshot,
     PersonalAIConnection,
     PersonalConnectionRevocations,
-    QuotaSnapshot
+    QuotaSnapshot,
+    RuntimeCostLedger
   }
 
   alias SddOrchestrator.Devices
@@ -79,10 +92,34 @@ defmodule SddOrchestrator.Privacy.Retention do
   # silently suppresses snapshot expiry and neither one waits on the other.
   @snapshot_advisory_lock_key 529_140_776
 
+  # Distinct again from the whole-pruner, revocation, and snapshot keys, so the
+  # runtime accountability sweep neither waits on nor silently suppresses them.
+  @runtime_advisory_lock_key 384_612_907
+
+  # A pinned configuration answers one question for the project that ran the
+  # work: which model, at which reasoning effort, under which owner opt-ins and
+  # which approved ceiling, produced this run or conversation. Ninety days is the
+  # outer bound of that account. It already exceeds every other governed evidence
+  # window in the deployment, including the 30-day operational log and 35-day
+  # encrypted-backup lifetimes, so nothing downstream can still need it.
+  @runtime_session_window 90 * @day
+
+  # Once the connection that funded the run is gone, no further execution can
+  # follow the pin and the owner has signalled that the processing is winding
+  # down. What remains is the same accountability record every other terminal
+  # lifecycle in this module keeps for 30 days.
+  @detached_runtime_session_window 30 * @day
+
   @typedoc "Rows deleted by one catalog and quota snapshot sweep."
   @type snapshot_counts :: %{
           expired_model_catalog_snapshots: non_neg_integer(),
           expired_quota_snapshots: non_neg_integer()
+        }
+
+  @typedoc "Rows deleted by one runtime session and cost ledger sweep."
+  @type runtime_counts :: %{
+          expired_ai_runtime_sessions: non_neg_integer(),
+          expired_runtime_cost_ledgers: non_neg_integer()
         }
 
   @doc "Runs every retention rule and returns the number of rows deleted per category."
@@ -106,11 +143,37 @@ defmodule SddOrchestrator.Privacy.Retention do
       revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now)
     }
     |> Map.merge(snapshot_counts(now))
+    |> Map.merge(runtime_counts(now))
   end
 
   @doc false
   @spec snapshot_advisory_lock_key() :: pos_integer()
   def snapshot_advisory_lock_key, do: @snapshot_advisory_lock_key
+
+  @doc false
+  @spec runtime_advisory_lock_key() :: pos_integer()
+  def runtime_advisory_lock_key, do: @runtime_advisory_lock_key
+
+  @doc """
+  Deletes every pinned runtime session whose accountability window has passed.
+
+  A session is due once its window has elapsed since it was pinned: the shorter
+  detached window when its connection has been removed, the full window while it
+  is still attached. Its ceiling ledger is deleted in the same statement pair
+  rather than left to the cascade, so the reported counts describe what this
+  pass actually removed. Returns `:locked` when another instance is sweeping; a
+  contended sweep deletes nothing rather than duplicating the work. Both deletes
+  are bounded statements in one transaction, so an interrupted pass leaves no
+  ledger without its session and re-running converges.
+  """
+  @spec prune_ai_runtime_sessions(DateTime.t()) :: runtime_counts() | :locked
+  def prune_ai_runtime_sessions(now \\ DateTime.utc_now()) do
+    now = DateTime.truncate(now, :second)
+
+    with_advisory_lock(@runtime_advisory_lock_key, "runtime accountability sweep", fn ->
+      delete_due_runtime_records(due_runtime_session_ids(now))
+    end)
+  end
 
   @doc """
   Deletes every catalog and quota snapshot that may no longer be presented.
@@ -167,26 +230,71 @@ defmodule SddOrchestrator.Privacy.Retention do
       select: connection.id
   end
 
+  # The runtime sweep runs after the terminal-connection delete, so a session
+  # this pass detached is judged as detached now rather than one pass later.
+  defp runtime_counts(now) do
+    case prune_ai_runtime_sessions(now) do
+      :locked -> %{expired_ai_runtime_sessions: 0, expired_runtime_cost_ledgers: 0}
+      counts -> counts
+    end
+  end
+
+  defp due_runtime_session_ids(now) do
+    attached_cutoff = DateTime.add(now, -@runtime_session_window, :second)
+    detached_cutoff = DateTime.add(now, -@detached_runtime_session_window, :second)
+
+    from session in AIRuntimeSession,
+      where:
+        session.pinned_at <= ^attached_cutoff or
+          (is_nil(session.connection_id) and session.pinned_at <= ^detached_cutoff),
+      select: session.id
+  end
+
+  # The ledger has no purpose without the session whose ceiling it holds, so it
+  # is deleted first and in the same transaction; the cascade would remove it
+  # either way but could not report what this pass removed.
+  defp delete_due_runtime_records(due) do
+    {:ok, counts} =
+      Repo.transaction(fn ->
+        {ledgers, _} =
+          Repo.delete_all(
+            from ledger in RuntimeCostLedger, where: ledger.session_id in subquery(due)
+          )
+
+        {sessions, _} =
+          Repo.delete_all(from session in AIRuntimeSession, where: session.id in subquery(due))
+
+        %{expired_ai_runtime_sessions: sessions, expired_runtime_cost_ledgers: ledgers}
+      end)
+
+    counts
+  end
+
+  defp with_snapshot_lock(sweep) do
+    with_advisory_lock(
+      @snapshot_advisory_lock_key,
+      "catalog and quota snapshot sweep",
+      sweep
+    )
+  end
+
   # The lock is session-scoped, so it must be taken and released on the same
   # checked-out connection.
-  defp with_snapshot_lock(sweep) do
+  defp with_advisory_lock(key, sweep_name, sweep) do
     Repo.checkout(fn ->
-      case Repo.query("SELECT pg_try_advisory_lock($1)", [@snapshot_advisory_lock_key]) do
+      case Repo.query("SELECT pg_try_advisory_lock($1)", [key]) do
         {:ok, %{rows: [[true]]}} ->
           try do
             sweep.()
           after
-            Repo.query("SELECT pg_advisory_unlock($1)", [@snapshot_advisory_lock_key])
+            Repo.query("SELECT pg_advisory_unlock($1)", [key])
           end
 
         {:ok, _not_acquired} ->
           :locked
 
         {:error, reason} ->
-          Logger.warning(
-            "catalog and quota snapshot sweep could not acquire advisory lock: " <>
-              inspect(reason)
-          )
+          Logger.warning(sweep_name <> " could not acquire advisory lock: " <> inspect(reason))
 
           :locked
       end

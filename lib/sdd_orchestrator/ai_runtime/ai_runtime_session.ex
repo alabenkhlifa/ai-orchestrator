@@ -8,6 +8,13 @@ defmodule SddOrchestrator.AIRuntime.AIRuntimeSession do
   spending ceiling. Credentials, provider identity, plan detail, and raw
   provider errors never belong in this schema, and every pinned column is
   frozen by a database trigger after insertion.
+
+  Pinning always names a live connection, so `connection_id` is required here.
+  It is nullable in storage for one reason: removing a personal connection
+  revokes its opaque reference without ending the project's account of what
+  already ran under it, so the reference is detached and the run's configuration
+  survives under its own shorter retention window. The database trigger permits
+  that single present-to-absent transition and refuses every other change.
   """
 
   use Ecto.Schema
