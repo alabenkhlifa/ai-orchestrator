@@ -92,10 +92,4 @@ Traceability:
 
 ## Progress Log
 
-### <Date or session>
-
-- Completed: <What changed>
-- Remaining: <What is still open>
-- Failed checks: <Failure that still blocks completion>
-- Proof receipts: <Successful run_proof.py receipt lines for completed applicable tasks>
-- Spec updates: <Requirements or design decisions written back>
+See [progress.md](progress.md).

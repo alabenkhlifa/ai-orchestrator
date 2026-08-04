@@ -9,7 +9,7 @@ Activate this skill as the workflow for restoring agreement between requirements
 
 ## Workflow
 
-1. Read the applicable `AGENTS.md` and the feature's `requirements.md`, `design.md`, and `tasks.md`.
+1. Read the applicable `AGENTS.md` and the feature's `requirements.md`, `design.md`, and `tasks.md`. Take recorded history only from the last relevant entries of `specs/<feature>/progress.md`; `## Progress Log` in `tasks.md` holds nothing but the pointer line `See [progress.md](progress.md).`
 2. Inspect the code, discovery, or failed check that triggered the update.
 3. Classify the affected decision, such as user, workflow, scope, business rule, identity, ownership, state, acceptance criterion, architecture, task boundary, or proof. Identify the earliest readiness stage it blocks: product requirements, technical design, active-slice implementation, required verification, or deployment and release. Explain the cross-file impact before editing.
 4. Run the Scope Health Gate whenever the update adds or broadens an outcome, workflow, integration, trust boundary, data lifecycle, implementation boundary, or verification gate. Do not append independent work merely because the existing specification is related.
@@ -22,12 +22,13 @@ Activate this skill as the workflow for restoring agreement between requirements
 9. Trace the decision through every affected surface:
    - `requirements.md`: workflow, scope, rules, acceptance criteria, and open questions.
    - `design.md`: logical approach, domain and access boundaries, interfaces, decisions, tradeoffs, risks, and technical questions.
-   - `tasks.md`: active-slice boundary, implementation steps, proof, verification gate, active blockers, release gates, deferred work, and progress state when it materially changes.
+   - `tasks.md`: active-slice boundary, implementation steps, proof, verification gate, active blockers, release gates, deferred work, and task and slice status when it materially changes.
+   - `progress.md`: a newest-first entry only when the change is meaningful implementation movement, a verification result or invalidation, a status transition, or a consolidated discovery checkpoint.
 10. Remove or replace resolved questions, stale blockers, contradicted wording, and invalid proof. Consolidate obsolete or repetitive discovery checkpoints after confirming their durable decisions live in the current requirements, design, and task state. Preserve a replaced tradeoff by recording the new choice and consequence.
 11. Keep technologies deferred when the decision is still product-level. Add technical consequences as open questions instead of selecting a stack implicitly.
 12. Run the Cross-Specification Capability Gate, Slice Size Gate, Task Size Gate, Task Proof Gate, and Delivery Coverage and Sequence Gate whenever requirements, design, dependencies, proof expectations, or the active task plan changes.
 13. Set status by the affected stage. Move requirements to `Draft` when the product agreement becomes incomplete, move tasks to `Blocked` only when active implementation or required verification cannot proceed, and remove `Verified` whenever existing proof no longer covers the changed behavior. Keep deployment-only unknowns in an explicit release gate without representing the work as releasable.
-14. Run `python3 .agents/scripts/validate_spec.py specs/<feature>` and the repository's global dependency validator once after applying the batch when available, then manually confirm that every changed decision, capability edge, slice-size declaration, task-size declaration, proof-scope declaration, proof, scope classification, delivery-coverage mapping, and task dependency agrees across files.
+14. Run `python3 .agents/scripts/validate_spec.py specs/<feature>`, `python3 .agents/scripts/split_progress_log.py --check`, and the repository's global dependency validator once after applying the batch when available, then manually confirm that every changed decision, capability edge, slice-size declaration, task-size declaration, proof-scope declaration, proof, scope classification, delivery-coverage mapping, and task dependency agrees across files.
 15. Report the scope classification, capability graph result, slice-size, task-size, and proof-scope results and exceptions, delivery-coverage and sequence result including any missing provider, cycle, oversized slice or task, unmapped, ambiguous, or forward-dependent surface, changed decisions, newly exposed questions with their blocked stages, invalidated or deferred work, status changes, and product, design, implementation, verification, and release readiness separately.
 
 ## Question Batching Rules
@@ -84,7 +85,7 @@ Activate this skill as the workflow for restoring agreement between requirements
 - Use exactly `- Applies to: all tasks.` for a new plan. For prospective adoption in an active plan, list only the stable labels of unfinished tasks covered from that boundary onward.
 - Give every applicable task exactly one `Proof scope:` line. Use `Focused` by default; allow `Broad — <reason>.` only when the task itself owns the inseparable broader gate.
 - Keep task proof runnable through task scope and complete verification through slice scope. Reject an update that uses a full suite as routine task confidence or treats reconciliation as authority to repeat the slice gate.
-- When proof scope changes for unfinished work, update the affected declaration and proof together, validate the plan, and record the non-behavioral mechanism in the progress log.
+- When proof scope changes for unfinished work, update the affected declaration and proof together, validate the plan, and record the non-behavioral mechanism in `progress.md`.
 
 ## Delivery Coverage And Sequence Gate
 
@@ -110,10 +111,11 @@ Activate this skill as the workflow for restoring agreement between requirements
 - Keep acceptance criteria representative and observable rather than turning them into a complete technical test matrix.
 - Name the earliest blocked stage for every unresolved item. A decision that affects only deployment or release must not block implementation or local verification when their contract is already stable.
 
-## tasks.md State Discipline
+## Task Plan State Discipline
 
+- Keep the current executable state in `tasks.md` and the chronological record in `progress.md`. `## Progress Log` in `tasks.md` holds nothing but the pointer line `See [progress.md](progress.md).`, and `progress.md` holds the `### ...` entries newest first.
 - Write every accepted decision back immediately, but place the durable decision in the current requirements, design, active boundary, blockers, or proof rather than relying on chronology.
-- Do not append a progress-log entry for every discovery answer or clarification. The progress log is not a conversation transcript and must not duplicate decisions already visible in current-state sections.
+- Do not append a `progress.md` entry for every discovery answer or clarification. The progress log is not a conversation transcript and must not duplicate decisions already visible in current-state sections.
 - Add or update progress only for meaningful implementation movement, a verification result or invalidation, a specification status transition, or a consolidated discovery checkpoint that materially changes readiness or scope.
 - During an active discovery thread, update one current checkpoint in place or omit a progress entry when the changed current-state sections already provide a complete handoff.
 - Keep `tasks.md` limited to the current executable slice. Put future work in concise deferred boundaries or a separate specification instead of expanding the active task list.

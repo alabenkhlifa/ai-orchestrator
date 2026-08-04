@@ -35,6 +35,9 @@ Before implementation, read the relevant files under `specs/<feature>/`:
 - `requirements.md` defines expected behavior and product boundaries.
 - `design.md` defines technical decisions and tradeoffs.
 - `tasks.md` defines the active implementation slice and verification state.
+- `progress.md` holds the progress-log entries as `### ...` sections, newest first.
+
+`tasks.md` keeps `## Progress Log` as a heading whose entire body is the pointer line `See [progress.md](progress.md).` Progress entries are compliance evidence — proof receipts, failed checks, status transitions, and environment incidents — and remain mandatory; only the file that holds them changed. Read the last relevant entries rather than the whole log.
 
 Do not replace an explicit project decision with an assumption.
 
@@ -113,7 +116,7 @@ Adopt the task-proof contract when an active slice's next unfinished task is ref
 - Declare applicability as exactly `- Applies to: all tasks.` for a new task plan or as a comma-separated list of stable task labels for prospective adoption, such as `- Applies to: Task 36, Task 37.` Unknown or duplicate task labels are invalid.
 - Give every applicable task exactly one declaration: `Proof scope: Focused` or `Proof scope: Broad — <why this task owns a broader gate>.` A broad declaration is an exception and requires a concrete ownership reason.
 - Run each focused task-proof command through `python3 .agents/scripts/run_proof.py task --task <n> -- <command>`. For a validator-approved broad task exception, add `--broad` before `--`. The runner must reject unscoped full tests, full browser matrices, dependency installation, production proof, and repository-wide security or quality gates in focused task scope.
-- Paste every successful runner receipt into the task's progress-log entry. An applicable task may not be checked complete, committed, or provide a capability until the specification validator accepts a matching focused or approved broad receipt.
+- Paste every successful runner receipt into the task's entry in `specs/<feature>/progress.md`. An applicable task may not be checked complete, committed, or provide a capability until the specification validator accepts a matching focused or approved broad receipt.
 - The main thread must confirm the same scoped proof by real exit status. Reconciliation does not authorize an additional full-suite run.
 - Run complete repository, browser, security, production, and release commands only through `python3 .agents/scripts/run_proof.py slice -- <command>` at the slice verification gate. Do not use slice scope as a routine task-proof override.
 - If focused proof exposes evidence of a cross-task regression, record the evidence and run the narrowest additional command that can confirm it. Escalate to the slice gate only when the broader gate itself is the affected behavior or a documented stop condition requires it.
@@ -123,10 +126,11 @@ Adopt the task-proof contract when an active slice's next unfinished task is ref
 These rules govern how Codex and Claude Code execute work in this repository, in every SDD workflow.
 
 - Delegate task development to a sub-agent by default and keep the main thread on orchestration, review, proof, committing, and specification write-back. The purpose is to spend the main thread's context on judgment rather than on file contents, so a brief must carry the exact files to read, the decided design, and the hard constraints instead of asking the sub-agent to rediscover them.
+- A dispatched sub-agent works from its closed brief. It does not invoke an SDD workflow skill, repeat the specification preflight, or re-read the specification files to rediscover an agreement the brief already carries. The main thread owns the preflight, the gate validation, the capability confirmation, the reconciliation, the proof confirmation, the specification write-back, and the commit. A sub-agent that finds its brief wrong, incomplete, or contradicted by the code stops and reports instead of re-deriving the agreement itself.
 - Run sub-agents in parallel whenever their tasks are genuinely independent. Independence follows from each task's `Depends on:` line together with disjoint ownership of files, surfaces, and proof, not from whether the tasks feel unrelated. Assign explicit path ownership in every brief, and serialize instead when two tasks would touch the same module, migration, or screen.
 - Reconcile every sub-agent result in one place. Confirm each proof by real exit status; a sub-agent's report that a check passed is a claim, not evidence.
 - Manage the main thread's context deliberately. When it passes roughly half its window, finish the task in flight through its proof, write-back, and commit without interrupting it, then stop. Do not start another task in a degraded context, and do not abandon one midway to save room.
-- Hand off by pointing at the repository, never by carrying state. Ask the user to clear the context, then supply the exact prompt for the next session: the branch, the active specification, the next executable task, which tasks to avoid and why, and the instruction to recover state from `specs/<feature>/tasks.md` and its progress log.
+- Hand off by pointing at the repository, never by carrying state. Ask the user to clear the context, then supply the exact prompt for the next session: the branch, the active specification, the next executable task, which tasks to avoid and why, and the instruction to recover state from `specs/<feature>/tasks.md` and the last relevant entries of `specs/<feature>/progress.md`.
 - Exception: when the user says the session is a long or automatic run, do not stop at the context threshold; continue through the task chain.
 
 ## Readiness And Write-Back
@@ -136,7 +140,7 @@ Report product-requirement, technical-design, implementation, verification, and 
 - Keep deployment-dependent evidence in a release gate. It blocks release, not implementation or local verification, when the implementation contract is already approved.
 - Distinguish an environment or tooling blocker, such as an unavailable service, daemon, credential, or network, from an implementation defect: pause only the affected proofs, continue independent work, surface it to the user, and record it in `tasks.md` as environment-blocked. Do not fake, skip, or weaken a proof. A canonical check that flags a later task's work may be deferred with a narrow, documented suppression and a recorded follow-up owned by that task.
 - Persist accepted decisions, resolved questions, new blockers, status changes, and progress into the specification files through the matching SDD skill, never an ad hoc edit. A new conversation must recover state from the repository, not a handoff prompt.
-- Record a resolved, non-behavioral engineering mechanism in the `tasks.md` progress log, or in `design.md` when it changes a documented decision. Do not leave it only in the conversation.
+- Record a resolved, non-behavioral engineering mechanism in `specs/<feature>/progress.md`, or in `design.md` when it changes a documented decision. Do not leave it only in the conversation.
 
 ## File And Commit Rules
 
@@ -160,6 +164,14 @@ The repository has the Slice 01 Phoenix toolchain. Run the checks applicable to 
 
 For instant cross-slice task and readiness questions, run `.agents/scripts/slice_status.py`. It is a read-only report over `main` plus matching active slice worktrees, defaults to Slice 07 through the latest slice with Slice 11 expanded, and accepts `--from <slice>` and `--focus <slice>` overrides. It does not replace the specification validators.
 
+For cross-specification capability questions, run `python3 .agents/scripts/capability_index.py`. `--capability <name>` reports one capability's provider task, readiness, and consumers without opening the provider's specification, and the full index reports every missing, ambiguous, malformed, and cyclic edge. Its readiness reads the provider task's checkbox only, so it is a fast pointer and not gate approval; `validate_spec.py` remains the authority. Open a provider `tasks.md` only when the index reports a problem or the consuming work would touch the provider's own contract.
+
+`python3 .agents/scripts/split_progress_log.py [<spec> ...]` keeps the progress log out of `tasks.md`, defaulting to every specification under `specs/`. `--check` reports the same work without writing and exits nonzero when any file would change. The tool is permanent and idempotent, not a one-shot migration: a slice branch still carries `tasks.md` in the legacy inline shape, so resolve that rebase conflict in favor of the branch version and re-run the tool. Existing entries are matched by their exact `### ` heading and are never duplicated, reordered, or rewritten.
+
+`python3 .agents/scripts/run_proof.py` derives one stable `MIX_TEST_PARTITION` from the worktree root and injects it into the child environment, so each worktree gets its own test database. Do not hand-write the partition in a proof command; a caller-supplied value still wins, and the rendered receipt is unchanged.
+
+Prime every newly created slice worktree with `.agents/scripts/prime_worktree.sh <target-worktree-path>` before its first build. It clones `_build`, `deps`, `priv/plts`, and `assets/node_modules` from the main worktree, which removes the cold compile and the full PLT rebuild. It is idempotent and refuses to run against the main worktree.
+
 For instruction and skill changes, run the checks that currently apply:
 
 - Shared instructions: `cmp -s AGENTS.md CLAUDE.md`
@@ -170,6 +182,7 @@ For instruction and skill changes, run the checks that currently apply:
 - Proof runner: `python3 .agents/scripts/test_run_proof.py`
 - Specifications: `python3 .agents/scripts/validate_spec.py specs/<feature>`
 - Cross-specification graph: `python3 .agents/scripts/validate_spec.py --all specs`
+- Progress-log layout: `python3 .agents/scripts/split_progress_log.py --check`
 
 Slice 01 is the first approved executable slice. Its application-bootstrap task must establish these canonical commands:
 
