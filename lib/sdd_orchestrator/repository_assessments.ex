@@ -27,6 +27,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
     RepositoryBindingPreparation,
     RepositoryExecutionProfile,
     RepositoryExecutionProfileProposal,
+    RepositoryExecutionProfileProposalEnvelope,
     RepositoryMetadataAdapter
   }
 
@@ -43,6 +44,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
                 ])
 
   @type authority :: {:hosted, Ecto.UUID.t()} | {:device, DeviceWorkspace.t()}
+  @type viewer :: authority() | {:participant, Ecto.UUID.t() | nil, Ecto.UUID.t()}
 
   @type error ::
           :unauthorized
@@ -57,6 +59,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
           | :unknown_or_replayed
           | :already_terminal
           | :invalid_cache_provenance
+          | :invalid_proposal_envelope
           | :invalid_result
           | :invalid_proposal
           | :stale_assessment
@@ -163,6 +166,11 @@ defmodule SddOrchestrator.RepositoryAssessments do
   scanner, disclosure, worker, and limit selection. The result must match the
   same strict command, and the selected authoritative adapter may move that row
   only once from `pending_scan` to a terminal state.
+
+  A completed delivery must supply the worker's current proposal envelope as
+  `:proposal_envelope`; it is rebuilt from this exact assessment and stored with
+  the completion or not at all. A canceled or failed delivery must supply none,
+  and a completion stored without one can never gain it later.
   """
   @spec finish_assessment(
           authority(),
@@ -201,6 +209,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
 
   defp do_finish_assessment(authority, project_id, command, result, provenance, opts) do
     assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
+    delivered_envelope = Keyword.get(opts, :proposal_envelope)
     terminal_at = now(opts)
 
     with true <- is_binary(project_id),
@@ -210,7 +219,8 @@ defmodule SddOrchestrator.RepositoryAssessments do
          {:ok, pending} <- assessment_store.fetch(authority, project_id, command.assessment_id),
          {:ok, terminal} <-
            RepositoryAssessment.terminal(pending, command, result, provenance, terminal_at),
-         {:ok, persisted} <- assessment_store.transition(authority, pending, terminal) do
+         {:ok, envelope} <- terminal_envelope(terminal, delivered_envelope, terminal_at),
+         {:ok, persisted} <- assessment_store.transition(authority, pending, terminal, envelope) do
       {:ok, persisted}
     else
       false ->
@@ -222,6 +232,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
              :unauthorized,
              :already_terminal,
              :invalid_cache_provenance,
+             :invalid_proposal_envelope,
              :invalid_result,
              :stale
            ] ->
@@ -229,6 +240,39 @@ defmodule SddOrchestrator.RepositoryAssessments do
 
       _invalid_or_unavailable_store ->
         {:error, :persistence_failed}
+    end
+  end
+
+  defp terminal_envelope(%RepositoryAssessment{state: "completed"} = terminal, delivered, now) do
+    RepositoryExecutionProfileProposalEnvelope.new(delivered, terminal, now)
+  end
+
+  defp terminal_envelope(%RepositoryAssessment{}, nil, _now), do: {:ok, nil}
+
+  defp terminal_envelope(%RepositoryAssessment{}, _delivered, _now),
+    do: {:error, :invalid_proposal_envelope}
+
+  @doc """
+  Reads one completed assessment with its verified authoritative envelope.
+
+  The stored envelope is revalidated against that exact assessment, so review
+  never sees a legacy, missing, corrupted, or foreign-bound value and no caller
+  may supply replacement proposal fields.
+  """
+  @spec proposal_envelope(viewer(), String.t(), String.t(), keyword()) ::
+          {:ok,
+           %{
+             assessment: RepositoryAssessment.t(),
+             envelope: RepositoryExecutionProfileProposalEnvelope.t()
+           }}
+          | {:error, error()}
+  def proposal_envelope(viewer, project_id, assessment_id, opts \\ []) do
+    assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
+
+    case assessment_store.fetch_envelope(viewer, project_id, assessment_id) do
+      {:ok, assessment, envelope} -> {:ok, %{assessment: assessment, envelope: envelope}}
+      {:error, :invalid_proposal_envelope} -> {:error, :invalid_proposal_envelope}
+      _missing -> {:error, :not_found}
     end
   end
 

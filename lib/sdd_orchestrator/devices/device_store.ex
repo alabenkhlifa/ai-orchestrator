@@ -104,13 +104,29 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @callback put_repository_assessment(String.t(), String.t(), map()) ::
               {:ok, map()} | {:error, :not_found | :already_exists | :invalid_assessment}
 
-  @doc "Atomically replaces one assessment only while its stored state matches."
-  @callback transition_repository_assessment(String.t(), String.t(), String.t(), map()) ::
+  @doc """
+  Atomically replaces one assessment only while its stored state matches.
+
+  A completed value must arrive with its exact minimized proposal-envelope
+  value, and both are stored together or not at all. An unsuccessful value must
+  arrive with `nil`.
+  """
+  @callback transition_repository_assessment(
+              String.t(),
+              String.t(),
+              String.t(),
+              map(),
+              map() | nil
+            ) ::
               {:ok, map()}
-              | {:error, :not_found | :stale | :invalid_assessment}
+              | {:error, :not_found | :stale | :invalid_assessment | :invalid_proposal_envelope}
 
   @doc "Reads one device-authoritative repository assessment value."
   @callback get_repository_assessment(String.t(), String.t()) ::
+              {:ok, map()} | {:error, :not_found}
+
+  @doc "Reads one device-authoritative proposal-envelope value."
+  @callback get_repository_assessment_proposal_envelope(String.t(), String.t()) ::
               {:ok, map()} | {:error, :not_found}
 
   @doc "Counts one project's device-authoritative repository assessments."

@@ -202,14 +202,31 @@ defmodule SddOrchestrator.Devices do
     adapter().put_repository_assessment(project_id, assessment_id, value)
   end
 
-  @doc "Atomically moves one device assessment from its expected state to a terminal value."
-  def transition_repository_assessment(project_id, assessment_id, expected_state, value) do
+  @doc """
+  Atomically moves one device assessment from its expected state to a terminal value.
+
+  A completed transition carries the exact minimized proposal-envelope value and
+  the adapter stores both or neither. An unsuccessful transition carries none.
+  """
+  def transition_repository_assessment(
+        project_id,
+        assessment_id,
+        expected_state,
+        value,
+        envelope_value \\ nil
+      ) do
     adapter().transition_repository_assessment(
       project_id,
       assessment_id,
       expected_state,
-      value
+      value,
+      envelope_value
     )
+  end
+
+  @doc "Reads one device-authoritative proposal-envelope value."
+  def get_repository_assessment_proposal_envelope(project_id, assessment_id) do
+    adapter().get_repository_assessment_proposal_envelope(project_id, assessment_id)
   end
 
   @doc "Reads one device-authoritative repository assessment value."

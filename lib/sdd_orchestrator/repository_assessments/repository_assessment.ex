@@ -279,6 +279,26 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
 
   def strict?(_assessment), do: false
 
+  @doc "Rebuilds the exact scan command this assessment authorized."
+  @spec command(term()) :: {:ok, RepositoryAssessmentCommand.t()} | {:error, :invalid_command}
+  def command(%__MODULE__{} = assessment), do: command_from_assessment(assessment)
+
+  def command(_assessment), do: {:error, :invalid_command}
+
+  @doc "Rebuilds the exact terminal result this assessment persisted."
+  @spec result(term()) :: {:ok, RepositoryAssessmentResult.t()} | {:error, :invalid_result}
+  def result(%__MODULE__{state: state} = assessment) when state != @pending_state do
+    with true <- terminal_state?(state),
+         {:ok, result} <- RepositoryAssessmentResult.from_value(result_value(assessment)),
+         true <- result.status == state do
+      {:ok, result}
+    else
+      _invalid -> {:error, :invalid_result}
+    end
+  end
+
+  def result(_assessment), do: {:error, :invalid_result}
+
   @doc "Returns the single pending state Task 8 may create."
   @spec pending_state() :: String.t()
   def pending_state, do: @pending_state

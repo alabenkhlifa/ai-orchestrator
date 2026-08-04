@@ -8,7 +8,11 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Projects.{Project, RepositoryConnection}
   alias SddOrchestrator.Repo
-  alias SddOrchestrator.RepositoryAssessments.RepositoryAssessment
+
+  alias SddOrchestrator.RepositoryAssessments.{
+    RepositoryAssessment,
+    RepositoryExecutionProfileProposalEnvelope
+  }
 
   @impl true
   def put({:hosted, account_id}, %RepositoryAssessment{} = assessment) do
@@ -31,22 +35,52 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
   def transition(
         {:hosted, account_id},
         %RepositoryAssessment{} = pending,
-        %RepositoryAssessment{} = terminal
+        %RepositoryAssessment{} = terminal,
+        envelope
       ) do
     with true <- RepositoryAssessment.strict?(pending),
          true <- RepositoryAssessment.strict?(terminal),
          true <- pending.state == RepositoryAssessment.pending_state(),
          true <- RepositoryAssessment.terminal_state?(terminal.state),
-         true <- RepositoryAssessment.same_binding?(pending, terminal) do
-      transactionally_transition(account_id, pending, terminal)
+         true <- RepositoryAssessment.same_binding?(pending, terminal),
+         :ok <- envelope_matches_outcome(terminal, envelope) do
+      transactionally_transition(account_id, pending, terminal, envelope)
     else
       false -> {:error, :stale}
+      {:error, reason} -> {:error, reason}
     end
   rescue
     Ecto.Query.CastError -> {:error, :unauthorized}
   end
 
-  def transition(_authority, _pending, _terminal), do: {:error, :unsupported_authority}
+  def transition(_authority, _pending, _terminal, _envelope),
+    do: {:error, :unsupported_authority}
+
+  @impl true
+  def fetch_envelope(viewer, project_id, assessment_id) do
+    with {:ok, project} <- authorize_viewer(viewer, project_id),
+         %RepositoryAssessment{state: "completed"} = assessment <-
+           Repo.one(
+             from(a in RepositoryAssessment,
+               where: a.project_id == ^project.id and a.id == ^assessment_id
+             )
+           ),
+         %RepositoryExecutionProfileProposalEnvelope{} = envelope <-
+           Repo.one(
+             from(e in RepositoryExecutionProfileProposalEnvelope,
+               where: e.project_id == ^project.id and e.assessment_id == ^assessment_id
+             )
+           ),
+         {:ok, verified} <-
+           RepositoryExecutionProfileProposalEnvelope.verify(envelope, assessment) do
+      {:ok, assessment, verified}
+    else
+      {:error, :invalid_proposal_envelope} -> {:error, :invalid_proposal_envelope}
+      _missing -> {:error, :not_found}
+    end
+  rescue
+    Ecto.Query.CastError -> {:error, :not_found}
+  end
 
   @impl true
   def fetch({:hosted, account_id}, project_id, assessment_id) do
@@ -145,7 +179,7 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
     )
   end
 
-  defp transactionally_transition(account_id, pending, terminal) do
+  defp transactionally_transition(account_id, pending, terminal, envelope) do
     case Repo.transaction(fn ->
            with %Project{} = project <- lock_project_binding(pending.project_id),
                 {:ok, owned} <- Participation.owned_project(account_id, pending.project_id),
@@ -153,19 +187,83 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
                 true <- active_hosted_binding?(project, pending),
                 {1, _rows} <- transition_pending(pending, terminal),
                 %RepositoryAssessment{} = persisted <-
-                  Repo.get(RepositoryAssessment, pending.id) do
+                  Repo.get(RepositoryAssessment, pending.id),
+                :ok <- insert_envelope(persisted, envelope) do
              persisted
            else
              {0, _rows} -> Repo.rollback(:stale)
              false -> Repo.rollback(:stale)
+             {:error, :invalid_proposal_envelope} -> Repo.rollback(:invalid_proposal_envelope)
              _invalid -> Repo.rollback(:unauthorized)
            end
          end) do
-      {:ok, %RepositoryAssessment{} = persisted} -> {:ok, persisted}
-      {:error, reason} when reason in [:stale, :unauthorized] -> {:error, reason}
-      {:error, _reason} -> {:error, :stale}
+      {:ok, %RepositoryAssessment{} = persisted} ->
+        {:ok, persisted}
+
+      {:error, reason}
+      when reason in [:stale, :unauthorized, :invalid_proposal_envelope] ->
+        {:error, reason}
+
+      {:error, _reason} ->
+        {:error, :stale}
     end
   end
+
+  defp envelope_matches_outcome(
+         %RepositoryAssessment{state: "completed"},
+         %RepositoryExecutionProfileProposalEnvelope{}
+       ),
+       do: :ok
+
+  defp envelope_matches_outcome(%RepositoryAssessment{state: "completed"}, _envelope),
+    do: {:error, :invalid_proposal_envelope}
+
+  defp envelope_matches_outcome(%RepositoryAssessment{}, nil), do: :ok
+
+  defp envelope_matches_outcome(%RepositoryAssessment{}, _envelope),
+    do: {:error, :invalid_proposal_envelope}
+
+  defp insert_envelope(_persisted, nil), do: :ok
+
+  defp insert_envelope(
+         %RepositoryAssessment{} = persisted,
+         %RepositoryExecutionProfileProposalEnvelope{} = envelope
+       ) do
+    with {:ok, verified} <-
+           RepositoryExecutionProfileProposalEnvelope.verify(envelope, persisted),
+         {:ok, _stored} <-
+           verified
+           |> RepositoryExecutionProfileProposalEnvelope.create_changeset()
+           |> Repo.insert() do
+      :ok
+    else
+      _invalid -> {:error, :invalid_proposal_envelope}
+    end
+  end
+
+  defp insert_envelope(_persisted, _envelope), do: {:error, :invalid_proposal_envelope}
+
+  defp authorize_viewer({:hosted, account_id}, project_id) do
+    with {:ok, project} <- Participation.owned_project(account_id, project_id),
+         true <- project.storage_mode == "hosted" and project.lifecycle_state == "active" do
+      {:ok, project}
+    else
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  defp authorize_viewer({:participant, account_id, hosted_identity_id}, project_id) do
+    with {:ok, project, role} <-
+           Participation.visible_project(project_id, account_id, hosted_identity_id),
+         true <- role in [:owner, :participant],
+         true <- project.storage_mode == "hosted" and project.lifecycle_state == "active" do
+      {:ok, project}
+    else
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  defp authorize_viewer(_viewer, _project_id), do: {:error, :not_found}
 
   defp lock_project_binding(project_id) do
     project =

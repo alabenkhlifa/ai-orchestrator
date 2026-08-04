@@ -41,7 +41,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
       title: "Minimized transfer",
       icon: "arrow-right",
       body:
-        "Only the structured assessment, relative evidence anchors, outcome metadata, approved profile, and any specifically disclosed bounded and redacted excerpt may enter authoritative project storage. No whole-repository source or hosted index is transferred."
+        "Only the structured assessment, relative evidence anchors, outcome metadata, the worker-generated minimized proposal envelope of normalized commands, required checks, allowed scope, gaps, conflicts, and multi-root blockers, the approved profile, and any specifically disclosed bounded and redacted excerpt may enter authoritative project storage. No whole-repository source or hosted index is transferred."
     },
     %{
       key: "processors",

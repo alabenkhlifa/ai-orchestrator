@@ -36,7 +36,8 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   alias SddOrchestrator.RepositoryAssessments.{
     RepositoryAssessment,
     RepositoryExecutionProfile,
-    RepositoryExecutionProfileProposal
+    RepositoryExecutionProfileProposal,
+    RepositoryExecutionProfileProposalEnvelope
   }
 
   alias SddOrchestrator.Specifications.{
@@ -143,16 +144,31 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
-  def transition_repository_assessment(project_id, assessment_id, expected_state, value) do
+  def transition_repository_assessment(
+        project_id,
+        assessment_id,
+        expected_state,
+        value,
+        envelope_value
+      ) do
     GenServer.call(
       __MODULE__,
-      {:transition_repository_assessment, project_id, assessment_id, expected_state, value}
+      {:transition_repository_assessment, project_id, assessment_id, expected_state, value,
+       envelope_value}
     )
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
   def get_repository_assessment(project_id, assessment_id) do
     GenServer.call(__MODULE__, {:get_repository_assessment, project_id, assessment_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def get_repository_assessment_proposal_envelope(project_id, assessment_id) do
+    GenServer.call(
+      __MODULE__,
+      {:get_repository_assessment_proposal_envelope, project_id, assessment_id}
+    )
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
@@ -387,7 +403,8 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   end
 
   def handle_call(
-        {:transition_repository_assessment, project_id, assessment_id, expected_state, value},
+        {:transition_repository_assessment, project_id, assessment_id, expected_state, value,
+         envelope_value},
         _from,
         state
       ) do
@@ -397,7 +414,8 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
         project_id,
         assessment_id,
         expected_state,
-        value
+        value,
+        envelope_value
       )
 
     {:reply, reply, state}
@@ -411,6 +429,15 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       end
 
     {:reply, reply, state}
+  end
+
+  def handle_call(
+        {:get_repository_assessment_proposal_envelope, project_id, assessment_id},
+        _from,
+        state
+      ) do
+    {:reply, repository_assessment_proposal_envelope(state.table, project_id, assessment_id),
+     state}
   end
 
   def handle_call({:repository_assessment_count, project_id}, _from, state) do
@@ -879,7 +906,8 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
          project_id,
          assessment_id,
          expected_state,
-         value
+         value,
+         envelope_value
        )
        when is_binary(expected_state) and is_map(value) do
     key = {:repository_assessment, project_id, assessment_id}
@@ -899,14 +927,17 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
          true <- RepositoryAssessment.same_binding?(current, terminal),
          true <-
            canonical_repository_identity(project) ==
-             {terminal.repository_provider, terminal.repository_id} do
+             {terminal.repository_provider, terminal.repository_id},
+         {:ok, envelope} <- repository_assessment_envelope(table, terminal, envelope_value) do
       normalized = RepositoryAssessment.to_value(terminal)
+      insert_repository_assessment_envelope(table, project_id, assessment_id, envelope)
       :ok = :dets.insert(table, {key, normalized})
       :ok = :dets.sync(table)
       {:ok, normalized}
     else
       [] -> {:error, :not_found}
       {:error, :invalid_assessment} -> {:error, :invalid_assessment}
+      {:error, :invalid_proposal_envelope} -> {:error, :invalid_proposal_envelope}
       _stale_or_mismatch -> {:error, :stale}
     end
   end
@@ -916,9 +947,70 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
          _project_id,
          _assessment_id,
          _expected_state,
-         _value
+         _value,
+         _envelope_value
        ),
        do: {:error, :invalid_assessment}
+
+  defp repository_assessment_envelope(
+         table,
+         %RepositoryAssessment{state: "completed"} = terminal,
+         envelope_value
+       )
+       when is_map(envelope_value) do
+    with {:ok, envelope} <- RepositoryExecutionProfileProposalEnvelope.from_value(envelope_value),
+         {:ok, verified} <-
+           RepositoryExecutionProfileProposalEnvelope.verify(envelope, terminal),
+         :ok <- unclaimed_proposal_envelope(table, terminal, verified) do
+      {:ok, verified}
+    else
+      _invalid -> {:error, :invalid_proposal_envelope}
+    end
+  end
+
+  defp repository_assessment_envelope(_table, %RepositoryAssessment{state: "completed"}, _value),
+    do: {:error, :invalid_proposal_envelope}
+
+  defp repository_assessment_envelope(_table, %RepositoryAssessment{}, nil), do: {:ok, nil}
+
+  defp repository_assessment_envelope(_table, %RepositoryAssessment{}, _value),
+    do: {:error, :invalid_proposal_envelope}
+
+  defp unclaimed_proposal_envelope(table, terminal, verified) do
+    case repository_assessment_proposal_envelope(table, terminal.project_id, terminal.id) do
+      {:error, :not_found} ->
+        :ok
+
+      {:ok, value} ->
+        if Map.get(value, "envelope_digest") == verified.envelope_digest,
+          do: :ok,
+          else: {:error, :invalid_proposal_envelope}
+    end
+  end
+
+  defp insert_repository_assessment_envelope(_table, _project_id, _assessment_id, nil), do: :ok
+
+  defp insert_repository_assessment_envelope(table, project_id, assessment_id, envelope) do
+    :ok =
+      :dets.insert(
+        table,
+        {{:repository_assessment_proposal_envelope, project_id, assessment_id},
+         RepositoryExecutionProfileProposalEnvelope.to_value(envelope)}
+      )
+  end
+
+  defp repository_assessment_proposal_envelope(table, project_id, assessment_id) do
+    case :dets.lookup(
+           table,
+           {:repository_assessment_proposal_envelope, project_id, assessment_id}
+         ) do
+      [{{:repository_assessment_proposal_envelope, ^project_id, ^assessment_id}, value}] ->
+        {:ok, value}
+
+      [] ->
+        {:error, :not_found}
+    end
+  end
 
   defp latest_repository_assessment(table, project_id) do
     table

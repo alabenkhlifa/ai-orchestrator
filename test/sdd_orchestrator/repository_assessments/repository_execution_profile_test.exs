@@ -19,7 +19,9 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
     RepositoryAssessmentResult,
     RepositoryBindingPreparation,
     RepositoryExecutionProfile,
-    RepositoryExecutionProfileProposal
+    RepositoryExecutionProfileProposal,
+    RepositoryExecutionProfileProposalPayload,
+    WorkerRepositoryExecutionProfileProposalEnvelope
   }
 
   @scanner_digest String.duplicate("a", 64)
@@ -609,6 +611,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
       end
 
     provenance = if status == "completed", do: provenance!(command, result), else: nil
+    envelope = if status == "completed", do: envelope!(command, result), else: nil
 
     assert {:ok, terminal} =
              RepositoryAssessments.finish_assessment(
@@ -617,10 +620,28 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
                command,
                result,
                provenance,
-               now: context.now
+               now: context.now,
+               proposal_envelope: envelope
              )
 
     terminal
+  end
+
+  defp envelope!(command, result) do
+    assert {:ok, payload} =
+             RepositoryExecutionProfileProposalPayload.new(result, %{
+               commands: ["mix test"],
+               required_checks: ["mix test"],
+               allowed_scope: [command.root],
+               gaps: ["missing_repository_instructions"],
+               conflicts: [],
+               multi_root_blockers: []
+             })
+
+    assert {:ok, envelope} =
+             WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
+
+    envelope
   end
 
   defp put_pending!(context, kind, override_now \\ nil) do

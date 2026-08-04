@@ -13,7 +13,9 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResultTest d
     RepositoryAssessmentCacheProvenance,
     RepositoryAssessmentCommand,
     RepositoryAssessmentResult,
-    RepositoryBindingPreparation
+    RepositoryBindingPreparation,
+    RepositoryExecutionProfileProposalPayload,
+    WorkerRepositoryExecutionProfileProposalEnvelope
   }
 
   import SddOrchestrator.AccountsFixtures
@@ -307,7 +309,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResultTest d
                command,
                result,
                provenance!(command, result),
-               now: context.now
+               now: context.now,
+               proposal_envelope: envelope!(command, result)
              )
 
     assert completed.state == "completed"
@@ -422,7 +425,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResultTest d
                command,
                result,
                provenance,
-               now: context.now
+               now: context.now,
+               proposal_envelope: envelope!(command, result)
              )
 
     assert completed.cache_source == "fresh_scan"
@@ -680,7 +684,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResultTest d
                command,
                result,
                provenance,
-               now: context.now
+               now: context.now,
+               proposal_envelope: envelope!(command, result)
              )
 
     assert completed.cache_source == "complete_cache"
@@ -825,7 +830,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResultTest d
                command,
                result,
                provenance!(command, result),
-               now: context.now
+               now: context.now,
+               proposal_envelope: envelope!(command, result)
              )
 
     pending = put_pending!(context, :hosted)
@@ -956,6 +962,23 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentResultTest d
 
   defp stringify_limits(limits) do
     Map.new(limits, fn {key, value} -> {Atom.to_string(key), value} end)
+  end
+
+  defp envelope!(command, result) do
+    assert {:ok, payload} =
+             RepositoryExecutionProfileProposalPayload.new(result, %{
+               commands: ["mix test"],
+               required_checks: ["mix test"],
+               allowed_scope: [command.root],
+               gaps: ["missing_repository_instructions"],
+               conflicts: [],
+               multi_root_blockers: []
+             })
+
+    assert {:ok, envelope} =
+             WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
+
+    envelope
   end
 
   defp provenance!(command, result, overrides \\ %{}) do

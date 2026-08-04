@@ -5,7 +5,11 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.RepositoryAssessments.RepositoryAssessment
+
+  alias SddOrchestrator.RepositoryAssessments.{
+    RepositoryAssessment,
+    RepositoryExecutionProfileProposalEnvelope
+  }
 
   @impl true
   def put(
@@ -36,7 +40,8 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
   def transition(
         {:device, %DeviceWorkspace{} = authority},
         %RepositoryAssessment{} = pending,
-        %RepositoryAssessment{} = terminal
+        %RepositoryAssessment{} = terminal,
+        envelope
       ) do
     with true <- RepositoryAssessment.strict?(pending),
          true <- RepositoryAssessment.strict?(terminal),
@@ -45,12 +50,14 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
          true <- pending.state == RepositoryAssessment.pending_state(),
          true <- RepositoryAssessment.terminal_state?(terminal.state),
          true <- RepositoryAssessment.same_binding?(pending, terminal),
+         {:ok, envelope_value} <- envelope_value(terminal, envelope),
          {:ok, value} <-
            Devices.transition_repository_assessment(
              pending.project_id,
              pending.id,
              RepositoryAssessment.pending_state(),
-             RepositoryAssessment.to_value(terminal)
+             RepositoryAssessment.to_value(terminal),
+             envelope_value
            ) do
       RepositoryAssessment.from_value(value)
     else
@@ -60,7 +67,27 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
     end
   end
 
-  def transition(_authority, _pending, _terminal), do: {:error, :unsupported_authority}
+  def transition(_authority, _pending, _terminal, _envelope),
+    do: {:error, :unsupported_authority}
+
+  @impl true
+  def fetch_envelope({:device, %DeviceWorkspace{} = authority}, project_id, assessment_id) do
+    with {:ok, _project} <- authorize(authority, project_id),
+         {:ok, assessment} <- fetch({:device, authority}, project_id, assessment_id),
+         true <- assessment.state == "completed",
+         {:ok, value} <-
+           Devices.get_repository_assessment_proposal_envelope(project_id, assessment_id),
+         {:ok, envelope} <- RepositoryExecutionProfileProposalEnvelope.from_value(value),
+         {:ok, verified} <-
+           RepositoryExecutionProfileProposalEnvelope.verify(envelope, assessment) do
+      {:ok, assessment, verified}
+    else
+      {:error, :invalid_proposal_envelope} -> {:error, :invalid_proposal_envelope}
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  def fetch_envelope(_viewer, _project_id, _assessment_id), do: {:error, :not_found}
 
   @impl true
   def fetch({:device, %DeviceWorkspace{} = authority}, project_id, assessment_id) do
@@ -109,6 +136,24 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
       _missing -> {:error, :not_found}
     end
   end
+
+  defp envelope_value(
+         %RepositoryAssessment{state: "completed"} = terminal,
+         %RepositoryExecutionProfileProposalEnvelope{} = envelope
+       ) do
+    with {:ok, verified} <-
+           RepositoryExecutionProfileProposalEnvelope.verify(envelope, terminal) do
+      {:ok, RepositoryExecutionProfileProposalEnvelope.to_value(verified)}
+    end
+  end
+
+  defp envelope_value(%RepositoryAssessment{state: "completed"}, _envelope),
+    do: {:error, :invalid_proposal_envelope}
+
+  defp envelope_value(%RepositoryAssessment{}, nil), do: {:ok, nil}
+
+  defp envelope_value(%RepositoryAssessment{}, _envelope),
+    do: {:error, :invalid_proposal_envelope}
 
   defp exact_binding?(project, assessment) do
     project.repository_provider == assessment.repository_provider and
