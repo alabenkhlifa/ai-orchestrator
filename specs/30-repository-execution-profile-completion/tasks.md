@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Not Started
 
-The product and technical agreements are approved. Task 4 is blocked until Slice 14 publishes `capability:repository-profile-review`; Task 12 follows the selected pilot. The storage and specification-store governance prerequisites are already ready.
+The product and technical agreements are approved and every required capability is ready. `specs/14-repository-execution-profile/` is `Verified` and merged, so `capability:repository-profile-review` is available and Task 4 is executable; Task 12 follows the selected pilot. The storage and specification-store governance prerequisites remain ready.
 
 ## Active Slice
 
@@ -74,7 +74,6 @@ Traceability:
 ## Tasks
 
 - [ ] Task 4 — Select one authoritative pilot specification revision.
-  - Status: Blocked until `capability:repository-profile-review` is ready.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -112,7 +111,7 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Slice 14 `capability:repository-profile-review` is complete with matching focused proof and readiness write-back.
+- [x] Slice 14 `capability:repository-profile-review` is complete with matching focused proof and readiness write-back.
 - [ ] AC-01, AC-02, and AC-08 through AC-11 pass in their applicable hosted and device-authoritative modes.
 - [ ] Pilot-selection, stale-revision, no-copy, no-import, four-axis readiness, conflict, multi-root, missing-check, participant-read, and browser scenarios pass.
 - [ ] Privacy inventory, access, lifecycle, deletion, rights, processor, transfer, redaction, cache-locality, no-analytics, and no-secondary-use suites pass.
@@ -127,7 +126,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Task 4 is implementation-blocked on `capability:repository-profile-review`; Task 12 waits for Task 4. No product or technical decision is unresolved.
+- None. Every required capability is ready, so Task 4 is executable and the remaining tasks follow their `Depends on:` order. Deployment-specific evidence stays in the release gate and blocks release only.
 
 ## Progress Log
 
