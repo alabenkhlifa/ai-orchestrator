@@ -408,6 +408,11 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
     assert {:ok, assessment} = RepositoryAssessment.pending(preparation, context.now)
     value = RepositoryAssessment.to_value(assessment)
 
+    # Intern the atom so the allowlisted key set does the rejecting. Without
+    # this the refusal depends on whether another module happened to define
+    # `:absolute_path`, which made this test pass for the wrong reason.
+    _interned = :absolute_path
+
     assert {:error, :invalid_assessment} =
              Devices.put_repository_assessment(
                context.device_project.id,

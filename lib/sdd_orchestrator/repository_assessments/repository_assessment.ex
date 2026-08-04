@@ -232,16 +232,21 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
   @doc "Restores only the allowlisted device-store value shape."
   @spec from_value(term()) :: {:ok, t()} | {:error, :invalid_assessment}
   def from_value(value) when is_map(value) do
-    case MapSet.new(Map.keys(value)) do
-      @value_keys ->
+    # Compare key sets with `==`. A module attribute used directly as a `case`
+    # pattern is inlined as a `%MapSet{map: %{...}}` literal, and map patterns
+    # match subsets, so an unknown extra key would still be accepted.
+    keys = MapSet.new(Map.keys(value))
+
+    cond do
+      keys == @value_keys ->
         build_from_value(value)
 
-      @legacy_terminal_value_keys ->
+      keys == @legacy_terminal_value_keys ->
         value
         |> Map.merge(empty_cache_provenance_value())
         |> build_from_value()
 
-      @legacy_pending_value_keys ->
+      keys == @legacy_pending_value_keys ->
         value
         |> Map.merge(%{
           "scan_protocol_version" => RepositoryAssessmentCommand.version(),
@@ -255,7 +260,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessment do
         |> Map.merge(empty_cache_provenance_value())
         |> build_from_value()
 
-      _unknown_shape ->
+      true ->
         {:error, :invalid_assessment}
     end
   rescue
