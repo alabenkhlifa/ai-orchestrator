@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical contracts are approved and Tasks 7, 8, 1, 2, 3, 9, 10, 13, 14, and 15 are complete. Task 11 is the next executable task and reconstructs the owner review from the persisted exact minimized envelope. Pilot selection, independent readiness, privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
+The product and technical contracts are approved and every task is complete. `capability:repository-profile-review` is ready for `specs/30-repository-execution-profile-completion/`. The slice verification gate is unrun and still owns the full repository, browser-matrix, security, production, and release commands. Pilot selection, independent readiness, privacy, lifecycle, and final capability publication continue in `specs/30-repository-execution-profile-completion/`. Slice 07 consumption remains a later explicit `update-spec` agreement change.
 
 ## Active Slice
 
@@ -183,7 +183,7 @@ Traceability:
   - Proof: Focused proposal normalization, existing-instruction precedence, command, check, scope, gap, conflict, multi-root, hosted/device adapter, owner, stale-assessment, immutable-version, append-only, rejection, and cross-project tests pass.
   - Delivered: `RepositoryExecutionProfileProposal` derives immutable repository binding, base revision, assessment digest, and repository-instruction precedence from only the newest completed authoritative assessment, then strictly normalizes evidence-supported commands, required checks, allowed scope, gaps, conflicts, and multi-root blockers without accepting source content, credentials, or absolute paths. `RepositoryExecutionProfile` and the hosted migration append immutable project versions protected by exact assessment/proposal uniqueness, positive-version and digest constraints, and a database update-rejection trigger. Owner-only approval or rejection rechecks current project authority, repository identity, newest assessment, and proposal digest; rejection writes nothing and identical approval delivery is idempotent. Hosted writes are transactionally locked, while the device adapter appends atomically through the worker-owned DETS store, survives restart, and creates no hosted copy.
 
-- [ ] Task 11 — Let the owner review and approve the proposed profile.
+- [x] Task 11 — Let the owner review and approve the proposed profile.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 10, Task 15
@@ -191,6 +191,7 @@ Traceability:
   - Owned surfaces: Completed-assessment, cache-provenance and authoritative proposal-envelope presentation, envelope-only transient proposal reconstruction, profile proposal and version history LiveView, root, base revision, instruction precedence, command, required-check, allowed-scope, gap, conflict and multi-root presentation, managed-runtime-only explanation, owner approve and reject interactions, participant read-only access, stale recovery, `capability:repository-profile-review` provider and readiness write-back, and focused desktop/mobile browser scenario.
   - Owns: AC-07
   - Proof: Focused LiveView authorization and interaction tests plus one desktop/mobile browser file prove complete field and blocker visibility, caller-replacement refusal, repository-instruction authority, managed-runtime-only scope, explicit owner approval or rejection, participant read-only access, stale refusal, and profile-review capability readiness.
+  - Delivered: `RepositoryAssessments.profile_review/3` resolves the newest assessment, requires it to be the completed one, reads its verified authoritative envelope, and rebuilds Task 10's transient proposal from the envelope's six proposal fields alone, so no browser, control-plane, participant, or owner input can replace a managed-runtime field or reuse a prior assessment binding. `RepositoryExecutionProfileLive` serves the hosted and device routes and shows the completed assessment, cache source, cache-stored flag, cache-key and evidence digests, root, base revision, instruction precedence, commands, required checks, allowed scope, gaps, conflicts, and multi-root blockers before any decision, with blockers visually distinct and a managed-runtime-only statement that the profile changes no repository file, instruction, CI rule, or branch policy. Owner-only approve and reject actions append one immutable version or write nothing; a newer assessment, a replaced envelope, and a legacy completion each fall back to an actionable unavailable state that offers no approval. Hosted participants read the same fields without a decision control, through the assessment-store `latest` and profile-store `list` reads widened to the existing viewer rule. Project navigation is unchanged and remains owned by Task 1.
 
 ## Verification Gate
 

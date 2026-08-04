@@ -17,6 +17,7 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore do
   alias SddOrchestrator.RepositoryAssessments.ProfileStore.{Device, Hosted}
 
   @type authority :: {:hosted, Ecto.UUID.t()} | {:device, DeviceWorkspace.t()}
+  @type viewer :: authority() | {:participant, Ecto.UUID.t() | nil, Ecto.UUID.t()}
 
   @callback append(
               authority(),
@@ -26,7 +27,7 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore do
               DateTime.t()
             ) :: {:ok, RepositoryExecutionProfile.t()} | {:error, atom() | Ecto.Changeset.t()}
 
-  @callback list(authority(), Ecto.UUID.t()) :: [RepositoryExecutionProfile.t()]
+  @callback list(viewer(), Ecto.UUID.t()) :: [RepositoryExecutionProfile.t()]
   @callback count(authority(), Ecto.UUID.t()) :: non_neg_integer()
 
   @spec append(
@@ -51,13 +52,17 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore do
   def append(_authority, _assessment, _proposal, _actor_ref, _approved_at),
     do: {:error, :unsupported_authority}
 
-  @spec list(authority(), Ecto.UUID.t()) :: [RepositoryExecutionProfile.t()]
-  def list({:hosted, _account_id} = authority, project_id), do: Hosted.list(authority, project_id)
+  @doc "Lists the approved versions a hosted owner, participant, or device may read."
+  @spec list(viewer(), Ecto.UUID.t()) :: [RepositoryExecutionProfile.t()]
+  def list({:hosted, _account_id} = viewer, project_id), do: Hosted.list(viewer, project_id)
 
-  def list({:device, %DeviceWorkspace{}} = authority, project_id),
-    do: Device.list(authority, project_id)
+  def list({:participant, _account_id, _identity_id} = viewer, project_id),
+    do: Hosted.list(viewer, project_id)
 
-  def list(_authority, _project_id), do: []
+  def list({:device, %DeviceWorkspace{}} = viewer, project_id),
+    do: Device.list(viewer, project_id)
+
+  def list(_viewer, _project_id), do: []
 
   @spec count(authority(), Ecto.UUID.t()) :: non_neg_integer()
   def count(authority, project_id), do: length(list(authority, project_id))

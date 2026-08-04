@@ -40,11 +40,10 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted do
     do: {:error, :unsupported_authority}
 
   @impl true
-  def list({:hosted, account_id}, project_id) do
-    with {:ok, project} <- Participation.owned_project(account_id, project_id),
-         true <- project.storage_mode == "hosted" and project.lifecycle_state == "active" do
+  def list(viewer, project_id) do
+    with {:ok, project} <- authorize_viewer(viewer, project_id) do
       RepositoryExecutionProfile
-      |> where([profile], profile.project_id == ^project_id)
+      |> where([profile], profile.project_id == ^project.id)
       |> order_by([profile], asc: profile.version)
       |> Repo.all()
     else
@@ -54,7 +53,30 @@ defmodule SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted do
     Ecto.Query.CastError -> []
   end
 
-  def list(_authority, _project_id), do: []
+  defp authorize_viewer({:hosted, account_id}, project_id) do
+    with {:ok, project} <- Participation.owned_project(account_id, project_id),
+         true <- active_hosted_project?(project) do
+      {:ok, project}
+    else
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  defp authorize_viewer({:participant, account_id, hosted_identity_id}, project_id) do
+    with {:ok, project, role} <-
+           Participation.visible_project(project_id, account_id, hosted_identity_id),
+         true <- role in [:owner, :participant],
+         true <- active_hosted_project?(project) do
+      {:ok, project}
+    else
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  defp authorize_viewer(_viewer, _project_id), do: {:error, :not_found}
+
+  defp active_hosted_project?(project),
+    do: project.storage_mode == "hosted" and project.lifecycle_state == "active"
 
   @impl true
   def count(authority, project_id), do: length(list(authority, project_id))

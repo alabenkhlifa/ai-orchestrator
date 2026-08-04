@@ -277,6 +277,52 @@ defmodule SddOrchestrator.RepositoryAssessments do
   end
 
   @doc """
+  Reads the current reviewable proposal for one project.
+
+  The newest assessment must itself be the completed one, because approval
+  refuses any older assessment. Every proposal field is rebuilt from that
+  assessment and its verified envelope, so this read accepts no caller-supplied
+  proposal value and can never present a prior assessment's binding.
+  """
+  @spec profile_review(viewer(), String.t(), keyword()) ::
+          {:ok,
+           %{
+             assessment: RepositoryAssessment.t(),
+             envelope: RepositoryExecutionProfileProposalEnvelope.t(),
+             proposal: RepositoryExecutionProfileProposal.t(),
+             profiles: [RepositoryExecutionProfile.t()]
+           }}
+          | {:error, :not_found | :invalid_proposal_envelope}
+  def profile_review(viewer, project_id, opts \\ []) do
+    assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
+    profile_store = Keyword.get(opts, :profile_store, ProfileStore)
+
+    with {:ok, %RepositoryAssessment{state: "completed"} = current} <-
+           assessment_store.latest(viewer, project_id),
+         {:ok, assessment, envelope} <-
+           assessment_store.fetch_envelope(viewer, project_id, current.id),
+         {:ok, proposal} <-
+           RepositoryExecutionProfileProposal.new(
+             assessment,
+             RepositoryExecutionProfileProposalEnvelope.proposal_fields(envelope)
+           ) do
+      {:ok,
+       %{
+         assessment: assessment,
+         envelope: envelope,
+         proposal: proposal,
+         profiles: profile_store.list(viewer, project_id)
+       }}
+    else
+      {:error, reason} when reason in [:invalid_proposal_envelope, :invalid_proposal] ->
+        {:error, :invalid_proposal_envelope}
+
+      _unavailable ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
   Normalizes one transient profile proposal from an exact completed assessment.
 
   The assessment supplies the repository binding, base revision, and existing

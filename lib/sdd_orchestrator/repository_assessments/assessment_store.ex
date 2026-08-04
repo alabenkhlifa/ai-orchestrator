@@ -31,7 +31,7 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
   @callback fetch_envelope(viewer(), Ecto.UUID.t(), Ecto.UUID.t()) ::
               {:ok, RepositoryAssessment.t(), RepositoryExecutionProfileProposalEnvelope.t()}
               | {:error, :not_found | :invalid_proposal_envelope}
-  @callback latest(authority(), Ecto.UUID.t()) ::
+  @callback latest(viewer(), Ecto.UUID.t()) ::
               {:ok, RepositoryAssessment.t()} | {:error, :not_found}
   @callback count(authority(), Ecto.UUID.t()) :: non_neg_integer()
 
@@ -105,16 +105,24 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
 
   def fetch_envelope(_viewer, _project_id, _assessment_id), do: {:error, :not_found}
 
-  @doc "Returns the newest authoritative assessment regardless of outcome."
-  @spec latest(authority(), Ecto.UUID.t()) ::
+  @doc """
+  Returns the newest authoritative assessment regardless of outcome.
+
+  Hosted participants read within their project role, so review can resolve the
+  current assessment without holding the owner's authority.
+  """
+  @spec latest(viewer(), Ecto.UUID.t()) ::
           {:ok, RepositoryAssessment.t()} | {:error, :not_found}
-  def latest({:hosted, _account_id} = authority, project_id),
-    do: Hosted.latest(authority, project_id)
+  def latest({:hosted, _account_id} = viewer, project_id),
+    do: Hosted.latest(viewer, project_id)
 
-  def latest({:device, %DeviceWorkspace{}} = authority, project_id),
-    do: Device.latest(authority, project_id)
+  def latest({:participant, _account_id, _identity_id} = viewer, project_id),
+    do: Hosted.latest(viewer, project_id)
 
-  def latest(_authority, _project_id), do: {:error, :not_found}
+  def latest({:device, %DeviceWorkspace{}} = viewer, project_id),
+    do: Device.latest(viewer, project_id)
+
+  def latest(_viewer, _project_id), do: {:error, :not_found}
 
   @spec count(authority(), Ecto.UUID.t()) :: non_neg_integer()
   def count({:hosted, _account_id} = authority, project_id),
