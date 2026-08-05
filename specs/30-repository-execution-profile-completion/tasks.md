@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
 
-The product and technical agreements are approved and every required capability is ready. `specs/14-repository-execution-profile/` is `Verified` and merged, so `capability:repository-profile-review` is available and Task 4 is executable; Task 12 follows the selected pilot. The storage and specification-store governance prerequisites remain ready.
+The product and technical agreements are approved and every required capability is ready. `specs/14-repository-execution-profile/` is `Verified` and merged, so `capability:repository-profile-review` is available. Task 4 is complete with focused proof, so `capability:repository-approved-pilot` is ready and Task 12 is the next executable task. The storage and specification-store governance prerequisites remain ready.
 
 ## Active Slice
 
@@ -73,7 +73,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 4 — Select one authoritative pilot specification revision.
+- [x] Task 4 — Select one authoritative pilot specification revision.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none

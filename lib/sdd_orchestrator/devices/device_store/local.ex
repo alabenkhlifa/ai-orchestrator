@@ -40,6 +40,8 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     RepositoryExecutionProfileProposalEnvelope
   }
 
+  alias SddOrchestrator.RepositoryPilots.RepositoryPilotSelection
+
   alias SddOrchestrator.Specifications.{
     DeviceProjectSpecification,
     DeviceSpecificationRevision,
@@ -199,6 +201,16 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   @impl SddOrchestrator.Devices.DeviceStore
   def list_repository_execution_profiles(project_id) do
     GenServer.call(__MODULE__, {:list_repository_execution_profiles, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def put_repository_pilot_selection(project_id, value) do
+    GenServer.call(__MODULE__, {:put_repository_pilot_selection, project_id, value})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def get_repository_pilot_selection(project_id) do
+    GenServer.call(__MODULE__, {:get_repository_pilot_selection, project_id})
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
@@ -479,6 +491,14 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   def handle_call({:list_repository_execution_profiles, project_id}, _from, state) do
     {:reply, repository_execution_profile_values(state.table, project_id), state}
+  end
+
+  def handle_call({:put_repository_pilot_selection, project_id, value}, _from, state) do
+    {:reply, put_repository_pilot_selection(state.table, project_id, value), state}
+  end
+
+  def handle_call({:get_repository_pilot_selection, project_id}, _from, state) do
+    {:reply, fetch_repository_pilot_selection(state.table, project_id), state}
   end
 
   def handle_call({:commit_delivery, project_id, writes}, _from, state) do
@@ -1162,6 +1182,38 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       table
     )
     |> Enum.sort_by(& &1["version"])
+  end
+
+  # ---- repository pilot selection ----
+
+  # One pilot per project, so a plain insert replaces the prior selection. The
+  # value is revalidated before it is stored and again when it is read, so an
+  # unreadable record fails closed instead of returning a partial pilot.
+  defp put_repository_pilot_selection(table, project_id, value) do
+    with {:ok, selection} <- RepositoryPilotSelection.from_value(value),
+         true <- selection.project_id == project_id do
+      stored = RepositoryPilotSelection.to_value(selection)
+
+      :ok = :dets.insert(table, {{:repository_pilot_selection, project_id}, stored})
+      :ok = :dets.sync(table)
+      {:ok, stored}
+    else
+      _invalid -> {:error, :invalid_pilot_selection}
+    end
+  end
+
+  defp fetch_repository_pilot_selection(table, project_id) do
+    case :dets.lookup(table, {:repository_pilot_selection, project_id}) do
+      [{_key, value}] -> revalidate_repository_pilot_selection(value)
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  defp revalidate_repository_pilot_selection(value) do
+    case RepositoryPilotSelection.from_value(value) do
+      {:ok, selection} -> {:ok, RepositoryPilotSelection.to_value(selection)}
+      {:error, :invalid_pilot_selection} -> {:error, :not_found}
+    end
   end
 
   # ---- specifications ----

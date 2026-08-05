@@ -119,6 +119,7 @@ defmodule SddOrchestratorWeb.Router do
       live "/local/projects/:id", DeviceProjectDashboardLive
       live "/local/projects/:id/assessment", RepositoryAssessmentLive, :device
       live "/local/projects/:id/profile", RepositoryExecutionProfileLive, :device
+      live "/local/projects/:id/pilot", RepositoryPilotLive, :device
       live "/local/projects/:id/backup", ProjectBackupLive, :device
     end
 
@@ -157,6 +158,7 @@ defmodule SddOrchestratorWeb.Router do
       live "/projects/:id/features/:feature_id", FeatureDetailLive
       live "/projects/:id/assessment", RepositoryAssessmentLive, :hosted
       live "/projects/:id/profile", RepositoryExecutionProfileLive, :hosted
+      live "/projects/:id/pilot", RepositoryPilotLive, :hosted
     end
 
     # Protected surfaces require a valid application session.

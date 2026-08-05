@@ -147,6 +147,12 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Lists one project's immutable execution profile values in version order."
   @callback list_repository_execution_profiles(String.t()) :: [map()]
 
+  @doc "Stores one project's single current pilot selection value, replacing any prior one."
+  @callback put_repository_pilot_selection(String.t(), map()) :: {:ok, map()} | {:error, atom()}
+
+  @doc "Reads one project's current device-authoritative pilot selection value."
+  @callback get_repository_pilot_selection(String.t()) :: {:ok, map()} | {:error, :not_found}
+
   @doc "Stores one vault-sealed device-local import attempt."
   @callback put_import_attempt(ImportAttempt.t()) ::
               {:ok, ImportAttempt.t()} | {:error, term()}

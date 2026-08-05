@@ -152,6 +152,8 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       WorkerRepositoryExecutionProfileProposalEnvelope
     }
 
+    alias SddOrchestrator.SpecificationStore
+
     alias SddOrchestratorWeb.{
       E2EPreviewAdapter,
       E2ERepositoryMetadataAdapter,
@@ -206,6 +208,9 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     @profile_check "mix test"
     @profile_gap "missing_repository_instructions"
     @profile_conflict "ambiguous_command_evidence"
+
+    # The one current authoritative specification the pilot scenario adopts.
+    @pilot_specification_title "Bounded pilot feature"
 
     @profile_proposal %{
       commands: ["make check", @profile_check],
@@ -509,6 +514,31 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # The same configured hosted project one step further along: its proposal is
+    # already approved, so an execution profile version exists, and it holds one
+    # current authoritative specification the owner can adopt as the pilot. Both
+    # are produced by the real domain — the approval decision and the
+    # specification store — rather than inserted.
+    defp run(conn, "repository_pilot", _params) do
+      owner = new_owner()
+      project = registered_project(owner)
+      save_owner_profile(project, owner)
+      completed = seed_completed_assessment(owner, project)
+      profile = approve_profile!(owner, project, completed)
+      current = seed_specification(owner, project)
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        project_id: project.id,
+        specification_id: current.specification.id,
+        specification_title: current.specification.title,
+        revision_id: current.revision.id,
+        revision_digest: current.revision.content_digest,
+        profile_version: profile.version
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -582,6 +612,40 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         )
 
       completed
+    end
+
+    defp approve_profile!(owner, project, completed) do
+      authority = {:hosted, owner.account.id}
+      {:ok, review} = RepositoryAssessments.profile_review(authority, completed.project_id)
+
+      {:ok, profile} =
+        RepositoryAssessments.approve_profile(authority, project.id, review.proposal)
+
+      profile
+    end
+
+    # One current authoritative specification the pilot screen can reference. The
+    # pilot stores identifiers only, so the document bodies below never leave the
+    # specification store.
+    defp seed_specification(owner, project) do
+      {:ok, current} =
+        SpecificationStore.create(
+          owner.personal_workspace,
+          project.id,
+          %{
+            id: Ecto.UUID.generate(),
+            revision_id: Ecto.UUID.generate(),
+            title: @pilot_specification_title,
+            documents: %{
+              requirements: "# Requirements\n\nAdopt one bounded pilot feature.",
+              design: "# Design\n\nReference the specification; never copy it.",
+              tasks: "# Tasks\n\n- [ ] Select the pilot"
+            }
+          },
+          actor_ref: "owner"
+        )
+
+      current
     end
 
     defp profile_scan(command) do

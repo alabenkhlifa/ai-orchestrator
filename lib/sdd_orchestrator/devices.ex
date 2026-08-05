@@ -266,6 +266,16 @@ defmodule SddOrchestrator.Devices do
     adapter().list_repository_execution_profiles(project_id)
   end
 
+  @doc "Stores one project's single current device-authoritative pilot selection."
+  def put_repository_pilot_selection(project_id, value) do
+    adapter().put_repository_pilot_selection(project_id, value)
+  end
+
+  @doc "Reads one project's current device-authoritative pilot selection."
+  def get_repository_pilot_selection(project_id) do
+    adapter().get_repository_pilot_selection(project_id)
+  end
+
   @doc "Stores one vault-sealed device-local import attempt."
   def put_import_attempt(%ImportAttempt{} = attempt), do: adapter().put_import_attempt(attempt)
 
