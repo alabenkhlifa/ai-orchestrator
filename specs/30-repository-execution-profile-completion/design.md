@@ -42,7 +42,7 @@ Required boundaries:
 
 - Profile-review consumer: resolve one exact immutable owner-approved profile through `capability:repository-profile-review` without accepting replacement proposal fields or changing profile authority.
 - Pilot-selection interface: resolve one current specification and revision through `capability:project-specification-store`, persist only their stable references, and refuse stale revisions, copies, issue import, and non-owner mutation.
-- Readiness interface: compute and present independent assistant, specification, agent-execution, and release values with stable reason codes, earliest blocked stage, stale repository checks, conflict behavior, multi-root behavior, and reliable required-check enforcement.
+- Readiness interface: compute and present independent assistant, specification, agent-execution, and release values with stable reason codes, earliest blocked stage, assessment-relative staleness checks, unresolved-evidence conflict behavior, multi-root behavior, and reliable required-check enforcement. The value is derived on demand from the approved profile, the selected pilot, and the latest completed assessment; it is not persisted, so no stored readiness can go stale behind the records it summarizes.
 - Governance compatibility interface: assert exact field purpose, storage destination, role access, locality, lifecycle, redaction, processor, transfer, and no-secondary-use rules across Slice 14 and completion values.
 - Profile-read interface: resolve one exact immutable approved profile and current readiness value without mutation or fallback across authorities.
 - Pilot-reference interface: resolve one stable current specification and revision reference through `capability:project-specification-governance` without copying documents.
@@ -63,6 +63,18 @@ Required boundaries:
 - Reason: Copying specification documents would create a second authority and unnecessary personal or project-content storage.
 - Consequence: A missing, stale, or unauthorized authoritative revision blocks compatibility instead of falling back to a copied snapshot.
 
+### Readiness Reads Only Evidence That Already Exists
+
+- Choice: Derive readiness from the approved profile, the selected pilot, and the project's latest completed assessment. Measure staleness by comparing the profile's base revision and root against that assessment, consume the one unresolved-evidence conflict meaning the assessment already produces, and judge the required-check contract from the approved profile's own check list and missing-required-checks gap.
+- Reason: The alternatives each cross a boundary this continuation does not own. A live repository read would require an authorized worker and a confirmed disclosure digest, which is `specs/14-repository-execution-profile/`'s binding lifecycle. Separating instruction conflicts from safety conflicts would require new conflict derivation, which that same specification owns. Binding the profile's checks into the run manifest would require changing `specs/07-guided-specification-delivery/`. Readiness must not invent a distinction its evidence cannot support.
+- Consequence: Readiness is exact about what it knows and silent about what it does not. It needs no worker, so worker availability cannot move a readiness value; a repository that moved ahead of its last completed assessment reads as stale until a new assessment completes, which is the honest answer rather than an optimistic one. A richer conflict taxonomy stays available as later `specs/14-repository-execution-profile/` work without invalidating this contract, because more conflict codes still resolve to the same blocked stage.
+
+### Verification Denial Is Proven, Not Reimplemented
+
+- Choice: Report the required-check contract as a readiness blocker, and prove that the existing run-verification behavior already denies verified completion and `Ready for review` when no reliable contract exists.
+- Reason: That denial already lives in the delivery boundary and refuses an empty contract as unknown rather than as nothing-required. Reimplementing it here would create a second gate that could disagree with the first.
+- Consequence: This continuation adds a readiness reason and a regression proof, not a competing verification path. Binding the approved profile's checks into the execution manifest stays deferred to a `specs/07-guided-specification-delivery/` change.
+
 ### Final Publication After Full Deterministic Proof
 
 - Choice: Keep both tasks focused and publish the final capability only after the separate slice-scoped repository, browser, security, dependency, production-build, and compatibility gate passes.
@@ -75,6 +87,8 @@ Required boundaries:
 - Device-authoritative data may accidentally gain a hosted cache. Prove negative hosted persistence and fail closed rather than falling back across authorities.
 - A stale profile or pilot revision may be published. Bind the value and digest to the exact immutable profile version and authoritative specification revision.
 - Readiness may collapse independent stages into one optimistic status. Preserve four values, stable reason codes and the earliest affected stage, and deny verified completion or `Ready for review` until a reliable required-check contract passes.
+- A narrowed conflict vocabulary may be read as evidence that no safety concern exists. Present the conflict blocker as the unresolved evidence it is, never as a safety clearance, and keep the richer taxonomy visible as deferred work.
+- Assessment-relative staleness may be read as a live repository guarantee. State that readiness reflects the last completed assessment, so a newer commit is unknown rather than approved.
 - Privacy tests may be mistaken for legal approval. Report local control evidence separately from deployment-specific accountable review.
 
 ## Open Questions

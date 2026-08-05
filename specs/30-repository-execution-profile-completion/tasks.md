@@ -44,7 +44,7 @@ Provides:
 Included:
 
 - One current authoritative specification and revision pilot reference with owner-only selection, participant read access, and no specification copy or backlog import.
-- Independent assistant, specification, agent-execution, and release readiness with stable reason codes, earliest blocked stage, stale-state checks, conflict and multi-root behavior, and reliable required-check enforcement.
+- Independent assistant, specification, agent-execution, and release readiness with stable reason codes, earliest blocked stage, assessment-relative stale-state checks, unresolved-evidence conflict and multi-root behavior, and reliable required-check enforcement read from the approved profile.
 - Hosted and device-authoritative privacy, security, access, lifecycle, processor, transfer, logging, backup, analytics, and secondary-use controls for Slice 14 values.
 - Worker-local cache and raw-index locality enforcement.
 - Deterministic allowlisted managed-runtime profile serialization, digest, compatibility proof, and final capability publication.
@@ -56,7 +56,8 @@ Excluded:
 
 Deferred after this slice:
 
-- Slice 07 `update-spec` work that consumes `capability:repository-execution-profile` before a managed run.
+- Slice 07 `update-spec` work that consumes `capability:repository-execution-profile` before a managed run, including binding the approved profile's required checks into the execution manifest so runs verify against the approved contract rather than application configuration.
+- Slice 14 `update-spec` work deriving a richer conflict taxonomy that separates instruction conflicts from safety conflicts. Readiness resolves every conflict code to the same blocked stage, so added codes extend this contract without invalidating it.
 - Permanent repository integration through `specs/15-repository-sdd-kit-integration/`.
 
 Release gates:
@@ -86,10 +87,10 @@ Traceability:
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4
-  - Purpose: Explain separately what the assistant, specification workflow, autonomous agent, and release may safely do without inventing a reliable check contract.
-  - Owned surfaces: Profile-review capability consumer, assistant, specification, agent-execution and release readiness value and UI, earliest blocking stage and actionable reason codes, stale commit and changed-root behavior, unresolved instruction and safety conflict behavior, unsupported multi-root behavior, reliable required-check contract gate, verified-completion and `Ready for review` denial, read-only assistant independence, participant read-only access, `capability:repository-profile-readiness` provider, and readiness write-back.
+  - Purpose: Explain separately what the assistant, specification workflow, autonomous agent, and release may safely do without inventing a reliable check contract or a distinction the assessment evidence cannot support.
+  - Owned surfaces: Profile-review and approved-pilot capability consumers, derived assistant, specification, agent-execution and release readiness value and UI, earliest blocking stage and stable actionable reason codes, assessment-relative stale-revision and changed-root behavior, unresolved-evidence conflict behavior, unsupported multi-root behavior, reliable required-check contract gate read from the approved profile, proven verified-completion and `Ready for review` denial, read-only assistant independence, participant read-only access, `capability:repository-profile-readiness` provider, and readiness write-back.
   - Owns: AC-08, AC-09, AC-11
-  - Proof: Focused profile-review consumer, stale-commit, changed-root, conflict, safety-conflict, multi-root, missing and unreliable check, assistant independence, participant read-only, earliest-stage reason, LiveView, and browser tests pass.
+  - Proof: Focused profile-review and pilot consumer, assessment-relative stale-revision, changed-root, unresolved-evidence conflict, multi-root, missing and unreliable check, assistant independence, participant read-only, earliest-stage reason code, existing verification-denial regression, LiveView, and browser tests pass.
 
 - [ ] Task 1 — Enforce privacy, lifecycle, and storage-boundary controls.
   - Size: Standard

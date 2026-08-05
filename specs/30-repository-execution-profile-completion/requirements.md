@@ -28,7 +28,8 @@ An owner-reviewed repository execution profile gains one authoritative pilot and
 ## Out of Scope
 
 - Repeating repository binding, scanning, cache, minimized proposal-envelope, profile proposal, review, or approval implementation owned by `specs/14-repository-execution-profile/`.
-- Changing Slice 07's approved execution manifest or beginning a managed run.
+- Deriving a richer conflict taxonomy that separates instruction conflicts from safety conflicts. Conflict derivation belongs to `specs/14-repository-execution-profile/`, so this continuation consumes the one conflict meaning that specification currently produces.
+- Changing Slice 07's approved execution manifest, binding the approved profile's checks into it, or beginning a managed run.
 - Permanent repository kit installation, repository mutation, backlog import, or production deployment.
 - Selecting deployment vendors or approving deployment-specific privacy or legal evidence.
 
@@ -36,7 +37,7 @@ An owner-reviewed repository execution profile gains one authoritative pilot and
 
 1. The continuation resolves the exact owner-reviewed profile through `capability:repository-profile-review`.
 2. The owner selects one current authoritative project specification and revision as the pilot; no specification document, repository issue, or backlog item is copied or imported.
-3. The product evaluates assistant, specification, agent-execution, and release readiness independently, preserving stale-commit, changed-root, instruction, safety, multi-root, and missing or unreliable check blockers with their earliest affected stage.
+3. The product evaluates assistant, specification, agent-execution, and release readiness independently, preserving stale-commit, changed-root, unresolved-evidence conflict, multi-root, and missing or unreliable check blockers with their earliest affected stage.
 4. It verifies that assessment, proposal-envelope, cache, profile, pilot, and readiness data follow the project's authoritative storage mode, access, lifecycle, minimization, processor, transfer, logging, and no-secondary-use rules.
 5. It serializes only the allowlisted approved profile fields and stable pilot specification identity and revision with a deterministic digest.
 6. It proves the value can be supplied with authoritative SDD revisions and versioned runtime skills without copying specifications or changing repository files.
@@ -47,9 +48,12 @@ An owner-reviewed repository execution profile gains one authoritative pilot and
 - Slice 14 remains authoritative for assessment results, cache provenance, the worker-local minimized proposal payload contract, current-assessment proposal envelopes, profile versions, and profile-review behavior. This continuation cannot redefine those values or approve or replace a profile.
 - Pilot selection references one current authoritative specification and revision from `capability:project-specification-store`; it stores only stable identifiers, refuses a stale revision, copies no specification document, and imports or changes no repository issue or backlog item.
 - Only the project owner may select or replace the pilot. Current authorized participants may read the selected pilot and readiness within their role.
-- Assistant, specification, agent-execution, and release readiness are independent values with stable actionable reasons and the earliest blocked stage. A stale commit, changed root, unresolved instruction or safety conflict, unsupported multi-root boundary, or missing or unreliable check contract blocks only the affected readiness stages.
+- Assistant, specification, agent-execution, and release readiness are independent values with stable actionable reasons and the earliest blocked stage. A stale commit, changed root, unresolved-evidence conflict, unsupported multi-root boundary, or missing or unreliable check contract blocks only the affected readiness stages.
+- Staleness is measured against the project's latest completed assessment: the approved profile's base revision and root are stale when they no longer match it. Readiness reads no live repository state and requires no worker, so an unreachable worker cannot make a project look ready or unready.
+- A conflict is the single unresolved-evidence condition the approved profile already reports. The product must not claim to distinguish an instruction conflict from a safety conflict while the assessment records one conflict meaning, because a readiness value must not imply a precision its evidence lacks.
 - A repository conflict that blocks autonomous execution does not by itself block an otherwise authorized read-only assistant, and no state may imply agent-execution readiness.
-- Without a reliable approved required-check contract and passing proof, verified completion and `Ready for review` remain unavailable; the product must not invent a passing check.
+- Readiness judges the required-check contract carried by the approved profile: an empty check list, or a profile reporting its own missing-required-checks gap, is an unreliable contract.
+- Without a reliable approved required-check contract and passing proof, verified completion and `Ready for review` remain unavailable; the product must not invent a passing check. This continuation reports that denial and does not implement, weaken, or replace the run-verification behavior that enforces it.
 - Assessment, proposal-envelope, profile, pilot, and readiness data are confidential project data and follow the project's hosted or device-authoritative storage mode. Device-authoritative values create no durable hosted copy.
 - Raw repository content, the scan index, and the cache-stable proposal payload remain worker-local. Authoritative storage contains only the minimized structured result, source-relative anchors, current-assessment proposal envelope, approved profile, stable pilot reference, readiness values, and disclosed necessary metadata.
 - Current authorized participants may read the proposal, approved profile, pilot, and readiness within their role; only the project owner may approve or replace a profile through Slice 14 and select or replace a pilot through this continuation.
@@ -64,10 +68,10 @@ An owner-reviewed repository execution profile gains one authoritative pilot and
 
 - [AC-01] Given assessment, worker-local proposal-payload, proposal-envelope, cache, profile, pilot, readiness, and disclosure records in either authoritative storage mode, when privacy and security proof runs, then raw source, the scan index, and cache-stable payload remain worker-local, authoritative data is minimized and project-scoped, access and lifecycle controls apply, sensitive logs are redacted, and no analytics or secondary use exists.
 - [AC-02] Given the exact approved profile and pilot, when managed-runtime compatibility is verified, then one deterministic allowlisted value references the authoritative pilot specification and revision, is available only after all required proof passes, and creates or changes no specification document or repository file.
-- [AC-08] Given a stale commit, changed root, unresolved instruction conflict, unsupported multi-root boundary, or missing reliable checks, when approval or readiness is evaluated, then the affected agent-execution or verification state remains blocked with an actionable reason.
+- [AC-08] Given a base revision or root that no longer matches the latest completed assessment, an unresolved-evidence conflict, an unsupported multi-root boundary, or missing reliable checks, when readiness is evaluated, then the affected agent-execution or verification state remains blocked with an actionable reason code.
 - [AC-09] Given a repository conflict prevents autonomous execution, when the read-only assistant is otherwise authorized, then assistant readiness remains independently available and does not claim agent-execution readiness.
 - [AC-10] Given the owner selects a pilot, when selection commits, then it references one current authoritative specification and revision and imports or changes no repository backlog item.
-- [AC-11] Given no reliable approved check contract exists, when a run result is evaluated, then verified completion and `Ready for review` remain unavailable until that contract is approved and its proof passes.
+- [AC-11] Given the approved profile carries no reliable required-check contract, when readiness is evaluated, then release readiness stays blocked with an actionable reason code, and the existing run-verification behavior still denies verified completion and `Ready for review` without this continuation changing it.
 
 ## Open Questions
 
