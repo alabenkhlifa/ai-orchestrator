@@ -18,7 +18,9 @@ defmodule SddOrchestrator.Privacy.ProcessingInventoryTest do
     project_package import_attempt restore_operation package_provenance
     project_and_repository_connection project_onboarding_attempt
     project_specification_storage
-    operational_security_log
+    personal_ai_connection ai_model_catalog ai_quota_snapshot
+    ai_runtime_session ai_runtime_cost_ledger agent_runtime_observation
+    operational_security_log ai_runtime_operational_log
   )a
 
   test "covers every personal-data activity in the slice" do

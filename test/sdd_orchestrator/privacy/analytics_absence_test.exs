@@ -28,6 +28,11 @@ defmodule SddOrchestrator.Privacy.AnalyticsAbsenceTest do
     # Sanity: the real product tables are present, so the scan saw the schema.
     assert "projects" in tables
     assert "accounts" in tables
+
+    # Sanity: the AI-runtime schema is inside the same scan, so its absence of
+    # analytics tables is proven rather than assumed.
+    assert "personal_ai_connections" in tables
+    assert "agent_runtime_observations" in tables
   end
 
   test "the processing inventory declares no analytics activity" do

@@ -16,6 +16,7 @@ defmodule SddOrchestrator.AIRuntime.PersonalWorkerRPC do
   """
 
   alias SddOrchestrator.AIRuntime.PersonalWorkerProtocol
+  alias SddOrchestrator.AIRuntime.SecurityLog
 
   @registry SddOrchestrator.AIRuntime.PersonalWorkerRegistry
 
@@ -107,10 +108,15 @@ defmodule SddOrchestrator.AIRuntime.PersonalWorkerRPC do
       "params" => params
     }
 
-    with {:ok, channel, meta} <- lookup(device_workspace_id, worker_id),
-         :ok <- validate(envelope, meta) do
-      await(channel, envelope, timeout_ms)
-    end
+    result =
+      with {:ok, channel, meta} <- lookup(device_workspace_id, worker_id),
+           :ok <- validate(envelope, meta) do
+        await(channel, envelope, timeout_ms)
+      end
+
+    # Every catalog, quota, connection, and observation operation carried over
+    # this transport leaves one content-free line when it does not succeed.
+    SecurityLog.audit(result, :worker_rpc_request)
   end
 
   @doc "Generates one opaque idempotency key for a request without a caller-supplied one."
