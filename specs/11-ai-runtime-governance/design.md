@@ -124,6 +124,7 @@ Required boundaries:
 - Choice: Enforce each API-key spending ceiling by reserving a conservative maximum before a chargeable turn and reconciling the reservation afterward.
 - Reason: Completed-turn accounting can overshoot on the last request and does not satisfy a strict non-exceeding boundary.
 - Consequence: Work can pause before the nominal ceiling when the remaining amount cannot cover the bounded worst case. Missing or stale official pricing refuses execution rather than treating the model as free.
+- Consequence: A unit price of exactly zero is refused as indistinguishable from a missing price, and because an untrustworthy registry is untrustworthy as a whole, one invalid entry refuses every reservation rather than only its own model. This is deliberately conservative — nothing can overspend or under-reserve — but it means an officially free model cannot be used under an API-key ceiling. Supporting free models requires a proven-free price that stays distinct from an unknown one, and is deferred to a later extension rather than solved by loosening this validation.
 
 ### Immutable Session Configuration
 

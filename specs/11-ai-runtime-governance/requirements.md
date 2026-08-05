@@ -62,6 +62,7 @@ A user can link one or more labelled personal AI connections through an authoriz
 - Per-agent runtime presentation inside Slice 07 or Slice 12 user interfaces.
 - Automatic cross-model continuation, automatic fallback, or automatic paid continuation.
 - Production provider adapters beyond the first OpenAI Codex adapter.
+- Officially free provider models under an API-key spending ceiling. A proven-free price is not yet distinguishable from an unknown one, so a zero unit price is refused. Support for free models is a later extension.
 
 ## Business Rules
 
