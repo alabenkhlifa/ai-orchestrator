@@ -135,6 +135,10 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Reads the newest device-authoritative repository assessment value."
   @callback latest_repository_assessment(String.t()) :: {:ok, map()} | {:error, :not_found}
 
+  @doc "Reads the newest completed device-authoritative repository assessment value."
+  @callback latest_completed_repository_assessment(String.t()) ::
+              {:ok, map()} | {:error, :not_found}
+
   @doc "Atomically appends one immutable execution profile from an exact assessment proposal."
   @callback append_repository_execution_profile(
               String.t(),

@@ -8,6 +8,12 @@ defmodule SddOrchestratorWeb.RepositoryPilotLive do
   never a specification document — so the specification store stays the single
   authority. Selecting writes nothing to the repository and imports no backlog
   item. A participant sees the stored pilot read-only.
+
+  The screen also shows read-only repository readiness: four independent
+  axes — assistant, specification, agent execution, and release — derived from
+  the approved execution profile, the selected pilot, and the project's latest
+  completed assessment. A blocked axis names its own reason; it never implies
+  another axis is blocked too.
   """
   use SddOrchestratorWeb, :live_view
 
@@ -15,8 +21,32 @@ defmodule SddOrchestratorWeb.RepositoryPilotLive do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Participation
   alias SddOrchestrator.RepositoryPilots
+  alias SddOrchestrator.RepositoryReadiness
 
   @owner_only_message "Only the project owner can select the pilot specification."
+
+  @readiness_axes [
+    {:assistant, "assistant", "Assistant"},
+    {:specification, "specification", "Specification"},
+    {:agent_execution, "agent-execution", "Agent execution"},
+    {:release, "release", "Release"}
+  ]
+
+  @readiness_reason_labels %{
+    "no_approved_profile" => "This repository has no approved execution profile yet.",
+    "no_pilot_selected" => "No pilot specification has been selected yet.",
+    "stale_base_revision" =>
+      "The approved profile's base revision no longer matches the latest completed assessment.",
+    "changed_root" =>
+      "The latest completed assessment covers a different repository root than the approved profile.",
+    "unresolved_evidence_conflict" =>
+      "The approved profile still carries an unresolved evidence conflict.",
+    "unsupported_multi_root_boundary" =>
+      "The approved profile still carries an unsupported multi-root boundary.",
+    "no_completed_assessment" => "No completed assessment could be found for this repository.",
+    "unreliable_required_check_contract" =>
+      "The approved profile has no reliable required-check contract, so a completion cannot be verified."
+  }
 
   @stale_message "That revision is no longer the current one for this specification. " <>
                    "No pilot was selected. Review the current revision, then select it again."
@@ -39,6 +69,8 @@ defmodule SddOrchestratorWeb.RepositoryPilotLive do
          |> assign(:selectable, [])
          |> assign(:pilot, nil)
          |> assign(:stage, :unavailable)
+         |> assign(:readiness, nil)
+         |> assign(:readiness_axes, @readiness_axes)
          |> load_pilot()}
 
       {:error, destination} ->
@@ -91,7 +123,9 @@ defmodule SddOrchestratorWeb.RepositoryPilotLive do
   end
 
   # A participant never reaches the specification store: only the stored pointer
-  # is read for them, so the selectable list stays empty.
+  # is read for them, so the selectable list stays empty. Readiness is loaded
+  # alongside the pilot because a fresh pilot selection is exactly what can move
+  # the specification, agent-execution, and release axes.
   defp load_pilot(socket) do
     pilot = stored_pilot(socket)
     selectable = if socket.assigns.owner?, do: selectable_specifications(socket), else: []
@@ -100,6 +134,11 @@ defmodule SddOrchestratorWeb.RepositoryPilotLive do
     |> assign(:pilot, pilot)
     |> assign(:selectable, selectable)
     |> assign(:stage, stage(socket.assigns.owner?, pilot, selectable))
+    |> assign(:readiness, readiness(socket))
+  end
+
+  defp readiness(socket) do
+    RepositoryReadiness.evaluate(socket.assigns.viewer, socket.assigns.project.id)
   end
 
   defp stage(_owner?, %{} = _pilot, _selectable), do: :selected
@@ -333,6 +372,30 @@ defmodule SddOrchestratorWeb.RepositoryPilotLive do
         </section>
 
         <section
+          :if={@readiness}
+          class="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-5"
+          aria-labelledby="readiness-heading"
+          data-readiness-section
+        >
+          <h2 id="readiness-heading" class="text-base font-bold text-ink">
+            Repository readiness
+          </h2>
+          <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+            Each stage below is independent. One repository condition can block one stage
+            without blocking another.
+          </p>
+
+          <dl class="mt-4 grid gap-3 sm:grid-cols-2">
+            <.readiness_axis
+              :for={{key, code, label} <- @readiness_axes}
+              label={label}
+              code={code}
+              status={Map.fetch!(@readiness, key)}
+            />
+          </dl>
+        </section>
+
+        <section
           :if={@owner? and @selectable != []}
           class="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-5"
           aria-labelledby="selectable-heading"
@@ -401,5 +464,56 @@ defmodule SddOrchestratorWeb.RepositoryPilotLive do
       <dd class="mt-1 break-all font-mono text-xs font-semibold text-ink">{@value}</dd>
     </div>
     """
+  end
+
+  attr :label, :string, required: true
+  attr :code, :string, required: true
+  attr :status, :any, required: true
+
+  defp readiness_axis(assigns) do
+    assigns =
+      assigns
+      |> assign(:ready?, assigns.status == :ready)
+      |> assign(:reason, readiness_reason(assigns.status))
+      |> assign(:data_attrs, readiness_data_attrs(assigns.code, assigns.status))
+
+    ~H"""
+    <div
+      class="min-w-0 rounded-lg border border-line bg-raised p-3"
+      data-readiness-axis={@code}
+      {@data_attrs}
+    >
+      <dt class="flex items-center gap-2 text-xs font-semibold text-ink-muted">
+        <.lucide
+          name={(@ready? && "circle-check") || "circle-alert"}
+          class={["size-4 flex-none", (@ready? && "text-primary") || "text-err-fg"]}
+        />
+        {@label}
+      </dt>
+      <dd class="mt-1 text-sm font-semibold text-ink">
+        {(@ready? && "Ready") || "Blocked"}
+      </dd>
+      <dd :if={@reason} class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+        {@reason}
+      </dd>
+    </div>
+    """
+  end
+
+  defp readiness_reason(:ready), do: nil
+
+  defp readiness_reason({:blocked, reason}) do
+    Map.get_lazy(@readiness_reason_labels, Atom.to_string(reason), fn ->
+      "This stage is currently blocked."
+    end)
+  end
+
+  defp readiness_data_attrs(code, :ready), do: %{"data-readiness-#{code}" => "ready"}
+
+  defp readiness_data_attrs(code, {:blocked, reason}) do
+    %{
+      "data-readiness-#{code}" => "blocked",
+      "data-readiness-#{code}-reason" => Atom.to_string(reason)
+    }
   end
 end

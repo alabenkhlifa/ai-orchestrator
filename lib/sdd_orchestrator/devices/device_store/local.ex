@@ -184,6 +184,11 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
+  def latest_completed_repository_assessment(project_id) do
+    GenServer.call(__MODULE__, {:latest_completed_repository_assessment, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
   def append_repository_execution_profile(
         project_id,
         assessment_id,
@@ -468,6 +473,10 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
 
   def handle_call({:latest_repository_assessment, project_id}, _from, state) do
     {:reply, latest_repository_assessment(state.table, project_id), state}
+  end
+
+  def handle_call({:latest_completed_repository_assessment, project_id}, _from, state) do
+    {:reply, latest_completed_repository_assessment(state.table, project_id), state}
   end
 
   def handle_call(
@@ -1035,6 +1044,23 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   defp latest_repository_assessment(table, project_id) do
     table
     |> repository_assessment_values(project_id)
+    |> Enum.max_by(
+      fn assessment -> {DateTime.to_iso8601(assessment.inserted_at), assessment.id} end,
+      fn -> nil end
+    )
+    |> case do
+      %RepositoryAssessment{} = assessment ->
+        {:ok, RepositoryAssessment.to_value(assessment)}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  defp latest_completed_repository_assessment(table, project_id) do
+    table
+    |> repository_assessment_values(project_id)
+    |> Enum.filter(&(&1.state == "completed"))
     |> Enum.max_by(
       fn assessment -> {DateTime.to_iso8601(assessment.inserted_at), assessment.id} end,
       fn -> nil end

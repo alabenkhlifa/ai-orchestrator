@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical agreements are approved and every required capability is ready. `specs/14-repository-execution-profile/` is `Verified` and merged, so `capability:repository-profile-review` is available. Task 4 is complete with focused proof, so `capability:repository-approved-pilot` is ready and Task 12 is the next executable task. The storage and specification-store governance prerequisites remain ready.
+The product and technical agreements are approved and every required capability is ready. `specs/14-repository-execution-profile/` is `Verified` and merged, so `capability:repository-profile-review` is available. Task 4 is complete with focused proof, so `capability:repository-approved-pilot` is ready. Task 12 is complete with focused proof, so `capability:repository-profile-readiness` is ready and Task 1 is the next executable task. The storage and specification-store governance prerequisites remain ready.
 
 ## Active Slice
 
@@ -83,7 +83,7 @@ Traceability:
   - Owns: AC-10
   - Proof: Focused profile-review and specification-store consumers, current and stale revision, owner, participant read-only, hosted/device adapter, stable-reference, no-copy, no-import, LiveView, and browser tests pass.
 
-- [ ] Task 12 — Present independent repository readiness and verification blockers.
+- [x] Task 12 — Present independent repository readiness and verification blockers.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4

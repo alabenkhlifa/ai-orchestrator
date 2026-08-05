@@ -255,6 +255,136 @@ defmodule SddOrchestratorWeb.RepositoryPilotLiveTest do
     refute has_element?(view, "[data-select-pilot]")
   end
 
+  ## Readiness section
+
+  test "readiness blocks every axis with no_approved_profile before any profile is approved",
+       context do
+    hosted_specification(context)
+
+    {:ok, _view, html} = live(context.owner_conn, hosted_path(context))
+
+    assert html =~ ~s(data-readiness-assistant="blocked")
+    assert html =~ ~s(data-readiness-assistant-reason="no_approved_profile")
+    assert html =~ ~s(data-readiness-specification="blocked")
+    assert html =~ ~s(data-readiness-specification-reason="no_approved_profile")
+    assert html =~ ~s(data-readiness-agent-execution="blocked")
+    assert html =~ ~s(data-readiness-agent-execution-reason="no_approved_profile")
+    assert html =~ ~s(data-readiness-release="blocked")
+    assert html =~ ~s(data-readiness-release-reason="no_approved_profile")
+  end
+
+  test "readiness blocks specification, agent execution, and release with no_pilot_selected once approved (hosted)",
+       context do
+    approve!(context, :hosted)
+
+    {:ok, _view, html} = live(context.owner_conn, hosted_path(context))
+
+    assert html =~ ~s(data-readiness-assistant="ready")
+    assert html =~ ~s(data-readiness-specification="blocked")
+    assert html =~ ~s(data-readiness-specification-reason="no_pilot_selected")
+    assert html =~ ~s(data-readiness-agent-execution="blocked")
+    assert html =~ ~s(data-readiness-agent-execution-reason="no_pilot_selected")
+    assert html =~ ~s(data-readiness-release="blocked")
+    assert html =~ ~s(data-readiness-release-reason="no_pilot_selected")
+  end
+
+  test "readiness blocks specification, agent execution, and release with no_pilot_selected once approved (device)",
+       context do
+    approve!(context, :device)
+
+    {:ok, _view, html} = live(context.conn, device_path(context))
+
+    assert html =~ ~s(data-readiness-assistant="ready")
+    assert html =~ ~s(data-readiness-specification="blocked")
+    assert html =~ ~s(data-readiness-specification-reason="no_pilot_selected")
+    assert html =~ ~s(data-readiness-agent-execution="blocked")
+    assert html =~ ~s(data-readiness-agent-execution-reason="no_pilot_selected")
+    assert html =~ ~s(data-readiness-release="blocked")
+    assert html =~ ~s(data-readiness-release-reason="no_pilot_selected")
+  end
+
+  test "readiness reports every axis ready once a pilot is selected under a matching profile (hosted)",
+       context do
+    approve!(context, :hosted)
+    current = hosted_specification(context)
+
+    assert {:ok, _selection} =
+             RepositoryPilots.select(hosted(context), context.hosted_project.id, %{
+               specification_id: current.specification.id,
+               revision_id: current.revision.id
+             })
+
+    {:ok, _view, html} = live(context.owner_conn, hosted_path(context))
+
+    assert html =~ ~s(data-readiness-assistant="ready")
+    assert html =~ ~s(data-readiness-specification="ready")
+    assert html =~ ~s(data-readiness-agent-execution="ready")
+    assert html =~ ~s(data-readiness-release="ready")
+    refute html =~ "data-readiness-assistant-reason"
+    refute html =~ "data-readiness-specification-reason"
+    refute html =~ "data-readiness-agent-execution-reason"
+    refute html =~ "data-readiness-release-reason"
+  end
+
+  test "readiness reports every axis ready once a pilot is selected under a matching profile (device)",
+       context do
+    approve!(context, :device)
+    current = device_specification(context)
+
+    assert {:ok, _selection} =
+             RepositoryPilots.select(device(context), context.device_project.id, %{
+               specification_id: current.specification.id,
+               revision_id: current.revision.id
+             })
+
+    {:ok, _view, html} = live(context.conn, device_path(context))
+
+    assert html =~ ~s(data-readiness-assistant="ready")
+    assert html =~ ~s(data-readiness-specification="ready")
+    assert html =~ ~s(data-readiness-agent-execution="ready")
+    assert html =~ ~s(data-readiness-release="ready")
+  end
+
+  test "an accepted participant reads the exact same readiness the owner reads", context do
+    approve!(context, :hosted)
+    current = hosted_specification(context)
+
+    assert {:ok, _selection} =
+             RepositoryPilots.select(hosted(context), context.hosted_project.id, %{
+               specification_id: current.specification.id,
+               revision_id: current.revision.id
+             })
+
+    participant = HostedAccessFixtures.hosted_identity_fixture()
+    ParticipationFixtures.participant_fixture(context.hosted_project, participant.hosted_identity)
+
+    conn = log_in_hosted(context.conn, participant.hosted_identity)
+    {:ok, _view, html} = live(conn, hosted_path(context))
+
+    assert html =~ ~s(data-readiness-assistant="ready")
+    assert html =~ ~s(data-readiness-specification="ready")
+    assert html =~ ~s(data-readiness-agent-execution="ready")
+    assert html =~ ~s(data-readiness-release="ready")
+  end
+
+  test "readiness blocks agent execution with the specific evidence-conflict reason without blocking release",
+       context do
+    approve!(context, :hosted, %{@proposal_fields | conflicts: ["ambiguous_command_evidence"]})
+    current = hosted_specification(context)
+
+    assert {:ok, _selection} =
+             RepositoryPilots.select(hosted(context), context.hosted_project.id, %{
+               specification_id: current.specification.id,
+               revision_id: current.revision.id
+             })
+
+    {:ok, _view, html} = live(context.owner_conn, hosted_path(context))
+
+    assert html =~ ~s(data-readiness-agent-execution="blocked")
+    assert html =~ ~s(data-readiness-agent-execution-reason="unresolved_evidence_conflict")
+    assert html =~ ~s(data-readiness-release="ready")
+  end
+
   ## Screen helpers
 
   defp hosted_path(context), do: ~p"/projects/#{context.hosted_project.id}/pilot"
@@ -296,8 +426,8 @@ defmodule SddOrchestratorWeb.RepositoryPilotLiveTest do
 
   ## Assessment and profile fixtures
 
-  defp approve!(context, kind) do
-    completed = complete!(context, kind)
+  defp approve!(context, kind, proposal_fields \\ @proposal_fields) do
+    completed = complete!(context, kind, proposal_fields)
 
     assert {:ok, review} =
              RepositoryAssessments.profile_review(authority(context, kind), completed.project_id)
@@ -312,11 +442,11 @@ defmodule SddOrchestratorWeb.RepositoryPilotLiveTest do
     profile
   end
 
-  defp complete!(context, kind) do
+  defp complete!(context, kind, proposal_fields) do
     pending = put_pending!(context, kind, context.now)
     command = command!(pending)
     result = completed_result!(command)
-    delivered = worker_envelope!(command, result)
+    delivered = worker_envelope!(command, result, proposal_fields)
 
     assert {:ok, completed} =
              RepositoryAssessments.finish_assessment(
@@ -402,9 +532,9 @@ defmodule SddOrchestratorWeb.RepositoryPilotLiveTest do
     }
   end
 
-  defp worker_envelope!(command, result) do
+  defp worker_envelope!(command, result, proposal_fields) do
     assert {:ok, payload} =
-             RepositoryExecutionProfileProposalPayload.new(result, @proposal_fields)
+             RepositoryExecutionProfileProposalPayload.new(result, proposal_fields)
 
     assert {:ok, envelope} =
              WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)

@@ -118,6 +118,20 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Device do
   def latest(_authority, _project_id), do: {:error, :not_found}
 
   @impl true
+  def latest_completed({:device, %DeviceWorkspace{} = authority}, project_id) do
+    with {:ok, _project} <- authorize(authority, project_id),
+         {:ok, value} <- Devices.latest_completed_repository_assessment(project_id),
+         {:ok, assessment} <- RepositoryAssessment.from_value(value),
+         true <- assessment.project_id == project_id do
+      {:ok, assessment}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  def latest_completed(_authority, _project_id), do: {:error, :not_found}
+
+  @impl true
   def count({:device, %DeviceWorkspace{} = authority}, project_id) do
     case authorize(authority, project_id) do
       {:ok, _project} -> Devices.repository_assessment_count(project_id)

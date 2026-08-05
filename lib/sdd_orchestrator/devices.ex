@@ -244,6 +244,11 @@ defmodule SddOrchestrator.Devices do
     adapter().latest_repository_assessment(project_id)
   end
 
+  @doc "Reads the newest completed device-authoritative repository assessment value."
+  def latest_completed_repository_assessment(project_id) do
+    adapter().latest_completed_repository_assessment(project_id)
+  end
+
   @doc "Atomically appends one immutable device-authoritative profile version."
   def append_repository_execution_profile(
         project_id,
