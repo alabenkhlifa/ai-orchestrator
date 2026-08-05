@@ -306,6 +306,7 @@ defmodule SddOrchestratorWeb.PersonalAIWorkerChannel do
 
   defp respond(caller, ref, reply), do: send(caller, {PersonalWorkerRPC, ref, reply})
 
+  # Every refusal reason raised on this transport is one of the protocol's
+  # typed atoms, so the wire reason is always that atom's own name.
   defp refusal(reason) when is_atom(reason), do: %{reason: Atom.to_string(reason)}
-  defp refusal(_reason), do: %{reason: "unavailable"}
 end

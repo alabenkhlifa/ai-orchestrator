@@ -129,10 +129,10 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       WorkerProtocol
     }
 
-    alias SddOrchestrator.HostedAccess
-    alias SddOrchestrator.HostedAccess.Sessions
     alias SddOrchestrator.Devices
     alias SddOrchestrator.Devices.Pairing
+    alias SddOrchestrator.HostedAccess
+    alias SddOrchestrator.HostedAccess.Sessions
     alias SddOrchestrator.Participation
     alias SddOrchestrator.Participation.{Acceptance, Invitations}
     alias SddOrchestrator.Projects

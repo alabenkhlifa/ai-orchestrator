@@ -233,35 +233,39 @@ defmodule SddOrchestrator.AIRuntime.Quotas do
                connection.provider,
                connection.authentication_mode
              ) do
-        attrs = %{
-          account_id: account_id,
-          connection_id: connection_id,
-          provider: result.provider,
-          authentication_mode: result.authentication_mode,
-          status: result.status,
-          source: result.source,
-          source_methods: result.source_methods,
-          source_version: result.source_version,
-          retrieved_at: result.retrieved_at,
-          expires_at: expires_at,
-          buckets: %{"items" => encode(result.buckets)},
-          reset_credits: encode(result.reset_credits),
-          token_activity: encode(result.token_activity),
-          unknown_fields: result.unknown_fields
-        }
-
-        case %QuotaSnapshot{}
-             |> QuotaSnapshot.create_changeset(attrs)
-             |> Repo.insert() do
-          {:ok, snapshot} -> snapshot
-          {:error, _changeset} -> Repo.rollback(:invalid_response)
-        end
+        insert_snapshot(account_id, connection_id, result, expires_at)
       else
         nil -> Repo.rollback(:not_found)
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
     |> unwrap_transaction()
+  end
+
+  defp insert_snapshot(account_id, connection_id, result, expires_at) do
+    attrs = %{
+      account_id: account_id,
+      connection_id: connection_id,
+      provider: result.provider,
+      authentication_mode: result.authentication_mode,
+      status: result.status,
+      source: result.source,
+      source_methods: result.source_methods,
+      source_version: result.source_version,
+      retrieved_at: result.retrieved_at,
+      expires_at: expires_at,
+      buckets: %{"items" => encode(result.buckets)},
+      reset_credits: encode(result.reset_credits),
+      token_activity: encode(result.token_activity),
+      unknown_fields: result.unknown_fields
+    }
+
+    case %QuotaSnapshot{}
+         |> QuotaSnapshot.create_changeset(attrs)
+         |> Repo.insert() do
+      {:ok, snapshot} -> snapshot
+      {:error, _changeset} -> Repo.rollback(:invalid_response)
+    end
   end
 
   defp project(snapshot, connection, now) do

@@ -123,12 +123,7 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
          {:ok, account_id} <- entity_id(account_or_id, Account),
          {:ok, connection_id} <- cast_id(connection_id),
          %Account{} <- active_account(account_id) do
-      Repo.transaction(fn ->
-        case locked_scoped_connection(account_id, connection_id) do
-          nil -> Repo.rollback(:not_found)
-          connection -> update_label(connection, label)
-        end
-      end)
+      Repo.transaction(fn -> rename_locked_connection(account_id, connection_id, label) end)
       |> unwrap_transaction()
     else
       {:error, :invalid_label} -> {:error, :invalid_label}
@@ -241,24 +236,32 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
     Repo.transaction(fn ->
       with %Account{} <- active_account(account_id, lock: true),
            %LocalWorker{} <- active_worker(worker_id, lock: true) do
-        case connection_for_profile(worker_id, result.worker_profile_ref) do
-          %PersonalAIConnection{account_id: ^account_id} = existing ->
-            if same_binding?(existing, result),
-              do: existing,
-              else: Repo.rollback(:binding_mismatch)
-
-          %PersonalAIConnection{} ->
-            Repo.rollback(:profile_already_linked)
-
-          nil ->
-            insert_connection(account_id, worker_id, label, result)
-        end
+        link_locked_profile(account_id, worker_id, label, result)
       else
         nil -> Repo.rollback(:account_unavailable)
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
     |> unwrap_transaction()
+  end
+
+  defp link_locked_profile(account_id, worker_id, label, result) do
+    case connection_for_profile(worker_id, result.worker_profile_ref) do
+      %PersonalAIConnection{account_id: ^account_id} = existing ->
+        reuse_existing_connection(existing, result)
+
+      %PersonalAIConnection{} ->
+        Repo.rollback(:profile_already_linked)
+
+      nil ->
+        insert_connection(account_id, worker_id, label, result)
+    end
+  end
+
+  defp reuse_existing_connection(existing, result) do
+    if same_binding?(existing, result),
+      do: existing,
+      else: Repo.rollback(:binding_mismatch)
   end
 
   defp insert_connection(account_id, worker_id, label, result) do
@@ -288,23 +291,25 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
   defp resolve_insert_conflict(changeset, account_id, worker_id, result) do
     cond do
       Keyword.has_key?(changeset.errors, :worker_profile_ref) ->
-        case connection_for_profile(worker_id, result.worker_profile_ref) do
-          %PersonalAIConnection{account_id: ^account_id} = existing ->
-            if same_binding?(existing, result),
-              do: existing,
-              else: Repo.rollback(:binding_mismatch)
-
-          %PersonalAIConnection{} ->
-            Repo.rollback(:profile_already_linked)
-
-          nil ->
-            Repo.rollback(:invalid_connection)
-        end
+        resolve_profile_conflict(account_id, worker_id, result)
 
       Keyword.has_key?(changeset.errors, :label) ->
         Repo.rollback(:label_taken)
 
       true ->
+        Repo.rollback(:invalid_connection)
+    end
+  end
+
+  defp resolve_profile_conflict(account_id, worker_id, result) do
+    case connection_for_profile(worker_id, result.worker_profile_ref) do
+      %PersonalAIConnection{account_id: ^account_id} = existing ->
+        reuse_existing_connection(existing, result)
+
+      %PersonalAIConnection{} ->
+        Repo.rollback(:profile_already_linked)
+
+      nil ->
         Repo.rollback(:invalid_connection)
     end
   end
@@ -316,17 +321,21 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
       outcome = removal_outcome(opts)
 
       Repo.transaction(fn ->
-        case locked_scoped_connection(account_id, connection_id) do
-          nil ->
-            Repo.rollback(:not_found)
-
-          connection ->
-            apply_revocation_transition(connection, transition, requested_at, outcome)
-        end
+        apply_locked_revocation(account_id, connection_id, transition, requested_at, outcome)
       end)
       |> unwrap_transaction()
     else
       _ -> {:error, :not_found}
+    end
+  end
+
+  defp apply_locked_revocation(account_id, connection_id, transition, requested_at, outcome) do
+    case locked_scoped_connection(account_id, connection_id) do
+      nil ->
+        Repo.rollback(:not_found)
+
+      connection ->
+        apply_revocation_transition(connection, transition, requested_at, outcome)
     end
   end
 
@@ -415,6 +424,13 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
     end
   end
 
+  defp rename_locked_connection(account_id, connection_id, label) do
+    case locked_scoped_connection(account_id, connection_id) do
+      nil -> Repo.rollback(:not_found)
+      connection -> update_label(connection, label)
+    end
+  end
+
   defp update_label(connection, label) do
     case connection
          |> PersonalAIConnection.update_changeset(%{label: label})
@@ -423,15 +439,19 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnections do
         updated
 
       {:error, changeset} ->
-        if Enum.any?(changeset.errors, fn
-             {:label, {_message, metadata}} -> metadata[:constraint] == :unique
-             _other -> false
-           end) do
+        if label_taken?(changeset) do
           Repo.rollback(:label_taken)
         else
           Repo.rollback(:invalid_label)
         end
     end
+  end
+
+  defp label_taken?(changeset) do
+    Enum.any?(changeset.errors, fn
+      {:label, {_message, metadata}} -> metadata[:constraint] == :unique
+      _other -> false
+    end)
   end
 
   defp normalize_label(label) when is_binary(label) do

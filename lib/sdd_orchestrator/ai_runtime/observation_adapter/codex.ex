@@ -117,9 +117,8 @@ defmodule SddOrchestrator.AIRuntime.ObservationAdapter.Codex do
       )
       when method in @notification_methods do
     result =
-      with {:ok, :refetch} <- handle_notification(method, params) do
-        refetch(state)
-      else
+      case handle_notification(method, params) do
+        {:ok, :refetch} -> refetch(state)
         {:error, reason} -> {:error, ObservationAdapter.normalize_error(reason)}
       end
 

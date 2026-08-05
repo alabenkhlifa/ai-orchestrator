@@ -227,7 +227,10 @@ defmodule SddOrchestrator.AIRuntime.QuotaAdapter.Codex do
        %{
          id: id,
          scope: scope,
-         model: if(scope == "model_specific", do: provider_limit_id, else: nil),
+         # The App Server reports one account-wide limit and provider-defined
+         # limits keyed by limit id. Neither names a model, so this adapter
+         # never produces a `model_specific` bucket and never binds a model.
+         model: nil,
          display_name: snapshot["limitName"],
          primary_window: primary_window,
          secondary_window: secondary_window,

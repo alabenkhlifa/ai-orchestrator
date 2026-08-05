@@ -6,8 +6,8 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogsTest do
   import SddOrchestrator.AccountsFixtures
   import SddOrchestrator.AIRuntimeFixtures
 
-  alias SddOrchestrator.AIRuntime.{ModelCatalogSnapshot, ModelCatalogs, PersonalConnections}
   alias SddOrchestrator.AIRuntime.ModelCatalogAdapter.RPC
+  alias SddOrchestrator.AIRuntime.{ModelCatalogs, ModelCatalogSnapshot, PersonalConnections}
   alias SddOrchestrator.ModelCatalogAdapterDouble
 
   @now ~U[2026-08-03 12:00:00Z]

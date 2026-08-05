@@ -70,12 +70,24 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogAdapter.Codex do
     max_pages = Keyword.get(opts, :max_pages, @default_max_pages)
 
     if is_integer(max_pages) and max_pages > 0 and max_pages <= @default_max_pages do
-      do_fetch_pages(server, opts, nil, max_pages, MapSet.new(), [])
+      do_fetch_pages(server, opts, nil, max_pages, [], [])
     else
       {:error, :invalid_request}
     end
   end
 
+  # `seen_cursors` is the repeated-cursor defence: a worker that answers with a
+  # cursor it already handed out would otherwise loop the pagination. It is a
+  # plain list because `max_pages` is bounded by `@default_max_pages`, so it
+  # holds at most four entries and never needs a set's lookup cost.
+  @spec do_fetch_pages(
+          pid() | atom() | tuple(),
+          keyword(),
+          String.t() | nil,
+          non_neg_integer(),
+          [String.t()],
+          [map()]
+        ) :: {:ok, [map()]} | {:error, term()}
   defp do_fetch_pages(_server, _opts, _cursor, 0, _seen_cursors, _models),
     do: {:error, :invalid_response}
 
@@ -94,20 +106,7 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogAdapter.Codex do
              combined = models ++ Enum.reject(entries, & &1.hidden),
              true <- length(combined) <= ModelCatalogAdapter.max_models(),
              :ok <- validate_next_cursor(next_cursor, seen_cursors) do
-          normalized = Enum.map(combined, &Map.delete(&1, :hidden))
-
-          if is_nil(next_cursor) do
-            {:ok, normalized}
-          else
-            do_fetch_pages(
-              server,
-              opts,
-              next_cursor,
-              pages_left - 1,
-              MapSet.put(seen_cursors, next_cursor),
-              combined
-            )
-          end
+          finish_or_fetch_next(server, opts, next_cursor, pages_left, seen_cursors, combined)
         else
           _ -> {:error, :invalid_response}
         end
@@ -117,6 +116,29 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogAdapter.Codex do
 
       _other ->
         {:error, :invalid_response}
+    end
+  end
+
+  @spec finish_or_fetch_next(
+          pid() | atom() | tuple(),
+          keyword(),
+          String.t() | nil,
+          non_neg_integer(),
+          [String.t()],
+          [map()]
+        ) :: {:ok, [map()]} | {:error, term()}
+  defp finish_or_fetch_next(server, opts, next_cursor, pages_left, seen_cursors, combined) do
+    if is_nil(next_cursor) do
+      {:ok, Enum.map(combined, &Map.delete(&1, :hidden))}
+    else
+      do_fetch_pages(
+        server,
+        opts,
+        next_cursor,
+        pages_left - 1,
+        [next_cursor | seen_cursors],
+        combined
+      )
     end
   end
 
@@ -331,11 +353,12 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogAdapter.Codex do
 
   defp unique?(values), do: length(values) == MapSet.size(MapSet.new(values))
 
+  @spec validate_next_cursor(String.t() | nil, [String.t()]) :: :ok | {:error, :invalid_response}
   defp validate_next_cursor(nil, _seen), do: :ok
 
   defp validate_next_cursor(cursor, seen) do
     with :ok <- bounded_string(cursor, @max_cursor_bytes),
-         false <- MapSet.member?(seen, cursor) do
+         false <- cursor in seen do
       :ok
     else
       _ -> {:error, :invalid_response}

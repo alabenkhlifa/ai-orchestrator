@@ -289,17 +289,26 @@ defmodule SddOrchestrator.Privacy.AIRuntimeGovernanceTest do
       assert entry |> Map.from_struct() |> Map.keys() |> Enum.sort() ==
                [:correlation_id, :event_type, :occurred_at, :outcome]
 
-      log = capture_log(fn -> SecurityLog.audit({:error, :not_found}, :connection_link) end)
+      correlation_id = Ecto.UUID.generate()
 
-      assert Enum.sort(Map.keys(decode_event!(log))) ==
+      log =
+        capture_log(fn ->
+          SecurityLog.audit({:error, :not_found}, :connection_link,
+            correlation_id: correlation_id
+          )
+        end)
+
+      assert Enum.sort(Map.keys(decode_event!(log, correlation_id))) ==
                ~w(correlation_id event_type occurred_at outcome)
 
       assert :worker_rpc_request in SecurityLog.events()
 
-      # Dispatched through `apply/3` so the refusal is proven at run time
-      # rather than turned into a compile-time type warning.
+      # Built at run time so the refusal is proven by the guard rather than
+      # turned into a compile-time type warning.
+      unlisted_event = String.to_atom("prompt_content")
+
       assert_raise FunctionClauseError, fn ->
-        apply(SecurityLog, :audit, [{:error, :not_found}, :prompt_content])
+        SecurityLog.audit({:error, :not_found}, unlisted_event)
       end
     end
   end
@@ -348,29 +357,45 @@ defmodule SddOrchestrator.Privacy.AIRuntimeGovernanceTest do
 
     test "never writes prompt or completion content into a log line" do
       reason = {:rejected_prompt, "PROMPTMARKER summarize the private design document"}
+      correlation_id = Ecto.UUID.generate()
 
       log =
         capture_log(fn ->
-          assert SecurityLog.audit({:error, reason}, :observation_append) == {:error, reason}
+          assert SecurityLog.audit({:error, reason}, :observation_append,
+                   correlation_id: correlation_id
+                 ) == {:error, reason}
         end)
 
       refute log =~ "PROMPTMARKER"
       refute log =~ "private design document"
 
-      assert Enum.sort(Map.keys(decode_event!(log))) ==
+      assert Enum.sort(Map.keys(decode_event!(log, correlation_id))) ==
                ~w(correlation_id event_type occurred_at outcome)
     end
 
     test "a success emits no line at all and returns the result unchanged" do
-      # Contamination note: `capture_log` is global, so this asserts that no
-      # AI-runtime security line is emitted rather than that no other async
-      # test logged anything.
-      plain = capture_log(fn -> assert SecurityLog.audit(:ok, :session_pin) == :ok end)
-      refute plain =~ "[ai_runtime_security]"
+      # `capture_log` is global and this module is async, so absence is proven
+      # by each call's own correlation identifier. Asserting that no
+      # AI-runtime line appeared at all would fail whenever a concurrent test
+      # logged one of its own.
+      plain_id = Ecto.UUID.generate()
+
+      plain =
+        capture_log(fn ->
+          assert SecurityLog.audit(:ok, :session_pin, correlation_id: plain_id) == :ok
+        end)
+
+      refute plain =~ plain_id
 
       success = {:ok, %{secret: "SUCCESSMARKER"}}
-      tagged = capture_log(fn -> assert SecurityLog.audit(success, :quota_refresh) == success end)
-      refute tagged =~ "[ai_runtime_security]"
+      tagged_id = Ecto.UUID.generate()
+
+      tagged =
+        capture_log(fn ->
+          assert SecurityLog.audit(success, :quota_refresh, correlation_id: tagged_id) == success
+        end)
+
+      refute tagged =~ tagged_id
       refute tagged =~ "SUCCESSMARKER"
     end
 
@@ -573,9 +598,20 @@ defmodule SddOrchestrator.Privacy.AIRuntimeGovernanceTest do
       flunk("processing inventory is missing #{activity}")
   end
 
-  defp decode_event!(log) do
+  # Selects this call's own line by the correlation identifier it supplied.
+  # The capture is global and this module is async, so taking whichever
+  # AI-runtime line appeared first could decode a concurrent test's event.
+  defp decode_event!(log, correlation_id) do
     [json] =
-      Regex.run(~r/\[ai_runtime_security\] (\{[^\n]*\})/, log, capture: :all_but_first)
+      log
+      |> String.split("\n")
+      |> Enum.filter(&String.contains?(&1, correlation_id))
+      |> Enum.flat_map(fn line ->
+        case Regex.run(~r/\[ai_runtime_security\] (\{.*\})/, line, capture: :all_but_first) do
+          [json] -> [json]
+          nil -> []
+        end
+      end)
 
     Jason.decode!(json)
   end

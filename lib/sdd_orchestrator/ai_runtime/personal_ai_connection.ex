@@ -186,17 +186,20 @@ defmodule SddOrchestrator.AIRuntime.PersonalAIConnection do
   def adapter_version_max_length, do: @adapter_version_max_length
 
   defp reject_rebinding(changeset) do
-    Enum.reduce(@binding_fields, changeset, fn field, changeset ->
-      case fetch_change(changeset, field) do
-        {:ok, value} ->
-          if value != Map.get(changeset.data, field),
-            do: add_error(changeset, field, "cannot be changed"),
-            else: changeset
+    Enum.reduce(@binding_fields, changeset, &reject_field_rebinding/2)
+  end
 
-        _ ->
-          changeset
-      end
-    end)
+  defp reject_field_rebinding(field, changeset) do
+    case fetch_change(changeset, field) do
+      {:ok, value} -> reject_changed_binding(changeset, field, value)
+      _ -> changeset
+    end
+  end
+
+  defp reject_changed_binding(changeset, field, value) do
+    if value != Map.get(changeset.data, field),
+      do: add_error(changeset, field, "cannot be changed"),
+      else: changeset
   end
 
   defp validate_revocation_lifecycle(changeset) do

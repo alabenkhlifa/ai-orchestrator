@@ -175,31 +175,35 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogs do
            %PersonalAIConnection{} = connection <-
              scoped_connection(account_id, connection_id, lock: true),
            :ok <- eligible(connection) do
-        attrs = %{
-          account_id: account_id,
-          connection_id: connection_id,
-          provider: result.provider,
-          status: result.status,
-          source: result.source,
-          source_method: result.source_method,
-          source_version: result.source_version,
-          retrieved_at: result.retrieved_at,
-          expires_at: expires_at,
-          models: %{"items" => encode_models(result.models)}
-        }
-
-        case %ModelCatalogSnapshot{}
-             |> ModelCatalogSnapshot.create_changeset(attrs)
-             |> Repo.insert() do
-          {:ok, snapshot} -> snapshot
-          {:error, _changeset} -> Repo.rollback(:invalid_response)
-        end
+        insert_snapshot(account_id, connection_id, result, expires_at)
       else
         nil -> Repo.rollback(:not_found)
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
     |> unwrap_transaction()
+  end
+
+  defp insert_snapshot(account_id, connection_id, result, expires_at) do
+    attrs = %{
+      account_id: account_id,
+      connection_id: connection_id,
+      provider: result.provider,
+      status: result.status,
+      source: result.source,
+      source_method: result.source_method,
+      source_version: result.source_version,
+      retrieved_at: result.retrieved_at,
+      expires_at: expires_at,
+      models: %{"items" => encode_models(result.models)}
+    }
+
+    case %ModelCatalogSnapshot{}
+         |> ModelCatalogSnapshot.create_changeset(attrs)
+         |> Repo.insert() do
+      {:ok, snapshot} -> snapshot
+      {:error, _changeset} -> Repo.rollback(:invalid_response)
+    end
   end
 
   defp project(snapshot, now) do
@@ -316,34 +320,40 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogs do
         {:error, reason} -> Repo.rollback(reason)
       end
 
-      snapshot = latest_snapshot(account_id, connection_id) || Repo.rollback(:unknown)
-
-      catalog =
-        case project(snapshot, now) do
-          {:ok, projection} -> projection
-          {:error, reason} -> Repo.rollback(reason)
-        end
-
-      model_entry =
-        Enum.find(catalog.models, &(&1.model == model)) ||
-          Repo.rollback(:unknown_compatibility)
-
-      effort_entry =
-        Enum.find(
-          model_entry.supported_reasoning_efforts,
-          &(&1.reasoning_effort == effort)
-        ) || Repo.rollback(:unknown_compatibility)
-
-      %{
-        snapshot_id: catalog.snapshot_id,
-        connection_id: catalog.connection_id,
-        model: model_entry.model,
-        effort: effort_entry.reasoning_effort,
-        provenance: catalog.provenance,
-        expires_at: catalog.expires_at
-      }
+      prove_selection(account_id, connection_id, model, effort, now)
     end)
     |> unwrap_transaction()
+  end
+
+  # Runs inside the caller's transaction, after the account, the connection, and
+  # its eligibility are already proven under lock.
+  defp prove_selection(account_id, connection_id, model, effort, now) do
+    snapshot = latest_snapshot(account_id, connection_id) || Repo.rollback(:unknown)
+
+    catalog =
+      case project(snapshot, now) do
+        {:ok, projection} -> projection
+        {:error, reason} -> Repo.rollback(reason)
+      end
+
+    model_entry =
+      Enum.find(catalog.models, &(&1.model == model)) ||
+        Repo.rollback(:unknown_compatibility)
+
+    effort_entry =
+      Enum.find(
+        model_entry.supported_reasoning_efforts,
+        &(&1.reasoning_effort == effort)
+      ) || Repo.rollback(:unknown_compatibility)
+
+    %{
+      snapshot_id: catalog.snapshot_id,
+      connection_id: catalog.connection_id,
+      model: model_entry.model,
+      effort: effort_entry.reasoning_effort,
+      provenance: catalog.provenance,
+      expires_at: catalog.expires_at
+    }
   end
 
   defp eligible(%{revocation_state: "requested"}), do: {:error, :revoking}

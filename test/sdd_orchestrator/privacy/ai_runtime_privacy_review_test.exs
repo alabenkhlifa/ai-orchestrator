@@ -527,8 +527,14 @@ defmodule SddOrchestrator.Privacy.AIRuntimePrivacyReviewTest do
 
   describe "logging" do
     test "emits four allowlisted keys, only on failure, from a closed outcome vocabulary" do
-      refute capture_log(fn -> SecurityLog.audit(:ok, :session_pin) end) =~
-               "[ai_runtime_security]"
+      # A success emits nothing. `capture_log` is global and the suite runs
+      # concurrently, so absence is proven by this call's own correlation
+      # identifier rather than by the absence of any AI-runtime line.
+      success_id = Ecto.UUID.generate()
+
+      refute capture_log(fn ->
+               SecurityLog.audit(:ok, :session_pin, correlation_id: success_id)
+             end) =~ success_id
 
       outcomes =
         for {reason, expected} <- [
@@ -538,10 +544,16 @@ defmodule SddOrchestrator.Privacy.AIRuntimePrivacyReviewTest do
               {:credential_content, "rejected"},
               {%{"api_key" => "sk-live-REVIEWMARKER"}, "failed"}
             ] do
-          log =
-            capture_log(fn -> SecurityLog.audit({:error, reason}, :app_server_request) end)
+          correlation_id = Ecto.UUID.generate()
 
-          event = decode_event!(log)
+          log =
+            capture_log(fn ->
+              SecurityLog.audit({:error, reason}, :app_server_request,
+                correlation_id: correlation_id
+              )
+            end)
+
+          event = decode_event!(log, correlation_id)
 
           assert Enum.sort(Map.keys(event)) ==
                    ~w(correlation_id event_type occurred_at outcome)
@@ -564,8 +576,12 @@ defmodule SddOrchestrator.Privacy.AIRuntimePrivacyReviewTest do
         refute Regex.match?(~r/prompt|content|label|profile|account_name/i, Atom.to_string(event))
       end
 
+      # Built at run time so the refusal is proven by the guard rather than
+      # turned into a compile-time type warning.
+      unlisted_event = String.to_atom("prompt_content")
+
       assert_raise FunctionClauseError, fn ->
-        apply(SecurityLog, :audit, [{:error, :revoked}, :prompt_content])
+        SecurityLog.audit({:error, :revoked}, unlisted_event)
       end
     end
   end
@@ -772,9 +788,21 @@ defmodule SddOrchestrator.Privacy.AIRuntimePrivacyReviewTest do
     }
   end
 
-  defp decode_event!(log) do
+  # Selects this call's own line by the correlation identifier it supplied.
+  # Taking whichever AI-runtime line appeared first is not safe here: the
+  # capture is global and a concurrent test's failure line lands in it too.
+  # The single-element match also proves the identifier appears exactly once.
+  defp decode_event!(log, correlation_id) do
     [json] =
-      Regex.run(~r/\[ai_runtime_security\] (\{[^\n]*\})/, log, capture: :all_but_first)
+      log
+      |> String.split("\n")
+      |> Enum.filter(&String.contains?(&1, correlation_id))
+      |> Enum.flat_map(fn line ->
+        case Regex.run(~r/\[ai_runtime_security\] (\{.*\})/, line, capture: :all_but_first) do
+          [json] -> [json]
+          nil -> []
+        end
+      end)
 
     Jason.decode!(json)
   end

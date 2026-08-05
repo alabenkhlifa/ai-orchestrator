@@ -67,12 +67,7 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
          {:ok, session_id} <- cast_id(session_id),
          {:ok, now} <- normalized_now(opts),
          {:ok, request} <- normalize_open_request(request) do
-      transaction(fn ->
-        with {:ok, session} <- authorize(account_id, session_id),
-             {:ok, ceiling} <- session_ceiling(session) do
-          open(account_id, session, ceiling, request, now, opts)
-        end
-      end)
+      transaction(fn -> authorized_open(account_id, session_id, request, now, opts) end)
       |> project()
     end
   end
@@ -93,13 +88,7 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
          {:ok, session_id} <- cast_id(session_id),
          {:ok, now} <- normalized_now(opts),
          {:ok, request} <- normalize_reserve_request(request) do
-      transaction(fn ->
-        with {:ok, session} <- authorize(account_id, session_id),
-             {:ok, ledger} <- locked_ledger(session_id),
-             :ok <- within_bounds(ledger, request) do
-          reserve_turn(ledger, session, request, now, opts)
-        end
-      end)
+      transaction(fn -> authorized_reserve(account_id, session_id, request, now, opts) end)
       |> project_reservation(request.idempotency_key)
     end
   end
@@ -119,10 +108,7 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
          {:ok, idempotency_key} <- RuntimeCostLedger.validate_idempotency_key(idempotency_key),
          {:ok, observed} <- normalize_amount(observed) do
       transaction(fn ->
-        with {:ok, _session} <- authorize(account_id, session_id),
-             {:ok, ledger} <- locked_ledger(session_id) do
-          settle(ledger, idempotency_key, observed)
-        end
+        authorized_settlement(account_id, session_id, idempotency_key, observed)
       end)
       |> project()
     end
@@ -135,12 +121,7 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
     with {:ok, account_id} <- account_id(account_or_id),
          {:ok, session_id} <- cast_id(session_id),
          {:ok, idempotency_key} <- RuntimeCostLedger.validate_idempotency_key(idempotency_key) do
-      transaction(fn ->
-        with {:ok, _session} <- authorize(account_id, session_id),
-             {:ok, ledger} <- locked_ledger(session_id) do
-          settle(ledger, idempotency_key, nil)
-        end
-      end)
+      transaction(fn -> authorized_settlement(account_id, session_id, idempotency_key, nil) end)
       |> project()
     end
   end
@@ -158,12 +139,9 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
          {:ok, session_id} <- cast_id(session_id),
          {:ok, now} <- normalized_now(opts),
          {:ok, seconds} <- abandoned_after_seconds(opts) do
-      transaction(fn ->
-        with {:ok, _session} <- authorize(account_id, session_id),
-             {:ok, ledger} <- locked_ledger(session_id) do
-          recover(ledger, DateTime.add(now, -seconds, :second))
-        end
-      end)
+      cutoff = DateTime.add(now, -seconds, :second)
+
+      transaction(fn -> authorized_recovery(account_id, session_id, cutoff) end)
       |> case do
         {:ok, {released, ledger}} -> {:ok, %{released: released, ledger: projection(ledger)}}
         {:error, reason} -> {:error, reason}
@@ -194,6 +172,13 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
     case get_ledger(account_or_id, session_id) do
       {:ok, ledger} -> {:ok, %{amount: ledger.remaining, currency: ledger.currency}}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp authorized_open(account_id, session_id, request, now, opts) do
+    with {:ok, session} <- authorize(account_id, session_id),
+         {:ok, ceiling} <- session_ceiling(session) do
+      open(account_id, session, ceiling, request, now, opts)
     end
   end
 
@@ -238,6 +223,14 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
         {:ok, ledger} -> {:ok, ledger}
         {:error, _changeset} -> {:error, :invalid_request}
       end
+    end
+  end
+
+  defp authorized_reserve(account_id, session_id, request, now, opts) do
+    with {:ok, session} <- authorize(account_id, session_id),
+         {:ok, ledger} <- locked_ledger(session_id),
+         :ok <- within_bounds(ledger, request) do
+      reserve_turn(ledger, session, request, now, opts)
     end
   end
 
@@ -308,6 +301,13 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
     end
   end
 
+  defp authorized_settlement(account_id, session_id, idempotency_key, observed) do
+    with {:ok, _session} <- authorize(account_id, session_id),
+         {:ok, ledger} <- locked_ledger(session_id) do
+      settle(ledger, idempotency_key, observed)
+    end
+  end
+
   defp settle(ledger, idempotency_key, observed) do
     reservations = RuntimeCostLedger.decode_reservations(ledger.outstanding_reservations)
 
@@ -334,6 +334,13 @@ defmodule SddOrchestrator.AIRuntime.RuntimeCosts do
 
   defp observed_total(ledger, observed),
     do: ledger.observed_amount |> Decimal.add(observed) |> Decimal.round(scale())
+
+  defp authorized_recovery(account_id, session_id, cutoff) do
+    with {:ok, _session} <- authorize(account_id, session_id),
+         {:ok, ledger} <- locked_ledger(session_id) do
+      recover(ledger, cutoff)
+    end
+  end
 
   defp recover(ledger, cutoff) do
     {abandoned, kept} =

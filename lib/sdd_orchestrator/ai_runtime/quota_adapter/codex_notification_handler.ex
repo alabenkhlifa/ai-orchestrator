@@ -82,11 +82,13 @@ defmodule SddOrchestrator.AIRuntime.QuotaAdapter.CodexNotificationHandler do
         %{app_server: server} = state
       ) do
     result =
-      with {:ok, :refetch} <- Codex.handle_notification("account/rateLimits/updated", params) do
-        fetch_options = Keyword.put(state.fetch_options, :server, state.app_server)
-        Codex.fetch(state.account, state.connection, fetch_options)
-      else
-        {:error, reason} -> {:error, QuotaAdapter.normalize_error(reason)}
+      case Codex.handle_notification("account/rateLimits/updated", params) do
+        {:ok, :refetch} ->
+          fetch_options = Keyword.put(state.fetch_options, :server, state.app_server)
+          Codex.fetch(state.account, state.connection, fetch_options)
+
+        {:error, reason} ->
+          {:error, QuotaAdapter.normalize_error(reason)}
       end
 
     deliver(state, result)

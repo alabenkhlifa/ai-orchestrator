@@ -416,34 +416,38 @@ defmodule SddOrchestrator.AIRuntime.CodexAppServer do
     parts = :binary.split(state.buffer <> bytes, "\n", [:global])
     {lines, [remainder]} = Enum.split(parts, -1)
 
-    cond do
-      byte_size(remainder) > state.max_response_bytes ->
-        protocol_failed(%{state | buffer: <<>>}, :response_too_large)
-
-      true ->
-        Enum.reduce_while(lines, %{state | buffer: remainder}, fn line, current ->
-          cond do
-            line == <<>> ->
-              {:cont, current}
-
-            byte_size(line) > current.max_response_bytes ->
-              {:halt, protocol_failed(%{current | buffer: <<>>}, :response_too_large)}
-
-            true ->
-              case Jason.decode(line) do
-                {:ok, frame} when is_map(frame) ->
-                  updated = receive_frame(frame, current)
-                  if updated.process, do: {:cont, updated}, else: {:halt, updated}
-
-                _invalid ->
-                  {:halt, protocol_failed(current, :malformed_response)}
-              end
-          end
-        end)
+    if byte_size(remainder) > state.max_response_bytes do
+      protocol_failed(%{state | buffer: <<>>}, :response_too_large)
+    else
+      Enum.reduce_while(lines, %{state | buffer: remainder}, &consume_line/2)
     end
   end
 
   defp consume_stdout(_bytes, state), do: protocol_failed(state, :malformed_response)
+
+  defp consume_line(line, current) do
+    cond do
+      line == <<>> ->
+        {:cont, current}
+
+      byte_size(line) > current.max_response_bytes ->
+        {:halt, protocol_failed(%{current | buffer: <<>>}, :response_too_large)}
+
+      true ->
+        decode_line(line, current)
+    end
+  end
+
+  defp decode_line(line, current) do
+    case Jason.decode(line) do
+      {:ok, frame} when is_map(frame) ->
+        updated = receive_frame(frame, current)
+        if updated.process, do: {:cont, updated}, else: {:halt, updated}
+
+      _invalid ->
+        {:halt, protocol_failed(current, :malformed_response)}
+    end
+  end
 
   defp receive_frame(%{"id" => id, "result" => result} = frame, state)
        when map_size(frame) == 2 and is_integer(id) and id >= 0 do

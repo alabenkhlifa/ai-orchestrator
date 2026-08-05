@@ -23,7 +23,17 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
     adapter_compatibility_version
   )
 
+  @result_key_atoms [
+    :worker_profile_ref,
+    :provider,
+    :authentication_mode,
+    :availability,
+    :adapter_compatibility_version
+  ]
+
   @revocation_result_keys ~w(worker_profile_ref credential_removal)
+
+  @revocation_result_key_atoms [:worker_profile_ref, :credential_removal]
 
   @credential_removals ~w(removed absent)
 
@@ -38,6 +48,20 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
   @type request :: %{
           provider: String.t(),
           authentication_mode: String.t()
+        }
+
+  @typedoc """
+  Any request that names the provider choice a result is validated against.
+
+  An adapter receives exactly `t:request/0`. The control plane validates the
+  answer against its own link request, which additionally carries the
+  account-visible label the adapter never sees, so validation only requires the
+  choice fields and ignores whatever else the caller's request carries.
+  """
+  @type provider_choice :: %{
+          required(:provider) => String.t(),
+          required(:authentication_mode) => String.t(),
+          optional(atom()) => term()
         }
 
   @type result :: %{
@@ -62,7 +86,7 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
               {:ok, map()} | {:error, term()}
 
   @doc "Validates and normalizes an adapter result against the requested provider choice."
-  @spec validate_result(map(), request()) :: {:ok, result()} | {:error, :invalid_response}
+  @spec validate_result(map(), provider_choice()) :: {:ok, result()} | {:error, :invalid_response}
   def validate_result(result, request) when is_map(result) and is_map(request) do
     with {:ok, normalized} <- normalize_exact_result(result),
          true <- normalized.provider == request.provider,
@@ -128,7 +152,7 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
            adapter_compatibility_version: result["adapter_compatibility_version"]
          }}
 
-      Enum.sort(Map.keys(result)) == Enum.sort(Enum.map(@result_keys, &String.to_atom/1)) ->
+      Enum.sort(Map.keys(result)) == Enum.sort(@result_key_atoms) ->
         {:ok,
          %{
            worker_profile_ref: result.worker_profile_ref,
@@ -152,8 +176,7 @@ defmodule SddOrchestrator.AIRuntime.PersonalConnectionAdapter do
            credential_removal: result["credential_removal"]
          }}
 
-      Enum.sort(Map.keys(result)) ==
-          Enum.sort(Enum.map(@revocation_result_keys, &String.to_atom/1)) ->
+      Enum.sort(Map.keys(result)) == Enum.sort(@revocation_result_key_atoms) ->
         {:ok,
          %{
            worker_profile_ref: result.worker_profile_ref,

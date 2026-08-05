@@ -9,7 +9,7 @@ defmodule SddOrchestrator.AIRuntime.ModelCatalogAdapter do
 
   alias SddOrchestrator.Accounts.Account
 
-  alias SddOrchestrator.AIRuntime.{PersonalAIConnection}
+  alias SddOrchestrator.AIRuntime.PersonalAIConnection
 
   @result_keys ~w(status provider source source_method source_version retrieved_at models)a
   @model_keys ~w(
