@@ -115,4 +115,4 @@ Required boundaries:
 
 ## Open Questions
 
-- None technical. Every unresolved decision in this specification is a product decision recorded under `Open Questions` in `requirements.md`; the design above records the recommended answers so their mechanism is visible, and the requirements status stays `Draft` until they are decided.
+- None. The six product decisions this design anticipated are now resolved and recorded in `requirements.md` `Business Rules`, and each was accepted as the design describes, so no mechanism above changed.

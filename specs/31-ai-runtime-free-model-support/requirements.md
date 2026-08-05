@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Approved
 
 ## Outcome
 
@@ -35,7 +35,7 @@ A deployment operator can publish an officially free provider model price that s
 
 ## Out of Scope
 
-- Presenting free-model facts in the AI Connections screen, Slice 07, or Slice 12. Those presentation surfaces stay with their owning specifications; Open Question 5 records the boundary decision.
+- Presenting free-model facts in the AI Connections screen, Slice 07, or Slice 12. Those presentation surfaces stay with their owning specifications. Showing a user that a model is free before they select it is an independently valuable outcome with its own browser proof, and this slice's outcome is provable without it, so it is not owned here and is not yet owned by any specification.
 - Discovering prices from a provider automatically. The registry stays operator-published and release-gated.
 - ChatGPT-authenticated sessions, subscription quota buckets, scarce-model opt-ins, and provider-paid continuation.
 - Provider billing, invoices, credit purchase, and any payment surface.
@@ -68,9 +68,4 @@ A deployment operator can publish an officially free provider model price that s
 
 ## Open Questions
 
-1. Registration shape: should free be declared as an explicit per-model marker inside the same versioned official registration, rather than as a separate free-model allowlist or as a numeric zero? Recommended: one explicit marker inside the same registration, because it keeps a single price authority, a single expiry lifecycle, and a single release-gated configuration while leaving an accidental numeric zero refused. Blocks product requirements, then AC-01.
-2. Ceiling state: should a free model still open the session's cost ledger and reserve zero, or bypass the ceiling entirely? Recommended: open the ledger and reserve zero, because bypassing it would report the run's cost boundary as unknown, which is exactly the free-versus-unknown conflation this slice removes, and it would fork the reconciliation, pause, retention, and rights paths. Blocks product requirements, then AC-03 and AC-06.
-3. Ceiling requirement: should a free model be usable in an API-key session that carries no spending ceiling at all? Recommended: no, keep requiring an approved positive ceiling, because the pinned configuration is immutable while the registry is not, so a ceiling-free session would have no approved boundary left if its model ever became priced. Blocks product requirements, then AC-03.
-4. Withdrawn free price: when a session's free registration expires or becomes priced, should the run pause for an explicit decision, or reserve at the new price when it fits inside the already-approved ceiling? Recommended: pause as a resumable condition, because Slice 11 already forbids silently continuing into paid provider usage and the user chose the model while it was published free. Blocks product requirements, then AC-05.
-5. Visibility: should the user see that a model is free before selecting it? Recommended: not in this slice; publish the owner-visible contract here and leave the AI Connections, Slice 07, and Slice 12 presentation to the focused follow-up that already owns Slice 11's deferred presentation change, because it is an independently verifiable outcome with its own browser proof and this slice's outcome is provable without it. Blocks scope, then the deferred presentation specification.
-6. Fail-closed radius: should one invalid registry entry keep invalidating the whole registry? Recommended: keep it unchanged, because it is a deliberate security property and the explicit free marker removes the operational reason to weaken it, since a free model no longer has to be registered as an invalid entry. Blocks risk acceptance, then AC-02.
+- None.

@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Not Started
 
-The technical design is settled and every capability this slice consumes is already ready. Implementation is blocked on six unresolved product decisions recorded under `Open Questions` in `requirements.md`, which is why the requirements status is `Draft`. They decide the registration shape, whether a free model opens a ledger, whether a ceiling stays required, what happens when a free price is withdrawn, whether the user sees freeness before selecting, and whether the registry keeps its all-or-nothing invalidation. Task 1 cannot start until at least the registration-shape and fail-closed-radius decisions are made.
+The requirements are `Approved` and the technical design is settled. All six product decisions are resolved and now live in `requirements.md` `Business Rules` rather than as questions: free is an explicit marker inside the same versioned official registration, a free model opens the session's cost ledger and reserves zero, an API-key session keeps requiring an approved positive ceiling, a withdrawn free price pauses the run as a resumable condition, presenting freeness before selection is out of scope and owned by no specification yet, and the registry keeps invalidating as a whole when any entry is untrustworthy. Every capability this slice consumes is complete and ready, so Task 1 is executable.
 
 ## Active Slice
 
@@ -135,8 +135,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Six product decisions recorded under `Open Questions` in `requirements.md` block implementation. Questions 1 and 6 block Task 1, because they decide the accepted registration shape and whether the registry keeps its all-or-nothing invalidation. Questions 2 and 3 block Task 2, because they decide whether a free model opens a ledger at all and whether an approved ceiling stays required. Question 4 blocks Task 3, because it decides whether a withdrawn free price pauses or charges. Question 5 blocks nothing here; it confirms the scope boundary against the deferred presentation specification.
-- No capability is unavailable. `capability:ai-runtime-session`, `capability:ai-runtime-governance`, and `capability:ai-runtime-observation` are all complete and ready in `specs/11-ai-runtime-governance`.
+- None. All six product decisions are resolved and recorded in `requirements.md`, and no capability is unavailable: `capability:ai-runtime-session`, `capability:ai-runtime-governance`, and `capability:ai-runtime-observation` are all complete and ready in `specs/11-ai-runtime-governance`.
 
 ## Progress Log
 

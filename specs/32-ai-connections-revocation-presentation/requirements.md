@@ -2,9 +2,9 @@
 
 ## Status
 
-Draft
+Approved
 
-Five product decisions are unresolved and are recorded under `Open Questions`. The acceptance criteria state the recommended answer so the draft is specific enough to review, not because the answer is settled. Implementation must not begin until those questions are decided.
+All five product decisions are resolved and now live in the business rules and acceptance criteria below. The correction covers every state in which the screen already refuses a refresh — revoking, revoked, unavailable, and incompatible — not only the two revocation states the original finding named.
 
 ## Outcome
 
@@ -44,7 +44,8 @@ A connection owner who has asked to revoke a personal AI connection sees a scree
 
 - The screen must never present an entitlement fact as usable at the same moment it tells the owner that the connection cannot be used.
 - Panel content and control availability are decided from one connection state, so a disabled refresh control and a populated panel can never disagree.
-- The revoking and revoked wording the screen already carries is the wording used. No new state vocabulary is introduced for a state the screen already names.
+- The correction applies to every state in which the screen already refuses a refresh: being revoked, revoked, unavailable, and incompatible. The identical contradiction and the identical unreachable wording exist in all four, so fixing only the two revocation states would leave the same defect in place.
+- The wording the screen already carries for each of those states is the wording used. No new state vocabulary is introduced for a state the screen already names.
 - Suppression is presentation. It must not be described, implemented, or relied on as an access control. The enforcement that refuses a revoking or revoked connection stays exactly where it already is.
 - A record that still exists is still listed. The screen does not hide a connection that the owner's right of access would still export.
 - Nothing this screen adds may name a provider identity, provider account or workspace value, plan detail, credential, worker or worker-profile reference, credential-removal retry count, or raw adapter error.
@@ -53,17 +54,14 @@ A connection owner who has asked to revoke a personal AI connection sees a scree
 
 ## Acceptance Criteria
 
-- [AC-01] Given a connection whose revocation has been requested or acknowledged and whose stored catalog or quota projection has not expired, when the owner opens or returns to AI Connections, then that connection's model catalog and quota panels present no model, reasoning-effort, catalog provenance, quota bucket, reset, credit, paid-continuation, or token-activity value.
-- [AC-02] Given a connection whose revocation has been requested or acknowledged, when its catalog and quota panels render, then each panel states that connection's own revocation state using the screen's existing revoking and revoked wording and offers no control that implies the suppressed facts can be refreshed.
+- [AC-01] Given a connection the screen already refuses to refresh — being revoked, revoked, unavailable, or incompatible — whose stored catalog or quota projection has not expired, when the owner opens or returns to AI Connections, then that connection's model catalog and quota panels present no model, reasoning-effort, catalog provenance, quota bucket, reset, credit, paid-continuation, or token-activity value.
+- [AC-02] Given a connection in any of those four states, when its catalog and quota panels render, then each panel states that connection's own state using the screen's existing wording for it and offers no control that implies the suppressed facts can be refreshed.
 - [AC-03] Given a revocation request succeeds while the screen is open, when the screen updates, then that connection's panels collapse in the same update that reports the revocation result, and a catalog or quota refresh that was already in flight cannot restore the suppressed facts when it returns.
-- [AC-04] Given a connection is being revoked or is revoked, when the owner reads its entry in the connections list, then the entry names that state, explains that rename and revocation are no longer available for it, and names the action the owner can still take.
+- [AC-04] Given a connection is in any state the screen already refuses to refresh, when the owner reads its entry in the connections list, then the entry names that state, explains which actions are no longer available for it, and names the action the owner can still take, which for a revoking or revoked connection is linking a replacement and never a control that re-enables the revoked one.
 - [AC-05] Given a revoked connection is still listed, when the owner reads its entry, then the screen states that its opaque reference is scheduled for removal and stops listing the connection once the existing schedule removes the record, without the screen hiding a record that still exists.
 - [AC-06] Given any suppressed panel, revocation-state message, or removal-schedule statement renders, when the screen is inspected on the supported desktop and mobile layouts, then no provider identity, plan detail, credential, worker reference, retry count, or raw adapter error appears and the screen stays keyboard-usable inside both viewports.
+- [AC-07] Given a revocation request stays pending because the paired worker is unreachable, so no credential removal has been acknowledged and no removal is scheduled, when the owner reads that connection's entry, then the screen states that new AI work is already denied and that worker-local credential removal remains outstanding until the paired worker is reachable, and it never presents the pending state as completed credential removal nor names a retry count or adapter error.
 
 ## Open Questions
 
-- Once revocation is requested, what replaces the connection's catalog and quota panels: removing them entirely, collapsing each to the screen's existing revoking and revoked message, or keeping them visible but visibly inert? Recommended: collapse each panel to the existing message, because it makes wording the screen already carries reachable, keeps the panel list parallel with the connections list, and removes the facts that read as usable, whereas removing the panels would make the panel list silently disagree with a connection the list still shows. Blocks: product requirements, then Task 1.
-- Should a revoked connection stay listed until its existing deletion schedule removes it, and should the screen say that removal is scheduled? Recommended: yes to both, because the record still exists and the owner's right of access still exports it, so hiding it would make the screen disagree with the data, and the schedule is already enforced so stating it adds transparency without adding a stored fact. Blocks: product requirements, then Task 2.
-- What should the screen say when a revocation request stays pending because the paired worker is unreachable and no credential removal has been acknowledged? Recommended: state that new AI work is already denied and that worker-local credential removal is still outstanding until the paired worker is reachable, naming no retry count and no adapter error, because "Revocation pending" alone reads as a transient delay while the owner's real question is whether the credential is gone, and the lifecycle deliberately leaves it pending rather than claiming a removal that did not happen. Blocks: product requirements, then Task 2.
-- Should this correction also cover the unavailable and incompatible connection states, which disable the same refresh controls and leave the same panels populated? Recommended: yes, extend AC-01, AC-02, and AC-04 to every state in which the screen already refuses a refresh, because the identical contradiction and the identical unreachable wording exist for those two states and fixing two of four leaves the same defect in place. Blocks: product requirements, then the scope of Tasks 1 and 2.
-- What corrective action, if any, should a revoking or revoked entry offer? Recommended: one plain sentence pointing at linking a replacement connection, with no control that re-enables the revoked one, because the workflow is required to show corrective actions and a disabled rename and revoke with no explanation is the gap, while re-enabling anything would contradict the rule that a connection is never rebound and the owner links a new one instead. Blocks: product requirements, then Task 2.
+- None.

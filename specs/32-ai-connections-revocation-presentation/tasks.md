@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Not Started
 
-The required capability is ready and the technical approach is settled, but five product decisions and one technical decision are unresolved. Both tasks are blocked on them, so the slice is blocked on its next executable task. Nothing here is blocked on an unavailable dependency, an environment failure, or a missing implementation surface.
+The requirements are `Approved`, the required capability is ready, and every decision is resolved. Each suppressed panel collapses to the wording the screen already carries; a revoked connection stays listed until its existing deletion schedule removes it and says so; an indefinitely pending revocation states that new AI work is already denied while worker-local credential removal remains outstanding, naming no retry count or adapter error; each entry offers one plain sentence pointing at linking a replacement, with no control that re-enables a revoked connection; and the correction covers all four states in which the screen already refuses a refresh. The fix stays presentation only. Task 1 is executable.
 
 ## Active Slice
 
@@ -71,25 +71,32 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Present the connection's revocation state in place of its catalog and quota facts.
-  - Status: Blocked until the panel-treatment, refresh-state scope, and read-side eligibility decisions are made.
+- [ ] Task 1 — Present the connection's own state in place of its catalog and quota facts.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
-  - Purpose: Stop the screen from presenting entitlement facts that read as usable at the same moment it says the connection is being revoked, and make the correct copy it already carries reachable.
+  - Purpose: Stop the screen from presenting entitlement facts that read as usable at the same moment it says the connection cannot be used, in every state where it already refuses a refresh, and make the correct copy it already carries reachable.
   - Owned surfaces: Derived per-connection presentation state shared by the refresh controls and the panel bodies, model catalog panel body, quota panel body, the stored catalog and quota projection reads inside the connection refresh path, asynchronous catalog and quota result handling for a connection whose revocation was requested, the refresh affordance in a suppressed panel, and the focused LiveView catalog and quota assertions.
   - Owns: AC-01, AC-02, AC-03
-  - Proof: Focused LiveView tests seed a live catalog and quota through the existing responder, request revocation, and assert that no model, reasoning-effort, provenance, bucket, reset, credit, paid-continuation, or token-activity value remains in either panel, that each panel states the connection's revocation state in the screen's existing wording, that no refresh affordance is offered, and that an asynchronous refresh result arriving after the request restores nothing.
+  - Proof: Focused LiveView tests seed a live catalog and quota through the existing responder, then drive each of the four refused states — revoking, revoked, unavailable, and incompatible — and assert that no model, reasoning-effort, provenance, bucket, reset, credit, paid-continuation, or token-activity value remains in either panel, that each panel states that connection's own state in the screen's existing wording, that no refresh affordance is offered, and that an asynchronous refresh result arriving after a revocation request restores nothing.
 
-- [ ] Task 2 — Explain the revoked connection's state and remaining options on its entry.
-  - Status: Blocked until the listing, pending-worker wording, corrective-action, and refresh-state scope decisions are made.
+- [ ] Task 2 — Explain the connection's state and remaining options on its entry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
   - Purpose: Replace a silently disabled rename and revoke with an explanation the owner can act on, and say honestly what is still outstanding and what is scheduled to be removed.
-  - Owned surfaces: Connections-list entry state explanation, the disabled rename and revoke explanation, the corrective-action line, the outstanding worker-local credential-removal statement, the revoked reference removal-schedule statement, forbidden-value assertions covering the added copy, the desktop and mobile AI Connections browser scenario, and the focused LiveView connections-list assertions.
-  - Owns: AC-04, AC-05, AC-06
-  - Proof: Focused LiveView tests assert that a revoking and a revoked entry name their state, explain that rename and revocation are unavailable, name the corrective action, state the scheduled removal for a revoked reference, and expose no provider identity, plan detail, credential, worker reference, retry count, or raw adapter error. The desktop and mobile browser matrix runs at slice verification.
+  - Owned surfaces: Connections-list entry state explanation for every refused state, the unavailable-action explanation, the corrective-action line naming a replacement link, the outstanding worker-local credential-removal statement for an indefinitely pending revocation, and the focused LiveView connections-list assertions for those statements.
+  - Owns: AC-04, AC-07
+  - Proof: Focused LiveView tests assert that an entry in each refused state names that state and which actions are unavailable, that a revoking and a revoked entry name linking a replacement as the remaining action and offer no control that re-enables the revoked connection, and that a revocation left pending by an unreachable worker states both that new AI work is already denied and that worker-local credential removal remains outstanding, without presenting it as completed and without naming a retry count or adapter error.
+
+- [ ] Task 3 — State the revoked reference's scheduled removal and prove the added copy stays safe.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 1, Task 2
+  - Purpose: Tell the owner that a revoked reference is scheduled for removal without hiding a record that still exists, and prove that everything this slice added to the screen carries no forbidden value and stays usable on both supported layouts.
+  - Owned surfaces: The revoked reference removal-schedule statement, the transition that stops listing a connection once the existing schedule removes the record, forbidden-value assertions covering every statement this slice adds, and the desktop and mobile AI Connections browser scenario.
+  - Owns: AC-05, AC-06
+  - Proof: Focused LiveView tests assert that a revoked entry states its scheduled removal, that a connection disappears from the list only once the record is actually gone rather than being hidden while it still exists, and that no suppressed panel, state message, corrective-action line, outstanding-removal statement, or schedule statement exposes a provider identity, plan detail, credential, worker reference, retry count, or raw adapter error. The desktop and mobile browser matrix runs at slice verification.
 
 ## Verification Gate
 
@@ -108,12 +115,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Panel treatment once revocation is requested: remove the panels, collapse each to the screen's existing revoking and revoked message, or keep them visible but inert. Recommended: collapse to the existing message. Blocks product requirements, then Task 1.
-- Whether a revoked connection stays listed until its existing deletion schedule removes it, and whether the screen states that removal is scheduled. Recommended: yes to both. Blocks product requirements, then Task 2.
-- What the screen says when a revocation stays pending because the paired worker is unreachable. Recommended: state that new AI work is already denied and that worker-local credential removal is still outstanding, with no retry count and no adapter error. Blocks product requirements, then Task 2.
-- Whether the same correction covers the unavailable and incompatible states, which disable the same controls and leave the same panels populated. Recommended: yes, cover every state in which the screen already refuses a refresh. Blocks product requirements, then the scope of both tasks.
-- What corrective action a revoking or revoked entry offers. Recommended: one sentence pointing at linking a replacement connection, with no control that re-enables the revoked one. Blocks product requirements, then Task 2.
-- Whether `ModelCatalogs.current_catalog/3` and `Quotas.current_quota/3` also re-check eligibility on read. Recommended: no, keep the fix presentation only, because changing `current_quota/3` alters approved AC-13 owner-projection behavior in a `Verified` slice and would require an `update-spec` this specification has no authority to make. Blocks technical design, then both tasks.
+- None. All five product decisions are resolved and recorded in `requirements.md`, and the technical decision is settled in `design.md`: the read functions keep their current contracts and the correction stays presentation only, because changing `Quotas.current_quota/3` would alter approved AC-13 owner-projection behavior inside a `Verified` slice and would require an `update-spec` on `specs/11-ai-runtime-governance` that this specification has no authority to make.
 
 ## Progress Log
 
