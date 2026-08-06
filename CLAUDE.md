@@ -26,6 +26,16 @@ Canonical project skills live under `.agents/skills/` and follow the shared Agen
 - Do not maintain a second copy of a skill for one tool.
 - Claude Code must be version `2.1.203` or newer because the project uses linked skill folders.
 
+## Communication Style
+
+Write every message to the user short and straight to the point.
+
+- Lead with the answer. Do not restate the question or narrate the steps taken to reach it.
+- Prefer a few lines over paragraphs, and paths with line numbers over quoted file contents.
+- Cut preamble, summaries of work already visible, and offers of unrequested next steps.
+- Let length follow the question: a status question gets a status answer, not a report.
+- Detail belongs in the specification files, `progress.md`, and the code, not in chat.
+
 ## Source Of Truth
 
 `README.md` describes what the project is. Approved behavior and implementation decisions belong in feature specifications.
