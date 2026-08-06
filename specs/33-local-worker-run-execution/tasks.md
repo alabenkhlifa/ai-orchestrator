@@ -108,7 +108,7 @@ Traceability:
   - Owns: AC-04, AC-05
   - Proof: Focused tests against the real `WorkerSocket` and `WorkerChannel` prove the worker joins its own execution target with a supported version and the full required-capability set, that it becomes visible as reachable, that an unsupported version or a withheld required capability is reported to the operator with its reason and not retried as a success, and that a dropped connection rejoins the same topic without widening its authorization.
 
-- [ ] Task 4 - Accept commands and own the attempt lease and durable run state.
+- [x] Task 4 - Accept commands and own the attempt lease and durable run state.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3

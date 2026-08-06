@@ -34,6 +34,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
   require Logger
 
+  alias SddOrchestrator.Worker.CommandHandler
   alias SddOrchestrator.Worker.Configuration
 
   # Must be kept in sync with the control plane's `WorkerProtocol` module —
@@ -164,10 +165,30 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     end
   end
 
-  # Handling a "command" push is Task 4's job. Until then, any inbound push is
-  # observed and ignored rather than crashing the process on an unrecognized
-  # message.
+  # Validates, acknowledges exactly once, and durably records a "start"
+  # command via `SddOrchestrator.Worker.CommandHandler`; a `cancel`,
+  # `resume`, `retry`, or `reconcile` command is refused cleanly rather than
+  # crashing this process, since their full behaviour is later work.
   @impl Slipstream
+  def handle_message(topic, "command", message, socket) do
+    ack = CommandHandler.handle_command(message, @protocol_version, socket.assigns.home)
+
+    case push(socket, topic, "acknowledge", ack) do
+      {:ok, _ref} ->
+        {:ok, socket}
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to push an acknowledgement for command " <>
+            "#{inspect(message["command_id"])}: #{inspect(reason)}"
+        )
+
+        {:ok, socket}
+    end
+  end
+
+  # Any other inbound push is observed and ignored rather than crashing the
+  # process on an unrecognized message.
   def handle_message(topic, event, message, socket) do
     Logger.info(
       "worker gateway ignoring unhandled push #{inspect(event)} on #{topic}: #{inspect(message)}"
@@ -191,6 +212,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
         |> assign(:project_id, config.project_id)
         |> assign(:topic, topic)
         |> assign(:join_params, join_params)
+        |> assign(:home, Keyword.get(opts, :home))
 
       case connect(socket, uri: uri) do
         {:ok, connecting_socket} -> {:ok, connecting_socket}
