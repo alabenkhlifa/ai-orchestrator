@@ -90,7 +90,7 @@ Traceability:
   - Owns: AC-01, AC-02
   - Proof: Focused controller and context tests prove an active authorized credential receives a gateway credential that verifies to exactly the named project and execution target, that its lifetime is bounded, and that a revoked, rotated, cross-workspace, or unknown credential is refused identically without revealing whether the project exists.
 
-- [ ] Task 2 - Establish the worker runtime, configuration, and credential custody.
+- [x] Task 2 - Establish the worker runtime, configuration, and credential custody.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
