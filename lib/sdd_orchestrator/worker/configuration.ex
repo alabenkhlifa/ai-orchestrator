@@ -15,7 +15,8 @@ defmodule SddOrchestrator.Worker.Configuration do
     :worker_credential,
     :agent_adapter,
     :agent_executable,
-    :workspace_root
+    :workspace_root,
+    :project_id
   ]
   defstruct @enforce_keys
 
@@ -25,7 +26,8 @@ defmodule SddOrchestrator.Worker.Configuration do
           worker_credential: String.t(),
           agent_adapter: String.t(),
           agent_executable: String.t(),
-          workspace_root: String.t()
+          workspace_root: String.t(),
+          project_id: String.t()
         }
 
   @agent_adapters ~w(claude_code codex)
@@ -62,7 +64,7 @@ defmodule SddOrchestrator.Worker.Configuration do
   `pairing_result` is the `%{worker: worker, credential: credential}` map
   returned by completing pairing. `cli_fields` must have
   `:control_plane_address`, `:agent_adapter`,
-  `:agent_executable`, and `:workspace_root`.
+  `:agent_executable`, `:workspace_root`, and `:project_id`.
   """
   @spec from_pairing(map(), map()) :: t()
   def from_pairing(%{worker: worker, credential: credential}, cli_fields) do
@@ -72,7 +74,8 @@ defmodule SddOrchestrator.Worker.Configuration do
       worker_credential: credential,
       agent_adapter: Map.fetch!(cli_fields, :agent_adapter),
       agent_executable: Map.fetch!(cli_fields, :agent_executable),
-      workspace_root: Map.fetch!(cli_fields, :workspace_root)
+      workspace_root: Map.fetch!(cli_fields, :workspace_root),
+      project_id: Map.fetch!(cli_fields, :project_id)
     }
   end
 
@@ -147,7 +150,8 @@ defmodule SddOrchestrator.Worker.Configuration do
            worker_credential: decoded["worker_credential"],
            agent_adapter: decoded["agent_adapter"],
            agent_executable: decoded["agent_executable"],
-           workspace_root: decoded["workspace_root"]
+           workspace_root: decoded["workspace_root"],
+           project_id: decoded["project_id"]
          }}
 
       missing_field ->
@@ -167,7 +171,8 @@ defmodule SddOrchestrator.Worker.Configuration do
       "worker_credential" => config.worker_credential,
       "agent_adapter" => config.agent_adapter,
       "agent_executable" => config.agent_executable,
-      "workspace_root" => config.workspace_root
+      "workspace_root" => config.workspace_root,
+      "project_id" => config.project_id
     }
   end
 end

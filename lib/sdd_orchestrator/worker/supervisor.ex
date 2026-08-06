@@ -11,7 +11,7 @@ defmodule SddOrchestrator.Worker.Supervisor do
 
   use Supervisor
 
-  alias SddOrchestrator.Worker.{Configuration, State}
+  alias SddOrchestrator.Worker.{Configuration, GatewayConnection, State}
 
   @doc """
   Loads the worker configuration (via `opts[:home]`, see
@@ -41,7 +41,8 @@ defmodule SddOrchestrator.Worker.Supervisor do
   @impl true
   def init(%Configuration{} = config) do
     children = [
-      {State, config}
+      {State, config},
+      {GatewayConnection, config}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

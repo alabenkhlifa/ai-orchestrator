@@ -17,7 +17,8 @@ defmodule SddOrchestrator.Worker.ConfigurationTest do
     worker_credential: "worker-credential-secret",
     agent_adapter: "claude_code",
     agent_executable: "/usr/local/bin/claude",
-    workspace_root: "/Users/dev/project"
+    workspace_root: "/Users/dev/project",
+    project_id: Ecto.UUID.generate()
   }
 
   defp valid_config, do: struct!(Configuration, @valid_fields)

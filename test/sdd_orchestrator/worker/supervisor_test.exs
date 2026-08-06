@@ -18,7 +18,8 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     worker_credential: "worker-credential-secret",
     agent_adapter: "claude_code",
     agent_executable: "/usr/local/bin/claude",
-    workspace_root: "/Users/dev/project"
+    workspace_root: "/Users/dev/project",
+    project_id: Ecto.UUID.generate()
   }
 
   defp tmp_home(context) do
@@ -67,7 +68,12 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     children = Supervisor.which_children(pid)
     ids = Enum.map(children, fn {id, _child, _type, _modules} -> id end)
 
-    assert ids == [State]
+    # Task 3 adds `GatewayConnection` as a second, independently-lived child
+    # (it dials a real address and is `restart: :temporary`, so it may already
+    # have stopped itself by the time this reads the children list); only
+    # `State` is asserted present here, matching what
+    # `WorkerSupervisor.configuration/1` still relies on.
+    assert State in ids
     refute Enum.any?(ids, fn id -> id |> to_string() |> String.contains?("Repo") end)
   end
 end

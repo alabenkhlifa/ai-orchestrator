@@ -47,6 +47,8 @@ defmodule Mix.Tasks.Worker.PairTest do
       "/usr/local/bin/claude",
       "--workspace-root",
       "/Users/dev/project",
+      "--project",
+      Ecto.UUID.generate(),
       "--home",
       home
     ]
@@ -61,6 +63,8 @@ defmodule Mix.Tasks.Worker.PairTest do
       "--agent-executable",
       "x",
       "--workspace-root",
+      "x",
+      "--project",
       "x"
     ]
 
@@ -76,6 +80,8 @@ defmodule Mix.Tasks.Worker.PairTest do
       "--agent-executable",
       "x",
       "--workspace-root",
+      "x",
+      "--project",
       "x"
     ]
 

@@ -99,7 +99,7 @@ Traceability:
   - Owns: AC-03, entity:WorkerConfiguration
   - Proof: Focused tests prove pairing stores the credential and configuration worker-locally under owner-only permissions, that a restart reuses them without a new code, that an invalid or incomplete configuration refuses startup with a typed reason rather than partially starting, and that the started tree opens no database connection and calls no control-plane context.
 
-- [ ] Task 3 - Connect and negotiate the delivery gateway.
+- [x] Task 3 - Connect and negotiate the delivery gateway.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 2

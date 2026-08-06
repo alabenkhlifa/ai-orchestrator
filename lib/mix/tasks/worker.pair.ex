@@ -5,7 +5,7 @@ defmodule Mix.Tasks.Worker.Pair do
 
       mix worker.pair --code <code> --control-plane <address> \\
         --agent claude_code --agent-executable <path> --workspace-root <path> \\
-        [--home <dir>]
+        --project <project-id> [--home <dir>]
 
   Options:
 
@@ -14,6 +14,9 @@ defmodule Mix.Tasks.Worker.Pair do
     * `--agent` (required) — `claude_code` or `codex`.
     * `--agent-executable` (required) — the agent's executable path or command.
     * `--workspace-root` (required) — the local path the agent runs against.
+    * `--project` (required) — the project id this worker's gateway connection
+      joins as its execution target (the `/worker` channel topic is scoped to
+      exactly one project per connection).
     * `--home` (optional) — overrides the worker-local storage root.
 
   Starts the full application (including the database) because pairing
@@ -38,6 +41,7 @@ defmodule Mix.Tasks.Worker.Pair do
     agent: :string,
     agent_executable: :string,
     workspace_root: :string,
+    project: :string,
     home: :string
   ]
 
@@ -50,6 +54,7 @@ defmodule Mix.Tasks.Worker.Pair do
     agent = required!(opts, :agent)
     agent_executable = required!(opts, :agent_executable)
     workspace_root = required!(opts, :workspace_root)
+    project = required!(opts, :project)
     home = Keyword.get(opts, :home)
 
     unless agent in Configuration.agent_adapters() do
@@ -68,7 +73,8 @@ defmodule Mix.Tasks.Worker.Pair do
             control_plane_address: control_plane,
             agent_adapter: agent,
             agent_executable: agent_executable,
-            workspace_root: workspace_root
+            workspace_root: workspace_root,
+            project_id: project
           })
 
         :ok = Configuration.store(config, home)

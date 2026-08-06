@@ -16,7 +16,8 @@ defmodule SddOrchestrator.Worker.PairingTest do
     control_plane_address: "http://localhost:4000",
     agent_adapter: "claude_code",
     agent_executable: "/usr/local/bin/claude",
-    workspace_root: "/Users/dev/project"
+    workspace_root: "/Users/dev/project",
+    project_id: Ecto.UUID.generate()
   }
 
   defp tmp_home do

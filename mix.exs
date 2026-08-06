@@ -79,6 +79,12 @@ defmodule SddOrchestrator.MixProject do
       # provider credentials and PKCE verifiers.
       {:req, "~> 0.5"},
       {:cloak_ecto, "~> 1.3"},
+
+      # The worker's gateway client: a maintained Phoenix channel *client*
+      # (Mint-based, no Cowboy/Bandit pulled in) with built-in reconnect and
+      # backoff, so the worker dials the control plane without a hand-written
+      # websocket client.
+      {:slipstream, "~> 1.1"},
       {:argon2_elixir, "~> 4.1"},
 
       # Short-lived RS256 GitHub App JWTs (installation-request lookup).
