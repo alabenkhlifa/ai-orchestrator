@@ -81,6 +81,7 @@ defmodule SddOrchestratorWeb.Router do
     pipe_through :worker
 
     post "/artifacts", WorkerArtifactController, :create
+    post "/gateway_credentials", WorkerGatewayCredentialController, :create
   end
 
   scope "/", SddOrchestratorWeb do

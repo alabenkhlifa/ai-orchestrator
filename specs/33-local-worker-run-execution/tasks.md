@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
 
-The requirements are `Approved`, the design carries no open question, and the required capability is ready. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Every control-plane contract the slice consumes is merged and verified. Task 1 and Task 2 are executable and independent of each other.
+The requirements are `Approved`, the design carries no open question, and the required capability is ready. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Every control-plane contract the slice consumes is merged and verified. Task 1 is complete and verified; Task 2 is executable and independent of it.
 
 ## Active Slice
 
@@ -81,7 +81,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 - Issue a project-scoped gateway credential to a paired worker.
+- [x] Task 1 - Issue a project-scoped gateway credential to a paired worker.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none

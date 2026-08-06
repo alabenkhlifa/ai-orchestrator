@@ -1,5 +1,17 @@
 # Local Worker Run Execution Progress Log
 
+### 2026-08-06 - Task 1 implemented and verified
+
+- Completed: Added `SddOrchestratorWeb.WorkerGatewayCredentialController` (`POST /worker/gateway_credentials`), the first caller of `WorkerSocket.issue/3`. It authenticates the presented pairing credential through `Devices.Pairing.authenticate_worker/1`, resolves the owning worker and re-checks the requesting credential's device workspace through `Devices.Pairing.authorize_for_workspace/2`, then issues the gateway credential. Added its focused controller test and the one router line. Work happened on `slice/33-local-worker-run-execution` in a dedicated worktree (`sdd-orchestrator-s33`), per the project's per-slice branching rule.
+- Discovery result: design.md names `authenticate_worker/1` and `authorize_for_workspace/2` as the reused authorization seam but does not say how a project resolves to the device workspace `authorize_for_workspace/2` compares against. Traced the schema and migrations to confirm this: `projects.workspace_id` is DB-constrained (`projects_workspace_storage_mode_fkey`, composite with `storage_mode`) to reference only a `kind = 'hosted'` row in `workspaces` — a device workspace is never persisted there (`workspaces_hosted_kind_only` check constraint), and a migration guard explicitly forbids any `projects` row with `storage_mode = 'device'`. So a project's own `workspace_id` can never name a device workspace directly. The only existing link between a hosted project and a device workspace is `Portability.HostedLocalRepositoryBinding` (`specs/06-project-portability`, keyed by `project_id`, naming the worker whose device workspace was proven to control that project's local repository). Task 1 resolves "the device workspace owning a project" by loading that binding, loading its bound worker, and comparing device workspaces from there. This is implementation detail consistent with, not a change to, the documented design decision, so it is recorded here rather than through `update-spec`.
+- Failed checks: None.
+- Proof receipts:
+- Proof receipt: `Task 1` — scope `Focused` — command `mix format --check-formatted` — exit `0`.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix compile --warnings-as-errors` — exit `0`.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator_web/controllers/worker_gateway_credential_controller_test.exs` — exit `0`.
+- Spec updates: `tasks.md` — checked Task 1 complete and moved slice `Status` from `Not Started` to `In Progress`. No requirement, design, or acceptance criterion changed.
+- Remaining: Task 2 (worker runtime, configuration, and credential custody) is next and independent of Task 1.
+
 ### 2026-08-05 - Specification created and approved (slice)
 
 - Completed: Created `requirements.md`, `design.md`, and `tasks.md` for the local worker that the approved delivery contract already expects. No implementation file, migration, test, or dependency changed.
