@@ -27,7 +27,6 @@ defmodule SddOrchestrator.Delivery.Worker.ArtifactUpload do
 
   @type capture :: %{
           required(:run_id) => String.t(),
-          required(:attempt_id) => String.t(),
           required(:fence) => pos_integer(),
           required(:content) => binary(),
           required(:content_type) => String.t(),
@@ -153,7 +152,6 @@ defmodule SddOrchestrator.Delivery.Worker.ArtifactUpload do
   defp declaration(capture, attrs) do
     [
       run_id: Map.fetch!(capture, :run_id),
-      attempt_id: Map.fetch!(capture, :attempt_id),
       fence: Map.fetch!(capture, :fence),
       digest: attrs.digest,
       content_type: attrs.content_type,

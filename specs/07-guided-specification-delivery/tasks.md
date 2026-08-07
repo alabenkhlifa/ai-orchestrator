@@ -2,9 +2,9 @@
 
 ## Status
 
-Verified
+In Progress
 
-The approved feature-delivery foundation is implemented and locally verified through Task 54, including the board, readiness, orchestration, worker protocol, evidence, preview, review, same-run continuation, minimized notification projection, and normalized progress activity. Its five child-consumer capabilities are published, including the Slice 08 recipient-routing contract verified from this consumer's side. No participation ownership moved into this specification. Live configured worker and coding-agent smoke proof is environment-blocked because this checkout has only unavailable production adapters and no configured execution transport; deterministic adapter, protocol, browser, repository, security, and production-build proof is green. Deployment-specific evidence and accountable privacy or legal review remain in the release gate. New implementation belongs to the focused continuation specifications.
+The approved feature-delivery foundation through Task 54 was locally verified. Task 55 is now complete: it corrected the worker artifact-upload transport, which had required a caller-declared `RunAttempt` identity no worker envelope ever transmits, to prove attempt currency by run and fence alone, exactly like the already-proven event-ingestion path, with no consumer-observable behavior change. `capability:worker-artifact-upload-transport` is ready for `specs/33-local-worker-run-execution` Task 10. Every other completed task and published capability, including the Slice 08 recipient-routing contract, is unaffected — Task 55 touched only the two files and three test files its own focused proof covers. The slice's full broad verification gate (`mix check`, the browser matrix, the production build) has not been re-run since Task 54's original pass; that full re-verification, not required for Task 55's own capability readiness, is the one remaining step before this slice can be marked `Verified` again. Live configured worker and coding-agent smoke proof remains environment-blocked because this checkout has only unavailable production adapters and no configured execution transport. Deployment-specific evidence and accountable privacy or legal review remain in the release gate.
 
 ## Active Slice
 
@@ -27,6 +27,7 @@ Provides:
 - `capability:guided-delivery-artifact-preview-boundary` — ready after `Task 54`.
 - `capability:guided-delivery-revocation-consumer` — ready after `Task 54`.
 - `capability:guided-delivery-start-disclosure` — ready after `Task 54`.
+- `capability:worker-artifact-upload-transport` — ready after `Task 55`.
 
 ## Task Size Gate
 
@@ -36,7 +37,7 @@ Provides:
 
 ## Proof Scope Gate
 
-- Applies to: Task 54.
+- Applies to: Task 54, Task 55.
 
 ## Implementation Boundary
 
@@ -424,6 +425,15 @@ Prerequisite:
   - Owns: none (foundation verification gate)
   - Depends on: Task 33, Task 36, Task 46, Task 53
   - Proof: Focused specification, capability-contract, completed-surface compatibility, notification-projection, artifact and preview, revocation-consumer, and start-disclosure handoff checks pass through task scope before readiness is recorded. Full repository, browser, security, production, and live-smoke checks remain in the slice verification gate.
+
+- [x] Task 55 - Correct worker artifact-upload attempt scoping to match the wire protocol.
+  - Size: Standard
+  - Proof scope: Focused
+  - Purpose: Prove upload attempt-currency the same way the worker protocol actually lets a worker prove anything — by run and fence — since no envelope a worker ever receives carries a `RunAttempt`'s real database identity for it to declare.
+  - Owned surfaces: `capability:worker-artifact-upload-transport`; `Delivery.ArtifactUpload.accept/3`'s request parsing and current-attempt proof (drop the caller-declared `attempt_id` field and its exact-match check, keep and rely on the existing current-fence proof); `Delivery.Worker.ArtifactUpload`'s `capture()` contract and upload declaration (drop `attempt_id`); `WorkerArtifactController`'s moduledoc and param handling; and the existing Task 52/Task 29 fixtures and tests that assert the old `attempt_id` shape.
+  - Owns: none (upload transport correction)
+  - Depends on: Task 52
+  - Proof: Focused tests prove an upload naming the run's current attempt only by run and current fence is accepted and stored identically to before, that a stale or superseded fence is refused exactly as `:stale_fence` already was, that every other existing denial (unauthorized worker, cross-project, device-authoritative, digest mismatch, oversized, unsupported type) is unchanged, and that the worker-side `capture()`/request contract no longer requires or sends an `attempt_id`.
 
 ## Verification Gate
 

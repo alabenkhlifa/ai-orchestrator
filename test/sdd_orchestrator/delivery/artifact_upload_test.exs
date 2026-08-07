@@ -159,7 +159,7 @@ defmodule SddOrchestrator.Delivery.ArtifactUploadTest do
     test "refuses metadata it cannot read at all", context do
       params = DeliveryFixtures.artifact_upload_params(context.run, context.attempt)
 
-      for missing <- ~w(run_id attempt_id fence digest content_type) do
+      for missing <- ~w(run_id fence digest content_type) do
         assert {:error, :invalid_request} =
                  ArtifactUpload.accept(
                    context.claims,
@@ -221,23 +221,13 @@ defmodule SddOrchestrator.Delivery.ArtifactUploadTest do
                ArtifactStore.fetch(other.workspace, other.project.id, accepted.ref)
     end
 
-    test "refuses an attempt that is not the run's current one", context do
-      params =
-        DeliveryFixtures.artifact_upload_params(context.run, context.attempt, %{
-          attempt_id: Ecto.UUID.generate()
-        })
-
-      assert {:error, :stale_attempt} =
-               ArtifactUpload.accept(context.claims, params, DeliveryFixtures.png_bytes())
-    end
-
     test "refuses a superseded attempt that still believes it holds the run", context do
       superseded = context.attempt
       _current = supersede(context.run, superseded)
 
       params = DeliveryFixtures.artifact_upload_params(context.run, superseded)
 
-      assert {:error, :stale_attempt} =
+      assert {:error, :stale_fence} =
                ArtifactUpload.accept(context.claims, params, DeliveryFixtures.png_bytes())
 
       assert Repo.aggregate(EvidenceArtifact, :count) == 0
@@ -297,7 +287,6 @@ defmodule SddOrchestrator.Delivery.ArtifactUploadTest do
       assert ArtifactUpload.undisclosed?(:device_authoritative)
       assert ArtifactUpload.undisclosed?(:unknown_run)
       assert ArtifactUpload.undisclosed?(:no_current_attempt)
-      assert ArtifactUpload.undisclosed?(:stale_attempt)
       assert ArtifactUpload.undisclosed?(:stale_fence)
     end
 

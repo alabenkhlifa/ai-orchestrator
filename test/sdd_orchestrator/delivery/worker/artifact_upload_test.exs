@@ -38,7 +38,6 @@ defmodule SddOrchestrator.Delivery.Worker.ArtifactUploadTest do
       content: content,
       capture: %{
         run_id: "run-1",
-        attempt_id: "attempt-1",
         fence: 3,
         content: content,
         content_type: "image/png"
@@ -65,7 +64,6 @@ defmodule SddOrchestrator.Delivery.Worker.ArtifactUploadTest do
 
       assert request.params == %{
                "run_id" => "run-1",
-               "attempt_id" => "attempt-1",
                "fence" => "3",
                "digest" => ArtifactUpload.digest(context.content),
                "content_type" => "image/png",
