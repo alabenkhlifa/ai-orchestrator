@@ -183,12 +183,6 @@ defmodule SddOrchestratorWeb.WorkerArtifactControllerTest do
       assert {:error, :not_found} = ArtifactStore.fetch(other.workspace, other.project.id, ref)
     end
 
-    test "refuses an attempt that is not the run's current one", context do
-      conn = upload(context, DeliveryFixtures.png_bytes(), %{attempt_id: Ecto.UUID.generate()})
-
-      assert refused(conn)
-    end
-
     test "refuses a superseded attempt", context do
       superseded = context.attempt
 

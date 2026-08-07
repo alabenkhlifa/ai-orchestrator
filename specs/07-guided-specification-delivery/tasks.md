@@ -4,7 +4,7 @@
 
 In Progress
 
-The approved feature-delivery foundation through Task 54 was locally verified, but implementing `specs/33-local-worker-run-execution` Task 10 found that Task 52's worker artifact-upload transport required a caller-declared `RunAttempt` identity the worker protocol never transmits to any worker — untested until a real worker actually composed it, since nothing did before Slice 33. Task 55 corrects the transport to prove attempt currency by run and fence alone, exactly like the already-proven event-ingestion path, with no consumer-observable behavior change. The slice returns to `Verified` once Task 55 is implemented and its proof passes; every other completed task, published capability, and the Slice 08 recipient-routing contract are unaffected. Live configured worker and coding-agent smoke proof remains environment-blocked because this checkout has only unavailable production adapters and no configured execution transport. Deployment-specific evidence and accountable privacy or legal review remain in the release gate.
+The approved feature-delivery foundation through Task 54 was locally verified. Task 55 is now complete: it corrected the worker artifact-upload transport, which had required a caller-declared `RunAttempt` identity no worker envelope ever transmits, to prove attempt currency by run and fence alone, exactly like the already-proven event-ingestion path, with no consumer-observable behavior change. `capability:worker-artifact-upload-transport` is ready for `specs/33-local-worker-run-execution` Task 10. Every other completed task and published capability, including the Slice 08 recipient-routing contract, is unaffected — Task 55 touched only the two files and three test files its own focused proof covers. The slice's full broad verification gate (`mix check`, the browser matrix, the production build) has not been re-run since Task 54's original pass; that full re-verification, not required for Task 55's own capability readiness, is the one remaining step before this slice can be marked `Verified` again. Live configured worker and coding-agent smoke proof remains environment-blocked because this checkout has only unavailable production adapters and no configured execution transport. Deployment-specific evidence and accountable privacy or legal review remain in the release gate.
 
 ## Active Slice
 
@@ -426,7 +426,7 @@ Prerequisite:
   - Depends on: Task 33, Task 36, Task 46, Task 53
   - Proof: Focused specification, capability-contract, completed-surface compatibility, notification-projection, artifact and preview, revocation-consumer, and start-disclosure handoff checks pass through task scope before readiness is recorded. Full repository, browser, security, production, and live-smoke checks remain in the slice verification gate.
 
-- [ ] Task 55 - Correct worker artifact-upload attempt scoping to match the wire protocol.
+- [x] Task 55 - Correct worker artifact-upload attempt scoping to match the wire protocol.
   - Size: Standard
   - Proof scope: Focused
   - Purpose: Prove upload attempt-currency the same way the worker protocol actually lets a worker prove anything — by run and fence — since no envelope a worker ever receives carries a `RunAttempt`'s real database identity for it to declare.

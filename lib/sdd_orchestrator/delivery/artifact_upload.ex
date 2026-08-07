@@ -48,7 +48,6 @@ defmodule SddOrchestrator.Delivery.ArtifactUpload do
           | :device_authoritative
           | :unknown_run
           | :no_current_attempt
-          | :stale_attempt
           | :stale_fence
           | :invalid_request
           | ArtifactStore.error()
@@ -62,7 +61,6 @@ defmodule SddOrchestrator.Delivery.ArtifactUpload do
     device_authoritative
     unknown_run
     no_current_attempt
-    stale_attempt
     stale_fence
   )a
 
@@ -88,7 +86,6 @@ defmodule SddOrchestrator.Delivery.ArtifactUpload do
          {:ok, authority} <- uploadable_authority(project_id),
          {:ok, run} <- run(authority, project_id, request),
          {:ok, attempt} <- current_attempt(authority, project_id, run),
-         :ok <- current_attempt?(attempt, request),
          :ok <- current_fence?(attempt, request) do
       store(authority, project_id, request, content)
     end
@@ -102,7 +99,6 @@ defmodule SddOrchestrator.Delivery.ArtifactUpload do
   # not be answered before the caller has proved it may upload at all.
   defp request(params) when is_map(params) do
     with {:ok, run_id} <- identifier(params["run_id"]),
-         {:ok, attempt_id} <- identifier(params["attempt_id"]),
          {:ok, fence} <- fence(params["fence"]),
          {:ok, digest} <- declared(params["digest"]),
          {:ok, content_type} <- declared(params["content_type"]),
@@ -110,7 +106,6 @@ defmodule SddOrchestrator.Delivery.ArtifactUpload do
       {:ok,
        %{
          run_id: run_id,
-         attempt_id: attempt_id,
          fence: fence,
          digest: digest,
          content_type: content_type,
@@ -206,12 +201,6 @@ defmodule SddOrchestrator.Delivery.ArtifactUpload do
       :error -> {:error, :no_current_attempt}
     end
   end
-
-  # The upload must name the attempt that is current, not merely one the run
-  # once had, so a worker replaced between capture and upload cannot attach its
-  # bytes to the run it no longer owns.
-  defp current_attempt?(%RunAttempt{id: attempt_id}, %{attempt_id: attempt_id}), do: :ok
-  defp current_attempt?(_attempt, _request), do: {:error, :stale_attempt}
 
   defp current_fence?(%RunAttempt{fence_token: fence}, %{fence: fence}), do: :ok
   defp current_fence?(_attempt, _request), do: {:error, :stale_fence}

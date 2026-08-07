@@ -148,7 +148,6 @@ defmodule SddOrchestrator.DeliveryFixtures do
 
     %{
       "run_id" => Map.get(attrs, :run_id, run.id),
-      "attempt_id" => Map.get(attrs, :attempt_id, attempt.id),
       "fence" => to_string(Map.get(attrs, :fence, attempt.fence_token)),
       "digest" => Map.get(attrs, :digest, content_digest(content)),
       "content_type" => Map.get(attrs, :content_type, "image/png"),
