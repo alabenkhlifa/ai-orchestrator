@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Blocked
 
-The requirements are `Approved`, the design carries no open question, and the required capability is ready. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Every control-plane contract the slice consumes is merged and verified. Task 1 is complete and verified; Task 2 is executable and independent of it.
+The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 9 are complete and verified. Task 10 discovered that the consumed-unchanged worker artifact-upload transport (`specs/07` Task 52) required a caller-declared `RunAttempt` identity no worker envelope ever transmits — untested until this task became its first real composer. `specs/07` Task 55 corrects it; Task 10 is blocked until `capability:worker-artifact-upload-transport` is ready, and resumes with no scope change to this task's own plan once it is.
 
 ## Active Slice
 
@@ -15,6 +15,7 @@ Deliver the local worker that the approved delivery contract already expects: pa
 Requires:
 
 - `capability:workspace-bound-local-worker-authorization` — provider `specs/02-local-project-onboarding#Task 3` — required before `Task 1`.
+- `capability:worker-artifact-upload-transport` — provider `specs/07-guided-specification-delivery#Task 55` — required before `Task 10`.
 
 Provides:
 
