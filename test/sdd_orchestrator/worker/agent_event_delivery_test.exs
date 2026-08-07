@@ -228,8 +228,8 @@ defmodule SddOrchestrator.Worker.AgentEventDeliveryTest do
     end
   end
 
-  describe "a clean successful completion leaves the workspace held for the next task" do
-    test "the final progress event reaches the channel and the lock stays held with lifecycle accepted",
+  describe "a clean successful completion runs the required checks and completes verification" do
+    test "each required check reports its own evidence event, then verification completes and the lock releases",
          %{control_plane_address: base} do
       %{project: project, feature: feature, run: run, credential: credential, worker: worker} =
         paired_and_bound_project()
@@ -245,7 +245,16 @@ defmodule SddOrchestrator.Worker.AgentEventDeliveryTest do
 
       configure(Fixture.streaming_script(lines))
 
-      {command, envelope, _attempt} = enqueue_start_with_real_repository(project, feature, run)
+      required_checks = [
+        %{"name" => "first", "command" => "true"},
+        %{"name" => "second", "command" => "true"}
+      ]
+
+      {command, envelope, _attempt} =
+        enqueue_start_with_real_repository(project, feature, run,
+          required_checks: required_checks
+        )
+
       EnvelopeSource.script(command.id, envelope)
 
       :ok = PubSub.subscribe(SddOrchestrator.PubSub, WorkerChannel.topic(project.id))
@@ -269,15 +278,43 @@ defmodule SddOrchestrator.Worker.AgentEventDeliveryTest do
 
       refute final["event_type"] in ~w(blocked failed)
 
-      # A few more ticks get a chance to run so a wrongly-added terminal
-      # transition would have had time to happen.
-      Process.sleep(5 * @observe_interval)
+      assert_receive {:worker_event,
+                      %{
+                        "event_type" => "evidence",
+                        "source" => "check",
+                        "sequence" => 4,
+                        "payload" => %{"name" => "first", "outcome" => "passed"}
+                      }},
+                     3_000
+
+      assert_receive {:worker_event,
+                      %{
+                        "event_type" => "evidence",
+                        "source" => "check",
+                        "sequence" => 5,
+                        "payload" => %{"name" => "second", "outcome" => "passed"}
+                      }},
+                     3_000
+
+      assert_receive {:worker_event,
+                      %{
+                        "event_type" => "verification_completed",
+                        "source" => "worker",
+                        "sequence" => 6
+                      } = completion},
+                     3_000
 
       {:ok, manifest} = ProtocolCodec.manifest(envelope)
+      assert completion["payload"]["branch"] == manifest.target_branch
+      assert completion["payload"]["revision_id"] == manifest.effective_revision_id
+
       {:ok, workspace} = Workspace.prepare(manifest)
 
-      assert File.exists?(Path.join(workspace, "run.lock"))
-      assert {:ok, %{current: %{lifecycle: "accepted"}}} = RunState.load(home)
+      wait_until(fn ->
+        match?({:ok, %{current: %{lifecycle: "verification_completed"}}}, RunState.load(home))
+      end)
+
+      refute File.exists?(Path.join(workspace, "run.lock"))
     end
   end
 
@@ -599,17 +636,27 @@ defmodule SddOrchestrator.Worker.AgentEventDeliveryTest do
   # `ExecutionPreparationTest.enqueue_start_with_real_repository/3`), so the
   # worker's own `ExecutionPreparer` (Task 5) can actually prepare a real
   # workspace and branch and this test's agent has somewhere real to launch.
+  # `required_checks` defaults to a single fast, deterministic no-op rather
+  # than the manifest fixture's own default (real `mix format`/`mix test`
+  # commands) — once `RequiredCheckRunner` (Task 9) is wired in, every test
+  # here that reaches a clean agent exit actually shells out to run its
+  # attempt's required checks in this fixture repository, which has no
+  # `mix.exs` at all. Only `RequiredCheckRunnerTest` and the test below that
+  # is specifically about the check-running behaviour itself need anything
+  # slower or more elaborate.
   defp enqueue_start_with_real_repository(project, feature, run, attrs \\ []) do
     attrs = Map.new(attrs)
     attempt_number = Map.get(attrs, :attempt_number, 1)
     fence_token = Map.get(attrs, :fence_token, attempt_number)
+    required_checks = Map.get(attrs, :required_checks, [%{"name" => "noop", "command" => "true"}])
 
     probe =
       DeliveryProtocolFixtures.manifest(%{
         "project_id" => project.id,
         "feature_id" => feature.id,
         "run_id" => run.id,
-        "attempt_number" => attempt_number
+        "attempt_number" => attempt_number,
+        "required_checks" => required_checks
       })
 
     {:ok, _workspace} = Workspace.prepare(probe)
@@ -633,7 +680,8 @@ defmodule SddOrchestrator.Worker.AgentEventDeliveryTest do
         "run_id" => run.id,
         "attempt_number" => attempt_number,
         "repository_base_revision" => revision,
-        "continuation" => continuation
+        "continuation" => continuation,
+        "required_checks" => required_checks
       })
 
     digest = ExecutionManifest.digest(manifest)

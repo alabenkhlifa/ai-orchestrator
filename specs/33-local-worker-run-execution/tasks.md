@@ -153,7 +153,7 @@ Traceability:
   - Owns: AC-11, AC-12
   - Proof: Focused tests prove progress, evidence, blocking-question, and agent-failure events reach the channel in order with monotonic sequences, that a reconnect mid-run re-delivers nothing the control plane already accepted, that an agent claim of verification completion or workspace readiness is dropped with its own reason, that credential-shaped content is refused, and that the attempt reaches its terminal state with the lease and lock released.
 
-- [ ] Task 9 - Run the attempt's required checks.
+- [x] Task 9 - Run the attempt's required checks.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8

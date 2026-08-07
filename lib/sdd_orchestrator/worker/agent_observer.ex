@@ -113,14 +113,17 @@ defmodule SddOrchestrator.Worker.AgentObserver do
   @doc """
   Releases the attempt's process lock and records its terminal lifecycle.
 
-  Called exactly once, only when the agent's own observation reports a
-  `"blocked"` or `"failed"` terminal event — never for a clean successful
-  completion, which leaves the lock held and `RunState.current.lifecycle`
-  as `"accepted"` for `specs/33-local-worker-run-execution` Task 9 (the
-  required-check runner) to continue using the same locked workspace.
+  Called exactly once: when the agent's own observation reports a
+  `"blocked"` or `"failed"` terminal event, or when
+  `SddOrchestrator.Worker.RequiredCheckRunner` reports the attempt's own
+  batch outcome as `"failed"` or `"verification_completed"` after a clean
+  agent exit. Either way this is the attempt's one true terminal transition;
+  nothing here distinguishes which caller reached it, since releasing the
+  lock and recording the lifecycle is the same effect regardless of source.
   """
   @spec finish(map(), String.t(), String.t() | nil) :: :ok | {:error, term()}
-  def finish(envelope, terminal, home_override \\ nil) when terminal in ~w(blocked failed) do
+  def finish(envelope, terminal, home_override \\ nil)
+      when terminal in ~w(blocked failed verification_completed) do
     with {:ok, manifest} <- ProtocolCodec.manifest(envelope),
          {:ok, lock} <- ProcessLock.acquire(manifest, envelope["fence_token"]),
          :ok <- ProcessLock.release(lock) do

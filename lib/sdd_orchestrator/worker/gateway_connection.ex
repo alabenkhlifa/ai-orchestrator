@@ -38,6 +38,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   alias SddOrchestrator.Worker.CommandHandler
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.ExecutionPreparer
+  alias SddOrchestrator.Worker.RequiredCheckRunner
   alias SddOrchestrator.Worker.RunState
 
   # Must be kept in sync with the control plane's `WorkerProtocol` module —
@@ -77,7 +78,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   # `deliver_events/3`).
   @event_ack_timeout 5_000
 
-  @terminal_event_types ~w(blocked failed)
+  @terminal_event_types ~w(blocked failed verification_completed)
 
   @doc "The protocol version this worker announces (kept in sync with `WorkerProtocol.version/0`)."
   @spec protocol_version() :: pos_integer()
@@ -263,11 +264,11 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
       {:error, :agent_exited} ->
         Logger.info(
           "worker gateway agent observation ended for command " <>
-            "#{inspect(envelope["command_id"])}: the agent exited with nothing further to " <>
-            "observe and no terminal event"
+            "#{inspect(envelope["command_id"])}: the agent exited cleanly; running its " <>
+            "required checks"
         )
 
-        {:noreply, socket}
+        run_required_checks(socket, envelope)
 
       {:error, reason} ->
         Logger.error(
@@ -276,6 +277,38 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
         )
 
         {:noreply, socket}
+    end
+  end
+
+  # Fires once the agent's own observation loop has nothing further to
+  # observe and reported no terminal event of its own — the hand-off point
+  # `AgentObserver`'s Task 8 moduledoc names as this task's own to fill.
+  # Verification completion is proved here, from the attempt's own
+  # required-check contract, and never asserted by the agent (see
+  # `RequiredCheckRunner`). A runner-level failure (an unparseable manifest, an
+  # unprovable working directory, unreadable run state, or an unresolvable
+  # `HEAD`) is refused and logged exactly like `prepare_execution/3`'s own
+  # refusal branch: no event delivered, no lock touched, nothing forced into
+  # a terminal state.
+  defp run_required_checks(socket, envelope) do
+    case RequiredCheckRunner.run(envelope, socket.assigns.home, check_runner_opts(socket)) do
+      {:ok, %{events: events, terminal: terminal}} ->
+        continue_delivery(socket, envelope, events, terminal)
+
+      {:error, reason} ->
+        Logger.error(
+          "worker refused to run required checks for command " <>
+            "#{inspect(envelope["command_id"])}: #{inspect(reason)}"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
+  defp check_runner_opts(socket) do
+    case socket.assigns[:check_timeout_ms] do
+      nil -> []
+      value -> [check_timeout_ms: value]
     end
   end
 
@@ -487,6 +520,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
         |> assign(:join_params, join_params)
         |> assign(:home, Keyword.get(opts, :home))
         |> assign(:observe_interval, Keyword.get(opts, :observe_interval, @observe_interval))
+        |> assign(:check_timeout_ms, Keyword.get(opts, :check_timeout_ms))
 
       case connect(socket, uri: uri) do
         {:ok, connecting_socket} -> {:ok, connecting_socket}

@@ -24,7 +24,7 @@ defmodule SddOrchestrator.Worker.RunState do
   alias SddOrchestrator.Worker.Configuration
 
   @file_name "run_state.json"
-  @lifecycle_states ~w(accepted blocked failed stopped)
+  @lifecycle_states ~w(accepted blocked failed stopped verification_completed)
 
   @enforce_keys [
     :command_id,
