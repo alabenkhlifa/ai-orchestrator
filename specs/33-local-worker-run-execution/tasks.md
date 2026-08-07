@@ -117,7 +117,7 @@ Traceability:
   - Owns: AC-06, AC-07, entity:WorkerRunState
   - Proof: Focused tests prove a start command is validated against the attempt it names and acknowledged exactly once, that an identical repeated command is acknowledged as a duplicate without executing again, that a command naming a superseded attempt or carrying a stale fence token is refused with no process started, that an attempt already running under a superseded fence stops, and that run state survives a worker restart.
 
-- [ ] Task 5 - Prepare the isolated workspace and feature branch.
+- [x] Task 5 - Prepare the isolated workspace and feature branch.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4

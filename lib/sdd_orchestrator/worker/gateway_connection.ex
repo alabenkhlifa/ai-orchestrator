@@ -36,6 +36,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
   alias SddOrchestrator.Worker.CommandHandler
   alias SddOrchestrator.Worker.Configuration
+  alias SddOrchestrator.Worker.ExecutionPreparer
 
   # Must be kept in sync with the control plane's `WorkerProtocol` module —
   # see the moduledoc. A remote worker binary has no access to that module
@@ -175,6 +176,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
     case push(socket, topic, "acknowledge", ack) do
       {:ok, _ref} ->
+        if ack["status"] == "accepted", do: prepare_execution(topic, message, socket)
         {:ok, socket}
 
       {:error, reason} ->
@@ -195,6 +197,32 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     )
 
     {:ok, socket}
+  end
+
+  # An accepted command is prepared for execution only after its
+  # acknowledgement is on the wire — the acknowledgement is this worker's
+  # answer to the command itself, while workspace preparation is a separate,
+  # later effect the control plane observes as an event.
+  defp prepare_execution(topic, message, socket) do
+    case ExecutionPreparer.prepare(message, socket.assigns.home) do
+      {:ok, event} ->
+        case push(socket, topic, "event", event) do
+          {:ok, _ref} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error(
+              "worker gateway failed to push the workspace_ready event for command " <>
+                "#{inspect(message["command_id"])}: #{inspect(reason)}"
+            )
+        end
+
+      {:error, reason} ->
+        Logger.error(
+          "worker refused to prepare execution for command " <>
+            "#{inspect(message["command_id"])}: #{inspect(reason)}"
+        )
+    end
   end
 
   defp establish(%Configuration{} = config, opts) do

@@ -40,6 +40,12 @@ defmodule SddOrchestrator.Worker.Supervisor do
 
   @impl true
   def init(%Configuration{} = config) do
+    # The only place that connects the paired configuration's workspace root
+    # to `Delivery.Worker.Workspace.root/0`, which reads it from application
+    # env rather than a passed-in value — set once, before anything that
+    # might prepare a run workspace starts.
+    Application.put_env(:sdd_orchestrator, :worker_workspace_root, config.workspace_root)
+
     children = [
       {State, config},
       {GatewayConnection, config}
