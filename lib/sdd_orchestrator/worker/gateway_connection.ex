@@ -305,12 +305,23 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     end
   end
 
+  # `RequiredCheckRunner` uploads each check's captured output through the
+  # same signed gateway credential this socket already obtained in
+  # `establish/2` (never a second one) and the same control-plane address the
+  # socket itself dialed. `:req_options` is a test-only seam — production
+  # never sets it — that lets a test stub the artifact transport without a
+  # live control plane, threaded from `establish/2`'s own `opts[:req_options]`.
   defp check_runner_opts(socket) do
-    case socket.assigns[:check_timeout_ms] do
-      nil -> []
-      value -> [check_timeout_ms: value]
-    end
+    [
+      artifact_base_url: socket.assigns.config.control_plane_address,
+      artifact_token: socket.assigns.gateway_credential
+    ]
+    |> maybe_put(:check_timeout_ms, socket.assigns[:check_timeout_ms])
+    |> maybe_put(:req_options, socket.assigns[:artifact_req_options])
   end
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 
   # An accepted command is prepared for execution only after its
   # acknowledgement is on the wire — the acknowledgement is this worker's
@@ -521,6 +532,8 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
         |> assign(:home, Keyword.get(opts, :home))
         |> assign(:observe_interval, Keyword.get(opts, :observe_interval, @observe_interval))
         |> assign(:check_timeout_ms, Keyword.get(opts, :check_timeout_ms))
+        |> assign(:gateway_credential, token)
+        |> assign(:artifact_req_options, Keyword.get(opts, :req_options))
 
       case connect(socket, uri: uri) do
         {:ok, connecting_socket} -> {:ok, connecting_socket}

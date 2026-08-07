@@ -16,6 +16,15 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
   every `SddOrchestrator.Delivery.X` reference is checked against an
   explicit allowlist of `X`s; anything not on it — including a new
   Repo-backed context added later — fails closed.
+
+  `SddOrchestrator.Accounts` gets the same treatment for exactly one shape:
+  a bare, field-less `%SddOrchestrator.Accounts.PersonalWorkspace{}` struct
+  literal. `RequiredCheckRunner` builds one to select
+  `ArtifactUpload.upload/4`'s hosted-project clause, which dispatches purely
+  on the struct's shape and never reads a field off it — no `Repo` call, no
+  query, no `Accounts` context function invoked, so it violates none of this
+  check's real intent. Every other `SddOrchestrator.Accounts.X` reference
+  still fails closed, exactly like the `Delivery` allowlist above.
   """
 
   use ExUnit.Case, async: true
@@ -25,7 +34,6 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
     "Ecto.Repo",
     "SddOrchestrator.Devices",
     "SddOrchestrator.Projects",
-    "SddOrchestrator.Accounts",
     "SddOrchestrator.Portability"
   ]
 
@@ -43,7 +51,13 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
     ProtocolLimits
   )
 
+  # The one `Accounts` struct this worker may reference: a bare, field-less
+  # literal used only to select an `ArtifactUpload.upload/4` dispatch clause
+  # (see the moduledoc). Never a database lookup.
+  @allowed_accounts_modules ~w(PersonalWorkspace)
+
   @delivery_reference ~r/SddOrchestrator\.Delivery\.([A-Za-z0-9_]+)/
+  @accounts_reference ~r/SddOrchestrator\.Accounts\.([A-Za-z0-9_]+)/
 
   @runtime_paths Path.wildcard("lib/sdd_orchestrator/worker/**/*.ex") ++
                    ["lib/mix/tasks/worker.start.ex"]
@@ -62,6 +76,12 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
         assert submodule in @allowed_delivery_modules,
                "#{path} unexpectedly references SddOrchestrator.Delivery.#{submodule}, " <>
                  "which is not on the allowlisted set of pure worker-side primitives"
+      end
+
+      for [_full, submodule] <- Regex.scan(@accounts_reference, source) do
+        assert submodule in @allowed_accounts_modules,
+               "#{path} unexpectedly references SddOrchestrator.Accounts.#{submodule}, " <>
+                 "which is not the allowlisted bare PersonalWorkspace struct literal"
       end
     end
   end

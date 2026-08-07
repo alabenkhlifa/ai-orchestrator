@@ -4,7 +4,7 @@
 
 In Progress
 
-The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 9 are complete and verified. Task 10 previously found that the consumed-unchanged worker artifact-upload transport (`specs/07` Task 52) required a caller-declared `RunAttempt` identity no worker envelope ever transmits — untested until this task became its first real composer. `specs/07` Task 55 corrected it and `capability:worker-artifact-upload-transport` is ready (merged from `slice/07-guided-specification-delivery` into this branch); Task 10 resumes with no scope change to this task's own plan.
+The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 10 are complete and verified. Task 11 (cancel/resume/retry/reconcile) depends on Task 4 and Task 8, both complete, and is next.
 
 ## Active Slice
 
@@ -163,7 +163,7 @@ Traceability:
   - Owns: AC-13
   - Proof: Focused tests prove each check in the attempt's contract runs in the proven directory and reports its own evidence event, that a failing check produces a failed outcome rather than a completion, that a timed-out or unrunnable check is reported with its own reason, and that verification completion is emitted only from real check outcomes and never from agent output.
 
-- [ ] Task 10 - Upload evidence artifacts.
+- [x] Task 10 - Upload evidence artifacts.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 9

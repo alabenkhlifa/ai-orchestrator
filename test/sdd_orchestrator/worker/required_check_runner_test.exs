@@ -72,10 +72,12 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunnerTest do
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.ClaudeCodeCliFixture, as: Fixture
   alias SddOrchestrator.Delivery.AgentAdapter
+  alias SddOrchestrator.Delivery.ArtifactStore
   alias SddOrchestrator.Delivery.CommandOutbox
   alias SddOrchestrator.Delivery.CommandTransport.Channel, as: Transport
   alias SddOrchestrator.Delivery.ExecutionManifest
   alias SddOrchestrator.Delivery.ProtocolCodec
+  alias SddOrchestrator.Delivery.Worker.ArtifactUpload
   alias SddOrchestrator.Delivery.Worker.Workspace
   alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.DeliveryProtocolFixtures
@@ -88,6 +90,8 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunnerTest do
   alias SddOrchestrator.Worker.RequiredCheckRunnerEnvelopeSource, as: EnvelopeSource
   alias SddOrchestrator.Worker.RunState
   alias SddOrchestratorWeb.WorkerChannel
+
+  @stub SddOrchestrator.Worker.RequiredCheckRunnerTest.ArtifactStub
 
   # Fast enough to keep the suite quick, long enough that a slow CI tick
   # never races the assertions below.
@@ -318,6 +322,110 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunnerTest do
     end
   end
 
+  describe "AC-14: each check's captured output is uploaded as a real evidence artifact" do
+    test "a passing check's evidence event carries a real artifact_ref whose stored content matches what was captured",
+         %{control_plane_address: base} do
+      required_checks = [%{"name" => "captured", "command" => "printf 'captured output'"}]
+
+      %{project: project, personal_workspace: personal_workspace, pid: pid} =
+        start_attempt(base, required_checks)
+
+      on_exit(fn -> stop_gateway(pid) end)
+
+      assert_receive {:worker_event, %{"event_type" => "workspace_ready"}}, 3_000
+      assert_receive {:worker_event, %{"event_type" => "progress"}}, 3_000
+
+      assert_receive {:worker_event,
+                      %{
+                        "event_type" => "evidence",
+                        "payload" => %{"name" => "captured", "outcome" => "passed"} = payload
+                      }},
+                     3_000
+
+      assert is_binary(payload["artifact_ref"])
+
+      assert {:ok, artifact} =
+               ArtifactStore.fetch(personal_workspace, project.id, payload["artifact_ref"])
+
+      assert artifact.content == "captured output"
+      assert artifact.digest == payload["digest"]
+    end
+
+    test "an oversized captured output still delivers its own real evidence event with no artifact_ref",
+         %{control_plane_address: base} do
+      required_checks = [%{"name" => "big", "command" => "yes | head -c 6000000"}]
+
+      %{pid: pid} = start_attempt(base, required_checks)
+
+      on_exit(fn -> stop_gateway(pid) end)
+
+      assert_receive {:worker_event, %{"event_type" => "workspace_ready"}}, 3_000
+      assert_receive {:worker_event, %{"event_type" => "progress"}}, 3_000
+
+      assert_receive {:worker_event,
+                      %{
+                        "event_type" => "evidence",
+                        "payload" =>
+                          %{"name" => "big", "outcome" => "passed", "exit_code" => 0} = payload
+                      }},
+                     8_000
+
+      assert payload["artifact_ref"] == nil
+
+      assert_receive {:worker_event, %{"event_type" => "verification_completed"}}, 3_000
+    end
+
+    test "a transient transport failure is retried against the same capture instead of losing the artifact",
+         %{control_plane_address: base} do
+      required_checks = [%{"name" => "flaky", "command" => "printf 'retry me'"}]
+
+      content = "retry me"
+      ref = ArtifactStore.ref_for(ArtifactUpload.digest(content))
+      test_pid = self()
+
+      Req.Test.stub(@stub, fn conn ->
+        case Process.get(:required_check_runner_test_upload_attempt, 0) do
+          0 ->
+            Process.put(:required_check_runner_test_upload_attempt, 1)
+            Req.Test.transport_error(conn, :econnrefused)
+
+          _already_failed_once ->
+            send(test_pid, :second_upload_attempt)
+
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(
+              201,
+              Jason.encode!(%{"ref" => ref, "digest" => ArtifactUpload.digest(content)})
+            )
+        end
+      end)
+
+      %{pid: pid} =
+        start_attempt(base, required_checks, req_options: [plug: {Req.Test, @stub}])
+
+      Req.Test.allow(@stub, self(), pid)
+
+      on_exit(fn -> stop_gateway(pid) end)
+
+      assert_receive {:worker_event, %{"event_type" => "workspace_ready"}}, 3_000
+      assert_receive {:worker_event, %{"event_type" => "progress"}}, 3_000
+
+      assert_receive {:worker_event,
+                      %{
+                        "event_type" => "evidence",
+                        "payload" => %{
+                          "name" => "flaky",
+                          "outcome" => "passed",
+                          "artifact_ref" => ^ref
+                        }
+                      }},
+                     3_000
+
+      assert_received :second_upload_attempt
+    end
+  end
+
   # --- setup helpers -----------------------------------------------------
 
   defp clean_exit_lines do
@@ -334,8 +442,14 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunnerTest do
   # to `assert_receive` from here on. Returns the started connection's `pid`
   # so the caller can `stop_gateway/1` it on exit.
   defp start_attempt(base, required_checks, opts \\ []) do
-    %{project: project, feature: feature, run: run, credential: credential, worker: worker} =
-      paired_and_bound_project()
+    %{
+      project: project,
+      feature: feature,
+      run: run,
+      credential: credential,
+      worker: worker,
+      personal_workspace: personal_workspace
+    } = paired_and_bound_project()
 
     {command, envelope, attempt} =
       enqueue_start_with_real_repository(project, feature, run, required_checks)
@@ -348,11 +462,9 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunnerTest do
     config = build_config(base, credential, project.id, worker.id)
 
     start_opts =
-      [home: home, observe_interval: @observe_interval] ++
-        case Keyword.fetch(opts, :check_timeout_ms) do
-          {:ok, value} -> [check_timeout_ms: value]
-          :error -> []
-        end
+      [home: home, observe_interval: @observe_interval]
+      |> maybe_add(opts, :check_timeout_ms)
+      |> maybe_add(opts, :req_options)
 
     {:ok, pid} = GatewayConnection.start_link(config, start_opts)
 
@@ -365,8 +477,16 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunnerTest do
       command: command,
       attempt: attempt,
       home: home,
-      pid: pid
+      pid: pid,
+      personal_workspace: personal_workspace
     }
+  end
+
+  defp maybe_add(start_opts, opts, key) do
+    case Keyword.fetch(opts, key) do
+      {:ok, value} -> start_opts ++ [{key, value}]
+      :error -> start_opts
+    end
   end
 
   # --- helpers -------------------------------------------------------------
@@ -542,7 +662,8 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunnerTest do
       run: run,
       worker: worker,
       credential: credential,
-      device_workspace: device_workspace
+      device_workspace: device_workspace,
+      personal_workspace: personal_workspace
     }
   end
 

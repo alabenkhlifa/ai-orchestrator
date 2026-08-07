@@ -23,8 +23,23 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
   Every check runs, even after an earlier one has already failed, because
   full evidence — not just the first failure — is the point of a required
   check contract.
+
+  Each check's captured stdout+stderr is also uploaded through
+  `SddOrchestrator.Delivery.Worker.ArtifactUpload`, using the same signed
+  gateway credential the worker's socket already carries (see
+  `GatewayConnection.check_runner_opts/1`). The project's storage authority is
+  always a bare `%SddOrchestrator.Accounts.PersonalWorkspace{}` literal here —
+  this worker's projects are always hosted, and `ArtifactUpload.upload/4`
+  dispatches on that struct's shape alone, never a field on it, so no
+  database lookup is ever needed to build one. A successful upload names its
+  reference on the evidence event's payload; a failed one (transport or
+  permanent) is logged and simply leaves the reference off — the check's own
+  `outcome` and the batch's completion gating never depend on it.
   """
 
+  require Logger
+
+  alias SddOrchestrator.Accounts.PersonalWorkspace
   alias SddOrchestrator.Delivery.ProtocolCodec
   alias SddOrchestrator.Delivery.Worker.ArtifactUpload
   alias SddOrchestrator.Delivery.Worker.Branch
@@ -37,6 +52,15 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
   # never override this; tests do, via `opts[:check_timeout_ms]`, the same
   # seam `GatewayConnection` already uses for `:observe_interval`.
   @check_timeout_ms 600_000
+
+  # A hosted project's artifact endpoint is idempotent by digest (see
+  # `ArtifactUpload`'s own moduledoc), so a transient transport failure can be
+  # retried without risk of storing a duplicate. Three total attempts with a
+  # short fixed delay between them is enough to ride out a blip without
+  # holding up the rest of the batch; production callers never override the
+  # delay, tests do, via `opts[:upload_retry_delay_ms]`.
+  @upload_attempts 3
+  @upload_retry_delay_ms 200
 
   @doc """
   Runs every required check in the accepted command envelope's manifest and
@@ -74,7 +98,9 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
           directory,
           commit_sha,
           last_sequence,
-          timeout
+          timeout,
+          manifest.project_id,
+          opts
         )
 
       if all_passed? do
@@ -96,12 +122,22 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
     end
   end
 
-  defp run_checks(checks, envelope, directory, commit_sha, start_sequence, timeout) do
+  defp run_checks(
+         checks,
+         envelope,
+         directory,
+         commit_sha,
+         start_sequence,
+         timeout,
+         project_id,
+         opts
+       ) do
     checks
     |> Enum.with_index(1)
     |> Enum.map_reduce(true, fn {check, index}, all_passed? ->
       sequence = start_sequence + index
       {outcome, exit_code, duration_ms, content} = execute_check(check, directory, timeout)
+      artifact_ref = upload_artifact(project_id, envelope, check, content, opts)
 
       event =
         evidence_event(
@@ -112,11 +148,67 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
           exit_code,
           duration_ms,
           commit_sha,
-          content
+          content,
+          artifact_ref
         )
 
       {event, all_passed? and outcome == "passed"}
     end)
+  end
+
+  # Uploads the same `content` binary `evidence_event/9` digests, through the
+  # project's storage authority (always hosted for this worker — see the
+  # moduledoc). A transient transport failure is retried a bounded number of
+  # times against the exact same capture, which cannot duplicate the artifact
+  # since the endpoint is idempotent by digest. Any other failure, or transport
+  # failure surviving every retry, is logged and answered `nil` rather than
+  # raised — an evidence event is always delivered, with or without a
+  # reference.
+  defp upload_artifact(project_id, envelope, check, content, opts) do
+    capture = %{
+      run_id: envelope["run_id"],
+      fence: envelope["fence_token"],
+      content: content,
+      content_type: "text/plain",
+      redacted: false
+    }
+
+    upload_opts = [
+      base_url: Keyword.fetch!(opts, :artifact_base_url),
+      token: Keyword.fetch!(opts, :artifact_token),
+      req_options: Keyword.get(opts, :req_options, [])
+    ]
+
+    retry_delay = Keyword.get(opts, :upload_retry_delay_ms, @upload_retry_delay_ms)
+
+    case upload_with_retry(project_id, capture, upload_opts, retry_delay, @upload_attempts) do
+      {:ok, ref} ->
+        ref
+
+      {:error, reason} ->
+        Logger.warning(
+          "worker required check #{inspect(check["name"])} evidence artifact upload " <>
+            "failed: #{inspect(reason)}"
+        )
+
+        nil
+    end
+  end
+
+  defp upload_with_retry(project_id, capture, upload_opts, _delay, attempts_left)
+       when attempts_left <= 1 do
+    ArtifactUpload.upload(%PersonalWorkspace{}, project_id, capture, upload_opts)
+  end
+
+  defp upload_with_retry(project_id, capture, upload_opts, delay, attempts_left) do
+    case ArtifactUpload.upload(%PersonalWorkspace{}, project_id, capture, upload_opts) do
+      {:error, :transport_failed} ->
+        Process.sleep(delay)
+        upload_with_retry(project_id, capture, upload_opts, delay, attempts_left - 1)
+
+      result ->
+        result
+    end
   end
 
   # Runs the check's command inside a supervised `Task` so it can be killed on
@@ -170,8 +262,23 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
          exit_code,
          duration_ms,
          commit_sha,
-         content
+         content,
+         artifact_ref
        ) do
+    payload =
+      %{
+        "kind" => "required_check",
+        "name" => check["name"],
+        "outcome" => outcome,
+        "command" => check["command"],
+        "exit_code" => exit_code,
+        "duration_ms" => duration_ms,
+        "commit_sha" => commit_sha,
+        "digest" => ArtifactUpload.digest(content),
+        "redacted" => false
+      }
+      |> put_artifact_ref(artifact_ref)
+
     %{
       "type" => "event",
       "protocol_version" => envelope["protocol_version"],
@@ -184,19 +291,14 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
       "event_type" => "evidence",
       "source" => "check",
       "occurred_at" => now_iso8601(),
-      "payload" => %{
-        "kind" => "required_check",
-        "name" => check["name"],
-        "outcome" => outcome,
-        "command" => check["command"],
-        "exit_code" => exit_code,
-        "duration_ms" => duration_ms,
-        "commit_sha" => commit_sha,
-        "digest" => ArtifactUpload.digest(content),
-        "redacted" => false
-      }
+      "payload" => payload
     }
   end
+
+  defp put_artifact_ref(payload, nil), do: payload
+
+  defp put_artifact_ref(payload, ref) when is_binary(ref),
+    do: Map.put(payload, "artifact_ref", ref)
 
   defp completion_event(envelope, manifest, commit_sha, sequence) do
     %{
