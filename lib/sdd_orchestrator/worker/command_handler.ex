@@ -20,16 +20,32 @@ defmodule SddOrchestrator.Worker.CommandHandler do
   `command_id` against `SddOrchestrator.Worker.RunState` first is what makes
   a redelivered command a no-op here rather than a second acceptance.
 
-  Preparing a workspace, acquiring the single-process execution lock,
-  launching a coding agent, and handling `cancel`, `resume`, `retry`, and
-  `reconcile` in full are later work. Validating, acknowledging, and durably
-  recording a `start` command — and refusing one that is stale or
-  superseded — is everything this module does today.
+  `start`, `resume`, and `retry` all reach the same acceptance path: each
+  carries a manifest, and the duplicate/stale-fence/superseded-attempt
+  checks are keyed on `run_id`/`fence_token`/`attempt_number`, never on
+  `operation` itself. `resume` and `retry` additionally carry forward the
+  attempt's already-recorded `agent_thread_ref` when it names the same run,
+  so a later launch can offer the provider thread to resume; a genuine
+  `start` always begins with no prior thread.
+
+  `cancel` is refused when it does not name the currently accepted attempt
+  or that attempt already reached a terminal lifecycle, and otherwise
+  acknowledged without touching `RunState` at all — the real stop and the
+  durable `"canceled"` transition are `SddOrchestrator.Worker.GatewayConnection`'s
+  own later effect, mirroring how this module's own acceptance of a `start`
+  and `SddOrchestrator.Worker.ExecutionPreparer`'s later effect are already
+  two separate steps.
+
+  `reconcile` carries no manifest and no state-changing decision at all —
+  it is a read-only query, always acknowledged `"accepted"` regardless of
+  what `RunState` currently holds.
   """
 
   alias SddOrchestrator.Worker.RunState
 
   @digest_pattern ~r/\A[0-9a-f]{64}\z/
+  @manifest_operations ~w(start resume retry)
+  @terminal_lifecycles ~w(canceled failed stopped verification_completed)
 
   @doc """
   Decides the outcome of one inbound command envelope and returns the
@@ -59,18 +75,29 @@ defmodule SddOrchestrator.Worker.CommandHandler do
 
   defp decide(envelope, record, protocol_version, home_override) do
     case envelope["operation"] do
-      "start" ->
-        handle_start(envelope, record, protocol_version, home_override)
+      operation when operation in @manifest_operations ->
+        handle_manifest_command(envelope, record, protocol_version, home_override)
+
+      "cancel" ->
+        handle_cancel(envelope, record, protocol_version)
+
+      "reconcile" ->
+        ack(envelope, protocol_version, "accepted", nil)
 
       other ->
-        # `cancel`, `resume`, `retry`, and `reconcile` are Task 11's full
-        # behaviour. Refusing cleanly here means an unhandled operation is
-        # never silently dropped and never crashes this process.
+        # Every operation this protocol defines is handled above; an
+        # unrecognized one is refused cleanly here rather than silently
+        # dropped or crashing this process.
         ack(envelope, protocol_version, "rejected", "operation_not_yet_supported:#{other}")
     end
   end
 
-  defp handle_start(envelope, %{current: current} = record, protocol_version, home_override) do
+  defp handle_manifest_command(
+         envelope,
+         %{current: current} = record,
+         protocol_version,
+         home_override
+       ) do
     cond do
       duplicate?(current, envelope) ->
         ack(envelope, protocol_version, "duplicate", nil)
@@ -106,7 +133,7 @@ defmodule SddOrchestrator.Worker.CommandHandler do
 
   defp accept(envelope, record, protocol_version, home_override) do
     case validate_manifest(envelope) do
-      :ok ->
+      {:ok, manifest} ->
         new_current = %RunState{
           command_id: envelope["command_id"],
           operation: envelope["operation"],
@@ -117,7 +144,8 @@ defmodule SddOrchestrator.Worker.CommandHandler do
           fence_token: envelope["fence_token"],
           manifest_digest: envelope["manifest_digest"],
           last_sequence: 0,
-          agent_thread_ref: nil,
+          agent_thread_ref: carried_agent_thread_ref(envelope, record.current),
+          branch: manifest["target_branch"],
           lifecycle: "accepted"
         }
 
@@ -134,6 +162,19 @@ defmodule SddOrchestrator.Worker.CommandHandler do
         ack(envelope, protocol_version, "rejected", reason)
     end
   end
+
+  # A fresh "start" always begins with no prior provider thread — a fresh
+  # attempt line has nothing to resume. "resume" and "retry" carry the
+  # attempt's already-recorded `agent_thread_ref` forward when the current
+  # entry names the same run — exactly the same condition `superseded/2`
+  # already uses to decide whether `record.current` becomes `previous` — so
+  # a later launch can offer the provider thread to resume.
+  defp carried_agent_thread_ref(%{"operation" => "start"}, _current), do: nil
+
+  defp carried_agent_thread_ref(%{"run_id" => run_id}, %RunState{run_id: run_id} = current),
+    do: current.agent_thread_ref
+
+  defp carried_agent_thread_ref(_envelope, _current), do: nil
 
   # A prior current entry for the same run is genuinely superseded by this
   # acceptance (never a different run's attempt, and never itself — that
@@ -155,8 +196,9 @@ defmodule SddOrchestrator.Worker.CommandHandler do
   # control plane does and duplicating that module entirely.
   defp validate_manifest(%{"payload" => %{"manifest" => manifest}} = envelope)
        when is_map(manifest) do
-    with :ok <- validate_digest(envelope["manifest_digest"]) do
-      validate_binding(manifest, envelope)
+    with :ok <- validate_digest(envelope["manifest_digest"]),
+         :ok <- validate_binding(manifest, envelope) do
+      {:ok, manifest}
     end
   end
 
@@ -176,6 +218,31 @@ defmodule SddOrchestrator.Worker.CommandHandler do
         manifest["attempt_number"] == envelope["attempt_number"]
 
     if bound?, do: :ok, else: {:error, "manifest_binding_mismatch"}
+  end
+
+  # `cancel` carries no manifest at all — its payload is only `%{"reason" =>
+  # ...}` — and never mutates `RunState`. Refusal here means the currently
+  # accepted attempt is left running untouched; acceptance here means only
+  # that the request is legitimate, not that anything has stopped yet.
+  # `SddOrchestrator.Worker.GatewayConnection` performs the real stop and
+  # durably records the "canceled" lifecycle once it genuinely happens.
+  defp handle_cancel(envelope, %{current: current}, protocol_version) do
+    cond do
+      not_current_attempt?(current, envelope) ->
+        ack(envelope, protocol_version, "rejected", "not_current_attempt")
+
+      current.lifecycle in @terminal_lifecycles ->
+        ack(envelope, protocol_version, "rejected", "attempt_already_terminal")
+
+      true ->
+        ack(envelope, protocol_version, "accepted", nil)
+    end
+  end
+
+  defp not_current_attempt?(nil, _envelope), do: true
+
+  defp not_current_attempt?(current, envelope) do
+    current.run_id != envelope["run_id"] or current.fence_token != envelope["fence_token"]
   end
 
   defp ack(envelope, protocol_version, status, reason) do

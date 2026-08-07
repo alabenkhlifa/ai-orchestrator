@@ -94,6 +94,30 @@ defmodule SddOrchestrator.ClaudeCodeCliFixture do
     """)
   end
 
+  @doc """
+  Writes a script that starts a real session (emitting `system`/`init`
+  immediately, so `start/4` returns without waiting out the launch timeout),
+  records its own OS pid to `pid_file` via `exec sleep`, then sits there —
+  never emitting a result, never exiting on its own. `exec` replaces the
+  script's own process image rather than forking, so the pid written to
+  `pid_file` is the same one that keeps running for as long as the sleep
+  lasts, letting a test observe it as alive and stop the session before it
+  would ever produce output on its own.
+  """
+  @spec long_running_script(String.t()) :: String.t()
+  def long_running_script(pid_file) do
+    write!("""
+    #!/bin/sh
+    if [ "$1" = "--version" ]; then
+      echo "9.9.9 (Claude Code)"
+      exit 0
+    fi
+    echo "$$" > "#{pid_file}"
+    echo "{\\"type\\":\\"system\\",\\"subtype\\":\\"init\\",\\"session_id\\":\\"thr_long_running\\"}"
+    exec sleep 20
+    """)
+  end
+
   defp write!(content) do
     path =
       Path.join(

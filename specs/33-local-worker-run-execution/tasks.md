@@ -4,7 +4,7 @@
 
 In Progress
 
-The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 10 are complete and verified. Task 11 (cancel/resume/retry/reconcile) depends on Task 4 and Task 8, both complete, and is next.
+The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 11 are complete and verified — every required capability the worker announces is now genuinely honored. Task 12 (prove one real run end to end on a local repository) depends on Task 7, Task 10, and Task 11, all complete, and is the slice's final task.
 
 ## Active Slice
 
@@ -172,7 +172,7 @@ Traceability:
   - Owns: AC-14
   - Proof: Focused tests against the real artifact endpoint prove an artifact is transferred over the worker's own credential, that the stored content matches the computed digest, that the evidence event references it rather than embedding it, that an oversized or refused upload produces a typed evidence outcome instead of a silent loss, and that a transient transport failure is retried without duplicating the artifact.
 
-- [ ] Task 11 - Handle cancel, resume, retry, and reconcile.
+- [x] Task 11 - Handle cancel, resume, retry, and reconcile.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4, Task 8

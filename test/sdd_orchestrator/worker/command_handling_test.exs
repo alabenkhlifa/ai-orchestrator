@@ -200,6 +200,7 @@ defmodule SddOrchestrator.Worker.CommandHandlingTest do
         manifest_digest: String.duplicate("a", 64),
         last_sequence: 0,
         agent_thread_ref: nil,
+        branch: "sdd/feature/ftr-0002/run-0003",
         lifecycle: "accepted"
       }
 
@@ -389,8 +390,8 @@ defmodule SddOrchestrator.Worker.CommandHandlingTest do
     end
   end
 
-  describe "an operation other than start" do
-    test "is refused rather than crashing the gateway connection process",
+  describe "an operation other than start, with no current attempt yet" do
+    test "a cancel naming no current attempt is refused rather than crashing the gateway connection process",
          %{control_plane_address: base} do
       %{project: project, feature: feature, run: run, credential: credential} =
         paired_and_bound_project()
@@ -417,21 +418,31 @@ defmodule SddOrchestrator.Worker.CommandHandlingTest do
 
       assert {:ok, recorded} = CommandOutbox.fetch(command.id)
       assert recorded.result["status"] == "rejected"
-      assert recorded.result["reason"] =~ "operation_not_yet_supported"
+      assert recorded.result["reason"] == "not_current_attempt"
       assert RunState.load(home) == {:ok, RunState.empty()}
     end
 
-    test "CommandHandler answers rejected directly for cancel, resume, retry, and reconcile" do
+    test "CommandHandler answers each operation's own real outcome directly, per Task 11's own contract" do
       home = tmp_home()
 
-      for operation <- ~w(cancel resume retry reconcile) do
+      for operation <- ~w(resume retry) do
         {_command, envelope, _attempt} = fixture_command(operation: operation)
 
         ack = CommandHandler.handle_command(envelope, 1, home)
 
         assert ack["status"] == "rejected"
-        assert ack["reason"] =~ "operation_not_yet_supported"
+        assert ack["reason"] == "manifest_absent"
       end
+
+      {_command, cancel_envelope, _attempt} = fixture_command(operation: "cancel")
+      cancel_ack = CommandHandler.handle_command(cancel_envelope, 1, home)
+      assert cancel_ack["status"] == "rejected"
+      assert cancel_ack["reason"] == "not_current_attempt"
+
+      {_command, reconcile_envelope, _attempt} = fixture_command(operation: "reconcile")
+      reconcile_ack = CommandHandler.handle_command(reconcile_envelope, 1, home)
+      assert reconcile_ack["status"] == "accepted"
+      assert reconcile_ack["reason"] == nil
 
       assert RunState.load(home) == {:ok, RunState.empty()}
     end

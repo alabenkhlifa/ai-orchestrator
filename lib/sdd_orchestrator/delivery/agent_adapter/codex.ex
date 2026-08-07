@@ -123,6 +123,43 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.Codex.Session do
 
   def handle_info(_other, state), do: {:noreply, state}
 
+  # See `ClaudeCode.Session`'s own `terminate/2` for why this exists: closing
+  # a `Port` never signals the OS process on the other end of it — confirmed
+  # live — so a session stopped while still genuinely `:running` (e.g. a
+  # worker cancel) is signaled directly instead of being left running after
+  # the launch that owned it has been torn down. This `Port` wraps the
+  # `sh -c 'exec "$0" "$@" < /dev/null'` launcher built in `shell_args/4`
+  # below; `exec` replaces the shell's own process image rather than
+  # forking, so the OS pid `Port.info/2` reports here is already the real
+  # `codex` process — no separate child process to hunt down.
+  @impl true
+  def terminate(_reason, %{port: port, status: :running}) when is_port(port) do
+    kill_os_process(port)
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
+  # `Port.info/2` on an already-closed port returns `nil` rather than raising
+  # or returning a stale pid — confirmed live — so the `nil` clause below is
+  # a genuine liveness check, not a defense against a hypothetical. `SIGKILL`
+  # rather than `SIGTERM`: this only runs for an explicit cancellation, not a
+  # graceful shutdown request, matching `RequiredCheckRunner`'s own
+  # `Task.shutdown(task, :brutal_kill)` convention for the same situation.
+  defp kill_os_process(port) do
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} ->
+        System.cmd("kill", ["-KILL", to_string(os_pid)], stderr_to_stdout: true)
+
+      nil ->
+        :ok
+    end
+  rescue
+    _error -> :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
   # `codex exec` reads from stdin even when a prompt is given as an argument
   # ("if stdin is piped ... stdin is appended as a `<stdin>` block"), and
   # blocks waiting for it — confirmed live: a plain port with no `:in` data

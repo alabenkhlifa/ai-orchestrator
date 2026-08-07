@@ -122,6 +122,42 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCode.Session do
 
   def handle_info(_other, state), do: {:noreply, state}
 
+  # Closing this process's own `Port` — whether from a normal GenServer stop
+  # or a crash — never signals the OS process on the other end of it:
+  # confirmed live, closing a `Port` opened via `:spawn_executable` leaves
+  # the wrapped `claude` subprocess running. A session already reporting
+  # `{:exited, _}` needs nothing here, its subprocess is already gone; one
+  # still `:running` when stopped (e.g. a worker cancel) is signaled
+  # directly, so it cannot keep running — possibly still writing to the
+  # workspace — after the launch that owned it has been torn down.
+  @impl true
+  def terminate(_reason, %{port: port, status: :running}) when is_port(port) do
+    kill_os_process(port)
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
+  # `Port.info/2` on an already-closed port returns `nil` rather than raising
+  # or returning a stale pid — confirmed live — so the `nil` clause below is
+  # a genuine liveness check, not a defense against a hypothetical. `SIGKILL`
+  # rather than `SIGTERM`: this only runs for an explicit cancellation, not a
+  # graceful shutdown request, matching `RequiredCheckRunner`'s own
+  # `Task.shutdown(task, :brutal_kill)` convention for the same situation.
+  defp kill_os_process(port) do
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} ->
+        System.cmd("kill", ["-KILL", to_string(os_pid)], stderr_to_stdout: true)
+
+      nil ->
+        :ok
+    end
+  rescue
+    _error -> :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
   # `--print` runs one headless turn against the already-isolated working
   # directory (set via `cd:`, so no `--add-dir` is needed) and never opens an
   # interactive prompt; `bypassPermissions` is what makes that possible with

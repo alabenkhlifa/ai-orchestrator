@@ -114,18 +114,45 @@ defmodule SddOrchestrator.Worker.AgentObserver do
   Releases the attempt's process lock and records its terminal lifecycle.
 
   Called exactly once: when the agent's own observation reports a
-  `"blocked"` or `"failed"` terminal event, or when
+  `"blocked"` or `"failed"` terminal event, when
   `SddOrchestrator.Worker.RequiredCheckRunner` reports the attempt's own
   batch outcome as `"failed"` or `"verification_completed"` after a clean
-  agent exit. Either way this is the attempt's one true terminal transition;
-  nothing here distinguishes which caller reached it, since releasing the
-  lock and recording the lifecycle is the same effect regardless of source.
+  agent exit, or when `SddOrchestrator.Worker.GatewayConnection` completes a
+  `"canceled"` stop. Either way this is the attempt's one true terminal
+  transition; nothing here distinguishes which caller reached it, since
+  releasing the lock and recording the lifecycle is the same effect
+  regardless of source.
+
+  Resolves the lock from the envelope's own `project_id`, `run_id`, and
+  `fence_token` rather than through `ExecutionManifest`/`ProcessLock.acquire/3`
+  (which both require a manifest) — a `cancel` envelope carries no manifest
+  at all, and every one of those three fields is present on every command
+  and event envelope regardless of operation, so this makes `finish/3` work
+  uniformly for every terminal transition, cancel included.
+
+  `os_pid` is this worker's own real `System.pid()`, not a placeholder:
+  `ProcessLock.release/1` (`release_held/2`) only releases a lock whose
+  recorded `os_pid` exactly matches the releasing lock's own — proven by
+  direct read of `process_lock.ex`, and confirmed empirically (an earlier
+  `os_pid: "n/a"` literal made every release here fail `{:error, :fenced}`,
+  since the real on-disk lock always carries the real acquiring process's
+  `System.pid()`, written by `ExecutionPreparer.prepare/2`'s own
+  `ProcessLock.acquire/3` call). The single `GatewayConnection` process that
+  prepares an attempt is the same OS process that later finishes it, so its
+  own `System.pid()` is exactly the value already on disk in the normal
+  (non-crash-recovery) case this function is called in.
   """
   @spec finish(map(), String.t(), String.t() | nil) :: :ok | {:error, term()}
   def finish(envelope, terminal, home_override \\ nil)
-      when terminal in ~w(blocked failed verification_completed) do
-    with {:ok, manifest} <- ProtocolCodec.manifest(envelope),
-         {:ok, lock} <- ProcessLock.acquire(manifest, envelope["fence_token"]),
+      when terminal in ~w(blocked canceled failed verification_completed) do
+    with {:ok, workspace} <- workspace_path(envelope["project_id"], envelope["run_id"]),
+         lock = %ProcessLock{
+           workspace: workspace,
+           run_id: envelope["run_id"],
+           fence_token: envelope["fence_token"],
+           os_pid: System.pid(),
+           acquired_at: DateTime.utc_now()
+         },
          :ok <- ProcessLock.release(lock) do
       update_current(envelope, home_override, fn current -> %{current | lifecycle: terminal} end)
     end
@@ -195,6 +222,25 @@ defmodule SddOrchestrator.Worker.AgentObserver do
 
       {:error, _reason} ->
         {:error, :local_run_state_unavailable}
+    end
+  end
+
+  @doc false
+  # Mirrors `SddOrchestrator.Delivery.Worker.Workspace`'s own private
+  # `run_path/2` formula exactly (`Path.join([root, project_id, run_id])`,
+  # confirmed identical by direct read). `Workspace` is consumed unchanged
+  # from specs/07, so a new public helper cannot be added there, and this
+  # two-field join is a stable, already-documented path convention rather
+  # than a private implementation detail likely to drift, so duplicating it
+  # here is safe. Kept as a plain (undocumented) public function only so a
+  # dedicated test can prove this duplication stays in sync with
+  # `Workspace.prepare/1`'s own real output — not part of this module's
+  # public contract otherwise.
+  @spec workspace_path(String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, Workspace.error()}
+  def workspace_path(project_id, run_id) do
+    with {:ok, root} <- Workspace.root() do
+      {:ok, Path.join([root, project_id, run_id])}
     end
   end
 end

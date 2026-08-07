@@ -247,6 +247,7 @@ defmodule SddOrchestrator.Worker.ExecutionPreparationTest do
       manifest_digest: envelope["manifest_digest"],
       last_sequence: 0,
       agent_thread_ref: nil,
+      branch: envelope["payload"]["manifest"]["target_branch"],
       lifecycle: "accepted"
     }
 

@@ -24,7 +24,7 @@ defmodule SddOrchestrator.Worker.RunState do
   alias SddOrchestrator.Worker.Configuration
 
   @file_name "run_state.json"
-  @lifecycle_states ~w(accepted blocked failed stopped verification_completed)
+  @lifecycle_states ~w(accepted blocked canceled failed stopped verification_completed)
 
   @enforce_keys [
     :command_id,
@@ -37,12 +37,15 @@ defmodule SddOrchestrator.Worker.RunState do
     :manifest_digest,
     :last_sequence,
     :agent_thread_ref,
+    :branch,
     :lifecycle
   ]
   defstruct @enforce_keys
 
   # `:agent_thread_ref` is the one field legitimately absent until a later
-  # task launches an agent.
+  # task launches an agent. `:branch` is always known at accept time (it
+  # comes straight off the manifest's own `target_branch`), so it stays
+  # required unlike `:agent_thread_ref`.
   @required_entry_fields @enforce_keys
                          |> Enum.reject(&(&1 == :agent_thread_ref))
                          |> Enum.map(&Atom.to_string/1)
@@ -58,6 +61,7 @@ defmodule SddOrchestrator.Worker.RunState do
           manifest_digest: String.t(),
           last_sequence: non_neg_integer(),
           agent_thread_ref: String.t() | nil,
+          branch: String.t(),
           lifecycle: String.t()
         }
 
@@ -171,6 +175,7 @@ defmodule SddOrchestrator.Worker.RunState do
          manifest_digest: entry["manifest_digest"],
          last_sequence: entry["last_sequence"],
          agent_thread_ref: entry["agent_thread_ref"],
+         branch: entry["branch"],
          lifecycle: entry["lifecycle"]
        }}
     end
@@ -217,6 +222,7 @@ defmodule SddOrchestrator.Worker.RunState do
       "manifest_digest" => entry.manifest_digest,
       "last_sequence" => entry.last_sequence,
       "agent_thread_ref" => entry.agent_thread_ref,
+      "branch" => entry.branch,
       "lifecycle" => entry.lifecycle
     }
   end

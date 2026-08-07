@@ -38,6 +38,7 @@ defmodule SddOrchestrator.Worker.RunStateTest do
           manifest_digest: String.duplicate("a", 64),
           last_sequence: 0,
           agent_thread_ref: nil,
+          branch: "sdd/feature/ftr-0001/run-0001",
           lifecycle: "accepted"
         },
         overrides

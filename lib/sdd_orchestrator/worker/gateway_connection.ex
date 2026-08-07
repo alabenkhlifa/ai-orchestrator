@@ -34,6 +34,8 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
   require Logger
 
+  alias SddOrchestrator.Delivery.Worker.ProcessLock
+  alias SddOrchestrator.Delivery.Worker.Workspace
   alias SddOrchestrator.Worker.AgentObserver
   alias SddOrchestrator.Worker.CommandHandler
   alias SddOrchestrator.Worker.Configuration
@@ -138,9 +140,14 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     {:ok, join(socket, socket.assigns.topic, socket.assigns.join_params)}
   end
 
+  # Fires on every successful join, first connect and every reconnect alike —
+  # pushing this worker's authoritative reconciliation snapshot here (rather
+  # than only in answer to an explicit "reconcile" command) is what gives the
+  # control plane the worker's real view immediately on every (re)join.
   @impl Slipstream
   def handle_join(topic, response, socket) do
     Logger.info("worker gateway joined #{topic} and is reachable; contract=#{inspect(response)}")
+    socket = push_reconcile_snapshot(topic, socket)
     {:ok, socket}
   end
 
@@ -182,10 +189,14 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     end
   end
 
-  # Validates, acknowledges exactly once, and durably records a "start"
-  # command via `SddOrchestrator.Worker.CommandHandler`; a `cancel`,
-  # `resume`, `retry`, or `reconcile` command is refused cleanly rather than
-  # crashing this process, since their full behaviour is later work.
+  # Validates, acknowledges exactly once, and durably records every command
+  # operation via `SddOrchestrator.Worker.CommandHandler`, then performs
+  # whatever this worker's own later effect is for an accepted one: `start`,
+  # `resume`, and `retry` all prepare execution the same way (`ExecutionPreparer`
+  # is operation-agnostic); `cancel` stops the running agent and releases the
+  # lock; `reconcile` answers with this worker's authoritative attempt
+  # snapshot. A rejected or duplicate acknowledgement triggers no further
+  # effect.
   @impl Slipstream
   def handle_message(topic, "command", message, socket) do
     ack = CommandHandler.handle_command(message, @protocol_version, socket.assigns.home)
@@ -194,7 +205,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
       {:ok, _ref} ->
         socket =
           if ack["status"] == "accepted",
-            do: prepare_execution(topic, message, socket),
+            do: handle_accepted_command(topic, message, socket),
             else: socket
 
         {:ok, socket}
@@ -218,6 +229,189 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
     {:ok, socket}
   end
+
+  defp handle_accepted_command(topic, %{"operation" => "cancel"} = message, socket),
+    do: handle_cancel(topic, message, socket)
+
+  defp handle_accepted_command(topic, %{"operation" => "reconcile"}, socket),
+    do: push_reconcile_snapshot(topic, socket)
+
+  defp handle_accepted_command(topic, message, socket),
+    do: prepare_execution(topic, message, socket)
+
+  # Stops the running agent (if this connection is the one holding it),
+  # records the durable cooperative stop request any other process-holder
+  # would observe, then finishes the attempt as "canceled" — releasing the
+  # lock and recording the terminal lifecycle exactly like every other
+  # terminal transition (`finish_attempt/3`). No further observation tick is
+  # scheduled; a stray already-scheduled one is guarded against separately
+  # (see `attempt_still_running?/2`).
+  defp handle_cancel(topic, message, socket) do
+    request_stop(message)
+    socket = stop_launch(socket)
+
+    push_heartbeat(topic, "stopping", socket)
+    finish_attempt(message, "canceled", socket)
+
+    socket
+  end
+
+  # The process that cancels a run is not necessarily the process that holds
+  # the lock (see `SddOrchestrator.Delivery.Worker.ProcessLock`'s own
+  # moduledoc) — this durable stop-request file is how a holder in another
+  # process, or another VM entirely, learns to stop at its own next safe
+  # point, regardless of whether this same connection also holds the launch.
+  defp request_stop(message) do
+    case workspace_path(message["project_id"], message["run_id"]) do
+      {:ok, workspace} ->
+        lock = %ProcessLock{
+          workspace: workspace,
+          run_id: message["run_id"],
+          fence_token: message["fence_token"],
+          os_pid: "n/a",
+          acquired_at: DateTime.utc_now()
+        }
+
+        case ProcessLock.request_stop(lock) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error(
+              "worker gateway failed to record a stop request for run " <>
+                "#{inspect(message["run_id"])}: #{inspect(reason)}"
+            )
+        end
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway could not resolve the workspace to request a stop for run " <>
+            "#{inspect(message["run_id"])}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  # The common case: this same connection is the one that launched the
+  # agent, so cancellation stops it directly rather than only waiting for
+  # the cooperative stop request above to be observed. An already-dead
+  # process (`:noproc`) is not an error — the agent may have exited on its
+  # own between the cancel arriving and this call.
+  #
+  # `Process.unlink/1` first is not optional: `AgentAdapter.launch/3` starts
+  # the agent's `handle.reference` process linked to whichever process calls
+  # it — this connection itself — and `GatewayConnection` does not trap
+  # exits (neither it nor `Slipstream` sets that flag). Confirmed
+  # empirically: without unlinking first, `GenServer.stop/3` terminating a
+  # genuinely still-running, still-linked process delivers this same
+  # connection an untrapped exit signal — not something a `catch :exit`
+  # around the `GenServer.stop/3` call itself can intercept, since a link's
+  # exit signal is asynchronous and bypasses the calling code path entirely
+  # — which kills this connection process too. Unlinking first is the same
+  # idiom this codebase's own test helpers already use before deliberately
+  # stopping a linked process (see every test file's `stop_gateway/1`).
+  defp stop_launch(socket) do
+    case socket.assigns[:launch] do
+      %{handle: %{reference: pid}} when is_pid(pid) ->
+        Process.unlink(pid)
+
+        try do
+          GenServer.stop(pid, :shutdown, 5_000)
+        catch
+          :exit, _reason -> :ok
+        end
+
+      _no_launch_here ->
+        :ok
+    end
+
+    socket
+  end
+
+  # Mirrors `AgentObserver.finish/3`'s own duplication of `Workspace`'s
+  # private `run_path/2` formula (`Path.join([root, project_id, run_id])`) —
+  # `Workspace` is consumed unchanged from specs/07, so no public helper can
+  # be added there, and this two-field join is a stable, already-documented
+  # path convention rather than an implementation detail likely to drift.
+  defp workspace_path(project_id, run_id) do
+    with {:ok, root} <- Workspace.root() do
+      {:ok, Path.join([root, project_id, run_id])}
+    end
+  end
+
+  # Pushes this worker's authoritative attempt snapshot as a separate
+  # client-initiated "reconcile" message — distinct from the acknowledgement
+  # every command already receives. Used both to answer an explicit
+  # "reconcile" command and, unconditionally, on every successful join (see
+  # `handle_join/3`).
+  defp push_reconcile_snapshot(topic, socket) do
+    snapshot = build_reconcile_snapshot(socket)
+
+    case push(socket, topic, "reconcile", snapshot) do
+      {:ok, _ref} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to push a reconciliation snapshot: #{inspect(reason)}"
+        )
+    end
+
+    socket
+  end
+
+  defp build_reconcile_snapshot(socket) do
+    %{
+      "type" => "reconciliation_snapshot",
+      "protocol_version" => @protocol_version,
+      "worker_id" => socket.assigns.config.worker_id,
+      "observed_at" => now_iso8601(),
+      "attempts" => snapshot_attempts(socket)
+    }
+  end
+
+  defp snapshot_attempts(socket) do
+    case RunState.load(socket.assigns.home) do
+      {:ok, %{current: %RunState{} = current}} ->
+        [snapshot_attempt(current)]
+
+      {:ok, %{current: nil}} ->
+        []
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway could not read local run state to build a reconciliation snapshot: " <>
+            inspect(reason)
+        )
+
+        []
+    end
+  end
+
+  defp snapshot_attempt(%RunState{} = current) do
+    %{
+      "run_id" => current.run_id,
+      "attempt_number" => current.attempt_number,
+      "command_id" => current.command_id,
+      "fence_token" => current.fence_token,
+      "last_sequence" => current.last_sequence,
+      "branch" => current.branch,
+      "state" => attempt_wire_state(current.lifecycle)
+    }
+  end
+
+  # There is no dedicated "succeeded" wire attempt-state: the snapshot's own
+  # job is only to say whether this worker still considers something
+  # running, and by the time verification completed the lock is already
+  # released and nothing further is running — "stopped" reflects that
+  # accurately. The success fact itself was already carried by the
+  # attempt's own already-delivered `verification_completed` *event*; this
+  # snapshot is not a second channel for it.
+  defp attempt_wire_state("accepted"), do: "running"
+  defp attempt_wire_state("blocked"), do: "blocked"
+  defp attempt_wire_state("canceled"), do: "canceled"
+  defp attempt_wire_state("stopped"), do: "stopped"
+  defp attempt_wire_state("failed"), do: "failed"
+  defp attempt_wire_state("verification_completed"), do: "stopped"
 
   # Fires once per attempt's observation tick (see `start_agent_observation/3`
   # and `AgentObserver.poll/3`): reobserves the launched agent, delivers
@@ -248,6 +442,46 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   end
 
   defp poll_and_deliver(socket, envelope) do
+    if attempt_still_running?(socket, envelope) do
+      do_poll_and_deliver(socket, envelope)
+    else
+      Logger.info(
+        "worker gateway stopping agent observation for command " <>
+          "#{inspect(envelope["command_id"])}: attempt already reached a terminal lifecycle"
+      )
+
+      {:noreply, socket}
+    end
+  end
+
+  # `AgentObserver.poll/3`'s own `current?/2` check answers one question —
+  # does this envelope still name the current attempt (supersession)? This
+  # answers the separate one: has this exact still-current attempt already
+  # reached a terminal lifecycle through some other path (a cancel that
+  # completed between this tick being scheduled and firing)? A stray tick
+  # for either reason must do nothing: no reschedule, no adapter call. Only
+  # the second question belongs here — the first stays `AgentObserver`'s own,
+  # handled below exactly as before.
+  defp attempt_still_running?(socket, envelope) do
+    case RunState.load(socket.assigns.home) do
+      {:ok, %{current: %RunState{} = current}} ->
+        not (same_attempt?(current, envelope) and current.lifecycle != "accepted")
+
+      {:ok, %{current: nil}} ->
+        true
+
+      {:error, _reason} ->
+        true
+    end
+  end
+
+  defp same_attempt?(%RunState{} = current, envelope) do
+    current.run_id == envelope["run_id"] and
+      current.attempt_number == envelope["attempt_number"] and
+      current.fence_token == envelope["fence_token"]
+  end
+
+  defp do_poll_and_deliver(socket, envelope) do
     case AgentObserver.poll(envelope, socket.assigns.launch, socket.assigns.home) do
       {:ok, %{current?: false}} ->
         Logger.info(

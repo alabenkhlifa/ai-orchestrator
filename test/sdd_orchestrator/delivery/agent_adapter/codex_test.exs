@@ -172,6 +172,48 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.CodexTest do
       assert {:ok, handle} = Codex.start(input())
       assert handle.thread_ref == "thr_stdin_sensitive"
     end
+
+    test "a stop kills the underlying OS process, not just the GenServer" do
+      pid_file =
+        Path.join(System.tmp_dir!(), "codex-longrun-#{System.unique_integer([:positive])}")
+
+      on_exit(fn -> File.rm(pid_file) end)
+
+      configure(Fixture.long_running_script(pid_file))
+
+      assert {:ok, handle} = Codex.start(input())
+      session = handle.reference
+
+      os_pid = wait_for_pid_file(pid_file)
+
+      # `GatewayConnection.stop_launch/1` unlinks before stopping so its own
+      # EXIT signal is not misread as the agent crashing — mirrored here for
+      # the same reason.
+      Process.unlink(session)
+      assert :ok = GenServer.stop(session, :shutdown, 5_000)
+
+      assert_os_process_dead(os_pid)
+    end
+
+    test "a stop after the session already exited on its own does not error" do
+      lines = [
+        %{"type" => "thread.started", "thread_id" => "thr_already_done"},
+        %{"type" => "turn.completed", "usage" => %{}}
+      ]
+
+      configure(Fixture.streaming_script(lines))
+
+      assert {:ok, handle} = Codex.start(input())
+      session = handle.reference
+
+      # Drains until `observe/1` itself reports `:agent_exited`, so
+      # `status` is genuinely `{:exited, _}` (not `:running`) by the time
+      # `terminate/2` runs below — the branch this test means to exercise.
+      assert {:ok, _events} = drain_all(handle)
+
+      Process.unlink(session)
+      assert :ok = GenServer.stop(session, :shutdown, 5_000)
+    end
   end
 
   describe "composed through the shared AgentAdapter boundary" do
@@ -316,6 +358,42 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.CodexTest do
       {:ok, events} ->
         Process.sleep(10)
         drain_all(handle, acc ++ events, attempts - 1)
+    end
+  end
+
+  # The fixture writes its own OS pid to this file as (nearly) its first
+  # action, but the port's `{:data, _}` delivery to this test process is
+  # still async relative to that write landing on disk, so this polls
+  # briefly rather than reading once.
+  defp wait_for_pid_file(path, attempts \\ 200) do
+    case File.read(path) do
+      {:ok, content} when content != "" ->
+        String.trim(content)
+
+      _not_yet_written when attempts > 0 ->
+        Process.sleep(10)
+        wait_for_pid_file(path, attempts - 1)
+
+      _never_written ->
+        flunk("environment blocker: fixture never wrote its OS pid to #{path}")
+    end
+  end
+
+  # Signal delivery and reaping are not synchronous with `GenServer.stop/3`
+  # returning, so this polls `kill -0` briefly rather than asserting
+  # instantly — a nonzero exit (ESRCH) is the standard, portable liveness
+  # probe.
+  defp assert_os_process_dead(pid_string, attempts \\ 100) do
+    case System.cmd("kill", ["-0", pid_string], stderr_to_stdout: true) do
+      {_output, 0} when attempts > 0 ->
+        Process.sleep(10)
+        assert_os_process_dead(pid_string, attempts - 1)
+
+      {_output, 0} ->
+        flunk("OS process #{pid_string} is still alive after stop")
+
+      {_output, _nonzero_exit} ->
+        :ok
     end
   end
 
