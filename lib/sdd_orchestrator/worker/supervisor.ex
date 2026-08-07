@@ -11,7 +11,16 @@ defmodule SddOrchestrator.Worker.Supervisor do
 
   use Supervisor
 
+  alias SddOrchestrator.Delivery.AgentAdapter
   alias SddOrchestrator.Worker.{Configuration, GatewayConnection, State}
+
+  # `Configuration.agent_adapters/0` is the validated set of strings a paired
+  # configuration may carry; anything else is unreachable through pairing but
+  # still falls back to the safe default rather than crashing startup.
+  @agent_adapter_modules %{
+    "claude_code" => AgentAdapter.ClaudeCode,
+    "codex" => AgentAdapter.Codex
+  }
 
   @doc """
   Loads the worker configuration (via `opts[:home]`, see
@@ -45,6 +54,18 @@ defmodule SddOrchestrator.Worker.Supervisor do
     # env rather than a passed-in value — set once, before anything that
     # might prepare a run workspace starts.
     Application.put_env(:sdd_orchestrator, :worker_workspace_root, config.workspace_root)
+
+    # The only place that turns the paired `agent_adapter`/`agent_executable`
+    # strings into what `AgentAdapter.adapter/0` and each adapter's own
+    # `executable/0` actually read — set once, before the gateway connection
+    # (and therefore any command) can reach an adapter at all.
+    Application.put_env(
+      :sdd_orchestrator,
+      :agent_adapter,
+      Map.get(@agent_adapter_modules, config.agent_adapter, AgentAdapter.Unavailable)
+    )
+
+    Application.put_env(:sdd_orchestrator, :agent_executable, config.agent_executable)
 
     children = [
       {State, config},

@@ -135,7 +135,7 @@ Traceability:
   - Owns: AC-09
   - Proof: Focused tests prove the installed version is checked before launch and an unsupported version is refused, that the process is started only in the given directory with the allowlisted environment and no other value, that recorded streaming output decodes into the boundary's allowed event types in order, that a resumable session is reported as resumed and an unresumable one falls back to a new thread, and that a launch failure and an unexpected exit return their own typed errors.
 
-- [ ] Task 7 - Implement the Codex agent adapter.
+- [x] Task 7 - Implement the Codex agent adapter.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2

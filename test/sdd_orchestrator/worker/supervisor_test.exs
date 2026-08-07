@@ -6,7 +6,11 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
   include a database repo.
   """
 
-  use ExUnit.Case, async: true
+  # Task 7's agent-adapter-selection tests mutate the process-wide
+  # `:agent_adapter`/`:agent_executable` `Application` env, the same keys
+  # `ClaudeCodeTest` and `CodexTest` mutate — `async: true` would race
+  # concurrently-running tests over that shared global state.
+  use ExUnit.Case, async: false
 
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.State
@@ -75,5 +79,54 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # `WorkerSupervisor.configuration/1` still relies on.
     assert State in ids
     refute Enum.any?(ids, fn id -> id |> to_string() |> String.contains?("Repo") end)
+  end
+
+  describe "agent adapter selection (Task 7)" do
+    setup do
+      previous_adapter = Application.get_env(:sdd_orchestrator, :agent_adapter)
+      previous_executable = Application.get_env(:sdd_orchestrator, :agent_executable)
+
+      on_exit(fn ->
+        Application.put_env(:sdd_orchestrator, :agent_adapter, previous_adapter)
+        Application.put_env(:sdd_orchestrator, :agent_executable, previous_executable)
+      end)
+
+      :ok
+    end
+
+    test "wires the paired agent adapter and executable into application env", context do
+      home = tmp_home(context)
+      config = struct!(Configuration, @valid_fields)
+      :ok = Configuration.store(config, home)
+
+      _pid = start_supervised!({WorkerSupervisor, home: home})
+
+      assert Application.get_env(:sdd_orchestrator, :agent_adapter) ==
+               SddOrchestrator.Delivery.AgentAdapter.ClaudeCode
+
+      assert Application.get_env(:sdd_orchestrator, :agent_executable) == "/usr/local/bin/claude"
+    end
+
+    test "codex is selected the same way", context do
+      home = tmp_home(context)
+      config = struct!(Configuration, %{@valid_fields | agent_adapter: "codex"})
+      :ok = Configuration.store(config, home)
+
+      _pid = start_supervised!({WorkerSupervisor, home: home})
+
+      assert Application.get_env(:sdd_orchestrator, :agent_adapter) ==
+               SddOrchestrator.Delivery.AgentAdapter.Codex
+    end
+
+    test "an unrecognized agent adapter string falls back to the unavailable default", context do
+      home = tmp_home(context)
+      config = struct!(Configuration, %{@valid_fields | agent_adapter: "something_else"})
+      :ok = Configuration.store(config, home)
+
+      _pid = start_supervised!({WorkerSupervisor, home: home})
+
+      assert Application.get_env(:sdd_orchestrator, :agent_adapter) ==
+               SddOrchestrator.Delivery.AgentAdapter.Unavailable
+    end
   end
 end

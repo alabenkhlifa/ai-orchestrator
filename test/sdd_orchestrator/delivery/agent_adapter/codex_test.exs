@@ -1,27 +1,26 @@
-defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
+defmodule SddOrchestrator.Delivery.AgentAdapter.CodexTest do
   @moduledoc """
-  Task 6 proof: the Claude Code agent adapter.
+  Task 7 proof: the Codex agent adapter.
 
-  Covers [AC-09] — the installed agent version is checked before launch, the
-  agent runs in the proven directory with only the projected input and
-  allowlisted environment, and its output is observed as normalized events
-  including a resumed or newly started thread.
+  Covers [AC-10] — the same version check, launch boundary, environment
+  allowlist, and normalized observation hold for Codex as for Claude Code,
+  and the choice of agent changes nothing the control plane observes beyond
+  the recorded agent reference.
 
   Every scenario except the real-CLI guarded ones runs against a
-  deterministic scripted `claude` stand-in
-  (`SddOrchestrator.ClaudeCodeCliFixture`) rather than the real subprocess,
-  so this suite is fast, offline, and free — the real installed CLI is only
-  exercised once, to prove the fixture's assumptions still hold against it.
+  deterministic scripted `codex` stand-in (`SddOrchestrator.CodexCliFixture`)
+  rather than the real subprocess, mirroring
+  `SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest`.
   """
 
   # `:agent_executable` is process-wide `Application` env, and this suite's
-  # own tests (and `CodexTest`'s) mutate it repeatedly — `async: true` here
-  # would race concurrently-running tests over that same global key.
+  # own tests (and `ClaudeCodeTest`'s) mutate it repeatedly — `async: true`
+  # here would race concurrently-running tests over that same global key.
   use ExUnit.Case, async: false
 
-  alias SddOrchestrator.ClaudeCodeCliFixture, as: Fixture
+  alias SddOrchestrator.CodexCliFixture, as: Fixture
   alias SddOrchestrator.Delivery.AgentAdapter
-  alias SddOrchestrator.Delivery.AgentAdapter.ClaudeCode
+  alias SddOrchestrator.Delivery.AgentAdapter.Codex
   alias SddOrchestrator.Delivery.Worker.Workspace
   alias SddOrchestrator.DeliveryProtocolFixtures
 
@@ -39,123 +38,106 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
   end
 
   describe "installed_version/0" do
-    test "a genuine claude executable reports this adapter's own output-schema version" do
-      configure(Fixture.version_only_script("9.9.9 (Claude Code)"))
-      assert ClaudeCode.installed_version() == {:ok, "1.0.0"}
+    test "a genuine codex executable reports this adapter's own output-schema version" do
+      configure(Fixture.version_only_script("codex-cli 9.9.9"))
+      assert Codex.installed_version() == {:ok, "1.0.0"}
     end
 
     test "an executable answering --version with an unrecognizable shape is refused" do
       configure(Fixture.version_only_script("not a version"))
-      assert ClaudeCode.installed_version() == {:error, :agent_unavailable}
+      assert Codex.installed_version() == {:error, :agent_unavailable}
     end
 
     test "a --version exiting nonzero is refused" do
       configure(Fixture.version_only_script("boom", exit_status: 1))
-      assert ClaudeCode.installed_version() == {:error, :agent_unavailable}
+      assert Codex.installed_version() == {:error, :agent_unavailable}
     end
 
     test "a missing executable is refused" do
       configure(missing_executable())
-      assert ClaudeCode.installed_version() == {:error, :agent_unavailable}
+      assert Codex.installed_version() == {:error, :agent_unavailable}
     end
 
-    if System.find_executable("claude") do
-      test "the real installed claude CLI is recognized" do
+    if System.find_executable("codex") do
+      test "the real installed codex CLI is recognized" do
         Application.delete_env(:sdd_orchestrator, :agent_executable)
-        assert ClaudeCode.installed_version() == {:ok, "1.0.0"}
+        assert Codex.installed_version() == {:ok, "1.0.0"}
       end
     else
-      test "the real CLI proof needs a claude executable on PATH" do
-        flunk("environment blocker: no claude executable, so the real CLI cannot be proven")
+      test "the real CLI proof needs a codex executable on PATH" do
+        flunk("environment blocker: no codex executable, so the real CLI cannot be proven")
       end
     end
   end
 
   describe "start/1 and observe/1 over a scripted subprocess" do
-    test "a new session decodes streamed progress and the final result, in order" do
+    test "a new session decodes streamed progress and the final turn, in order" do
       lines = [
-        %{"type" => "system", "subtype" => "init", "session_id" => "thr_new"},
+        %{"type" => "thread.started", "thread_id" => "thr_new"},
+        %{"type" => "turn.started"},
         %{
-          "type" => "assistant",
-          "message" => %{"content" => [%{"type" => "text", "text" => "Working on it"}]},
-          "timestamp" => "2026-08-07T00:00:00Z"
+          "type" => "item.completed",
+          "item" => %{"id" => "item_0", "type" => "agent_message", "text" => "Working on it"}
         },
-        %{"type" => "result", "is_error" => false, "result" => "All done"}
+        %{"type" => "turn.completed", "usage" => %{}}
       ]
 
       configure(Fixture.streaming_script(lines))
 
-      assert {:ok, handle} = ClaudeCode.start(input())
+      assert {:ok, handle} = Codex.start(input())
       refute handle.resumed?
       assert handle.thread_ref == "thr_new"
 
       assert {:ok, events} = drain_all(handle)
       assert [progress, final] = events
       assert progress["type"] == "progress"
-      assert progress["occurred_at"] == "2026-08-07T00:00:00Z"
       assert progress["payload"]["summary"] == "Working on it"
       assert final["type"] == "progress"
-      assert final["payload"]["summary"] == "All done"
+      assert final["payload"]["summary"] == "Turn completed."
 
-      assert ClaudeCode.observe(handle) == {:error, :agent_exited}
+      assert Codex.observe(handle) == {:error, :agent_exited}
     end
 
     test "a resumed session is reported as resumed with the same thread reference" do
       lines = [
-        %{"type" => "system", "subtype" => "init", "session_id" => "thr_existing"},
-        %{"type" => "result", "is_error" => false, "result" => "continued"}
+        %{"type" => "thread.started", "thread_id" => "thr_existing"},
+        %{"type" => "turn.completed", "usage" => %{}}
       ]
 
       configure(Fixture.streaming_script(lines))
 
-      assert {:ok, handle} = ClaudeCode.start(input(thread_ref: "thr_existing"))
+      assert {:ok, handle} = Codex.start(input(thread_ref: "thr_existing"))
       assert handle.resumed?
       assert handle.thread_ref == "thr_existing"
     end
 
     test "an unresumable session is refused so the boundary falls back to a new thread" do
-      lines = [
-        %{
-          "type" => "result",
-          "is_error" => true,
-          "subtype" => "error_during_execution",
-          "errors" => ["No conversation found with session ID: thr_gone"]
-        }
-      ]
+      # Confirmed live: an unresolvable `codex exec resume` prints a
+      # plain-text error to inherited stderr (nothing on stdout) and exits
+      # nonzero without ever emitting `thread.started`.
+      configure(Fixture.streaming_script([], exit_status: 1))
 
+      assert Codex.start(input(thread_ref: "thr_gone")) == {:error, :thread_not_found}
+    end
+
+    test "a process that dies mid-turn without completing is decoded as a failed event" do
+      lines = [%{"type" => "thread.started", "thread_id" => "thr_dies_midway"}]
       configure(Fixture.streaming_script(lines, exit_status: 1))
 
-      assert ClaudeCode.start(input(thread_ref: "thr_gone")) == {:error, :thread_not_found}
-    end
-
-    test "a turn that fails after a real session started is decoded as a failed event" do
-      lines = [
-        %{"type" => "system", "subtype" => "init", "session_id" => "thr_fails_midway"},
-        %{
-          "type" => "result",
-          "is_error" => true,
-          "subtype" => "error_during_execution",
-          "errors" => ["provider request failed"]
-        }
-      ]
-
-      configure(Fixture.streaming_script(lines))
-
-      assert {:ok, handle} = ClaudeCode.start(input())
+      assert {:ok, handle} = Codex.start(input())
       assert {:ok, [event]} = drain_all(handle)
       assert event["type"] == "failed"
-      assert event["payload"]["reason"] == "error_during_execution"
-      assert event["payload"]["summary"] == "provider request failed"
+      assert event["payload"]["reason"] == "agent_exited"
     end
 
-    test "a process that exits nonzero without ever starting a session is a launch failure" do
+    test "a process that exits nonzero without ever starting a thread is a launch failure" do
       configure(Fixture.streaming_script([], exit_status: 1))
-      assert ClaudeCode.start(input()) == {:error, :agent_launch_failed}
+      assert Codex.start(input()) == {:error, :agent_launch_failed}
     end
 
     test "a missing executable at launch time is refused" do
       configure(missing_executable())
-      assert ClaudeCode.start(input()) == {:error, :agent_unavailable}
+      assert Codex.start(input()) == {:error, :agent_unavailable}
     end
 
     test "the subprocess receives only the allowlisted environment, never the worker's own" do
@@ -164,13 +146,13 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
 
       configure(Fixture.environment_probe_script("SDD_TEST_LEAK_VAR", "HOME"))
 
-      assert {:ok, handle} = ClaudeCode.start(input())
-      assert {:ok, [progress, _result]} = drain_all(handle)
+      assert {:ok, handle} = Codex.start(input())
+      assert {:ok, [progress, _final]} = drain_all(handle)
       assert progress["payload"]["summary"] == "leak=absent keep=present"
     end
 
     test "the subprocess is launched only in the projected working directory" do
-      marker = "claude-cwd-#{System.unique_integer([:positive])}"
+      marker = "codex-cwd-#{System.unique_integer([:positive])}"
       working_directory = Path.join(System.tmp_dir!(), marker)
       File.mkdir_p!(working_directory)
       on_exit(fn -> File.rm_rf!(working_directory) end)
@@ -178,12 +160,17 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
       configure(Fixture.cwd_probe_script())
 
       assert {:ok, handle} =
-               ClaudeCode.start(
-                 input(agent_input: agent_input(working_directory: working_directory))
-               )
+               Codex.start(input(agent_input: agent_input(working_directory: working_directory)))
 
-      assert {:ok, [progress, _result]} = drain_all(handle)
+      assert {:ok, [progress, _final]} = drain_all(handle)
       assert progress["payload"]["summary"] =~ marker
+    end
+
+    test "the subprocess never blocks on stdin even though codex exec would read it" do
+      configure(Fixture.stdin_sensitive_script())
+
+      assert {:ok, handle} = Codex.start(input())
+      assert handle.thread_ref == "thr_stdin_sensitive"
     end
   end
 
@@ -194,7 +181,7 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
       root =
         Path.join(
           System.tmp_dir!(),
-          "claude-adapter-boundary-#{System.unique_integer([:positive])}"
+          "codex-adapter-boundary-#{System.unique_integer([:positive])}"
         )
 
       File.mkdir_p!(root)
@@ -218,30 +205,33 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
       {:ok, directory} = Workspace.working_directory(manifest)
 
       lines = [
-        %{"type" => "system", "subtype" => "init", "session_id" => "thr_boundary"},
+        %{"type" => "thread.started", "thread_id" => "thr_boundary"},
         %{
-          "type" => "assistant",
-          "message" => %{"content" => [%{"type" => "text", "text" => "Implementing the change"}]},
-          "timestamp" => "2026-08-07T00:00:00Z"
+          "type" => "item.completed",
+          "item" => %{
+            "id" => "item_0",
+            "type" => "agent_message",
+            "text" => "Implementing the change"
+          }
         },
-        %{"type" => "result", "is_error" => false, "result" => "Implemented"}
+        %{"type" => "turn.completed", "usage" => %{}}
       ]
 
       configure(Fixture.streaming_script(lines))
 
-      assert {:ok, launch} = AgentAdapter.launch(manifest, directory, adapter: ClaudeCode)
+      assert {:ok, launch} = AgentAdapter.launch(manifest, directory, adapter: Codex)
       assert launch.agent_version == "1.0.0"
       assert launch.thread_start == :new
       assert launch.thread_ref == "thr_boundary"
 
-      # `launch/3` only waits for the initial system/init event, not the
-      # rest of this tiny fixture's output, so `observe/2` gets a moment to
-      # actually see it arrive before draining once.
+      # `launch/3` only waits for `thread.started`, not the rest of this
+      # tiny fixture's output, so `observe/2` gets a moment to actually see
+      # it arrive before draining once.
       Process.sleep(50)
 
       assert {:ok, observation} =
                AgentAdapter.observe(launch,
-                 adapter: ClaudeCode,
+                 adapter: Codex,
                  command_id: DeliveryProtocolFixtures.command_id(),
                  fence_token: 1
                )
@@ -256,6 +246,57 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
       assert observation.last_sequence == 2
       assert observation.terminal == nil
     end
+
+    test "the choice of agent changes nothing the control plane observes beyond the recorded agent reference" do
+      manifest = DeliveryProtocolFixtures.manifest()
+      {:ok, _workspace} = Workspace.prepare(manifest)
+      {:ok, directory} = Workspace.working_directory(manifest)
+
+      lines = [
+        %{"type" => "thread.started", "thread_id" => "thr_parity"},
+        %{
+          "type" => "item.completed",
+          "item" => %{
+            "id" => "item_0",
+            "type" => "agent_message",
+            "text" => "Same shape as Claude Code"
+          }
+        },
+        %{"type" => "turn.completed", "usage" => %{}}
+      ]
+
+      configure(Fixture.streaming_script(lines))
+
+      assert {:ok, launch} = AgentAdapter.launch(manifest, directory, adapter: Codex)
+      Process.sleep(50)
+
+      assert {:ok, observation} =
+               AgentAdapter.observe(launch,
+                 adapter: Codex,
+                 command_id: DeliveryProtocolFixtures.command_id(),
+                 fence_token: 1
+               )
+
+      [progress, _final] = observation.events
+      envelope_keys = progress |> Map.keys() |> Enum.sort()
+
+      assert envelope_keys == [
+               "attempt_number",
+               "command_id",
+               "event_id",
+               "event_type",
+               "fence_token",
+               "occurred_at",
+               "payload",
+               "protocol_version",
+               "run_id",
+               "sequence",
+               "source",
+               "type"
+             ]
+
+      assert progress["source"] == "agent"
+    end
   end
 
   # --- helpers -------------------------------------------------------------
@@ -265,7 +306,7 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
   # events — this accumulates every call's events until the process reports
   # `:agent_exited` (nothing more, ever) or the attempt budget runs out.
   defp drain_all(handle, acc \\ [], attempts \\ 100) do
-    case ClaudeCode.observe(handle) do
+    case Codex.observe(handle) do
       {:error, :agent_exited} ->
         {:ok, acc}
 
@@ -281,7 +322,7 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
   defp configure(path), do: Application.put_env(:sdd_orchestrator, :agent_executable, path)
 
   defp missing_executable,
-    do: Path.join(System.tmp_dir!(), "no-such-claude-#{System.unique_integer([:positive])}")
+    do: Path.join(System.tmp_dir!(), "no-such-codex-#{System.unique_integer([:positive])}")
 
   defp input(overrides \\ []) do
     %{
@@ -308,7 +349,7 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.ClaudeCodeTest do
       "target_branch" => "sdd/feature/ftr-0002/run-0003",
       "required_checks" => [%{"name" => "test", "command" => "mix test"}],
       "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil},
-      "agent_ref" => %{"provider_ref" => "claude_code"},
+      "agent_ref" => %{"provider_ref" => "codex"},
       "working_directory" => Map.get(overrides, :working_directory, System.tmp_dir!())
     }
   end

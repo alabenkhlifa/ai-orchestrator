@@ -33,6 +33,7 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
   # Affected" list names as consumed unchanged by the worker. Verified by
   # inspection to reference neither `Repo.` nor `Ecto.Schema`.
   @allowed_delivery_modules ~w(
+    AgentAdapter
     Worker
     ExecutionManifest
     ProtocolCodec
