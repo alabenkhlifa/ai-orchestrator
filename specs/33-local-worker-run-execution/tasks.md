@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 9 are complete and verified. Task 10 discovered that the consumed-unchanged worker artifact-upload transport (`specs/07` Task 52) required a caller-declared `RunAttempt` identity no worker envelope ever transmits — untested until this task became its first real composer. `specs/07` Task 55 corrects it; Task 10 is blocked until `capability:worker-artifact-upload-transport` is ready, and resumes with no scope change to this task's own plan once it is.
+The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 9 are complete and verified. Task 10 previously found that the consumed-unchanged worker artifact-upload transport (`specs/07` Task 52) required a caller-declared `RunAttempt` identity no worker envelope ever transmits — untested until this task became its first real composer. `specs/07` Task 55 corrected it and `capability:worker-artifact-upload-transport` is ready (merged from `slice/07-guided-specification-delivery` into this branch); Task 10 resumes with no scope change to this task's own plan.
 
 ## Active Slice
 
