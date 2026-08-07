@@ -144,7 +144,7 @@ Traceability:
   - Owns: AC-10
   - Proof: Focused tests prove the same version check, directory boundary, environment allowlist, event vocabulary, thread-resume behavior, and typed failures hold for the Codex adapter, and that switching the configured adapter changes nothing the control plane observes beyond the recorded agent reference.
 
-- [ ] Task 8 - Normalize and deliver agent events.
+- [x] Task 8 - Normalize and deliver agent events.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5, Task 6

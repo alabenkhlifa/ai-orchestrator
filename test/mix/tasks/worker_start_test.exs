@@ -19,7 +19,8 @@ defmodule Mix.Tasks.Worker.StartTest do
     agent_adapter: "claude_code",
     agent_executable: "/usr/local/bin/claude",
     workspace_root: "/Users/dev/project",
-    project_id: Ecto.UUID.generate()
+    project_id: Ecto.UUID.generate(),
+    worker_id: Ecto.UUID.generate()
   }
 
   defp tmp_home(context) do

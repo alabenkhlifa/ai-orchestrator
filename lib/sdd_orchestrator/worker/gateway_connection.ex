@@ -34,9 +34,11 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
   require Logger
 
+  alias SddOrchestrator.Worker.AgentObserver
   alias SddOrchestrator.Worker.CommandHandler
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.ExecutionPreparer
+  alias SddOrchestrator.Worker.RunState
 
   # Must be kept in sync with the control plane's `WorkerProtocol` module —
   # see the moduledoc. A remote worker binary has no access to that module
@@ -63,6 +65,19 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
   @gateway_credential_path "/worker/gateway_credentials"
   @websocket_path "/worker/websocket"
+
+  # How often a running attempt's agent output is polled. Production callers
+  # never override this; tests do, via `opts[:observe_interval]`, the same
+  # seam `:protocol_version` and `:capabilities` already use, so a suite
+  # never waits a real 300ms per tick.
+  @observe_interval 300
+
+  # How long one delivered event's channel acknowledgement is awaited before
+  # the tick gives up on it and retries on the next scheduled poll (see
+  # `deliver_events/3`).
+  @event_ack_timeout 5_000
+
+  @terminal_event_types ~w(blocked failed)
 
   @doc "The protocol version this worker announces (kept in sync with `WorkerProtocol.version/0`)."
   @spec protocol_version() :: pos_integer()
@@ -176,7 +191,11 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
     case push(socket, topic, "acknowledge", ack) do
       {:ok, _ref} ->
-        if ack["status"] == "accepted", do: prepare_execution(topic, message, socket)
+        socket =
+          if ack["status"] == "accepted",
+            do: prepare_execution(topic, message, socket),
+            else: socket
+
         {:ok, socket}
 
       {:error, reason} ->
@@ -199,22 +218,87 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     {:ok, socket}
   end
 
+  # Fires once per attempt's observation tick (see `start_agent_observation/3`
+  # and `AgentObserver.poll/3`): reobserves the launched agent, delivers
+  # whatever it produced in order, and either reschedules, stops on
+  # supersession or a clean agent exit, or transitions the attempt to its
+  # terminal state.
+  #
+  # `AgentAdapter.observe/2` (via each adapter's `Session.drain/1`) is a
+  # destructive read: whatever it returns is gone from the adapter's own
+  # buffer the instant it's returned, win or lose, acknowledged or not. So a
+  # tick that already has undelivered events from a *previous* tick's
+  # partial failure (`socket.assigns.pending`) must finish delivering those
+  # first — polling again before they're flushed would draw fresh content
+  # under the sequence numbers the lost ones were supposed to carry,
+  # permanently losing whatever wasn't acknowledged (data loss, not merely a
+  # delay), and could silently drop a terminal event and leave the attempt
+  # stuck "accepted" forever. Only once `pending` is empty does this poll
+  # the adapter for anything new.
+  @impl Slipstream
+  def handle_info({:observe_agent, envelope}, socket) do
+    case Map.get(socket.assigns, :pending) do
+      %{events: events, terminal: terminal} when events != [] ->
+        continue_delivery(socket, envelope, events, terminal)
+
+      _none_pending ->
+        poll_and_deliver(socket, envelope)
+    end
+  end
+
+  defp poll_and_deliver(socket, envelope) do
+    case AgentObserver.poll(envelope, socket.assigns.launch, socket.assigns.home) do
+      {:ok, %{current?: false}} ->
+        Logger.info(
+          "worker gateway stopping agent observation for command " <>
+            "#{inspect(envelope["command_id"])}: attempt superseded"
+        )
+
+        {:noreply, socket}
+
+      {:ok, %{current?: true, observation: observation}} ->
+        log_dropped(envelope, observation.dropped)
+        continue_delivery(socket, envelope, observation.events, observation.terminal)
+
+      {:error, :agent_exited} ->
+        Logger.info(
+          "worker gateway agent observation ended for command " <>
+            "#{inspect(envelope["command_id"])}: the agent exited with nothing further to " <>
+            "observe and no terminal event"
+        )
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to poll the agent for command " <>
+            "#{inspect(envelope["command_id"])}: #{inspect(reason)}"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
   # An accepted command is prepared for execution only after its
   # acknowledgement is on the wire — the acknowledgement is this worker's
   # answer to the command itself, while workspace preparation is a separate,
-  # later effect the control plane observes as an event.
+  # later effect the control plane observes as an event. Returns the
+  # (possibly updated, e.g. carrying the launched agent) socket unchanged on
+  # any refusal, since nothing exists yet to observe.
   defp prepare_execution(topic, message, socket) do
     case ExecutionPreparer.prepare(message, socket.assigns.home) do
       {:ok, event} ->
         case push(socket, topic, "event", event) do
           {:ok, _ref} ->
-            :ok
+            start_agent_observation(topic, message, socket)
 
           {:error, reason} ->
             Logger.error(
               "worker gateway failed to push the workspace_ready event for command " <>
                 "#{inspect(message["command_id"])}: #{inspect(reason)}"
             )
+
+            socket
         end
 
       {:error, reason} ->
@@ -222,8 +306,168 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
           "worker refused to prepare execution for command " <>
             "#{inspect(message["command_id"])}: #{inspect(reason)}"
         )
+
+        socket
     end
   end
+
+  # Launches the attempt's agent (Task 8), announces it with a "running"
+  # heartbeat, and schedules the first observation tick. An agent that fails
+  # to launch has nothing to observe — refused and logged, no tick scheduled,
+  # socket unchanged.
+  defp start_agent_observation(topic, envelope, socket) do
+    case AgentObserver.start(envelope, socket.assigns.home) do
+      {:ok, launch} ->
+        push_heartbeat(topic, "running", socket)
+        Process.send_after(self(), {:observe_agent, envelope}, socket.assigns.observe_interval)
+        assign(socket, :launch, launch)
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to launch the agent for command " <>
+            "#{inspect(envelope["command_id"])}: #{inspect(reason)}"
+        )
+
+        socket
+    end
+  end
+
+  # Delivers one batch of events (fresh from this tick's poll, or carried
+  # over as `pending` from a tick that could not finish delivering them):
+  # every event in order, each awaited for its acknowledgement before the
+  # next is pushed. A push or ack failure stops delivering further events
+  # *this tick* without advancing past the failure — the undelivered
+  # remainder (including the batch's own terminal marker, if any) is kept in
+  # `socket.assigns.pending` for the next tick to retry first, rather than
+  # discarded (see `handle_info/2`'s moduledoc-style comment on why that
+  # would lose data). Only once a batch is fully delivered does a terminal
+  # marker trigger the attempt's terminal transition, or, absent one, the
+  # next tick schedule.
+  defp continue_delivery(socket, envelope, events, terminal) do
+    case deliver_events(socket, envelope, events) do
+      :ok ->
+        socket = assign(socket, :pending, nil)
+
+        if terminal in @terminal_event_types do
+          push_heartbeat(socket.assigns.topic, "stopping", socket)
+          finish_attempt(envelope, terminal, socket)
+          {:noreply, socket}
+        else
+          reschedule(socket, envelope)
+        end
+
+      {:partial, remaining} ->
+        socket = assign(socket, :pending, %{events: remaining, terminal: terminal})
+        reschedule(socket, envelope)
+    end
+  end
+
+  defp deliver_events(_socket, _envelope, []), do: :ok
+
+  defp deliver_events(socket, envelope, [event | rest] = events) do
+    case push_and_await(socket, event) do
+      :ok ->
+        AgentObserver.record_sequence(envelope, event["sequence"], socket.assigns.home)
+        deliver_events(socket, envelope, rest)
+
+      :error ->
+        {:partial, events}
+    end
+  end
+
+  defp push_and_await(socket, event) do
+    case push(socket, socket.assigns.topic, "event", event) do
+      {:ok, ref} ->
+        case await_reply(ref, @event_ack_timeout) do
+          :ok ->
+            :ok
+
+          {:ok, _response} ->
+            :ok
+
+          reply ->
+            Logger.warning(
+              "worker gateway event sequence #{event["sequence"]} for command " <>
+                "#{inspect(event["command_id"])} was not acknowledged: #{inspect(reply)}"
+            )
+
+            :error
+        end
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to push event sequence #{event["sequence"]} for command " <>
+            "#{inspect(event["command_id"])}: #{inspect(reason)}"
+        )
+
+        :error
+    end
+  end
+
+  defp finish_attempt(envelope, terminal, socket) do
+    case AgentObserver.finish(envelope, terminal, socket.assigns.home) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to finish attempt for command " <>
+            "#{inspect(envelope["command_id"])} as #{terminal}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp reschedule(socket, envelope) do
+    Process.send_after(self(), {:observe_agent, envelope}, socket.assigns.observe_interval)
+    {:noreply, socket}
+  end
+
+  defp log_dropped(_envelope, []), do: :ok
+
+  defp log_dropped(envelope, dropped) do
+    Logger.warning(
+      "worker gateway dropped #{length(dropped)} agent event(s) for command " <>
+        "#{inspect(envelope["command_id"])} as outside the agent's allowed vocabulary: " <>
+        inspect(dropped)
+    )
+  end
+
+  # Reloaded fresh on every call (never carried between ticks) so a
+  # heartbeat's `last_sequence` and other fields always reflect the most
+  # recently durably recorded state, matching `AgentObserver`'s own
+  # never-trust-stale-state discipline.
+  defp push_heartbeat(topic, state, socket) do
+    case RunState.load(socket.assigns.home) do
+      {:ok, %{current: %RunState{} = current}} ->
+        heartbeat = %{
+          "type" => "heartbeat",
+          "protocol_version" => @protocol_version,
+          "run_id" => current.run_id,
+          "attempt_number" => current.attempt_number,
+          "fence_token" => current.fence_token,
+          "last_sequence" => current.last_sequence,
+          "state" => state,
+          "worker_id" => socket.assigns.config.worker_id,
+          "observed_at" => now_iso8601()
+        }
+
+        case push(socket, topic, "heartbeat", heartbeat) do
+          {:ok, _ref} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error(
+              "worker gateway failed to push a #{state} heartbeat for run " <>
+                "#{inspect(current.run_id)}: #{inspect(reason)}"
+            )
+        end
+
+      _unavailable ->
+        Logger.error("worker gateway could not read local run state to push a #{state} heartbeat")
+    end
+  end
+
+  defp now_iso8601, do: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
   defp establish(%Configuration{} = config, opts) do
     with {:ok, token} <- fetch_gateway_credential(config),
@@ -237,10 +481,12 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
       socket =
         new_socket()
+        |> assign(:config, config)
         |> assign(:project_id, config.project_id)
         |> assign(:topic, topic)
         |> assign(:join_params, join_params)
         |> assign(:home, Keyword.get(opts, :home))
+        |> assign(:observe_interval, Keyword.get(opts, :observe_interval, @observe_interval))
 
       case connect(socket, uri: uri) do
         {:ok, connecting_socket} -> {:ok, connecting_socket}

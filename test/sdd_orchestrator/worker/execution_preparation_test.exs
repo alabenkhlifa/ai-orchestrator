@@ -354,7 +354,8 @@ defmodule SddOrchestrator.Worker.ExecutionPreparationTest do
       agent_adapter: "claude_code",
       agent_executable: "/usr/local/bin/claude",
       workspace_root: System.tmp_dir!(),
-      project_id: project_id
+      project_id: project_id,
+      worker_id: Ecto.UUID.generate()
     }
   end
 

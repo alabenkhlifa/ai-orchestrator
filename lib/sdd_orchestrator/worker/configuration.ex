@@ -16,7 +16,8 @@ defmodule SddOrchestrator.Worker.Configuration do
     :agent_adapter,
     :agent_executable,
     :workspace_root,
-    :project_id
+    :project_id,
+    :worker_id
   ]
   defstruct @enforce_keys
 
@@ -27,7 +28,8 @@ defmodule SddOrchestrator.Worker.Configuration do
           agent_adapter: String.t(),
           agent_executable: String.t(),
           workspace_root: String.t(),
-          project_id: String.t()
+          project_id: String.t(),
+          worker_id: String.t()
         }
 
   @agent_adapters ~w(claude_code codex)
@@ -75,7 +77,8 @@ defmodule SddOrchestrator.Worker.Configuration do
       agent_adapter: Map.fetch!(cli_fields, :agent_adapter),
       agent_executable: Map.fetch!(cli_fields, :agent_executable),
       workspace_root: Map.fetch!(cli_fields, :workspace_root),
-      project_id: Map.fetch!(cli_fields, :project_id)
+      project_id: Map.fetch!(cli_fields, :project_id),
+      worker_id: worker.id
     }
   end
 
@@ -151,7 +154,8 @@ defmodule SddOrchestrator.Worker.Configuration do
            agent_adapter: decoded["agent_adapter"],
            agent_executable: decoded["agent_executable"],
            workspace_root: decoded["workspace_root"],
-           project_id: decoded["project_id"]
+           project_id: decoded["project_id"],
+           worker_id: decoded["worker_id"]
          }}
 
       missing_field ->
@@ -172,7 +176,8 @@ defmodule SddOrchestrator.Worker.Configuration do
       "agent_adapter" => config.agent_adapter,
       "agent_executable" => config.agent_executable,
       "workspace_root" => config.workspace_root,
-      "project_id" => config.project_id
+      "project_id" => config.project_id,
+      "worker_id" => config.worker_id
     }
   end
 end
