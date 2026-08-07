@@ -126,7 +126,7 @@ Traceability:
   - Owns: AC-08
   - Proof: Focused tests against a real fixture repository prove the run workspace and isolated branch are created at the approved base revision and reused on a second command for the same attempt, that the single-process lock is held for the attempt and released on success, failure, and crash, that the workspace-ready event is emitted only by the worker, and that a working directory failing the manifest proof is refused before a process is created.
 
-- [ ] Task 6 - Implement the Claude Code agent adapter.
+- [x] Task 6 - Implement the Claude Code agent adapter.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
