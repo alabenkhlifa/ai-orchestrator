@@ -89,7 +89,7 @@ Traceability:
   - Owns: AC-01
   - Proof: Focused tests prove auto-selection with exactly one eligible connection, required explicit choice with more than one, and an unchanged pass-through with none, all scoped to the initiator's own account and the run's target worker.
 
-- [ ] Task 2 — Pin the run's runtime session before the worker is commanded to start.
+- [x] Task 2 — Pin the run's runtime session before the worker is commanded to start.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1

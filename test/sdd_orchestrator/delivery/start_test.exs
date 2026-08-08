@@ -11,7 +11,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
   use SddOrchestrator.DataCase, async: false
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.AIRuntime.PersonalConnections
+  alias SddOrchestrator.AIRuntime.{PersonalConnections, RuntimeSessions}
   alias SddOrchestrator.AIRuntimeFixtures
 
   alias SddOrchestrator.Delivery.{
@@ -19,6 +19,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
     AgentRun,
     ExecutionManifest,
     Feature,
+    LocalWorkerRunGovernance,
     ProcessingDisclosure,
     Readiness,
     RunAttempt,
@@ -44,6 +45,11 @@ defmodule SddOrchestrator.Delivery.StartTest do
     agent_ref: %{"provider" => "configured-agent"},
     worker_ref: %{"target" => "configured-worker"}
   ]
+
+  # Matches `AIRuntimeFixtures`' own default catalog/quota `retrieved_at`, so a
+  # pin against a fixture-built catalog is proven against the snapshot's own
+  # freshness window instead of the real wall clock racing its 300-second TTL.
+  @runtime_now ~U[2026-08-03 12:00:00Z]
 
   @boundary [
     execution_location: "this computer",
@@ -435,12 +441,16 @@ defmodule SddOrchestrator.Delivery.StartTest do
     } do
       worker = bind_local_worker(project)
 
-      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+      AIRuntimeFixtures.runtime_session_context_fixture(%{
         account: owner_account,
         worker: worker
       })
 
-      assert {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+      assert {:ok, results} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 now: @runtime_now
+               )
+
       assert results.run.state == "pending"
     end
 
@@ -488,7 +498,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
       })
 
       %{connection: chosen} =
-        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        AIRuntimeFixtures.runtime_session_context_fixture(%{
           account: owner_account,
           worker: worker,
           label: "Second Codex"
@@ -496,7 +506,8 @@ defmodule SddOrchestrator.Delivery.StartTest do
 
       assert {:ok, _results} =
                Start.start(authority, owner, %{project: project, feature: ready},
-                 ai_runtime_connection_id: chosen.id
+                 ai_runtime_connection_id: chosen.id,
+                 now: @runtime_now
                )
     end
 
@@ -574,6 +585,131 @@ defmodule SddOrchestrator.Delivery.StartTest do
         )
 
       assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+  end
+
+  describe "pinning a governed run's runtime session [AC-02] [AC-03] [AC-04]" do
+    setup ctx, do: %{ready: prepare(ctx)}
+
+    test "pins a session and records the run's governance before it completes", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      %{connection: connection} =
+        AIRuntimeFixtures.runtime_session_context_fixture(%{
+          account: owner_account,
+          worker: worker
+        })
+
+      assert {:ok, results} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 now: @runtime_now
+               )
+
+      assert %LocalWorkerRunGovernance{} =
+               governance =
+               LocalWorkerRunGovernance.for_run(results.run.id)
+
+      assert {:ok, session} =
+               RuntimeSessions.fetch_for_consumer(
+                 owner_account,
+                 :working_agent,
+                 "local_worker_run:" <> results.run.id
+               )
+
+      assert governance.session_id == session.session_id
+      assert session.connection_id == connection.id
+      assert session.model == "codex-test-model"
+      assert session.effort == "medium"
+    end
+
+    test "refuses the start and leaves no rows behind when the catalog is unavailable", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      assert {:error, _reason} =
+               Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+      assert Repo.aggregate(RunCommand, :count) == 0
+      assert Repo.aggregate(LocalWorkerRunGovernance, :count) == 0
+    end
+
+    test "refuses the start and leaves no rows behind when a required spending ceiling is missing",
+         %{
+           authority: authority,
+           project: project,
+           owner: owner,
+           owner_account: owner_account,
+           ready: ready
+         } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.model_catalog_snapshot_fixture(%{
+        connection_fixture:
+          AIRuntimeFixtures.personal_ai_connection_fixture(%{
+            account: owner_account,
+            worker: worker,
+            authentication_mode: "api_key"
+          })
+      })
+
+      assert {:error, :spending_ceiling_required} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 now: @runtime_now
+               )
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+      assert Repo.aggregate(RunCommand, :count) == 0
+      assert Repo.aggregate(LocalWorkerRunGovernance, :count) == 0
+    end
+
+    test "re-pinning the same run's consumer reference is idempotent", %{
+      project: project,
+      feature: feature,
+      owner_account: owner_account
+    } do
+      run_id = DeliveryFixtures.run_fixture(project, feature).id
+
+      context = AIRuntimeFixtures.runtime_session_context_fixture(%{account: owner_account})
+
+      request = %{
+        consumer: :working_agent,
+        consumer_ref: "local_worker_run:" <> run_id,
+        connection_id: context.connection.id,
+        model: "codex-test-model",
+        effort: "medium",
+        scarcity: :standard,
+        choices: [],
+        spending_ceiling: nil
+      }
+
+      assert {:ok, first} = RuntimeSessions.pin_session(owner_account, request, now: @runtime_now)
+
+      assert {:ok, second} =
+               RuntimeSessions.pin_session(owner_account, request, now: @runtime_now)
+
+      assert first.session_id == second.session_id
+
+      assert {:ok, governance_a} = LocalWorkerRunGovernance.record(run_id, first.session_id)
+      assert {:ok, governance_b} = LocalWorkerRunGovernance.record(run_id, second.session_id)
+      assert governance_a.id == governance_b.id
+      assert Repo.aggregate(LocalWorkerRunGovernance, :count) == 1
     end
   end
 
