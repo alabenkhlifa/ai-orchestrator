@@ -136,27 +136,19 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
     |> Enum.with_index(1)
     |> Enum.map_reduce(true, fn {check, index}, all_passed? ->
       sequence = start_sequence + index
-      {outcome, exit_code, duration_ms, content} = execute_check(check, directory, timeout)
+
+      {outcome, _exit_code, _duration_ms, content} =
+        result = execute_check(check, directory, timeout)
+
       artifact_ref = upload_artifact(project_id, envelope, check, content, opts)
 
-      event =
-        evidence_event(
-          envelope,
-          sequence,
-          check,
-          outcome,
-          exit_code,
-          duration_ms,
-          commit_sha,
-          content,
-          artifact_ref
-        )
+      event = evidence_event(envelope, sequence, check, result, commit_sha, artifact_ref)
 
       {event, all_passed? and outcome == "passed"}
     end)
   end
 
-  # Uploads the same `content` binary `evidence_event/9` digests, through the
+  # Uploads the same `content` binary `evidence_event/6` digests, through the
   # project's storage authority (always hosted for this worker — see the
   # moduledoc). A transient transport failure is retried a bounded number of
   # times against the exact same capture, which cannot duplicate the artifact
@@ -254,17 +246,9 @@ defmodule SddOrchestrator.Worker.RequiredCheckRunner do
 
   defp unsupported_content(command), do: "check could not be attempted: #{command}"
 
-  defp evidence_event(
-         envelope,
-         sequence,
-         check,
-         outcome,
-         exit_code,
-         duration_ms,
-         commit_sha,
-         content,
-         artifact_ref
-       ) do
+  defp evidence_event(envelope, sequence, check, result, commit_sha, artifact_ref) do
+    {outcome, exit_code, duration_ms, content} = result
+
     payload =
       %{
         "kind" => "required_check",
