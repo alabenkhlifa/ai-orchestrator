@@ -16,6 +16,9 @@ defmodule SddOrchestrator.Delivery.Start do
   storage authority.
   """
 
+  alias SddOrchestrator.AIRuntime.PersonalConnections
+  alias SddOrchestrator.Devices.LocalWorker
+
   alias SddOrchestrator.Delivery.{
     AgentRun,
     DeliveryStore,
@@ -26,6 +29,8 @@ defmodule SddOrchestrator.Delivery.Start do
     RunTransitions
   }
 
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationStore
 
   @type authority :: Readiness.authority()
@@ -38,6 +43,7 @@ defmodule SddOrchestrator.Delivery.Start do
           | :already_started
           | :no_specification
           | :invalid_manifest
+          | {:ai_connection_selection_required, [Ecto.UUID.t()]}
           | term()
 
   @doc """
@@ -54,6 +60,7 @@ defmodule SddOrchestrator.Delivery.Start do
          :ok <- ready?(authority, project.id, actor, feature.id),
          {:ok, current} <- current_revision(authority, project.id),
          :ok <- not_already_started(authority, project, feature),
+         {:ok, _ai_connection_id} <- resolve_ai_connection(project.id, member.account_id, opts),
          {:ok, manifest} <- manifest_for(project, feature, current, opts) do
       commit(authority, project, feature, member, manifest, opts)
     end
@@ -230,6 +237,48 @@ defmodule SddOrchestrator.Delivery.Start do
     case DeliveryStore.fetch_run(authority, project_id, run_id) do
       {:ok, %AgentRun{state: state} = run} when state not in ~w(failed canceled completed) -> run
       _terminal_or_missing -> nil
+    end
+  end
+
+  # Advisory only: this resolves what the initiator could pin, never what
+  # authorizes it. The real, re-checked authorization happens later through
+  # `PersonalConnections.resolve_working_agent_connection/2` when the session
+  # is actually pinned. A project with no bound local worker (for example, a
+  # device-authoritative project) has nothing to filter against, so it reports
+  # zero eligible connections exactly like an unconfigured account would.
+  defp resolve_ai_connection(project_id, account_id, opts) do
+    case bound_local_worker(project_id) do
+      nil -> {:ok, nil}
+      worker -> select_eligible_connection(account_id, worker, opts)
+    end
+  end
+
+  defp bound_local_worker(project_id) do
+    with %HostedLocalRepositoryBinding{worker_id: worker_id} <-
+           Repo.get(HostedLocalRepositoryBinding, project_id),
+         %LocalWorker{} = worker <- Repo.get(LocalWorker, worker_id) do
+      worker
+    else
+      _unbound -> nil
+    end
+  end
+
+  defp select_eligible_connection(account_id, worker, opts) do
+    account_id
+    |> PersonalConnections.list_personal_connections()
+    |> Enum.filter(&(&1.worker_id == worker.id and &1.revocation_state == "active"))
+    |> Enum.map(& &1.id)
+    |> choose_connection(Keyword.get(opts, :ai_runtime_connection_id))
+  end
+
+  defp choose_connection([], _requested_id), do: {:ok, nil}
+  defp choose_connection([only_id], _requested_id), do: {:ok, only_id}
+
+  defp choose_connection(eligible_ids, requested_id) do
+    if requested_id != nil and requested_id in eligible_ids do
+      {:ok, requested_id}
+    else
+      {:error, {:ai_connection_selection_required, eligible_ids}}
     end
   end
 

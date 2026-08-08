@@ -11,6 +11,8 @@ defmodule SddOrchestrator.Delivery.StartTest do
   use SddOrchestrator.DataCase, async: false
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
+  alias SddOrchestrator.AIRuntime.PersonalConnections
+  alias SddOrchestrator.AIRuntimeFixtures
 
   alias SddOrchestrator.Delivery.{
     ActivityEntry,
@@ -28,6 +30,8 @@ defmodule SddOrchestrator.Delivery.StartTest do
   alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.Participation.Revocations
   alias SddOrchestrator.ParticipationDeliveryDouble
+  alias SddOrchestrator.PersonalConnectionAdapterDouble
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.ReadinessGuidanceDouble
   alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationFixtures
@@ -399,6 +403,180 @@ defmodule SddOrchestrator.Delivery.StartTest do
     end
   end
 
+  describe "eligible personal AI connection resolution [AC-01]" do
+    setup ctx, do: %{ready: prepare(ctx)}
+
+    test "starts normally when the project has no bound local worker", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "starts normally when the bound worker has no eligible connections", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      bind_local_worker(project)
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "auto-selects when exactly one eligible connection exists", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      assert {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+      assert results.run.state == "pending"
+    end
+
+    test "requires an explicit choice with more than one eligible connection", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      %{connection: first} =
+        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+          account: owner_account,
+          worker: worker
+        })
+
+      %{connection: second} =
+        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+          account: owner_account,
+          worker: worker,
+          label: "Second Codex"
+        })
+
+      assert {:error, {:ai_connection_selection_required, eligible_ids}} =
+               Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert Enum.sort(eligible_ids) == Enum.sort([first.id, second.id])
+      assert Repo.aggregate(AgentRun, :count) == 0
+    end
+
+    test "an explicit connection id matching one of the eligible connections proceeds", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      %{connection: chosen} =
+        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+          account: owner_account,
+          worker: worker,
+          label: "Second Codex"
+        })
+
+      assert {:ok, _results} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 ai_runtime_connection_id: chosen.id
+               )
+    end
+
+    test "an explicit connection id that is not eligible still requires a choice", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker,
+        label: "Second Codex"
+      })
+
+      assert {:error, {:ai_connection_selection_required, _eligible_ids}} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 ai_runtime_connection_id: Ecto.UUID.generate()
+               )
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+    end
+
+    test "ignores a connection owned by a different account", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{worker: worker})
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "ignores a connection bound to a different worker", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      bind_local_worker(project)
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{account: owner_account})
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "ignores a connection whose revocation has been acknowledged", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      %{connection: connection} =
+        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+          account: owner_account,
+          worker: worker
+        })
+
+      {:ok, %{revocation_state: "acknowledged"}} =
+        PersonalConnections.request_revocation(owner_account, connection.id,
+          adapter: PersonalConnectionAdapterDouble
+        )
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+  end
+
   describe "availability" do
     test "is false until ready, confirmed, and in the right column", %{
       authority: authority,
@@ -454,6 +632,24 @@ defmodule SddOrchestrator.Delivery.StartTest do
       )
 
     ready
+  end
+
+  # Binds a real, active local worker to the project exactly the way
+  # `HostedLocalRepositoryBindings.put_validated_binding/6` persists it, so
+  # `Start`'s own lookup (`Repo.get(HostedLocalRepositoryBinding, project.id)`)
+  # finds it without depending on that module's own device-workspace proof.
+  defp bind_local_worker(project) do
+    worker = AIRuntimeFixtures.personal_ai_worker_fixture()
+
+    %HostedLocalRepositoryBinding{}
+    |> HostedLocalRepositoryBinding.changeset(%{
+      project_id: project.id,
+      worker_id: worker.id,
+      last_validated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.insert!()
+
+    worker
   end
 
   defp blocker do

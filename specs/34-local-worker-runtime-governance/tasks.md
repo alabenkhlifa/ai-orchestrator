@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
 
-Product readiness: `Approved`, no open product question — both accepted forks (observation-only enforcement, optional per-run connection) are recorded in `requirements.md`. Design readiness: `Approved`, no open technical question. Implementation readiness: not started. Verification readiness: not started, blocked on implementation. Release readiness: blocked on implementation and verification; this slice adds no new deployment-specific evidence beyond what `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already require at their own release gates.
+Product readiness: `Approved`, no open product question — both accepted forks (observation-only enforcement, optional per-run connection) are recorded in `requirements.md`. Design readiness: `Approved`, no open technical question; corrected once on 2026-08-08 before any code existed for it (see `progress.md`). Implementation readiness: Task 1 and Task 3 in progress. Verification readiness: not started, blocked on implementation. Release readiness: blocked on implementation and verification; this slice adds no new deployment-specific evidence beyond what `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already require at their own release gates.
 
 ## Active Slice
 
@@ -80,7 +80,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Resolve and select an eligible personal AI connection when starting development.
+- [x] Task 1 — Resolve and select an eligible personal AI connection when starting development.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -98,7 +98,7 @@ Traceability:
   - Owns: AC-02, AC-03, AC-04, entity:LocalWorkerRunGovernance
   - Proof: Focused tests prove a confirmed connection is pinned and recorded before the worker start command is issued, that a resume, retry, or reject-driven reattempt on the same run reuses the same pinned session, that a pin failure refuses the start and issues no worker command, and that a run with no selected connection is recorded ungoverned and starts and completes exactly as the `specs/33-local-worker-run-execution` baseline.
 
-- [ ] Task 3 — Compute a governed run's live runtime snapshot.
+- [x] Task 3 — Compute a governed run's live runtime snapshot.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
