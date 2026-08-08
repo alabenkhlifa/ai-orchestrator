@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. All twelve tasks are complete and verified, including Task 12's real end-to-end run with each supported coding agent. `capability:local-worker-run-execution` is ready. The slice's own full verification gate (broad repository, browser, security, and production checks) has not yet been run — that is the remaining step before this slice can be marked `Verified`.
+Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: complete — all twelve tasks delivered and individually verified. Verification readiness: `Verified` — the full slice gate passed: `mix check` (3113 tests across the whole repository, 1 excluded live-network test), `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer` (23 known, fully accepted suppressions, zero unnecessary skips), `mix deps.audit` (no vulnerability), `mix sobelow --config` (zero findings after documenting worker file/exec-path false positives — see progress log), the full browser matrix (`npm --prefix assets run test:e2e`, 120 scenarios), and both production build steps (`MIX_ENV=prod mix assets.deploy`, `MIX_ENV=prod mix release`). `capability:local-worker-run-execution` is ready. Release readiness: blocked — signed native worker packaging and installation, the recorded supported coding-agent versions, a live end-to-end run with real provider credentials on a machine other than this one, and the accountable privacy/security review are all still owed, exactly as this slice's own Release Gate already lists.
 
 ## Active Slice
 
@@ -192,19 +192,19 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] AC-01 through AC-16 pass and no criterion or entity is deferred or release-classified.
-- [ ] Every active acceptance criterion has exactly one primary task owner and both data entities are owned.
-- [ ] A real run completes end to end on a local repository with each supported coding agent, and the feature's activity shows its progress, evidence, check outcomes, and terminal state.
-- [ ] The worker announces exactly the protocol's required capabilities, honors every one of them, and announces nothing it cannot honor.
-- [ ] No control-plane record produced by a run contains a credential, an absolute path, an agent transcript, or repository content outside the approved event, evidence, and artifact contract.
-- [ ] The agent subprocess environment is proved to be the allowlist alone, and no provider, repository, or control-plane credential is reachable from it.
-- [ ] The existing delivery, worker gateway, artifact, pairing, and privacy suites still pass unchanged, proving no consumed contract moved.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix format --check-formatted`, `python3 .agents/scripts/run_proof.py slice -- mix compile --warnings-as-errors`, `python3 .agents/scripts/run_proof.py slice -- mix credo --strict`, `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `python3 .agents/scripts/run_proof.py slice -- mix deps.audit`, and `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config` pass.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` pass.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release` pass.
-- [ ] `python3 .agents/scripts/validate_spec.py specs/33-local-worker-run-execution`, `python3 .agents/scripts/validate_spec.py --all specs`, `python3 .agents/scripts/split_progress_log.py --check`, and `git diff --check` pass.
-- [ ] Product, design, implementation, verification, and release readiness are recorded separately, and every resolved open question is written back before the slice is marked verified.
+- [x] AC-01 through AC-16 pass and no criterion or entity is deferred or release-classified.
+- [x] Every active acceptance criterion has exactly one primary task owner and both data entities are owned.
+- [x] A real run completes end to end on a local repository with each supported coding agent, and the feature's activity shows its progress, evidence, check outcomes, and terminal state.
+- [x] The worker announces exactly the protocol's required capabilities, honors every one of them, and announces nothing it cannot honor.
+- [x] No control-plane record produced by a run contains a credential, an absolute path, an agent transcript, or repository content outside the approved event, evidence, and artifact contract.
+- [x] The agent subprocess environment is proved to be the allowlist alone, and no provider, repository, or control-plane credential is reachable from it.
+- [x] The existing delivery, worker gateway, artifact, pairing, and privacy suites still pass unchanged, proving no consumed contract moved.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix format --check-formatted`, `python3 .agents/scripts/run_proof.py slice -- mix compile --warnings-as-errors`, `python3 .agents/scripts/run_proof.py slice -- mix credo --strict`, `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `python3 .agents/scripts/run_proof.py slice -- mix deps.audit`, and `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config` pass.
+- [x] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` pass.
+- [x] `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release` pass.
+- [x] `python3 .agents/scripts/validate_spec.py specs/33-local-worker-run-execution`, `python3 .agents/scripts/validate_spec.py --all specs`, `python3 .agents/scripts/split_progress_log.py --check`, and `git diff --check` pass.
+- [x] Product, design, implementation, verification, and release readiness are recorded separately, and every resolved open question is written back before the slice is marked verified.
 
 ## Blocked Decisions
 
