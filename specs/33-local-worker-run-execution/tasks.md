@@ -4,7 +4,7 @@
 
 In Progress
 
-The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. Tasks 1 through 11 are complete and verified — every required capability the worker announces is now genuinely honored. Task 12 (prove one real run end to end on a local repository) depends on Task 7, Task 10, and Task 11, all complete, and is the slice's final task.
+The requirements are `Approved`, the design carries no open question. The worker honors the delivery protocol's full required-capability set, which is what this twelve-task plan is sized for. All twelve tasks are complete and verified, including Task 12's real end-to-end run with each supported coding agent. `capability:local-worker-run-execution` is ready. The slice's own full verification gate (broad repository, browser, security, and production checks) has not yet been run — that is the remaining step before this slice can be marked `Verified`.
 
 ## Active Slice
 
@@ -181,7 +181,7 @@ Traceability:
   - Owns: AC-15
   - Proof: Focused tests prove a cancel stops the running agent and releases the lease and lock, that a resume and a retry execute from the manifest they carry with the recorded continuation reason and resume the provider thread when one is available, that a reconcile answers with the worker's authoritative attempt snapshot, and that a snapshot after reconnect agrees with the last sequence the control plane accepted.
 
-- [ ] Task 12 - Prove one real run end to end on a local repository.
+- [x] Task 12 - Prove one real run end to end on a local repository.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 7, Task 10, Task 11

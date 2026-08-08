@@ -4,6 +4,17 @@ defmodule Mix.Tasks.Worker.Start do
 
       mix worker.start [--home <dir>]
 
+  Run this after `mix worker.pair` has already completed once. The pairing
+  code itself comes from the project's device setup screen in the
+  dashboard — a project owner generates a single-use code there for the
+  device workspace that holds the repository. On the machine that holds the
+  repository, the operator runs `mix worker.pair` once to complete that code
+  and store the worker's credential and configuration (see `mix help
+  worker.pair` for its flags), then runs `mix worker.start` every time
+  afterward to bring the worker online. Once this task joins the control
+  plane, the project shows the worker as reachable and a participant can
+  start development on a ready feature.
+
   This starts only `SddOrchestrator.Worker.Supervisor` and its own
   dependencies — never the control-plane application. A genuinely remote
   worker has no database repo, no `SddOrchestratorWeb.Endpoint`, and no
