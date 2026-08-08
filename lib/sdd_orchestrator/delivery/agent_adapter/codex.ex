@@ -430,6 +430,12 @@ defmodule SddOrchestrator.Delivery.AgentAdapter.Codex do
   @default_executable "codex"
   @version_pattern ~r/\Acodex-cli \d+\.\d+\.\d+\z/
 
+  # `resolved` is the worker's own configured executable path
+  # (`WorkerConfiguration.agent_executable`, set by the operator at pairing
+  # time), never web or user input, and `System.cmd/3` here takes `["--version"]`
+  # as a separate argument list rather than a shell string — no argument can
+  # become shell syntax. Documented false positive.
+  # sobelow_skip ["CI.System"]
   @impl true
   def installed_version do
     case System.find_executable(executable()) do

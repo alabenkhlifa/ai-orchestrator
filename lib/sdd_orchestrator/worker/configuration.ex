@@ -89,6 +89,11 @@ defmodule SddOrchestrator.Worker.Configuration do
   writes the configuration file and restricts it to owner-only (`0600`). Both
   permissions are (re)applied on every write.
   """
+  # `home_override` is a CLI-supplied path (`--home`) or the worker's own
+  # configured/default home directory — trusted application configuration,
+  # never web or user input, matching this project's one existing precedent
+  # (`Devices.DeviceStore.Local.init/1`). Documented false positive.
+  # sobelow_skip ["Traversal.FileModule"]
   @spec store(t(), String.t() | nil) :: :ok
   def store(%__MODULE__{} = config, home_override \\ nil) do
     dir = home(home_override)
@@ -126,6 +131,9 @@ defmodule SddOrchestrator.Worker.Configuration do
     end
   end
 
+  # `file` is derived from the same trusted `home_override` as `store/2`
+  # above. Documented false positive.
+  # sobelow_skip ["Traversal.FileModule"]
   defp safe_read(file) do
     case File.read(file) do
       {:ok, contents} -> {:ok, contents}

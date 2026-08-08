@@ -109,6 +109,10 @@ defmodule SddOrchestrator.Worker.RunState do
   permissions are (re)applied on every write, matching
   `Configuration.store/2`.
   """
+  # `home_override` is the same trusted, non-web-input path
+  # `Configuration.store/2` already documents this exception for.
+  # Documented false positive.
+  # sobelow_skip ["Traversal.FileModule"]
   @spec store(snapshot(), String.t() | nil) :: :ok
   def store(%{current: current, previous: previous}, home_override \\ nil)
       when (is_nil(current) or is_struct(current, __MODULE__)) and
@@ -125,6 +129,9 @@ defmodule SddOrchestrator.Worker.RunState do
     :ok
   end
 
+  # `file` is derived from the same trusted `home_override` as `store/2`
+  # above. Documented false positive.
+  # sobelow_skip ["Traversal.FileModule"]
   defp safe_read(file) do
     case File.read(file) do
       {:ok, contents} -> {:ok, contents}
