@@ -8,7 +8,7 @@ Product readiness: `Approved`, no open product question — both accepted forks 
 
 ## Active Slice
 
-Attribute a local-worker development run to one of the run initiator's own personal AI connections when one is eligible, pin an immutable runtime session to that run before the worker starts, observe the run's own lifecycle without contacting the Codex App Server, and present the result to the run initiator, project owner, and other current authorized participants — while leaving a run with no eligible connection running exactly as the already-verified `specs/33-local-worker-run-execution` baseline proves.
+Attribute a local-worker development run to one of the run initiator's own personal AI connections when one is eligible, pin an immutable runtime session to that run before the worker starts, compute a live snapshot of the run's own lifecycle without contacting the Codex App Server or persisting a new observation, and present the result to the run initiator, project owner, and other current authorized participants — while leaving a run with no eligible connection running exactly as the already-verified `specs/33-local-worker-run-execution` baseline proves.
 
 ## Cross-Specification Dependencies
 
@@ -26,13 +26,13 @@ Provides:
 
 - Slice size: Standard
 
-The slice delivers one coherent outcome through one verification gate: a local-worker run can be attributed, pinned, observed, and presented using capabilities `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already ship, without either provider being redefined. It contains seven tasks and its longest `Depends on:` path contains five tasks, both well under the standard limits.
+The slice delivers one coherent outcome through one verification gate: a local-worker run can be attributed, pinned, snapshotted, and presented using capabilities `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already ship, without either provider being redefined. It contains seven tasks and its longest `Depends on:` path contains five tasks, both well under the standard limits.
 
 ## Task Size Gate
 
 - Every task is `Size: Standard`. Each delivers one independently provable outcome, owns at most three acceptance criteria and one data entity, and is expected to produce one task-boundary implementation commit with focused proof running in about ten minutes.
-- Session pinning (Task 2) is separate from the observation adapter (Task 3) because one is a control-plane authorization and attribution surface and the other is a new provider-neutral observation source; they fail independently and neither depends on the other to be provable.
-- Lifecycle-triggered ingestion (Task 4) is separate from the adapter it calls (Task 3) because the adapter's own fact-derivation and the dispatcher that decides when to call it are independently testable units.
+- Session pinning (Task 2) is separate from the live runtime snapshot (Task 3) because one is a control-plane authorization and attribution surface and the other is a pure read over already-existing run state; they fail independently and neither depends on the other to be provable.
+- Combined-projection assembly (Task 4) is separate from the snapshot it calls (Task 3) because the snapshot's own fact-derivation and the assembly that combines it with the reused connection/model/effort/quota projection are independently testable units.
 - No task-size exception is used.
 
 ## Proof Scope Gate
@@ -46,9 +46,9 @@ Included:
 - Eligible-connection resolution for a run's initiator, target device workspace, and configured worker agent, reusing `PersonalConnections.resolve_working_agent_connection/2` unchanged.
 - An optional pre-start step in `SddOrchestrator.Delivery.Start` that auto-selects, requires explicit choice, or passes through ungoverned, and pins the session via `RuntimeSessions.pin_session/3` before any worker start command is issued.
 - `LocalWorkerRunGovernance`, this slice's own record linking one `AgentRun` to its pinned `AIRuntimeSession` when governed.
-- `SddOrchestrator.AIRuntime.ObservationAdapter.LocalWorker`, deriving elapsed time and status from the worker's own attempt lifecycle with tokens and cost always unknown.
-- A lifecycle-transition dispatcher that ingests one ordered observation at workspace-ready, a progress heartbeat, verification-completed, and terminal state for a governed run only.
-- Runtime-projection presentation next to the run's existing activity view, reusing `RuntimeProjections.owner_projection/3` and `participant_projection/4` unchanged.
+- A live runtime-snapshot read, deriving elapsed time and status from the worker's own current `AgentRun`/`RunAttempt` state with tokens and cost always unknown, computed on request and never persisted.
+- A combined-projection assembly for a governed run only, joining the live snapshot with `RuntimeProjections.owner_projection/3` or `participant_projection/4`'s unchanged output for connection, model, effort, and quota.
+- Runtime-projection presentation next to the run's existing activity view.
 - Privacy and security boundary proof for every new record and request shape this slice introduces.
 
 Excluded:
@@ -98,23 +98,23 @@ Traceability:
   - Owns: AC-02, AC-03, AC-04, entity:LocalWorkerRunGovernance
   - Proof: Focused tests prove a confirmed connection is pinned and recorded before the worker start command is issued, that a resume, retry, or reject-driven reattempt on the same run reuses the same pinned session, that a pin failure refuses the start and issues no worker command, and that a run with no selected connection is recorded ungoverned and starts and completes exactly as the `specs/33-local-worker-run-execution` baseline.
 
-- [ ] Task 3 — Implement the lifecycle-derived local-worker observation adapter.
+- [ ] Task 3 — Compute a governed run's live runtime snapshot.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
-  - Purpose: Source an honest observation for a run whose real coding work never talks to the Codex App Server, instead of stretching the existing RPC adapter to a process it does not actually observe.
-  - Owned surfaces: `ObservationAdapter.LocalWorker`, elapsed-time and status derivation from the worker's own attempt lifecycle state, the always-unknown token and cost fields, and attachment of the connection's most recent quota snapshot as informational context.
+  - Purpose: Source an honest, current fact for a run whose real coding work never talks to the Codex App Server and whose result can never honestly pass `ObservationAdapter.validate_provenance/3`'s Codex-official-client-only gate — so read the worker's own already-maintained state live instead of trying to persist an observation through a pipeline that cannot accept it.
+  - Owned surfaces: A pure function deriving elapsed time and status from the referenced `AgentRun`/`RunAttempt`'s own current state, with token and cost fields always `:unknown`. No new module under `ai_runtime/`, no schema, no call to `RuntimeObservations` or `ObservationAdapter`.
   - Owns: none
-  - Proof: Focused tests prove elapsed time and status are derived only from the worker's attempt lifecycle, tokens and cost are always reported unknown, and the connection's most recently retrieved quota snapshot is attached without being presented as a per-run measurement.
+  - Proof: Focused tests prove elapsed time and status are derived only from the run's/attempt's own current lifecycle state (not agent output), and tokens and cost are always reported unknown.
 
-- [ ] Task 4 — Ingest one ordered observation at each governed run's lifecycle transition.
+- [ ] Task 4 — Assemble the combined projection for a governed run.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2, Task 3
-  - Purpose: Keep a governed run's observation trail current as its attempt actually progresses, and never ingest one for an ungoverned run.
-  - Owned surfaces: The lifecycle-transition dispatcher calling `RuntimeObservations.ingest/3` with `ObservationAdapter.LocalWorker` at workspace-ready, a progress heartbeat, verification-completed, and terminal state.
+  - Purpose: Join the live snapshot with the reused connection, model, effort, and quota projection into one map for a governed run, and produce nothing for an ungoverned one — without ever writing a new observation record.
+  - Owned surfaces: The assembly function calling `RuntimeProjections.owner_projection/3` or `participant_projection/4` (both tolerate the empty observation list a local-worker session always has) and combining the result with Task 3's live snapshot, gated on `LocalWorkerRunGovernance` showing the run is governed.
   - Owns: AC-05
-  - Proof: Focused tests prove one ordered observation is ingested at each of the four lifecycle transitions for a governed run, in sequence, and that no observation is ever ingested for an ungoverned run.
+  - Proof: Focused tests prove the combined map carries the live elapsed time/status alongside the reused connection/model/effort/quota facts for a governed run, and that the assembly returns nothing for an ungoverned run.
 
 - [ ] Task 5 — Present the runtime projection next to a governed run's activity.
   - Size: Standard
@@ -125,23 +125,23 @@ Traceability:
   - Owns: AC-06
   - Proof: Focused tests prove the run initiator and project owner see the owner-exact projection, another current authorized participant sees only the safe project-run view, and an ungoverned run's activity renders no projection.
 
-- [ ] Task 6 — Enforce privacy boundaries over the new run-governance and observation records.
+- [ ] Task 6 — Enforce privacy boundaries over the new run-governance record and computed snapshot.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2, Task 4
   - Purpose: Prove the new surfaces this slice adds carry no repository content, credential, or unrelated identity, and inherit the referenced run's existing retention, deletion, and rights lifecycle rather than opening a new one.
-  - Owned surfaces: Field-level allowlist proof for the connection-selection request, the session `consumer_ref`, and ingested observations; retention, deletion, and rights coverage confirmation for `entity:LocalWorkerRunGovernance` alongside its referenced run.
+  - Owned surfaces: Field-level allowlist proof for the connection-selection request, the session `consumer_ref`, and the computed runtime snapshot; retention, deletion, and rights coverage confirmation for `entity:LocalWorkerRunGovernance` alongside its referenced run.
   - Owns: AC-07
-  - Proof: Focused tests assert the absence of repository content, absolute paths, agent transcripts, and provider credentials across the new request, reference, and observation shapes, and that deleting or exporting the referenced run also covers its `LocalWorkerRunGovernance` row and observations.
+  - Proof: Focused tests assert the absence of repository content, absolute paths, agent transcripts, and provider credentials across the new request, reference, and snapshot shapes, and that deleting or exporting the referenced run also covers its `LocalWorkerRunGovernance` row.
 
 - [ ] Task 7 — Prove one governed and one ungoverned local-worker run end to end, and publish the capability.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5, Task 6
   - Purpose: Show the whole bridge working on a real machine without regressing the already-verified ungoverned baseline, which is the outcome this slice exists for.
-  - Owned surfaces: `capability:local-worker-runtime-governance`, the end-to-end governed-run scenario (selection, pin, worker execution, ingested observations, projection) and the end-to-end ungoverned-run scenario, both against a real local fixture repository.
+  - Owned surfaces: `capability:local-worker-runtime-governance`, the end-to-end governed-run scenario (selection, pin, worker execution, live snapshot, combined projection) and the end-to-end ungoverned-run scenario, both against a real local fixture repository.
   - Owns: AC-08
-  - Proof: A focused integration scenario runs one governed and one ungoverned attempt against a real local fixture repository and asserts the governed run's session, observations, and projections are correct, the ungoverned run's behavior and control-plane writes are unchanged from the `specs/33-local-worker-run-execution` baseline, and the capability publishes only after both pass.
+  - Proof: A focused integration scenario runs one governed and one ungoverned attempt against a real local fixture repository and asserts the governed run's session, live snapshot, and projection are correct, the ungoverned run's behavior and control-plane writes are unchanged from the `specs/33-local-worker-run-execution` baseline, and the capability publishes only after both pass.
 
 ## Verification Gate
 
