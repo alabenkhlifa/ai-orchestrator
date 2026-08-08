@@ -22,8 +22,10 @@ Present the result next to the run's existing activity view by combining two ind
 
 ## Components Affected
 
-- `SddOrchestrator.Delivery.Start`: gains the optional connection-selection and session-pinning step before a worker start command is issued.
-- `SddOrchestrator.Delivery` (new module, e.g. `Delivery.LocalWorkerGovernance`): owns `LocalWorkerRunGovernance`, resolves eligible connections for a run's worker, computes the live runtime snapshot, and assembles the combined projection a governed run presents.
+- `SddOrchestrator.Delivery.Start`: gains the optional connection-selection step (Task 1) and the session-pinning step (Task 2), both before a worker start command is issued.
+- `SddOrchestrator.Delivery.LocalWorkerRunGovernance` (new file, schema + pin/refusal orchestration): owned by Task 2, called from `Start`.
+- `SddOrchestrator.Delivery.LocalWorkerRuntimeSnapshot` (new file, pure function, no DB access): owned by Task 3, deliberately its own module so it shares no file with Task 1's `Start` changes.
+- `SddOrchestrator.Delivery.LocalWorkerRuntimeProjection` (new file): owned by Task 4, combines Task 3's snapshot with `RuntimeProjections`' output, gated on a `LocalWorkerRunGovernance` row existing for the run.
 - The run's existing activity LiveView: renders the owner-exact or participant-safe runtime projection when the run is governed, and nothing when it is not.
 - Consumed unchanged: `PersonalConnections.resolve_working_agent_connection/2`, `RuntimeSessions.pin_session/3`, `RuntimeProjections.owner_projection/3`, `RuntimeProjections.participant_projection/4`, and every `specs/33-local-worker-run-execution` worker, protocol, and agent-adapter surface. `RuntimeObservations.ingest/3` and `ObservationAdapter` are consumed by nothing this slice adds.
 
