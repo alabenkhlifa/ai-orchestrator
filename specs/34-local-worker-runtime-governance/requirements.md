@@ -13,8 +13,8 @@ A local-worker development run can be attributed to one of the run initiator's o
 ## Users
 
 - The project participant who starts development on a ready feature and, when eligible connections exist, chooses or confirms which one funds the run.
-- The run initiator and project owner, who see the governed run's pinned connection, model, effort, and observation trail with full account-level detail.
-- Other current authorized project participants, who see only the run's safe project-scoped operational state.
+- The run initiator, who owns the spent connection and sees the governed run's pinned connection, model, effort, and live runtime snapshot with full account-level detail.
+- Other current authorized project participants, including the project owner when they are not the run's initiator, who see only the run's safe project-scoped operational state.
 - The individual account owner who linked the personal AI connection being spent by their own local-worker runs.
 
 ## In Scope
@@ -26,7 +26,7 @@ A local-worker development run can be attributed to one of the run initiator's o
 - Leaving a run with no eligible connection to start exactly as `specs/33-local-worker-run-execution` already proves, labelled ungoverned in its activity.
 - A live local-worker runtime snapshot, computed on request rather than stored, that derives elapsed time and status from the worker's own current attempt lifecycle state without contacting the Codex App Server RPC, and that always reports token and cost facts as unknown.
 - Combining that live snapshot with `capability:ai-runtime-observation`'s existing connection, model, and effort projection for a governed run, and applying the connection's most recently retrieved quota snapshot as informational context only.
-- Showing the pinned connection label, model, effort, and live runtime snapshot to the run initiator and project owner (owner-exact) and a safe project-run projection to other current authorized participants, reusing `specs/11-ai-runtime-governance`'s existing projection contracts.
+- Showing the pinned connection label, model, effort, and live runtime snapshot to the run initiator (owner-exact, since only the initiator's own account can own the spent connection) and a safe project-run projection to every other current authorized participant, including the project owner when not also the initiator, reusing `specs/11-ai-runtime-governance`'s existing projection contracts.
 - GDPR purpose, minimization, access, retention, deletion, and rights coverage for the new run-to-session link and its computed snapshot.
 
 ## Out of Scope
@@ -47,7 +47,7 @@ A local-worker development run can be attributed to one of the run initiator's o
 4. The product pins the immutable runtime session for this run before commanding the worker to start. A pin failure refuses the start with the same safe reason the connection would show anywhere else; it never starts the run ungoverned in place of the failed selection.
 5. The worker executes the run exactly as `specs/33-local-worker-run-execution` already proves: unchanged agent launch, unchanged credential resolution, unchanged event and evidence contract.
 6. Whenever a governed run's activity is viewed, the product computes a live runtime snapshot from the run's own current lifecycle facts and combines it with the pinned session's projection.
-7. The run initiator and project owner see the pinned connection, model, effort, and live runtime snapshot next to the run's activity. Other current authorized participants see only the safe project-run view. An ungoverned run shows no runtime projection.
+7. The run initiator sees the pinned connection, model, effort, and live runtime snapshot next to the run's activity. Every other current authorized participant, including the project owner when they are not the initiator, sees only the safe project-run view. An ungoverned run shows no runtime projection.
 8. Resume, retry, and reject-driven reattempts on the same run reuse the same pinned session unchanged. A new run created after cancellation repeats step 2 with a fresh selection.
 
 ## Business Rules
@@ -62,7 +62,7 @@ A local-worker development run can be attributed to one of the run initiator's o
 - This slice does not change how or with which credentials the worker launches the coding-agent subprocess.
 - A governed run's runtime snapshot reports only elapsed time and status derived from the worker's own current attempt lifecycle, computed live rather than stored, plus the connection's most recently retrieved quota snapshot shown as informational context. Token counts and cost are always reported unknown for this slice; neither is estimated, guessed, or inferred from agent output.
 - A governed run's spending ceiling, when a pinned API-key connection requires one, is recorded at pin time but is not evaluated or enforced against this run's execution in this slice.
-- The owner-exact projection of a governed run's connection, model, effort, and observation is visible only to the run initiator and the project owner. A current authorized participant who is neither sees only the safe project-run view `specs/11-ai-runtime-governance` already defines, and an unrelated party sees neither.
+- The owner-exact projection of a governed run's connection, model, effort, and observation is visible only to the run's initiator, matching `specs/11-ai-runtime-governance`'s existing connection-owner-only boundary for exact account-wide facts. The project owner sees it only when they are also the run's initiator; otherwise the project owner and every other current authorized participant see only the safe project-run view `specs/11-ai-runtime-governance` already defines, and an unrelated party sees neither.
 - The run-to-session link and its observation records are confidential project and personal data, follow the project's existing storage, retention, deletion, and rights rules, and are never reused for analytics, advertising, or model training.
 - No repository content, absolute path, agent transcript, or provider credential may appear in a connection-selection request, a pinned session's consumer reference, or a computed runtime snapshot.
 
@@ -73,7 +73,7 @@ A local-worker development run can be attributed to one of the run initiator's o
 - [AC-03] Given a selected connection fails to pin for any reason, when the run is started, then the start is refused with a safe reason and no run begins in its place.
 - [AC-04] Given no personal AI connection is eligible for a run's target worker and agent, when a participant starts development, then the run starts and completes exactly as `specs/33-local-worker-run-execution` already proves, and its activity is labelled ungoverned.
 - [AC-05] Given a governed run at any point in its attempt lifecycle, when its runtime snapshot is computed, then it reports elapsed time and status derived only from the worker's own current attempt lifecycle state, the connection's most recently retrieved quota snapshot as informational context, and token and cost values as explicitly unknown.
-- [AC-06] Given a governed run, when the run initiator or project owner requests its runtime state, then they see the pinned connection label, model, effort, and live runtime snapshot; when another current authorized participant requests it, they see only the safe project-run view; an ungoverned run shows no runtime projection to anyone.
+- [AC-06] Given a governed run, when its run initiator requests its runtime state, then they see the pinned connection label, model, effort, and live runtime snapshot; when the project owner or another current authorized participant who is not the run initiator requests it, they see only the safe project-run view; an ungoverned run shows no runtime projection to anyone.
 - [AC-07] Given a run's connection-selection request, pinned session consumer reference, and computed runtime snapshot are inspected, when privacy and security verification runs, then none contains repository content, an absolute path, an agent transcript, or a provider credential, and existing `specs/11-ai-runtime-governance` retention, deletion, and rights controls cover every new record.
 - [AC-08] Given a governed local-worker run and an ungoverned local-worker run both execute end to end on a real local repository, when the slice's verification gate runs, then the governed run's session, live runtime snapshot, and projections are all real and correct, the ungoverned run behaves identically to the unmodified `specs/33-local-worker-run-execution` baseline, and `capability:local-worker-runtime-governance` publishes only after both prove out.
 
