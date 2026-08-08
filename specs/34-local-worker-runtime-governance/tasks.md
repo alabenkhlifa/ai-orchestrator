@@ -107,7 +107,7 @@ Traceability:
   - Owns: none
   - Proof: Focused tests prove elapsed time and status are derived only from the run's/attempt's own current lifecycle state (not agent output), and tokens and cost are always reported unknown.
 
-- [ ] Task 4 — Assemble the combined projection for a governed run.
+- [x] Task 4 — Assemble the combined projection for a governed run.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2, Task 3
