@@ -17,7 +17,7 @@ After one managed pilot, let the project owner inspect one immutable SDD kit, re
 Requires:
 
 - `capability:repository-execution-profile` — provider `specs/30-repository-execution-profile-completion#Task 2` — required before `Task 2`.
-- `capability:guided-specification-delivery` — provider `specs/24-guided-delivery-completion#Task 1` — required before `Task 2`.
+- `capability:guided-delivery-data-surfaces` — provider `specs/07-guided-specification-delivery#Task 54` — required before `Task 2`.
 - `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 2`.
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 5`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 5`.
