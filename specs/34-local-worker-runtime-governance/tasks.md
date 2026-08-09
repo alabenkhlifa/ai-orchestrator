@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Product readiness: `Approved`, no open product question — both accepted forks (observation-only enforcement, optional per-run connection) are recorded in `requirements.md`. Design readiness: `Approved`, no open technical question; corrected twice before or during implementation, before either correction had any code depending on it (see `progress.md`): the observation mechanism on 2026-08-08, and the owner-exact access boundary on 2026-08-09. Implementation readiness: complete — all seven tasks delivered and individually verified, each proof re-run and confirmed by this thread with a real exit code, not only the implementing sub-agent's report. `capability:local-worker-runtime-governance` is ready. Verification readiness: not started, next. Release readiness: blocked on verification; this slice adds no new deployment-specific evidence beyond what `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already require at their own release gates.
+Product readiness: `Approved`, no open product question — both accepted forks (observation-only enforcement, optional per-run connection) are recorded in `requirements.md`. Design readiness: `Approved`, no open technical question; corrected twice before or during implementation, before either correction had any code depending on it (see `progress.md`): the observation mechanism on 2026-08-08, and the owner-exact access boundary on 2026-08-09. Implementation readiness: complete — all seven tasks delivered and individually verified, each proof re-run and confirmed by this thread with a real exit code, not only the implementing sub-agent's report. `capability:local-worker-runtime-governance` is ready. Verification readiness: `Verified` — the full slice gate passed on this exact codebase: `mix check` (3155 tests, 1 excluded live-network test — one earlier run hit a pre-existing, non-deterministic scheduling race in `specs/33-local-worker-run-execution`'s own `isolation_test.exs`, confirmed unrelated to this slice and non-reproducible; see `progress.md`), `mix dialyzer` (23 known, fully accepted suppressions carried over from `specs/33-local-worker-run-execution`, zero new, zero unnecessary skips), `mix deps.audit` (no vulnerability), `mix sobelow --config` (zero findings), the full browser matrix (`npm --prefix assets run test:e2e`, 120 scenarios, unchanged count), and both production build steps (`MIX_ENV=prod mix assets.deploy`, `MIX_ENV=prod mix release --overwrite` — the plain form prompted interactively on a stale prior release and was corrected before being trusted; see `progress.md`). Release readiness: blocked — this slice adds no new deployment-specific evidence beyond what `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already require at their own release gates, which remain owed exactly as those slices' own status already records.
 
 ## Active Slice
 
@@ -145,16 +145,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass
-- [ ] Relevant automated tests pass
-- [ ] Build and type checks pass
-- [ ] Required manual scenario passes
-- [ ] New decisions are written back
-- [ ] Deferred work is recorded
+- [x] Acceptance criteria pass — all eight, each owned by exactly one task, proven by that task's own focused proof plus Task 7's real end-to-end scenario for AC-08.
+- [x] Relevant automated tests pass — full slice gate: `mix check` (3155 tests), `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and the full browser matrix (120 scenarios), all re-verified by this thread with real exit codes.
+- [x] Build and type checks pass — `mix format --check-formatted`, `mix compile --warnings-as-errors`, and both production build steps (`MIX_ENV=prod mix assets.deploy`, `MIX_ENV=prod mix release --overwrite`) all clean.
+- [ ] Required manual scenario passes — environment-blocked, inheriting the exact gap `specs/33-local-worker-run-execution` already disclosed at its own release gate: Task 7's real scenario uses a scripted CLI agent double, not a real live Codex or Claude Code CLI, because this checkout has no configured production adapter. Additionally, and specific to this slice: the new "AI runtime" panel Task 5 added has not been visually confirmed in an actual browser session — Task 5's 98 passing LiveView tests assert real rendered HTML, and the unchanged 120/120 browser e2e matrix proves the broader UI foundation (dark/light mode, accessibility, responsive layout) is unbroken, but no test drives a real browser to this specific panel. A quick `mix phx.server` visual check is a reasonable low-cost follow-up; it does not block `Verified` status given the automated coverage already in place, matching how `specs/33-local-worker-run-execution` reached `Verified` with its own analogous live-scenario gap still open.
+- [x] New decisions are written back — both design corrections (observation mechanism, owner-exact access boundary) and this gate's evidence are recorded in `progress.md`.
+- [x] Deferred work is recorded — see Implementation Boundary's "Deferred after this slice" above; unchanged by verification.
 
 ## Blocked Decisions
 
-- None.
+- None. The one open manual-scenario item above is an environment/tooling gap, not a decision, and does not block `Verified` implementation and local-verification readiness, matching `specs/33-local-worker-run-execution`'s own precedent.
 
 ## Progress Log
 
