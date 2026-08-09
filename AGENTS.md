@@ -92,6 +92,7 @@ Slice numbers are stable identifiers, not execution order. Express implementatio
 - Keep the earliest affected consumer task `Blocked` while its required capability is unavailable. Keep the slice `Blocked` only when its next executable task is blocked; a later unavailable capability must not prevent independent earlier tasks. Before changing status, confirm the provider paths needed at that stage.
 - Run the repository's global cross-specification dependency validator when available. It must reject missing or ambiguous providers, malformed references, cycles, unavailable prerequisites for active consumers, and provider/consumer contract conflicts.
 - When a capability edge changes, update both provider and consumer specifications in the same specification change and re-run their individual validators plus the global graph check.
+- Treat a capability's provider task moving to a different specification, such as during an umbrella-to-child split, as a scope change, not a reference repair. In that same change, re-justify every existing consumer's edge against that consumer's own `requirements.md` or `design.md`, and repoint it to the smallest still-accurate capability instead of mechanically following the provider to its new specification. Keeping the reference valid does not by itself prove the consumer still needs what the capability now means.
 
 ### Slice Size Gate
 
