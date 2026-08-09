@@ -4,7 +4,7 @@
 
 In Progress
 
-Product readiness: `Approved`, no open product question — both accepted forks (observation-only enforcement, optional per-run connection) are recorded in `requirements.md`. Design readiness: `Approved`, no open technical question; corrected once on 2026-08-08 before any code existed for it (see `progress.md`). Implementation readiness: Task 1 and Task 3 in progress. Verification readiness: not started, blocked on implementation. Release readiness: blocked on implementation and verification; this slice adds no new deployment-specific evidence beyond what `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already require at their own release gates.
+Product readiness: `Approved`, no open product question — both accepted forks (observation-only enforcement, optional per-run connection) are recorded in `requirements.md`. Design readiness: `Approved`, no open technical question; corrected twice before or during implementation, before either correction had any code depending on it (see `progress.md`): the observation mechanism on 2026-08-08, and the owner-exact access boundary on 2026-08-09. Implementation readiness: complete — all seven tasks delivered and individually verified, each proof re-run and confirmed by this thread with a real exit code, not only the implementing sub-agent's report. `capability:local-worker-runtime-governance` is ready. Verification readiness: not started, next. Release readiness: blocked on verification; this slice adds no new deployment-specific evidence beyond what `specs/33-local-worker-run-execution` and `specs/11-ai-runtime-governance` already require at their own release gates.
 
 ## Active Slice
 
@@ -134,7 +134,7 @@ Traceability:
   - Owns: AC-07
   - Proof: Focused tests assert the absence of repository content, absolute paths, agent transcripts, and provider credentials across the new request, reference, and snapshot shapes, and that deleting or exporting the referenced run also covers its `LocalWorkerRunGovernance` row.
 
-- [ ] Task 7 — Prove one governed and one ungoverned local-worker run end to end, and publish the capability.
+- [x] Task 7 — Prove one governed and one ungoverned local-worker run end to end, and publish the capability.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5, Task 6
