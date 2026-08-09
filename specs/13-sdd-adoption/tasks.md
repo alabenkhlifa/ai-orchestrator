@@ -16,7 +16,7 @@ Requires:
 
 - `capability:repository-execution-profile` — provider `specs/30-repository-execution-profile-completion#Task 2` — required before `Task 1`.
 - `capability:repository-sdd-kit` — provider `specs/15-repository-sdd-kit-integration#Task 5` — required before `Task 1`.
-- `capability:initialized-sdd-repository` — provider `specs/16-empty-repository-initialization#Task 6` — required before `Task 1`.
+- `capability:initialized-sdd-repository` — provider `specs/16-empty-repository-initialization#Task 7` — required before `Task 1`.
 
 Provides:
 
