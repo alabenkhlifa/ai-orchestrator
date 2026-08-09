@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 The product and design agreements are approved. This slice no longer depends on `capability:local-worker-run-execution` (specs/33): that capability's gateway credential, command, and manifest contract are hard-bound to an existing project and channel topic, and cannot exist before this slice's own project creation (Task 7). Task 1 now builds a project-independent dispatch foundation of its own, reusing `capability:workspace-bound-local-worker-authorization` (specs/02 Task 3, ready) for worker authorization and the existing `WorkerProtocol`/`ProtocolCodec`/`AgentAdapter` code as a library, without touching specs/33's schema or contract. `capability:ai-runtime-session` (Task 2's requirement) and `capability:sdd-kit-package` (Task 3's requirement, ready following `specs/15-repository-sdd-kit-integration` Task 1's completion) are both ready. No task has an unresolved external-capability blocker; remaining sequencing is this slice's own `Depends on:` chain.
 
@@ -70,7 +70,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Establish pre-project capability-scoped worker dispatch foundation.
+- [x] Task 1 — Establish pre-project capability-scoped worker dispatch foundation.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none

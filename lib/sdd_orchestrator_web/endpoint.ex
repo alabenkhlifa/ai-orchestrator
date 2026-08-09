@@ -39,6 +39,16 @@ defmodule SddOrchestratorWeb.Endpoint do
     websocket: [connect_info: [:peer_data]],
     longpoll: false
 
+  # Paired workers dial in here to dispatch one capability-scoped pre-project
+  # turn or build to an authorized local agent, authenticated by their
+  # pairing credential. Deliberately separate from "/worker" (project-scoped
+  # run gateway) and "/personal_ai_worker" (account-level AI operations):
+  # nothing dispatched here can exist before this device workspace's own
+  # project is created.
+  socket "/initialization_worker", SddOrchestratorWeb.InitializationWorkerSocket,
+    websocket: [connect_info: [:peer_data]],
+    longpoll: false
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),
