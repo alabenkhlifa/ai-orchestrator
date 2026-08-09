@@ -118,6 +118,23 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
   end
 
   @impl true
+  def latest_completed(viewer, project_id) do
+    with {:ok, project} <- authorize_viewer(viewer, project_id),
+         %RepositoryAssessment{} = assessment <-
+           RepositoryAssessment
+           |> where([a], a.project_id == ^project.id and a.state == "completed")
+           |> order_by([a], desc: a.inserted_at, desc: a.id)
+           |> limit(1)
+           |> Repo.one() do
+      {:ok, assessment}
+    else
+      _missing -> {:error, :not_found}
+    end
+  rescue
+    Ecto.Query.CastError -> {:error, :not_found}
+  end
+
+  @impl true
   def count({:hosted, account_id}, project_id) do
     with {:ok, project} <- Participation.owned_project(account_id, project_id),
          true <- project.storage_mode == "hosted" and project.lifecycle_state == "active" do

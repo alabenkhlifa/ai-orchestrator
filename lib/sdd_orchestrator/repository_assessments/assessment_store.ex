@@ -33,6 +33,8 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
               | {:error, :not_found | :invalid_proposal_envelope}
   @callback latest(viewer(), Ecto.UUID.t()) ::
               {:ok, RepositoryAssessment.t()} | {:error, :not_found}
+  @callback latest_completed(viewer(), Ecto.UUID.t()) ::
+              {:ok, RepositoryAssessment.t()} | {:error, :not_found}
   @callback count(authority(), Ecto.UUID.t()) :: non_neg_integer()
 
   @spec put(authority(), RepositoryAssessment.t()) ::
@@ -123,6 +125,29 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore do
     do: Device.latest(viewer, project_id)
 
   def latest(_viewer, _project_id), do: {:error, :not_found}
+
+  @doc """
+  Returns the newest assessment whose state is `"completed"`, regardless of
+  whether a newer pending or failed assessment now sits on top of it.
+
+  An approved execution profile is bound to the completed assessment it was
+  approved from, and a later restart can leave a newer pending or failed
+  assessment ahead of it. Reading it back requires skipping those non-terminal
+  or unsuccessful attempts rather than the plain newest row `latest/2` reads.
+  Hosted participants read within their project role.
+  """
+  @spec latest_completed(viewer(), Ecto.UUID.t()) ::
+          {:ok, RepositoryAssessment.t()} | {:error, :not_found}
+  def latest_completed({:hosted, _account_id} = viewer, project_id),
+    do: Hosted.latest_completed(viewer, project_id)
+
+  def latest_completed({:participant, _account_id, _identity_id} = viewer, project_id),
+    do: Hosted.latest_completed(viewer, project_id)
+
+  def latest_completed({:device, %DeviceWorkspace{}} = viewer, project_id),
+    do: Device.latest_completed(viewer, project_id)
+
+  def latest_completed(_viewer, _project_id), do: {:error, :not_found}
 
   @spec count(authority(), Ecto.UUID.t()) :: non_neg_integer()
   def count({:hosted, _account_id} = authority, project_id),

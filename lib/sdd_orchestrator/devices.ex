@@ -71,7 +71,10 @@ defmodule SddOrchestrator.Devices do
            %{
              project_id: String.t(),
              deleted_specifications: non_neg_integer(),
-             deleted_provenance: boolean()
+             deleted_provenance: boolean(),
+             deleted_repository_assessments: non_neg_integer(),
+             deleted_repository_execution_profiles: non_neg_integer(),
+             deleted_pilot_selection: boolean()
            }}
           | {:error, :not_found}
   def delete_project(id), do: adapter().delete_project(id)
@@ -244,6 +247,11 @@ defmodule SddOrchestrator.Devices do
     adapter().latest_repository_assessment(project_id)
   end
 
+  @doc "Reads the newest completed device-authoritative repository assessment value."
+  def latest_completed_repository_assessment(project_id) do
+    adapter().latest_completed_repository_assessment(project_id)
+  end
+
   @doc "Atomically appends one immutable device-authoritative profile version."
   def append_repository_execution_profile(
         project_id,
@@ -264,6 +272,16 @@ defmodule SddOrchestrator.Devices do
   @doc "Lists one project's immutable device-authoritative profile versions."
   def list_repository_execution_profiles(project_id) do
     adapter().list_repository_execution_profiles(project_id)
+  end
+
+  @doc "Stores one project's single current device-authoritative pilot selection."
+  def put_repository_pilot_selection(project_id, value) do
+    adapter().put_repository_pilot_selection(project_id, value)
+  end
+
+  @doc "Reads one project's current device-authoritative pilot selection."
+  def get_repository_pilot_selection(project_id) do
+    adapter().get_repository_pilot_selection(project_id)
   end
 
   @doc "Stores one vault-sealed device-local import attempt."

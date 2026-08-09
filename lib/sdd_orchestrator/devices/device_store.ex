@@ -38,13 +38,20 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @callback rename_project(String.t(), String.t()) ::
               {:ok, DeviceProject.t()} | {:error, :not_found | Ecto.Changeset.t()}
 
-  @doc "Deletes one device project and every device-authoritative specification aggregate."
+  @doc """
+  Deletes one device project and every device-authoritative specification,
+  repository assessment, repository execution profile, and pilot selection
+  aggregate scoped to it.
+  """
   @callback delete_project(String.t()) ::
               {:ok,
                %{
                  project_id: String.t(),
                  deleted_specifications: non_neg_integer(),
-                 deleted_provenance: boolean()
+                 deleted_provenance: boolean(),
+                 deleted_repository_assessments: non_neg_integer(),
+                 deleted_repository_execution_profiles: non_neg_integer(),
+                 deleted_pilot_selection: boolean()
                }}
               | {:error, :not_found}
 
@@ -135,6 +142,10 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc "Reads the newest device-authoritative repository assessment value."
   @callback latest_repository_assessment(String.t()) :: {:ok, map()} | {:error, :not_found}
 
+  @doc "Reads the newest completed device-authoritative repository assessment value."
+  @callback latest_completed_repository_assessment(String.t()) ::
+              {:ok, map()} | {:error, :not_found}
+
   @doc "Atomically appends one immutable execution profile from an exact assessment proposal."
   @callback append_repository_execution_profile(
               String.t(),
@@ -146,6 +157,12 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   @doc "Lists one project's immutable execution profile values in version order."
   @callback list_repository_execution_profiles(String.t()) :: [map()]
+
+  @doc "Stores one project's single current pilot selection value, replacing any prior one."
+  @callback put_repository_pilot_selection(String.t(), map()) :: {:ok, map()} | {:error, atom()}
+
+  @doc "Reads one project's current device-authoritative pilot selection value."
+  @callback get_repository_pilot_selection(String.t()) :: {:ok, map()} | {:error, :not_found}
 
   @doc "Stores one vault-sealed device-local import attempt."
   @callback put_import_attempt(ImportAttempt.t()) ::
