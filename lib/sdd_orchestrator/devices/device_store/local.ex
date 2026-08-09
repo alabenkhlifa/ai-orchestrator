@@ -671,26 +671,34 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
         {:error, :not_found}
 
       [_project] ->
-        specification_keys =
-          :dets.foldl(
-            fn
-              {{:specification, ^project_id, _specification_id} = key, _aggregate}, keys ->
-                [key | keys]
+        specification_keys = project_scoped_keys(table, :specification, project_id)
 
-              _object, keys ->
-                keys
-            end,
-            [],
-            table
-          )
+        repository_assessment_keys =
+          project_scoped_keys(table, :repository_assessment, project_id)
+
+        repository_assessment_envelope_keys =
+          project_scoped_keys(table, :repository_assessment_proposal_envelope, project_id)
+
+        repository_execution_profile_keys =
+          project_scoped_keys(table, :repository_execution_profile, project_id)
 
         provenance_key = {:package_provenance, project_id}
         deleted_provenance? = :dets.member(table, provenance_key)
 
-        Enum.each(
-          [{:project, project_id}, provenance_key | specification_keys],
-          &:dets.delete(table, &1)
-        )
+        # The pilot selection has no independent record of its own once its
+        # project is gone, so it is removed with the project rather than left
+        # to outlive the repository assessment and profile it references.
+        pilot_selection_key = {:repository_pilot_selection, project_id}
+        deleted_pilot_selection? = :dets.member(table, pilot_selection_key)
+
+        keys =
+          [{:project, project_id}, provenance_key, pilot_selection_key] ++
+            specification_keys ++
+            repository_assessment_keys ++
+            repository_assessment_envelope_keys ++
+            repository_execution_profile_keys
+
+        Enum.each(keys, &:dets.delete(table, &1))
 
         :ok = :dets.sync(table)
 
@@ -698,9 +706,28 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
          %{
            project_id: project_id,
            deleted_provenance: deleted_provenance?,
-           deleted_specifications: length(specification_keys)
+           deleted_specifications: length(specification_keys),
+           deleted_repository_assessments: length(repository_assessment_keys),
+           deleted_repository_execution_profiles: length(repository_execution_profile_keys),
+           deleted_pilot_selection: deleted_pilot_selection?
          }}
     end
+  end
+
+  # A generic sweep for one project's rows under any `{tag, project_id,
+  # sub_id}` key shape: repository assessments, their proposal envelopes,
+  # repository execution profiles, and device-authoritative specifications all
+  # share this shape, so project deletion reaches every one of them the same
+  # way rather than each record type inventing its own cleanup.
+  defp project_scoped_keys(table, tag, project_id) do
+    :dets.foldl(
+      fn
+        {{^tag, ^project_id, _sub_id} = key, _value}, keys -> [key | keys]
+        _object, keys -> keys
+      end,
+      [],
+      table
+    )
   end
 
   defp do_rename_project(table, project_id, name) do

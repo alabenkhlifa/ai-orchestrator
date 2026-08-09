@@ -38,13 +38,20 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @callback rename_project(String.t(), String.t()) ::
               {:ok, DeviceProject.t()} | {:error, :not_found | Ecto.Changeset.t()}
 
-  @doc "Deletes one device project and every device-authoritative specification aggregate."
+  @doc """
+  Deletes one device project and every device-authoritative specification,
+  repository assessment, repository execution profile, and pilot selection
+  aggregate scoped to it.
+  """
   @callback delete_project(String.t()) ::
               {:ok,
                %{
                  project_id: String.t(),
                  deleted_specifications: non_neg_integer(),
-                 deleted_provenance: boolean()
+                 deleted_provenance: boolean(),
+                 deleted_repository_assessments: non_neg_integer(),
+                 deleted_repository_execution_profiles: non_neg_integer(),
+                 deleted_pilot_selection: boolean()
                }}
               | {:error, :not_found}
 

@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and technical agreements are approved and every required capability is ready. `specs/14-repository-execution-profile/` is `Verified` and merged, so `capability:repository-profile-review` is available. Task 4 is complete with focused proof, so `capability:repository-approved-pilot` is ready. Task 12 is complete with focused proof, so `capability:repository-profile-readiness` is ready and Task 1 is the next executable task. The storage and specification-store governance prerequisites remain ready.
+The product and technical agreements are approved and every required capability is ready. `specs/14-repository-execution-profile/` is `Verified` and merged, so `capability:repository-profile-review` is available. Task 4 is complete with focused proof, so `capability:repository-approved-pilot` is ready. Task 12 is complete with focused proof, so `capability:repository-profile-readiness` is ready. Task 1 is complete with focused proof, so Task 2 is the next executable task.
 
 ## Active Slice
 
@@ -92,7 +92,7 @@ Traceability:
   - Owns: AC-08, AC-09, AC-11
   - Proof: Focused profile-review and pilot consumer, assessment-relative stale-revision, changed-root, unresolved-evidence conflict, multi-root, missing and unreliable check, assistant independence, participant read-only, earliest-stage reason code, existing verification-denial regression, LiveView, and browser tests pass.
 
-- [ ] Task 1 — Enforce privacy, lifecycle, and storage-boundary controls.
+- [x] Task 1 — Enforce privacy, lifecycle, and storage-boundary controls.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 12

@@ -71,7 +71,10 @@ defmodule SddOrchestrator.Devices do
            %{
              project_id: String.t(),
              deleted_specifications: non_neg_integer(),
-             deleted_provenance: boolean()
+             deleted_provenance: boolean(),
+             deleted_repository_assessments: non_neg_integer(),
+             deleted_repository_execution_profiles: non_neg_integer(),
+             deleted_pilot_selection: boolean()
            }}
           | {:error, :not_found}
   def delete_project(id), do: adapter().delete_project(id)
