@@ -4,7 +4,7 @@
 
 Blocked
 
-The product and technical agreements are approved. Task 1 is blocked until the current-participation capability is available in this branch. Later tasks remain blocked at their own earliest consumer boundary until the separately specified AI-runtime session and observation capabilities and the complete guided-delivery read boundary are ready.
+The product and technical agreements are approved. Task 1 is blocked until the current-participation capability is available in this branch. Later tasks remain blocked at their own earliest consumer boundary until the separately specified AI-runtime session and observation capabilities are ready. Task 3's `guided-specification-delivery` dependency was corrected to `guided-delivery-data-surfaces` (see `progress.md`) — that capability, like the read-only board/run/evidence access it gates, is already ready.
 
 ## Active Slice
 
@@ -18,7 +18,7 @@ Requires:
 - `capability:project-participation-boundary` — provider `specs/08-project-participation#Task 4` — required before `Task 1`.
 - `capability:ai-runtime-session` — provider `specs/11-ai-runtime-governance#Task 11` — required before `Task 2`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 3`.
-- `capability:guided-specification-delivery` — provider `specs/24-guided-delivery-completion#Task 1` — required before `Task 3`.
+- `capability:guided-delivery-data-surfaces` — provider `specs/07-guided-specification-delivery#Task 54` — required before `Task 3`.
 - `capability:ai-runtime-observation` — provider `specs/11-ai-runtime-governance#Task 5` — required before `Task 2`.
 - `capability:ai-runtime-governance` — provider `specs/11-ai-runtime-governance#Task 6` — required before `Task 9`.
 - `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 9`.
