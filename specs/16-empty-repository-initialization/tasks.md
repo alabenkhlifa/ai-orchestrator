@@ -6,6 +6,8 @@ Blocked
 
 The product and design agreements are approved. Task 1 is blocked until the governed AI runtime session capability is ready; later tasks also consume the permanent-kit, worker-authorization, and specification-store capabilities.
 
+Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-initialization plan/run surfaces (`RepositoryInitializationPlan`, `RepositoryInitializationRun`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
+
 ## Active Slice
 
 Guide one user from an empty local directory through an explicit initialization plan to one checked first Git commit and normal local onboarding, with a permanent SDD kit proposed by default and no support-chat mutation.

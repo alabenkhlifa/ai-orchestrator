@@ -6,6 +6,8 @@ Not Started
 
 The product and technical agreement is approved. `capability:project-participation-boundary` is already ready, so Tasks 1, 2, and 3 may start independently with disjoint primary module ownership.
 
+Parallel-slice check (2026-08-09): reviewed against concurrently active slices 15 (Repository SDD Kit Integration) and 16 (Empty Repository Initialization). This slice owns only the `Participation` context (`ProjectParticipant`, `ProjectMemberProfile`, `ParticipationRevocation`); no shared schema, migration, context, or UI with either slice. Partitioned by ownership — no serialization required.
+
 ## Active Slice
 
 Repair the departed-participant identity lifecycle across fresh re-acceptance, bounded revocation-link retention, and ordered verified-rights anonymization, then publish one compatibility capability for downstream participation privacy work.

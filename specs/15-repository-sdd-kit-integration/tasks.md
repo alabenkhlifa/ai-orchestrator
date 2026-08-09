@@ -6,6 +6,8 @@ Not Started
 
 Task 1 is independently executable. Planning waits for the repository execution profile and managed pilot capability.
 
+Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-kit catalog and plan surfaces (`RepositoryKitPackage`, `RepositoryKitChangePlan`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
+
 ## Active Slice
 
 After one managed pilot, let the project owner inspect one immutable SDD kit, review its exact conflict-aware diff, and apply, update, or remove it only through confirmed isolated-branch operations while preserving Orchestrator specification authority.
