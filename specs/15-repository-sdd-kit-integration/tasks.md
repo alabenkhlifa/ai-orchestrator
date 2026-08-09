@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-Task 1 is complete. Task 2 requires `capability:repository-execution-profile` and `capability:guided-specification-delivery`, neither ready yet, so the slice's next executable task is blocked.
+Task 1 is complete. Task 2 previously required `capability:guided-specification-delivery` (provider `specs/24-guided-delivery-completion#Task 1`), a mis-wired dependency corrected to `capability:guided-delivery-data-surfaces` (see `progress.md`). All of Task 2's required capabilities (`repository-execution-profile`, `guided-delivery-data-surfaces`, `project-storage-authority`) are ready, so Task 2 is executable next.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-kit catalog and plan surfaces (`RepositoryKitPackage`, `RepositoryKitChangePlan`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -125,7 +125,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Task 1 is complete; Task 2 remains capability-blocked until its recorded providers are ready.
+- None. Task 1 is complete and Task 2's required capabilities are all ready.
 
 ## Progress Log
 
