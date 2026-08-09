@@ -75,6 +75,7 @@ defmodule SddOrchestrator.Worker.EndToEndTest do
   alias SddOrchestrator.Delivery.CommandOutbox
   alias SddOrchestrator.Delivery.CommandTransport.Channel, as: Transport
   alias SddOrchestrator.Delivery.ExecutionManifest
+  alias SddOrchestrator.Delivery.LocalWorkerRunGovernance
   alias SddOrchestrator.Delivery.Worker.Branch
   alias SddOrchestrator.Delivery.Worker.Workspace
   alias SddOrchestrator.DeliveryFixtures
@@ -339,6 +340,12 @@ defmodule SddOrchestrator.Worker.EndToEndTest do
     assert default_branch_sha_after == default_branch_sha_before
 
     assert {:ok, recorded} = CommandOutbox.fetch(command.id)
+
+    # specs/34-local-worker-runtime-governance (AC-08): this scenario never
+    # selects or pins a personal AI connection, so it must produce no
+    # `LocalWorkerRunGovernance` row — "ungoverned" asserted positively here,
+    # not merely inferred from the row never being mentioned.
+    refute LocalWorkerRunGovernance.for_run(run.id)
 
     refute_boundary_leaks(
       [

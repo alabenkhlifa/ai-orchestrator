@@ -10,6 +10,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import SddOrchestrator.AIRuntimeFixtures
 
   alias SddOrchestrator.Delivery.{
     Activity,
@@ -19,6 +20,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     DeliveryStore,
     EvidencePresentation,
     Feature,
+    LocalWorkerRunGovernance,
     Review,
     ReviewDecision,
     ReviewHandoff
@@ -31,6 +33,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.Revocations
   alias SddOrchestrator.ParticipationDeliveryDouble
+  alias SddOrchestrator.ParticipationFixtures
   alias SddOrchestrator.PreviewPresentationFixtures, as: PreviewFixtures
   alias SddOrchestrator.Repo
 
@@ -1011,6 +1014,140 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
       refute has_element?(view, "[data-run-control]")
       refute has_element?(view, "[data-cancel-run]")
+    end
+  end
+
+  describe "the runtime projection [AC-06]" do
+    setup %{project: project, account: account, context: context} do
+      feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
+      initiator_account = context.identity.account
+
+      run =
+        DeliveryFixtures.run_fixture(project, feature, %{
+          initiator_account_id: initiator_account.id
+        })
+
+      attempt = DeliveryFixtures.attempt_fixture(run, %{fence_token: 1})
+
+      DeliveryFixtures.activity_fixture(project, feature, %{
+        run_id: run.id,
+        attempt_id: attempt.id,
+        type: "run_started",
+        payload: %{"branch" => run.branch}
+      })
+
+      other_identity = ParticipationFixtures.invited_identity_fixture()
+      ParticipationFixtures.participant_fixture(project, other_identity.hosted_identity)
+
+      ParticipationFixtures.member_profile_fixture(project, other_identity.account, %{
+        role: "participant",
+        display_name: "Other Participant"
+      })
+
+      %{
+        feature: feature,
+        run: run,
+        attempt: attempt,
+        initiator_account: initiator_account,
+        other_identity: other_identity
+      }
+    end
+
+    test "the run initiator sees the owner-exact panel", %{
+      conn: conn,
+      context: context,
+      project: project,
+      feature: feature,
+      initiator_account: initiator_account,
+      run: run
+    } do
+      session_context = governed_session_fixture(run, initiator_account)
+
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(context.identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(view, "[data-runtime-projection][data-runtime-audience=\"owner\"]")
+
+      panel = view |> element("[data-runtime-projection]") |> render()
+      assert panel =~ session_context.session.model
+      assert view |> element("[data-runtime-connection]") |> render() =~ "openai_codex"
+      assert view |> element("[data-runtime-tokens]") |> render() =~ "Unknown"
+      assert view |> element("[data-runtime-cost]") |> render() =~ "Unknown"
+    end
+
+    test "the project owner, not being the initiator, sees only the safe panel", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      initiator_account: initiator_account,
+      run: run,
+      account: account
+    } do
+      governed_session_fixture(run, initiator_account)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      assert has_element?(
+               view,
+               "[data-runtime-projection][data-runtime-audience=\"participant\"]"
+             )
+
+      refute has_element?(view, "[data-runtime-connection]")
+      refute has_element?(view, "[data-runtime-quota]")
+      refute has_element?(view, "[data-runtime-cost]")
+    end
+
+    test "another current participant, not the initiator, also sees only the safe panel", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      initiator_account: initiator_account,
+      run: run,
+      other_identity: other_identity
+    } do
+      governed_session_fixture(run, initiator_account)
+
+      {:ok, view, _html} =
+        conn
+        |> log_in_hosted(other_identity.hosted_identity)
+        |> live(feature_path(project, feature))
+
+      assert has_element?(
+               view,
+               "[data-runtime-projection][data-runtime-audience=\"participant\"]"
+             )
+
+      refute has_element?(view, "[data-runtime-connection]")
+      refute has_element?(view, "[data-runtime-quota]")
+      refute has_element?(view, "[data-runtime-cost]")
+    end
+
+    test "an ungoverned run shows no runtime projection", %{
+      conn: conn,
+      project: project,
+      feature: feature,
+      account: account
+    } do
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, feature))
+
+      refute has_element?(view, "[data-runtime-projection]")
+    end
+
+    test "a feature with no run at all shows no runtime projection", %{
+      conn: conn,
+      project: project,
+      account: account
+    } do
+      other = DeliveryFixtures.feature_fixture(project, account)
+
+      {:ok, view, _html} =
+        conn |> log_in_account(account) |> live(feature_path(project, other))
+
+      refute has_element?(view, "[data-runtime-projection]")
     end
   end
 
@@ -2623,6 +2760,22 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       )
     )
     |> Repo.insert!()
+  end
+
+  # Pins a real `capability:ai-runtime-session` to one run through the public
+  # boundary, then records it as governed exactly as `Start` would.
+  defp governed_session_fixture(run, account) do
+    session_context =
+      runtime_observation_context_fixture(%{
+        account: account,
+        now: ~U[2026-08-08 12:00:00Z],
+        consumer_ref: "local_worker_run:" <> run.id
+      })
+
+    {:ok, _governance} =
+      LocalWorkerRunGovernance.record(run.id, session_context.session.session_id)
+
+    session_context
   end
 
   defp feature_path(project, feature), do: ~p"/projects/#{project.id}/features/#{feature.id}"

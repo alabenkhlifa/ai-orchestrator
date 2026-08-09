@@ -16,16 +16,22 @@ defmodule SddOrchestrator.Delivery.Start do
   storage authority.
   """
 
+  alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, RuntimeSessions}
+  alias SddOrchestrator.Devices.LocalWorker
+
   alias SddOrchestrator.Delivery.{
     AgentRun,
     DeliveryStore,
     ExecutionManifest,
+    LocalWorkerRunGovernance,
     ParticipantGuard,
     ProcessingDisclosure,
     Readiness,
     RunTransitions
   }
 
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationStore
 
   @type authority :: Readiness.authority()
@@ -38,6 +44,7 @@ defmodule SddOrchestrator.Delivery.Start do
           | :already_started
           | :no_specification
           | :invalid_manifest
+          | {:ai_connection_selection_required, [Ecto.UUID.t()]}
           | term()
 
   @doc """
@@ -54,8 +61,12 @@ defmodule SddOrchestrator.Delivery.Start do
          :ok <- ready?(authority, project.id, actor, feature.id),
          {:ok, current} <- current_revision(authority, project.id),
          :ok <- not_already_started(authority, project, feature),
-         {:ok, manifest} <- manifest_for(project, feature, current, opts) do
-      commit(authority, project, feature, member, manifest, opts)
+         {:ok, manifest} <- manifest_for(project, feature, current, opts),
+         {:ok, ai_connection_id} <- resolve_ai_connection(project.id, member.account_id, opts),
+         {:ok, session_id} <- pin_governed_session(manifest, ai_connection_id, member, opts),
+         {:ok, results} <- commit(authority, project, feature, member, manifest, opts) do
+      record_governance(manifest.run_id, session_id)
+      {:ok, results}
     end
   end
 
@@ -231,6 +242,111 @@ defmodule SddOrchestrator.Delivery.Start do
       {:ok, %AgentRun{state: state} = run} when state not in ~w(failed canceled completed) -> run
       _terminal_or_missing -> nil
     end
+  end
+
+  # Advisory only: this resolves what the initiator could pin, never what
+  # authorizes it. The real, re-checked authorization happens later through
+  # `PersonalConnections.resolve_working_agent_connection/2` when the session
+  # is actually pinned. A project with no bound local worker (for example, a
+  # device-authoritative project) has nothing to filter against, so it reports
+  # zero eligible connections exactly like an unconfigured account would.
+  defp resolve_ai_connection(project_id, account_id, opts) do
+    case bound_local_worker(project_id) do
+      nil -> {:ok, nil}
+      worker -> select_eligible_connection(account_id, worker, opts)
+    end
+  end
+
+  defp bound_local_worker(project_id) do
+    with %HostedLocalRepositoryBinding{worker_id: worker_id} <-
+           Repo.get(HostedLocalRepositoryBinding, project_id),
+         %LocalWorker{} = worker <- Repo.get(LocalWorker, worker_id) do
+      worker
+    else
+      _unbound -> nil
+    end
+  end
+
+  defp select_eligible_connection(account_id, worker, opts) do
+    account_id
+    |> PersonalConnections.list_personal_connections()
+    |> Enum.filter(&(&1.worker_id == worker.id and &1.revocation_state == "active"))
+    |> Enum.map(& &1.id)
+    |> choose_connection(Keyword.get(opts, :ai_runtime_connection_id))
+  end
+
+  defp choose_connection([], _requested_id), do: {:ok, nil}
+  defp choose_connection([only_id], _requested_id), do: {:ok, only_id}
+
+  defp choose_connection(eligible_ids, requested_id) do
+    if requested_id != nil and requested_id in eligible_ids do
+      {:ok, requested_id}
+    else
+      {:error, {:ai_connection_selection_required, eligible_ids}}
+    end
+  end
+
+  # No connection was eligible: the run stays ungoverned, unchanged from the
+  # `specs/33-local-worker-run-execution` baseline.
+  defp pin_governed_session(_manifest, nil, _member, _opts), do: {:ok, nil}
+
+  defp pin_governed_session(manifest, connection_id, member, opts) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    with {:ok, model, effort} <- current_model_selection(member.account_id, connection_id, now),
+         request = pin_request(manifest, connection_id, model, effort, opts),
+         {:ok, session} <- RuntimeSessions.pin_session(member.account_id, request, now: now) do
+      {:ok, session.session_id}
+    end
+  end
+
+  # A connection was explicitly resolved, so an unavailable catalog is a pin
+  # failure here, not a silent fall-through to ungoverned.
+  defp current_model_selection(account_id, connection_id, now) do
+    case ModelCatalogs.current_catalog(account_id, connection_id, now: now) do
+      {:ok, %{models: models}} -> select_current_model(models)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp select_current_model(models) do
+    case Enum.find(models, & &1.current) || Enum.find(models, & &1.default) do
+      %{model: model, default_reasoning_effort: effort} when is_binary(effort) ->
+        {:ok, model, effort}
+
+      _no_selectable_model ->
+        {:error, :unknown}
+    end
+  end
+
+  # The spending ceiling is only required to pin an API-key connection;
+  # `RuntimeSessions.pin_session/3` enforces that itself, so an unsupplied
+  # ceiling for a connection that requires one surfaces as an ordinary pin
+  # failure rather than something resolved here.
+  defp pin_request(manifest, connection_id, model, effort, opts) do
+    %{
+      consumer: :working_agent,
+      consumer_ref: "local_worker_run:" <> manifest.run_id,
+      connection_id: connection_id,
+      model: model,
+      effort: effort,
+      scarcity: :standard,
+      choices: [],
+      spending_ceiling: Keyword.get(opts, :ai_runtime_spending_ceiling)
+    }
+  end
+
+  # Written as a plain, separate insert after `commit/6` succeeds, never
+  # inside its own `steps/6` transaction: `LocalWorkerRunGovernance.run_id`
+  # references the `agent_runs` row `commit/6` creates, so it can only be
+  # written once that row exists. When commit fails after a successful pin,
+  # the pinned session is left unlinked; `pin_session/3`'s own idempotency on
+  # `consumer_ref` reconciles that on a later retry of the same run.
+  defp record_governance(_run_id, nil), do: :ok
+
+  defp record_governance(run_id, session_id) do
+    LocalWorkerRunGovernance.record(run_id, session_id)
+    :ok
   end
 
   defp current_revision(authority, project_id) do

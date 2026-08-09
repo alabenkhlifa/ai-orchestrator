@@ -11,12 +11,15 @@ defmodule SddOrchestrator.Delivery.StartTest do
   use SddOrchestrator.DataCase, async: false
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
+  alias SddOrchestrator.AIRuntime.{PersonalConnections, RuntimeSessions}
+  alias SddOrchestrator.AIRuntimeFixtures
 
   alias SddOrchestrator.Delivery.{
     ActivityEntry,
     AgentRun,
     ExecutionManifest,
     Feature,
+    LocalWorkerRunGovernance,
     ProcessingDisclosure,
     Readiness,
     RunAttempt,
@@ -28,6 +31,8 @@ defmodule SddOrchestrator.Delivery.StartTest do
   alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.Participation.Revocations
   alias SddOrchestrator.ParticipationDeliveryDouble
+  alias SddOrchestrator.PersonalConnectionAdapterDouble
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.ReadinessGuidanceDouble
   alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationFixtures
@@ -40,6 +45,11 @@ defmodule SddOrchestrator.Delivery.StartTest do
     agent_ref: %{"provider" => "configured-agent"},
     worker_ref: %{"target" => "configured-worker"}
   ]
+
+  # Matches `AIRuntimeFixtures`' own default catalog/quota `retrieved_at`, so a
+  # pin against a fixture-built catalog is proven against the snapshot's own
+  # freshness window instead of the real wall clock racing its 300-second TTL.
+  @runtime_now ~U[2026-08-03 12:00:00Z]
 
   @boundary [
     execution_location: "this computer",
@@ -399,6 +409,310 @@ defmodule SddOrchestrator.Delivery.StartTest do
     end
   end
 
+  describe "eligible personal AI connection resolution [AC-01]" do
+    setup ctx, do: %{ready: prepare(ctx)}
+
+    test "starts normally when the project has no bound local worker", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "starts normally when the bound worker has no eligible connections", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      bind_local_worker(project)
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "auto-selects when exactly one eligible connection exists", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.runtime_session_context_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      assert {:ok, results} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 now: @runtime_now
+               )
+
+      assert results.run.state == "pending"
+    end
+
+    test "requires an explicit choice with more than one eligible connection", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      %{connection: first} =
+        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+          account: owner_account,
+          worker: worker
+        })
+
+      %{connection: second} =
+        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+          account: owner_account,
+          worker: worker,
+          label: "Second Codex"
+        })
+
+      assert {:error, {:ai_connection_selection_required, eligible_ids}} =
+               Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert Enum.sort(eligible_ids) == Enum.sort([first.id, second.id])
+      assert Repo.aggregate(AgentRun, :count) == 0
+    end
+
+    test "an explicit connection id matching one of the eligible connections proceeds", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      %{connection: chosen} =
+        AIRuntimeFixtures.runtime_session_context_fixture(%{
+          account: owner_account,
+          worker: worker,
+          label: "Second Codex"
+        })
+
+      assert {:ok, _results} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 ai_runtime_connection_id: chosen.id,
+                 now: @runtime_now
+               )
+    end
+
+    test "an explicit connection id that is not eligible still requires a choice", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker,
+        label: "Second Codex"
+      })
+
+      assert {:error, {:ai_connection_selection_required, _eligible_ids}} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 ai_runtime_connection_id: Ecto.UUID.generate()
+               )
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+    end
+
+    test "ignores a connection owned by a different account", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{worker: worker})
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "ignores a connection bound to a different worker", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      bind_local_worker(project)
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{account: owner_account})
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+
+    test "ignores a connection whose revocation has been acknowledged", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      %{connection: connection} =
+        AIRuntimeFixtures.personal_ai_connection_fixture(%{
+          account: owner_account,
+          worker: worker
+        })
+
+      {:ok, %{revocation_state: "acknowledged"}} =
+        PersonalConnections.request_revocation(owner_account, connection.id,
+          adapter: PersonalConnectionAdapterDouble
+        )
+
+      assert {:ok, _results} = Start.start(authority, owner, %{project: project, feature: ready})
+    end
+  end
+
+  describe "pinning a governed run's runtime session [AC-02] [AC-03] [AC-04]" do
+    setup ctx, do: %{ready: prepare(ctx)}
+
+    test "pins a session and records the run's governance before it completes", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      %{connection: connection} =
+        AIRuntimeFixtures.runtime_session_context_fixture(%{
+          account: owner_account,
+          worker: worker
+        })
+
+      assert {:ok, results} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 now: @runtime_now
+               )
+
+      assert %LocalWorkerRunGovernance{} =
+               governance =
+               LocalWorkerRunGovernance.for_run(results.run.id)
+
+      assert {:ok, session} =
+               RuntimeSessions.fetch_for_consumer(
+                 owner_account,
+                 :working_agent,
+                 "local_worker_run:" <> results.run.id
+               )
+
+      assert governance.session_id == session.session_id
+      assert session.connection_id == connection.id
+      assert session.model == "codex-test-model"
+      assert session.effort == "medium"
+    end
+
+    test "refuses the start and leaves no rows behind when the catalog is unavailable", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.personal_ai_connection_fixture(%{
+        account: owner_account,
+        worker: worker
+      })
+
+      assert {:error, _reason} =
+               Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+      assert Repo.aggregate(RunCommand, :count) == 0
+      assert Repo.aggregate(LocalWorkerRunGovernance, :count) == 0
+    end
+
+    test "refuses the start and leaves no rows behind when a required spending ceiling is missing",
+         %{
+           authority: authority,
+           project: project,
+           owner: owner,
+           owner_account: owner_account,
+           ready: ready
+         } do
+      worker = bind_local_worker(project)
+
+      AIRuntimeFixtures.model_catalog_snapshot_fixture(%{
+        connection_fixture:
+          AIRuntimeFixtures.personal_ai_connection_fixture(%{
+            account: owner_account,
+            worker: worker,
+            authentication_mode: "api_key"
+          })
+      })
+
+      assert {:error, :spending_ceiling_required} =
+               Start.start(authority, owner, %{project: project, feature: ready},
+                 now: @runtime_now
+               )
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+      assert Repo.aggregate(RunCommand, :count) == 0
+      assert Repo.aggregate(LocalWorkerRunGovernance, :count) == 0
+    end
+
+    test "re-pinning the same run's consumer reference is idempotent", %{
+      project: project,
+      feature: feature,
+      owner_account: owner_account
+    } do
+      run_id = DeliveryFixtures.run_fixture(project, feature).id
+
+      context = AIRuntimeFixtures.runtime_session_context_fixture(%{account: owner_account})
+
+      request = %{
+        consumer: :working_agent,
+        consumer_ref: "local_worker_run:" <> run_id,
+        connection_id: context.connection.id,
+        model: "codex-test-model",
+        effort: "medium",
+        scarcity: :standard,
+        choices: [],
+        spending_ceiling: nil
+      }
+
+      assert {:ok, first} = RuntimeSessions.pin_session(owner_account, request, now: @runtime_now)
+
+      assert {:ok, second} =
+               RuntimeSessions.pin_session(owner_account, request, now: @runtime_now)
+
+      assert first.session_id == second.session_id
+
+      assert {:ok, governance_a} = LocalWorkerRunGovernance.record(run_id, first.session_id)
+      assert {:ok, governance_b} = LocalWorkerRunGovernance.record(run_id, second.session_id)
+      assert governance_a.id == governance_b.id
+      assert Repo.aggregate(LocalWorkerRunGovernance, :count) == 1
+    end
+  end
+
   describe "availability" do
     test "is false until ready, confirmed, and in the right column", %{
       authority: authority,
@@ -454,6 +768,24 @@ defmodule SddOrchestrator.Delivery.StartTest do
       )
 
     ready
+  end
+
+  # Binds a real, active local worker to the project exactly the way
+  # `HostedLocalRepositoryBindings.put_validated_binding/6` persists it, so
+  # `Start`'s own lookup (`Repo.get(HostedLocalRepositoryBinding, project.id)`)
+  # finds it without depending on that module's own device-workspace proof.
+  defp bind_local_worker(project) do
+    worker = AIRuntimeFixtures.personal_ai_worker_fixture()
+
+    %HostedLocalRepositoryBinding{}
+    |> HostedLocalRepositoryBinding.changeset(%{
+      project_id: project.id,
+      worker_id: worker.id,
+      last_validated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.insert!()
+
+    worker
   end
 
   defp blocker do
