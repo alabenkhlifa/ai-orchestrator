@@ -52,7 +52,7 @@ A technical or non-technical user can describe a new project's purpose and techn
 
 - The first executable slice accepts only one local directory that is empty under the approved operating-system selection rules. An unborn Git repository is eligible; a repository with any commit routes to mature-repository assessment.
 - Local onboarding cannot identify an unborn repository through its current portable repository identity because that identity requires root commits; initialization must establish the first commit before normal onboarding.
-- The support conversation is read-only. It may create or revise the governed initialization plan inside `capability:ai-runtime-session`, but it cannot call repository mutation tools, initialize Git, create files, install a kit, or launch the working agent.
+- The support conversation is read-only. It may create or revise the governed initialization plan through the governed pre-project support boundary, but it cannot call repository mutation tools, initialize Git, create files, install a kit, or launch the working agent.
 - Product purpose, intended users, first outcome, constraints, chosen technical foundation, commands, and verification expectations are user-approved decisions. The assistant must not silently select consequential architecture.
 - The plan must show every top-level directory, generated file category, configured command, required check, Git action, initial branch behavior, kit file, included script, and required permission before confirmation.
 - The first plan must be the smallest runnable and verifiable foundation for the approved purpose. It must not implement unrelated product features.

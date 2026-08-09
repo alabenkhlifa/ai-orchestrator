@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Not Started
 
-The product and design agreements are approved. Task 1 is blocked until the governed AI runtime session capability is ready; later tasks also consume the permanent-kit, worker-authorization, and specification-store capabilities.
+The product and design agreements are approved. Task 1's required capabilities (`capability:ai-runtime-session`, `capability:local-worker-run-execution`) are ready. Task 2 is blocked until `capability:sdd-kit-package` is ready; its `Depends on:` chain keeps Tasks 3–6 blocked until Task 2 completes.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-initialization plan/run surfaces (`RepositoryInitializationPlan`, `RepositoryInitializationRun`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -17,6 +17,7 @@ Guide one user from an empty local directory through an explicit initialization 
 Requires:
 
 - `capability:ai-runtime-session` — provider `specs/11-ai-runtime-governance#Task 11` — required before `Task 1`.
+- `capability:local-worker-run-execution` — provider `specs/33-local-worker-run-execution#Task 12` — required before `Task 1`.
 - `capability:sdd-kit-package` — provider `specs/15-repository-sdd-kit-integration#Task 1` — required before `Task 2`.
 - `capability:workspace-bound-local-worker-authorization` — provider `specs/02-local-project-onboarding#Task 3` — required before `Task 5`.
 - `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 5`.
@@ -30,6 +31,10 @@ Provides:
 
 - Every task is standard, owns one independently provable discovery, confirmation, staging, commit, handoff, or governance outcome, and has no more than three acceptance criteria and two entities.
 - No exception is required.
+
+## Proof Scope Gate
+
+- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6.
 
 ## Implementation Boundary
 
@@ -68,6 +73,7 @@ Traceability:
 
 - [ ] Task 1 — Guide purpose and technical foundation without mutation.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: none
   - Purpose: Establish an eligible empty target and enough user-approved intent to propose a valid minimal repository.
   - Owned surfaces: Empty-directory entry and operating-system selection, target eligibility and opaque reference, mature-repository routing, read-only initialization support tool policy, versioned `RepositoryInitializationPlan`, product-first questions, technical-foundation question gate, and no-mutation enforcement.
@@ -76,6 +82,7 @@ Traceability:
 
 - [ ] Task 2 — Present the exact plan and capture confirmation.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 1
   - Purpose: Let the user understand every generated and transferred element before authorizing a working agent.
   - Owned surfaces: Structure and file preview, command and required-check contract, Git and first-commit preview, immutable kit package details and default selection, decline behavior and limitation copy, scripts and permissions, worker and provider summary, processing disclosure, exact-plan confirmation, and changed-input invalidation.
@@ -84,6 +91,7 @@ Traceability:
 
 - [ ] Task 3 — Build the confirmed repository in isolated staging.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 2
   - Purpose: Materialize only the approved skeleton through a separate minimum-capability working agent.
   - Owned surfaces: `RepositoryInitializationRun`, working-agent authorization, immutable plan command, staging-root containment, capability allowlist, skeleton adapter, kit vendoring when selected, undeclared-file rejection, hooks and remote-execution prohibition, normalized progress, cancellation, and target read-only posture.
@@ -92,6 +100,7 @@ Traceability:
 
 - [ ] Task 4 — Verify, commit, and publish the unchanged target.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 3
   - Purpose: Produce one exact checked root commit or a visible safe failure without replacing user data.
   - Owned surfaces: Target unchanged-boundary revalidation, symlink and permission checks, confirmed command execution, typed required-check evidence, checked-tree binding, staging Git initialization, first commit, `RepositoryInitializationResult`, idempotent replay, rollback-safe publication, failure-stage activity, and no-success-on-failure rule.
@@ -100,6 +109,7 @@ Traceability:
 
 - [ ] Task 5 — Complete onboarding and authoritative specification handoff.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 4
   - Purpose: Move a successfully initialized repository into normal project authority without creating another specification source.
   - Owned surfaces: Local-onboarding handoff, portable repository identity consumption, project and storage registration continuation, initialization-agreement conversion, complete shared-store first revision, no repository specification copy, handoff idempotency, and assistant/specification/agent-execution/release readiness presentation.
@@ -108,6 +118,7 @@ Traceability:
 
 - [ ] Task 6 — Enforce governance and publish initialization readiness.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 5
   - Purpose: Govern pre-project and resulting project data across every worker, model, cache, log, backup, and deletion path.
   - Owned surfaces: Pre-project purpose and basis, field minimization, AI-runtime and project authority transition, worker-local index and staging lifecycle, role access, cancellation cleanup, retention and deletion, rights, processor and transfer controls, redacted logs, no analytics, no secondary use, `capability:initialized-sdd-repository` readiness write-back, and release evidence.
@@ -130,7 +141,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- `capability:ai-runtime-session` is unavailable until its provider completes; this blocks Task 1 implementation.
+- `capability:sdd-kit-package` is unavailable until its provider completes; this blocks `Task 2` implementation and, through the `Depends on:` chain, `Task 3` through `Task 6`.
 
 ## Progress Log
 

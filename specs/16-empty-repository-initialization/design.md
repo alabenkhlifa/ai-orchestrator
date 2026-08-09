@@ -8,7 +8,7 @@ The governed AI runtime can host a read-only support conversation and a separate
 
 ## Proposed Approach
 
-Use `capability:ai-runtime-session` to conduct product-first discovery and retain a versioned `RepositoryInitializationPlan` without filesystem mutation. The plan records the approved purpose, first outcome, technical foundation, structure, commands, checks, Git behavior, kit choice, exact package, processing boundary, and required capabilities.
+Use `capability:ai-runtime-session` to pin the model and connection for initialization support, then dispatch each conversation turn through `capability:local-worker-run-execution` with a read-only, plan-only capability grant — no filesystem write, Git, package apply, or agent launch — to conduct product-first discovery and retain a versioned `RepositoryInitializationPlan` without filesystem mutation. The plan records the approved purpose, first outcome, technical foundation, structure, commands, checks, Git behavior, kit choice, exact package, processing boundary, and required capabilities.
 
 After explicit confirmation, create a `RepositoryInitializationRun` and send the immutable plan to a separately authorized working agent in a worker-owned staging root. Generate the minimal skeleton, vendor the approved kit when selected, initialize Git with hooks disabled, run the approved checks, and create one first commit in staging. Publish only after revalidating that the selected target is still empty and unchanged.
 
@@ -17,7 +17,7 @@ Record one `RepositoryInitializationResult`, then hand the repository to normal 
 ## Components Affected
 
 - Empty-repository entry, eligibility, and operating-system directory selection.
-- Governed read-only initialization support conversation.
+- Governed read-only initialization support conversation, dispatched through the same `capability:local-worker-run-execution` mechanism as the working agent, restricted to a read-only capability grant.
 - Initialization-plan review, disclosure, kit choice, and confirmation.
 - Working-agent staging, filesystem, Git, package, and command adapters.
 - Check evidence, first-commit identity, idempotency, and publication.
@@ -34,7 +34,7 @@ Record one `RepositoryInitializationResult`, then hand the repository to normal 
 Required boundaries:
 
 - Before project creation, plans, runs, and results live only inside the governed AI runtime's approved pre-project boundary. After handoff, applicable records follow the selected project storage and lifecycle contract.
-- Support-session tools exclude filesystem mutation, Git mutation, package apply, process execution, and working-agent launch.
+- Support-session tools exclude filesystem mutation, Git mutation, package apply, process execution, and working-agent launch. Each support-conversation turn runs as one capability-restricted `capability:local-worker-run-execution` dispatch scoped to plan discovery and revision only — the same dispatch mechanism the working agent uses in Task 3, differentiated solely by its granted capability set.
 - The working agent receives only the confirmed plan and staging-scoped capabilities. Runtime, worker, provider, and repository credentials remain outside agent-readable content.
 - Staging is contained under a normalized worker root and is separate from the selected target. The target is read only for eligibility and unchanged-boundary checks until publication.
 - Raw staging indexes and source content remain worker-local. Only minimized plan, progress, evidence, result, and disclosed content cross configured processor boundaries.
@@ -44,10 +44,10 @@ Required boundaries:
 ## Interfaces
 
 - Empty-target eligibility interface: select through the operating system, classify empty directory or unborn Git repository, reject commits and unexpected content, and issue an opaque target reference without exposing an absolute path.
-- Initialization support interface: use a governed AI session with read-only project-discovery and plan tools and no mutation tools.
+- Initialization support interface: pin a `support_assistant` session through `capability:ai-runtime-session`, then run each conversation turn as one capability-restricted `capability:local-worker-run-execution` dispatch granting only plan-discovery and plan-revision tools, excluding filesystem write, Git, package, and agent-launch capabilities.
 - Plan interface: append versioned product and technical decisions, validate completeness, render exact structure, commands, checks, Git actions, kit contents, permissions, providers, and transfers.
 - Confirmation interface: bind one user authorization to the exact plan, target reference, provider and worker boundary, kit digest, capabilities, and disclosure version.
-- Working-agent command: create one plan-bound run, materialize only in staging, enforce capability and path containment, normalize progress, and support cancellation.
+- Working-agent command: dispatch one plan-bound `capability:local-worker-run-execution` run scoped to staging-write capabilities, materialize only in staging, enforce capability and path containment, normalize progress, and support cancellation.
 - Skeleton adapter: create only allowlisted plan files and directories and reject undeclared output.
 - Git adapter: initialize only inside staging, disable hooks, stage the exact generated tree, and create one first commit after checks pass.
 - Check adapter: execute only confirmed commands, capture typed results, and bind every required passing result to the committed tree.
@@ -65,9 +65,9 @@ Required boundaries:
 
 ### Read-Only Support And Separate Working Agent
 
-- Choice: Give the conversational assistant only planning tools and launch a distinct working agent after confirmation.
-- Reason: Conversation should not become implicit permission to modify the user's filesystem.
-- Consequence: Users see a clear transition from advice to authorized work and can cancel before mutation.
+- Choice: Give the conversational assistant only planning tools and launch a distinct working agent after confirmation. Both run through the same `capability:local-worker-run-execution` dispatch mechanism, differentiated only by their granted capability set, rather than two separate execution engines.
+- Reason: Conversation should not become implicit permission to modify the user's filesystem, and reusing one proven dispatch mechanism avoids building a second interactive-conversation runtime that `specs/12-project-assistant` (blocked, project-scoped) is separately designed to own for post-project use.
+- Consequence: Users see a clear transition from advice to authorized work and can cancel before mutation. Each conversational exchange is one discrete capability-restricted dispatch rather than a persistent bidirectional session, so the plan and transcript accumulate by carrying prior context forward into each new dispatch.
 
 ### Staged Initialization Before Publication
 
