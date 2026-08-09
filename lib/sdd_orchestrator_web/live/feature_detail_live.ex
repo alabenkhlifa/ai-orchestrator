@@ -21,8 +21,10 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     Blocking,
     Cancellation,
     Comments,
+    DeliveryStore,
     EvidencePresentation,
     Features,
+    LocalWorkerRuntimeProjection,
     ParticipantGuard,
     PreviewPresentation,
     ProcessingDisclosure,
@@ -594,6 +596,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
+    |> assign_runtime_projection(actor)
     |> assign_disclosure()
   end
 
@@ -745,11 +748,13 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
         socket
         |> assign(:activity, Enum.filter(entries, &(&1.type == "progress")))
         |> assign(:comments, Enum.filter(entries, &(&1.type == "comment")))
+        |> assign(:current_run_id, current_run_id(entries))
 
       {:error, :unauthorized} ->
         socket
         |> assign(:activity, [])
         |> assign(:comments, [])
+        |> assign(:current_run_id, nil)
     end
   end
 
@@ -761,6 +766,55 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       socket.assigns.feature
     )
   end
+
+  # The most recent "run_started" entry names the run currently associated with
+  # this feature, in whatever state it is now — not only a live or cancelable
+  # one. Entries arrive in ascending authoritative order, so the last match is
+  # the most recent start.
+  defp current_run_id(entries) do
+    entries
+    |> Enum.filter(&(&1.type == "run_started"))
+    |> List.last()
+    |> case do
+      nil -> nil
+      entry -> entry.run_id
+    end
+  end
+
+  # The pinned-connection runtime projection for the feature's current run, if
+  # any. A feature that has never started, a run whose activity carries no
+  # attempt yet, an ungoverned run, and a viewer with no legitimate access all
+  # degrade to the same `nil` — nothing to show, never an error banner (see
+  # specs/34-local-worker-runtime-governance/design.md, "Present the result
+  # next to the run's existing activity view").
+  defp assign_runtime_projection(socket, actor) do
+    assign(socket, :runtime_projection, resolve_runtime_projection(socket, actor))
+  end
+
+  defp resolve_runtime_projection(socket, actor) do
+    project_id = socket.assigns.project_id
+
+    with run_id when is_binary(run_id) <- socket.assigns[:current_run_id],
+         authority <- storage_authority(socket),
+         {:ok, run} <- DeliveryStore.fetch_run(authority, project_id, run_id),
+         {:ok, attempt} <- DeliveryStore.current_attempt(authority, project_id, run.id),
+         {:ok, member} <- ParticipantGuard.authorize(project_id, actor),
+         {:ok, result} <-
+           LocalWorkerRuntimeProjection.for_run(
+             run,
+             attempt,
+             project_id,
+             member.account_id,
+             actor
+           ) do
+      runtime_projection(result)
+    else
+      _absent -> nil
+    end
+  end
+
+  defp runtime_projection(:ungoverned), do: nil
+  defp runtime_projection({audience, projection}), do: {audience, projection}
 
   # The question the run is waiting on, if any. A blocked feature keeps its
   # place in `In development`, so the question is what tells a reader why the
@@ -803,6 +857,28 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   defp transfer_summary(%{transfers: transfers}),
     do: "Leaves this project's store: " <> Enum.join(transfers, ", ")
+
+  ## Local worker runtime projection
+
+  defp runtime_audience({:owner, _projection}), do: "owner"
+  defp runtime_audience({:participant, _projection}), do: "participant"
+
+  defp runtime_owner?({:owner, _projection}), do: true
+  defp runtime_owner?({:participant, _projection}), do: false
+
+  defp runtime_field({_audience, projection}, key), do: Map.get(projection, key)
+
+  defp runtime_snapshot({_audience, projection}), do: projection.snapshot
+
+  defp runtime_elapsed({_audience, %{snapshot: %{elapsed_seconds: seconds}}}) do
+    minutes = div(seconds, 60)
+    remaining = rem(seconds, 60)
+    "#{minutes}m #{remaining}s"
+  end
+
+  defp runtime_quota_summary(%{state: :unknown}), do: "Unknown"
+  defp runtime_quota_summary(%{status: status}), do: "Last reported: #{status}"
+  defp runtime_quota_summary(_quota), do: "Unknown"
 
   ## Verification evidence
 
@@ -1227,6 +1303,60 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           >
             <.lucide name="x" class="size-4" /> Cancel run
           </.button>
+        </section>
+
+        <section
+          :if={@runtime_projection}
+          class="mt-6 rounded-lg border border-line p-4"
+          aria-labelledby="runtime-projection-heading"
+          data-runtime-projection
+          data-runtime-audience={runtime_audience(@runtime_projection)}
+        >
+          <h2
+            id="runtime-projection-heading"
+            class="flex items-center gap-1.5 text-[13px] font-semibold text-ink"
+          >
+            <.lucide name="info" class="size-4 flex-none" /> AI runtime
+          </h2>
+
+          <dl class="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 text-xs text-ink-muted sm:grid-cols-2">
+            <div :if={runtime_owner?(@runtime_projection)} data-runtime-connection>
+              <dt class="font-semibold text-ink">Connection</dt>
+              <dd>
+                {runtime_field(@runtime_projection, :provider)} · {runtime_field(
+                  @runtime_projection,
+                  :authentication_mode
+                )}
+              </dd>
+            </div>
+            <div data-runtime-model>
+              <dt class="font-semibold text-ink">Model</dt>
+              <dd>
+                {runtime_field(@runtime_projection, :model)} ({runtime_field(
+                  @runtime_projection,
+                  :effort
+                )} effort)
+              </dd>
+            </div>
+            <div data-runtime-status>
+              <dt class="font-semibold text-ink">Status</dt>
+              <dd>
+                {runtime_snapshot(@runtime_projection).status} · {runtime_elapsed(@runtime_projection)}
+              </dd>
+            </div>
+            <div :if={runtime_owner?(@runtime_projection)} data-runtime-quota>
+              <dt class="font-semibold text-ink">Quota</dt>
+              <dd>{runtime_quota_summary(runtime_field(@runtime_projection, :quota))}</dd>
+            </div>
+            <div data-runtime-tokens>
+              <dt class="font-semibold text-ink">Tokens</dt>
+              <dd>Unknown</dd>
+            </div>
+            <div :if={runtime_owner?(@runtime_projection)} data-runtime-cost>
+              <dt class="font-semibold text-ink">Cost</dt>
+              <dd>Unknown</dd>
+            </div>
+          </dl>
         </section>
 
         <section

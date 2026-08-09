@@ -116,16 +116,16 @@ Traceability:
   - Owns: AC-05
   - Proof: Focused tests prove the combined map carries the live elapsed time/status alongside the reused connection/model/effort/quota facts for a governed run, and that the assembly returns nothing for an ungoverned run.
 
-- [ ] Task 5 — Present the runtime projection next to a governed run's activity.
+- [x] Task 5 — Present the runtime projection next to a governed run's activity.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4
-  - Purpose: Let the run initiator, project owner, and other current authorized participants see exactly the view `specs/11-ai-runtime-governance`'s projection contracts already define, and see nothing for an ungoverned run.
+  - Purpose: Let the run initiator and every other current authorized participant see exactly the view `specs/11-ai-runtime-governance`'s projection contracts already define, and see nothing for an ungoverned run.
   - Owned surfaces: The run activity view's owner-exact and participant-safe runtime-projection rendering, and its absence for an ungoverned run.
   - Owns: AC-06
-  - Proof: Focused tests prove the run initiator and project owner see the owner-exact projection, another current authorized participant sees only the safe project-run view, and an ungoverned run's activity renders no projection.
+  - Proof: Focused tests prove the run initiator sees the owner-exact projection, the project owner (when not the initiator) and another current authorized participant see only the safe project-run view, and an ungoverned run's activity renders no projection.
 
-- [ ] Task 6 — Enforce privacy boundaries over the new run-governance record and computed snapshot.
+- [x] Task 6 — Enforce privacy boundaries over the new run-governance record and computed snapshot.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2, Task 4
