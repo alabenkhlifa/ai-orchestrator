@@ -4,7 +4,7 @@
 
 In Progress
 
-The product requirements remain approved and `capability:project-participation-boundary` is ready. Tasks 1 and 2 are complete. Integrated proof invalidated Task 3's isolated completion because acknowledgement removes the only selector its derived-revocation anonymization then used; the design now approves correlating through `project_participant_id`, which acknowledgement and retention never clear, so Task 3 is reopened for implementation against that approved boundary.
+All four tasks are complete. Task 3 was reopened once when integrated proof showed its derived-revocation anonymization could no longer find an already-acknowledged handoff; the approved fix correlates through `project_participant_id`, which acknowledgement and retention never clear. Task 4's compatibility suite proves all three repairs compose without regressing current authorization, the Slice 07 revocation consumer, or notification minimization. `capability:participation-identity-lifecycle` is ready. Remaining: the slice verification gate.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slices 15 (Repository SDD Kit Integration) and 16 (Empty Repository Initialization). This slice owns only the `Participation` context (`ProjectParticipant`, `ProjectMemberProfile`, `ParticipationRevocation`); no shared schema, migration, context, or UI with either slice. Partitioned by ownership — no serialization required.
 
@@ -99,11 +99,10 @@ Traceability:
   - Owns: AC-05, AC-06
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/participation/identity_rights_workflow_test.exs test/sdd_orchestrator/participation/historical_attribution_test.exs` passes focused current, departed, verified, unverified, wrong identity, cross-project, owner refusal, departure ordering, pending handoff, retry, stable history, derived revocation, linkability-negative, and no-restored-access cases.
 
-- [ ] Task 4 — Prove identity-lifecycle compatibility and publish readiness.
+- [x] Task 4 — Prove identity-lifecycle compatibility and publish readiness.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 2, Task 3
-  - Status: Blocked until Task 3's integrated focused proof passes.
   - Purpose: Confirm the three repairs compose without changing current authorization, invitation safety, revocation consumption, notifications, or stable history before downstream work consumes them.
   - Owned surfaces: Cross-workflow lifecycle compatibility contract and fixtures, fresh accept to depart to acknowledge or rights-anonymize scenarios, current-participant authorization regression, invitation atomicity regression, Slice 07 revocation-consumer contract regression, notification minimization regression, historical-profile and handoff reference stability, `capability:participation-identity-lifecycle` provider, proof receipt, and readiness write-back.
   - Owns: none

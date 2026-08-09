@@ -1,10 +1,19 @@
 # Participation Identity Lifecycle Progress Log
 
+### 2026-08-09 — Task 4 complete: compatibility proven, capability ready
+
+- Completed: Added `test/sdd_orchestrator/participation/identity_lifecycle_compatibility_test.exs` (11 focused tests) proving Tasks 1-3 compose: a profile identifier and each revocation's `project_participant_id` stay stable across two departures and a reacceptance; an unrelated account's current authorization is unaffected by another account's reacceptance or anonymization elsewhere in the project; a rolled-back re-acceptance leaves no partial state; acknowledgement cleanup is unaffected by a concurrent reacceptance; verified anonymization still reaches a derived revocation whose identity links acknowledgement already cleared; the Slice 07 revocation consumer applies a post-reacceptance removal and self-leave exactly as an ordinary one; acceptance/removal notifications after a full round trip stay singular, targeted, and minimized; unverified/unapproved anonymization and owner self-leave stay fail-closed; and one project's lifecycle events never touch another project's rows for the same account.
+- No production code changed — Tasks 1-3's shipped behavior composed correctly on the first attempt.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator/participation/identity_lifecycle_compatibility_test.exs` — exit `0`.
+- Failed checks: None. Confirmed by independent re-run with real exit status.
+- Remaining: Slice verification gate (`mix check` and the explicit code-quality commands, browser matrix, production proof, specification and capability-graph validators) through `run_proof.py slice`.
+- Spec updates: Marked Task 4 complete, recorded `capability:participation-identity-lifecycle` as ready, and set the slice status to reflect all four tasks complete pending the verification gate.
+
 ### 2026-08-09 — Task 3 complete: derived-revocation anonymization survives acknowledgement
 
 - Completed: `Participation.anonymize_profile/2`'s derived-revocation step now correlates through `project_participant_id` — via a subquery joining `ProjectParticipant` to `hosted_identity` and matching `account_id` — instead of the no-longer-reliable `former_account_id`. `anonymize_project_attribution/2` (the unrelated bulk project-deletion sweep) is unchanged. Updated the one stale pre-condition assertion in `historical_attribution_test.exs` that assumed `former_account_id` survives acknowledgement; every downstream assertion (`derived_revocations: 1`, label anonymized, both former-identity fields nil) is unchanged and still passes.
 - Boundary held: `identity_rights_workflow_test.exs` needed no change — its former-identity assertions were already post-anonymization checks, not pre-conditions.
-- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/participation/identity_rights_workflow_test.exs test/sdd_orchestrator/participation/historical_attribution_test.exs` — exit `0`, 35 tests passed.
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/participation/identity_rights_workflow_test.exs test/sdd_orchestrator/participation/historical_attribution_test.exs` — exit `0`.
 - Failed checks: None. Confirmed by independent re-run with real exit status.
 - Remaining: Task 4 compatibility proof and `capability:participation-identity-lifecycle` publication.
 - Spec updates: Marked Task 3 complete.
