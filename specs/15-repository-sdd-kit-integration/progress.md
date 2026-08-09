@@ -1,5 +1,13 @@
 # Repository SDD Kit Integration Progress Log
 
+### 2026-08-09 - Rebased onto main after identity-lifecycle work merged; Task 2 preflight confirmed
+
+- Completed: `slice/15-repository-sdd-kit-integration` had fallen 5 commits behind `main` (unrelated `specs/25-participation-identity-lifecycle` work: `d7eeb97`, `3e30880`, `3d8492e`, `2d7eb68`, `ded49ba`). Confirmed no file overlap between those commits and this slice's own two commits, then ran `git rebase main` in the `sdd-orchestrator-s15` worktree — rebased cleanly, no conflicts. `mix compile --warnings-as-errors` clean afterward. Re-ran Task 1's own focused proof as a post-rebase sanity check (not a new task): `mix test test/sdd_orchestrator/repository_kits_test.exs test/sdd_orchestrator_web/live/repository_kits_live_test.exs` — 32 passed, real exit 0. `python3 .agents/scripts/validate_spec.py specs/15-repository-sdd-kit-integration` and `--all specs` both pass post-rebase.
+- Re-confirmed via `capability_index.py --capability` that all three of Task 2's required capabilities remain `ready`: `repository-execution-profile` (specs/30#Task 2), `guided-delivery-data-surfaces` (specs/07#Task 54), `project-storage-authority` (specs/05#Task 4).
+- Remaining: Implement Task 2 (architecture research dispatched before implementation, mirroring Task 1's closed-brief sub-agent approach) through Task 5, then the verification gate.
+- Failed checks: None.
+- Spec updates: None.
+
 ### 2026-08-09 - Corrected Task 2's mis-wired capability dependency
 
 - Completed: Corrected Task 2's Cross-Specification Dependencies. It required `capability:guided-specification-delivery` (provider `specs/24-guided-delivery-completion#Task 1`, the terminal task of the entire 17→24 guided-delivery GDPR governance chain), but neither `requirements.md` nor `design.md` ever referenced that capability, and Task 2's actual purpose — comparing the repository against the approved profile to produce a change plan — only needs to read the selected pilot's delivery-state data. That edge wrongly serialized this slice behind eight unrelated slices. Replaced it with `capability:guided-delivery-data-surfaces` (provider `specs/07-guided-specification-delivery#Task 54`), the same capability specs/18, specs/19, specs/20, and specs/24 already consume to read guided-delivery's field and status data for their own downstream purposes. That capability, `capability:repository-execution-profile`, and `capability:project-storage-authority` are all already ready, so Task 2 is now blocked only on this slice's own Task 1 — which is already complete (see below), so Task 2 is unblocked.
