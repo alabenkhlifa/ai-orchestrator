@@ -122,9 +122,9 @@ defmodule SddOrchestrator.RepositoryReadinessTest do
   """
   use SddOrchestrator.DataCase, async: false
 
+  alias SddOrchestrator.{AccountsFixtures, HostedAccessFixtures, ParticipationFixtures}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
-  alias SddOrchestrator.{AccountsFixtures, HostedAccessFixtures, ParticipationFixtures}
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.RepositoryAssessments
   alias SddOrchestrator.RepositoryPilots

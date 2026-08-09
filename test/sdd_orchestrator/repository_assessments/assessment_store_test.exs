@@ -11,9 +11,9 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStoreTest do
   """
   use SddOrchestrator.DataCase, async: false
 
+  alias SddOrchestrator.{AccountsFixtures, ProjectsFixtures}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
-  alias SddOrchestrator.{AccountsFixtures, ProjectsFixtures}
 
   alias SddOrchestrator.RepositoryAssessments.{
     AssessmentStore,
