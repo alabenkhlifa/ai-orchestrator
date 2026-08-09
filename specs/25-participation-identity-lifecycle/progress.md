@@ -1,5 +1,13 @@
 # Participation Identity Lifecycle Progress Log
 
+### 2026-08-09 — Resolved the Task 3 derived-revocation data boundary
+
+- Completed: Approved correlating derived-revocation anonymization through `ParticipationRevocation.project_participant_id` instead of `former_account_id`. `project_participant_id` names the exact departed authorization row and is never cleared by acknowledgement or the 30-day retention rule, so it survives the case that broke the integrated proof. No new identifier is stored, no retention is extended, and Task 2's shipped acknowledgement and retention contract is unchanged.
+- Rebase: Rebased `slice/25-participation-identity-lifecycle` onto latest `main` (94 commits ahead at divergence). One conflict in `lib/sdd_orchestrator/privacy/retention.ex` — both branches had additively extended the same moduledoc list and `prune_all/1` map (main with personal-AI-connection and runtime-observation retention rules from merged slices, this branch with the participation-revocation-link rule). Resolved by keeping both sets of entries; re-ran Task 1 and Task 2 focused proof after rebase and both still pass (9 and 21 tests, exit 0), confirming the resolution.
+- Earliest unblocked stage: Technical design. Task 3 is reopened for implementation against the approved boundary; Task 4 remains blocked only on Task 3's integrated proof.
+- Failed checks: None new. `python3 .agents/scripts/validate_spec.py specs/25-participation-identity-lifecycle` and `python3 .agents/scripts/validate_spec.py --all specs` are re-run after this write-back.
+- Spec updates: Resolved design.md's Open Question, added the "Correlate Derived Revocations Through The Departed Authorization" decision, updated the affected data boundaries and components-affected entries, set the slice back to `In Progress`, cleared `Blocked Decisions`, and reopened Task 3's owned surfaces to name the approved correlation.
+
 ### 2026-08-02 — Integrated proof blocked Task 3 on post-acknowledgement correlation
 
 - Completed: Merged the independently proven Task 1, Task 2, and Task 3 commits onto `slice/25-participation-identity-lifecycle` and reconciled their checkboxes and progress entries. Task 1 passes with 9 tests and Task 2 passes with 21 tests on the combined branch.

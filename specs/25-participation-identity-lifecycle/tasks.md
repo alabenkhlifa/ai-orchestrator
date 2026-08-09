@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product requirements remain approved and `capability:project-participation-boundary` is ready. Tasks 1 and 2 are complete. Integrated proof invalidated Task 3's isolated completion because acknowledgement removes the only approved selector for its derived-revocation anonymization; technical design, Task 3 implementation and proof, Task 4 compatibility verification, and capability publication are blocked until the data boundary is resolved.
+The product requirements remain approved and `capability:project-participation-boundary` is ready. Tasks 1 and 2 are complete. Integrated proof invalidated Task 3's isolated completion because acknowledgement removes the only selector its derived-revocation anonymization then used; the design now approves correlating through `project_participant_id`, which acknowledgement and retention never clear, so Task 3 is reopened for implementation against that approved boundary.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slices 15 (Repository SDD Kit Integration) and 16 (Empty Repository Initialization). This slice owns only the `Participation` context (`ProjectParticipant`, `ProjectMemberProfile`, `ParticipationRevocation`); no shared schema, migration, context, or UI with either slice. Partitioned by ownership — no serialization required.
 
@@ -94,9 +94,8 @@ Traceability:
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
-  - Status: Blocked until the design records an approved post-acknowledgement derived-revocation correlation or lifecycle that preserves Task 2's identity-link cleanup and the project privacy rules.
   - Purpose: Give an approved verified request an ordered path from current participation to anonymous historical attribution without weakening direct fail-closed behavior.
-  - Owned surfaces: `Privacy.Rights` verified participation-anonymization orchestration, verified stable account and hosted-identity scope, current-participant detection, authoritative self-departure invocation, direct active-anonymization refusal, post-departure verified anonymization, pending-handoff necessity override, unverified necessity denial, retryable incomplete result, no-access-restoration guard, derived revocation anonymization, fixtures, and focused tests.
+  - Owned surfaces: `Privacy.Rights` verified participation-anonymization orchestration, verified stable account and hosted-identity scope, current-participant detection, authoritative self-departure invocation, direct active-anonymization refusal, post-departure verified anonymization, pending-handoff necessity override, unverified necessity denial, retryable incomplete result, no-access-restoration guard, `project_participant_id`-correlated derived revocation anonymization, fixtures, and focused tests.
   - Owns: AC-05, AC-06
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/participation/identity_rights_workflow_test.exs test/sdd_orchestrator/participation/historical_attribution_test.exs` passes focused current, departed, verified, unverified, wrong identity, cross-project, owner refusal, departure ordering, pending handoff, retry, stable history, derived revocation, linkability-negative, and no-restored-access cases.
 
@@ -125,7 +124,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Data boundary: decide how historical-attribution anonymization reaches the exact `ParticipationRevocation` after acknowledgement clears `former_account_id` and `former_hosted_identity_id`, without retaining an undeclared linkable identifier or weakening immediate identity cleanup. This blocks technical design, Task 3 implementation and proof, Task 4 verification, and capability publication; product requirements and Tasks 1 and 2 remain ready.
+- None.
 
 ## Progress Log
 
