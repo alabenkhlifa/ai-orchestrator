@@ -1,5 +1,13 @@
 # Empty Repository Initialization Progress Log
 
+### 2026-08-09 - Task 2's remaining capability blocker cleared
+
+- Rebased this branch onto `main` (through `specs/30-repository-execution-profile-completion`'s merge and a `specs/15` capability-wiring correction; no conflicts).
+- `capability:sdd-kit-package` is now ready — `specs/15-repository-sdd-kit-integration` Task 1 completed on its own slice branch. Task 2 no longer has any external capability blocker; it is gated only by this slice's own `Depends on: Task 1` chain. Corrected the now-stale "Task 2 remains blocked on `capability:sdd-kit-package`" note recorded below.
+- Remaining: Implement Tasks 1–6 and complete the verification gate.
+- Failed checks: None.
+- Spec updates: Corrected the Status and Blocked Decisions sections in `tasks.md`.
+
 ### 2026-08-09
 
 - Discovered during Task 1 implementation preflight: `capability:ai-runtime-session` only pins model/connection/effort/cost-ceiling configuration and has no message-send or tool-call execution path anywhere in the codebase. The only ready mechanism that can actually dispatch an agent turn is `capability:local-worker-run-execution` (specs/33), a one-shot capability-restricted local-worker CLI dispatch already used for coding-agent runs. `specs/12-project-assistant`'s interactive conversation design was considered and rejected as the dependency: it is scoped to an existing project and participant and cannot host a pre-project conversation without redesigning that spec's data model.

@@ -4,7 +4,7 @@
 
 Not Started
 
-The product and design agreements are approved. Task 1's required capabilities (`capability:ai-runtime-session`, `capability:local-worker-run-execution`) are ready. Task 2 is blocked until `capability:sdd-kit-package` is ready; its `Depends on:` chain keeps Tasks 3–6 blocked until Task 2 completes.
+The product and design agreements are approved. Task 1's required capabilities (`capability:ai-runtime-session`, `capability:local-worker-run-execution`) are ready. `capability:sdd-kit-package` (Task 2's remaining external requirement) is now ready too, following `specs/15-repository-sdd-kit-integration` Task 1's completion — Task 2 is gated only by its own `Depends on: Task 1` chain, not by an external capability.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-initialization plan/run surfaces (`RepositoryInitializationPlan`, `RepositoryInitializationRun`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -141,7 +141,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- `capability:sdd-kit-package` is unavailable until its provider completes; this blocks `Task 2` implementation and, through the `Depends on:` chain, `Task 3` through `Task 6`.
+- None. All of Task 1's and Task 2's required capabilities are ready; the remaining sequencing is this slice's own `Depends on:` chain.
 
 ## Progress Log
 
