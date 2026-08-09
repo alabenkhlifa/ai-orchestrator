@@ -477,6 +477,13 @@ defmodule SddOrchestrator.Participation do
   end
 
   defp anonymize_profile(profile, anonymized_at) do
+    participant_ids =
+      from(pp in ProjectParticipant,
+        join: hi in assoc(pp, :hosted_identity),
+        where: pp.project_id == ^profile.project_id and hi.account_id == ^profile.account_id,
+        select: pp.id
+      )
+
     Multi.new()
     |> Multi.update(
       :profile,
@@ -485,7 +492,9 @@ defmodule SddOrchestrator.Participation do
     |> Multi.update_all(
       :derived_revocations,
       from(r in ParticipationRevocation,
-        where: r.project_id == ^profile.project_id and r.former_account_id == ^profile.account_id
+        where:
+          r.project_id == ^profile.project_id and
+            r.project_participant_id in subquery(participant_ids)
       ),
       set: anonymized_handoff_fields(ProjectMemberProfile.anonymous_label(), anonymized_at)
     )

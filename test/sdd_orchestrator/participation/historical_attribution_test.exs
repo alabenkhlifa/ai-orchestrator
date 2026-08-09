@@ -290,7 +290,9 @@ defmodule SddOrchestrator.Participation.HistoricalAttributionTest do
     test "anonymizes this specification's own derived copy of the label" do
       context = joined() |> departed() |> accountability_complete()
       assert context.revocation.last_display_name == "Member Label"
-      assert context.revocation.former_account_id == context.identity.account.id
+      # acknowledge/3 (Task 2) already cleared former_account_id; anonymization
+      # must reach the revocation via project_participant_id instead.
+      assert is_nil(context.revocation.former_account_id)
 
       assert {:ok, %{derived_revocations: 1}} =
                Rights.anonymize_participation_attribution(

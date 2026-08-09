@@ -1,5 +1,14 @@
 # Participation Identity Lifecycle Progress Log
 
+### 2026-08-09 — Task 3 complete: derived-revocation anonymization survives acknowledgement
+
+- Completed: `Participation.anonymize_profile/2`'s derived-revocation step now correlates through `project_participant_id` — via a subquery joining `ProjectParticipant` to `hosted_identity` and matching `account_id` — instead of the no-longer-reliable `former_account_id`. `anonymize_project_attribution/2` (the unrelated bulk project-deletion sweep) is unchanged. Updated the one stale pre-condition assertion in `historical_attribution_test.exs` that assumed `former_account_id` survives acknowledgement; every downstream assertion (`derived_revocations: 1`, label anonymized, both former-identity fields nil) is unchanged and still passes.
+- Boundary held: `identity_rights_workflow_test.exs` needed no change — its former-identity assertions were already post-anonymization checks, not pre-conditions.
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/participation/identity_rights_workflow_test.exs test/sdd_orchestrator/participation/historical_attribution_test.exs` — exit `0`, 35 tests passed.
+- Failed checks: None. Confirmed by independent re-run with real exit status.
+- Remaining: Task 4 compatibility proof and `capability:participation-identity-lifecycle` publication.
+- Spec updates: Marked Task 3 complete.
+
 ### 2026-08-09 — Resolved the Task 3 derived-revocation data boundary
 
 - Completed: Approved correlating derived-revocation anonymization through `ParticipationRevocation.project_participant_id` instead of `former_account_id`. `project_participant_id` names the exact departed authorization row and is never cleared by acknowledgement or the 30-day retention rule, so it survives the case that broke the integrated proof. No new identifier is stored, no retention is extended, and Task 2's shipped acknowledgement and retention contract is unchanged.

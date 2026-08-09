@@ -90,7 +90,7 @@ Traceability:
   - Owns: AC-04, entity:ParticipationRevocation
   - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/privacy/participation_revocation_retention_test.exs test/sdd_orchestrator/participation/revocations_test.exs` passes focused acknowledgement, 29-day, 30-day, acknowledged, unacknowledged, both former links, stable handoff, active authorization, idempotency, lock, restart, and reconciliation cases.
 
-- [ ] Task 3 — Complete the verified participant-anonymization workflow.
+- [x] Task 3 — Complete the verified participant-anonymization workflow.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
