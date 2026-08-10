@@ -141,6 +141,37 @@ defmodule SddOrchestrator.Delivery.Features do
   end
 
   @doc """
+  Lists the project's current authoritative specifications not already linked
+  to a DIFFERENT feature, for the owner-only link picker. The given feature's
+  own current link (if any) stays included so it can render as selected.
+  """
+  @spec available_specifications(authority(), Ecto.UUID.t(), actor(), Feature.t()) ::
+          {:ok, [%{id: String.t(), title: String.t()}]} | {:error, :unauthorized | term()}
+  def available_specifications(authority, project_id, actor, %Feature{} = feature) do
+    with {:ok, member} <- ParticipantGuard.authorize_action(project_id, actor, :view_feature),
+         true <- member.role == :owner,
+         {:ok, snapshot} <- SpecificationStore.current_snapshot(authority, project_id) do
+      linked_elsewhere =
+        Feature
+        |> where(
+          [f],
+          f.project_id == ^project_id and f.id != ^feature.id and not is_nil(f.specification_id)
+        )
+        |> select([f], f.specification_id)
+        |> Repo.all()
+        |> MapSet.new()
+
+      {:ok,
+       snapshot.specifications
+       |> Enum.reject(&(&1.id in linked_elsewhere))
+       |> Enum.map(&%{id: &1.id, title: &1.title})}
+    else
+      false -> {:error, :unauthorized}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
   The published capability read: resolves the feature currently linked to
   one project + specification identity, for another approved specification
   to consume (e.g. specs/15-repository-sdd-kit-integration). No actor —

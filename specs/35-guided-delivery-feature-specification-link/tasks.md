@@ -4,7 +4,7 @@
 
 In Progress
 
-Task 1 is complete: `Feature` gained its owner-only `specification_id` link, uniqueness constraint, and `capability:guided-delivery-feature-specification-link` is ready. Task 2 (the owner-facing link control) is next and unblocked.
+Task 1 is complete: `Feature` gained its owner-only `specification_id` link, uniqueness constraint, and `capability:guided-delivery-feature-specification-link` is ready. Task 2 is complete: the owner-facing link control is live on the feature detail screen. Both tasks in this slice are now done; the Verification Gate (full `mix check`, browser matrix, production proof, validators) has not yet run.
 
 ## Active Slice
 
@@ -75,7 +75,7 @@ Traceability:
   - Owns: AC-02, AC-03, AC-04, entity:Feature
   - Proof: Focused link, unlink, uniqueness-conflict, not-linked-result, and other-fields-unchanged tests pass before `capability:guided-delivery-feature-specification-link` readiness is recorded.
 
-- [ ] Task 2 — Add the owner-facing link control to the feature detail view.
+- [x] Task 2 — Add the owner-facing link control to the feature detail view.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -96,7 +96,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Task 1 is complete and Task 2 is immediately executable.
+- None. Both tasks are complete; the slice is ready for its Verification Gate.
 
 ## Progress Log
 
