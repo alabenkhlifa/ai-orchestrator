@@ -2,7 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
+
+Task 1 is complete: `Feature` gained its owner-only `specification_id` link, uniqueness constraint, and `capability:guided-delivery-feature-specification-link` is ready. Task 2 (the owner-facing link control) is next and unblocked.
 
 ## Active Slice
 
@@ -64,12 +66,12 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Add the specification link to `Feature` and publish the read capability.
+- [x] Task 1 — Add the specification link to `Feature` and publish the read capability.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Let a feature carry a stable link to the specification it delivers, and let another approved specification resolve that link deterministically.
-  - Owned surfaces: `Feature.specification_id` schema and migration with its `(project_id, specification_id)` uniqueness constraint, `Delivery.Features.link_specification/4` and `unlink_specification/3` (owner-only authorization, current-snapshot validation), `Delivery.Features.fetch_by_specification/3` capability read, and `capability:guided-delivery-feature-specification-link` provider and readiness write-back.
+  - Owned surfaces: `Feature.specification_id` schema and migration with its `(project_id, specification_id)` uniqueness constraint, `Delivery.Features.link_specification/5` and `unlink_specification/3` (owner-only authorization, current-snapshot validation), `Delivery.Features.fetch_by_specification/2` capability read, and `capability:guided-delivery-feature-specification-link` provider and readiness write-back.
   - Owns: AC-02, AC-03, AC-04, entity:Feature
   - Proof: Focused link, unlink, uniqueness-conflict, not-linked-result, and other-fields-unchanged tests pass before `capability:guided-delivery-feature-specification-link` readiness is recorded.
 
@@ -94,7 +96,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Both required capabilities are already ready; Task 1 is immediately executable.
+- None. Task 1 is complete and Task 2 is immediately executable.
 
 ## Progress Log
 

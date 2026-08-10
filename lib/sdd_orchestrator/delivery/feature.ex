@@ -52,6 +52,7 @@ defmodule SddOrchestrator.Delivery.Feature do
     field :lifecycle_column, :string, default: "draft"
     field :status, :string, default: "none"
     field :state_version, :integer, default: 1
+    field :specification_id, :string
 
     belongs_to :project, Project
     belongs_to :creator_account, Account
@@ -124,6 +125,15 @@ defmodule SddOrchestrator.Delivery.Feature do
     |> apply_constraints()
   end
 
+  @doc "Links, changes, or clears the feature's specification reference."
+  def specification_link_changeset(%__MODULE__{} = feature, specification_id) do
+    feature
+    |> change(%{})
+    |> put_change(:specification_id, specification_id)
+    |> validate_length(:specification_id, max: 255, count: :bytes)
+    |> unique_constraint(:specification_id, name: :features_project_id_specification_id_index)
+  end
+
   @doc """
   The device-adapter value shape.
 
@@ -140,12 +150,18 @@ defmodule SddOrchestrator.Delivery.Feature do
       "assigned_account_id" => feature.assigned_account_id,
       "lifecycle_column" => feature.lifecycle_column,
       "status" => feature.status,
-      "state_version" => feature.state_version
+      "state_version" => feature.state_version,
+      "specification_id" => feature.specification_id
     }
   end
 
   @spec from_value(map()) :: {:ok, t()} | {:error, :invalid_feature_value}
   def from_value(%{} = value) do
+    # A value serialized before `specification_id` existed lacks the key
+    # entirely rather than carrying it as `nil`, so it is normalized here
+    # before restoration instead of failing to round-trip.
+    value = Map.put_new(value, "specification_id", nil)
+
     with true <- value["lifecycle_column"] in @columns,
          true <- value["status"] in @statuses,
          true <- is_integer(value["state_version"]) and value["state_version"] > 0,
@@ -160,7 +176,8 @@ defmodule SddOrchestrator.Delivery.Feature do
          assigned_account_id: value["assigned_account_id"],
          lifecycle_column: value["lifecycle_column"],
          status: value["status"],
-         state_version: value["state_version"]
+         state_version: value["state_version"],
+         specification_id: value["specification_id"]
        }}
     else
       _invalid -> {:error, :invalid_feature_value}
