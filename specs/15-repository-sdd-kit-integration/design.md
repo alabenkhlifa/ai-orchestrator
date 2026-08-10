@@ -42,7 +42,7 @@ Required boundaries:
 
 ## Interfaces
 
-- Post-pilot eligibility interface: consume the selected pilot's managed-delivery state and offer the optional action only at `Ready for review` or `Done`.
+- Post-pilot eligibility interface: resolve the selected pilot's linked feature through `capability:guided-delivery-feature-specification-link` (by the pilot's `specification_id`), read that feature's `lifecycle_column` through the existing board read, and offer the optional action only at `Ready for review` or `Done`. When the pilot's specification has no linked feature, treat eligibility as not yet reached rather than as an error.
 - Kit-catalog interface: retrieve one immutable package by digest and expose its provenance, license, contents, scripts, adapters, permissions, and compatibility without following mutable references.
 - Change-plan interface: ask the authorized worker to compare one package with the exact repository commit and approved profile, produce all file operations and conflicts, and execute nothing.
 - Conflict-policy interface: preserve existing repository rules, distinguish compatible adaptation, ordinary manual conflict, and non-overridable safety conflict.
