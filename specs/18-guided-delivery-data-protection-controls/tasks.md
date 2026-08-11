@@ -67,10 +67,10 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Implement the Slice 07 processing inventory.
+- [x] Task 1 — Implement the Slice 07 processing inventory.
   - Size: Standard
   - Proof scope: Focused
-  - Status: In Progress
+  - Status: Done
   - Depends on: none
   - Purpose: Give every guided-delivery field and transfer one mechanically valid purpose, basis, authority, recipient, minimum-field, and lifecycle classification.
   - Owned surfaces: `DataProcessingRecord`, migration and schema when required by the existing inventory, field-purpose map, contract-necessity and operational-security basis values, hosted and device authority, recipient and processor categories, transfer classification, lifecycle-owner references, validation, fixtures, and absence of governed content in inventory records.
