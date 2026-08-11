@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-The product and design agreements are approved. This slice no longer depends on `capability:local-worker-run-execution` (specs/33): that capability's gateway credential, command, and manifest contract are hard-bound to an existing project and channel topic, and cannot exist before this slice's own project creation (Task 6). Task 1 now builds a project-independent dispatch foundation of its own, reusing `capability:workspace-bound-local-worker-authorization` (specs/02 Task 3, ready) for worker authorization and the existing `WorkerProtocol`/`ProtocolCodec`/`AgentAdapter` code as a library, without touching specs/33's schema or contract. All seven tasks are complete. `capability:sdd-kit-package` (Task 3's requirement, provider `specs/15-repository-sdd-kit-integration#Task 1`) was cherry-picked from its own slice branch onto `main` ahead of the rest of specs/15 (specs/15 Task 2 remains separately blocked on `capability:guided-delivery-feature-specification-link`), and this branch rebased onto that `main` before Task 3 started. Task 3's plan skeleton (structure, commands, checks, Git behavior) is a fixed, deterministic constant, not generated from the technical-foundation answer — an explicit product decision (2026-08-11) to avoid inventing an unproven structured-output contract from a coding-agent turn; see `progress.md`. Task 4 does not route through `AgentAdapter` or a coding-agent CLI at all: `InitializationWorkerChannel`'s `handle_in("dispatch", ...)` (Task 1) always executes on the control-plane process, not a genuinely remote paired worker's own machine, which the read-only conversation turns (Tasks 2-3) never needed to matter for, but Task 4's real file writes would; Task 4 instead builds its own deterministic staging path, reusing Task 1's authorization/capability-grant primitives directly. Task 5 continues the same pattern: it also never routes through `AgentAdapter`, and it does not wire any live caller (LiveView or otherwise) to invoke it — `target_path` remains a plain caller-supplied argument, matching Task 2's own open "resolve `target_reference` back to a path" gap; see `progress.md`. Task 6 is where that gap finally closes: it wires the LiveView's confirmed step to run `StagingBuilder` → `Publisher` → its own new `Handoff` module end to end in one live session, using `socket.assigns.target_path` directly. Task 7 retrofits governance across the whole pipeline built in Tasks 1-6 — processing inventory and field-purpose map, workspace-scoped plan access, a redacted content-free security log, dual-regime retention (24-hour pre-project abandonment vs. account-erasure-only once a result exists), and account-scoped rights export/erasure — and records `capability:initialized-sdd-repository` ready; see `progress.md`. No task has an unresolved external-capability blocker; the slice moves to the Verification Gate next.
+The product and design agreements are approved. This slice no longer depends on `capability:local-worker-run-execution` (specs/33): that capability's gateway credential, command, and manifest contract are hard-bound to an existing project and channel topic, and cannot exist before this slice's own project creation (Task 6). Task 1 now builds a project-independent dispatch foundation of its own, reusing `capability:workspace-bound-local-worker-authorization` (specs/02 Task 3, ready) for worker authorization and the existing `WorkerProtocol`/`ProtocolCodec`/`AgentAdapter` code as a library, without touching specs/33's schema or contract. All seven tasks are complete. `capability:sdd-kit-package` (Task 3's requirement, provider `specs/15-repository-sdd-kit-integration#Task 1`) was cherry-picked from its own slice branch onto `main` ahead of the rest of specs/15 (specs/15 Task 2 remains separately blocked on `capability:guided-delivery-feature-specification-link`), and this branch rebased onto that `main` before Task 3 started. Task 3's plan skeleton (structure, commands, checks, Git behavior) is a fixed, deterministic constant, not generated from the technical-foundation answer — an explicit product decision (2026-08-11) to avoid inventing an unproven structured-output contract from a coding-agent turn; see `progress.md`. Task 4 does not route through `AgentAdapter` or a coding-agent CLI at all: `InitializationWorkerChannel`'s `handle_in("dispatch", ...)` (Task 1) always executes on the control-plane process, not a genuinely remote paired worker's own machine, which the read-only conversation turns (Tasks 2-3) never needed to matter for, but Task 4's real file writes would; Task 4 instead builds its own deterministic staging path, reusing Task 1's authorization/capability-grant primitives directly. Task 5 continues the same pattern: it also never routes through `AgentAdapter`, and it does not wire any live caller (LiveView or otherwise) to invoke it — `target_path` remains a plain caller-supplied argument, matching Task 2's own open "resolve `target_reference` back to a path" gap; see `progress.md`. Task 6 is where that gap finally closes: it wires the LiveView's confirmed step to run `StagingBuilder` → `Publisher` → its own new `Handoff` module end to end in one live session, using `socket.assigns.target_path` directly. Task 7 retrofits governance across the whole pipeline built in Tasks 1-6 — processing inventory and field-purpose map, workspace-scoped plan access, a redacted content-free security log, dual-regime retention (24-hour pre-project abandonment vs. account-erasure-only once a result exists), and account-scoped rights export/erasure — and records `capability:initialized-sdd-repository` ready; see `progress.md`. The Verification Gate has passed with one documented exception: four pre-existing, unrelated test failures already investigated and accepted by `specs/35-guided-delivery-feature-specification-link`'s own Verification Gate the same day — see `progress.md`. Implementation and local-verification readiness are complete. Release readiness remains open per this slice's own already-declared Release gates.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-initialization plan/run surfaces (`RepositoryInitializationPlan`, `RepositoryInitializationRun`, `InitializationDispatch`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -135,21 +135,21 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
-- [ ] Support-tool denial and working-agent capability-isolation suites pass.
-- [ ] Empty-target, staging, target-race, path, symlink, hook, and user-data-preservation suites pass.
-- [ ] Skeleton, kit choice, command, check, first-commit, publication, and idempotency suites pass.
-- [ ] Local-onboarding and complete specification-store handoff suites pass.
-- [ ] Privacy, lifecycle, rights, redaction, processor, and no-analytics suites pass.
-- [ ] Desktop and mobile discovery, plan, decline, confirmation, progress, failure, result, onboarding, and readiness browser scenarios pass.
-- [ ] `mix check` and all explicit project code-quality commands pass.
-- [ ] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
-- [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
-- [ ] Specification validator and global capability graph pass.
+- [x] Acceptance criteria pass.
+- [x] Support-tool denial and working-agent capability-isolation suites pass.
+- [x] Empty-target, staging, target-race, path, symlink, hook, and user-data-preservation suites pass.
+- [x] Skeleton, kit choice, command, check, first-commit, publication, and idempotency suites pass.
+- [x] Local-onboarding and complete specification-store handoff suites pass.
+- [x] Privacy, lifecycle, rights, redaction, processor, and no-analytics suites pass.
+- [x] Desktop and mobile discovery, plan, decline, confirmation, progress, failure, result, onboarding, and readiness browser scenarios pass.
+- [x] `mix check` and all explicit project code-quality commands pass, with one documented exception: the full test run carries four pre-existing, unrelated failures already investigated and accepted as a documented exception by `specs/35-guided-delivery-feature-specification-link`'s own Verification Gate the same day — see `progress.md`. `format`, `compile --warnings-as-errors`, `credo --strict`, `dialyzer`, `deps.audit`, and `sobelow --config` all pass cleanly with no exception.
+- [x] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
+- [x] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
+- [x] Specification validator and global capability graph pass.
 
 ## Blocked Decisions
 
-- None. `capability:sdd-kit-package` (Task 3's requirement) is ready as of 2026-08-11 — see `progress.md`.
+- None. All seven tasks are complete and the slice is Verified.
 
 ## Progress Log
 
