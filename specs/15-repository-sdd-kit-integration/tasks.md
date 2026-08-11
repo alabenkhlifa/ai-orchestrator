@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 1 through 8 are complete. Task 9 (enforce governance and publish `capability:repository-sdd-kit`) is next, `Depends on: Task 7, Task 8`, now satisfied. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
+Tasks 1 through 9 are complete — every task in this slice is now checked and proven. `capability:repository-sdd-kit` is ready. Implementation and focused task-level verification are done; the slice-level `## Verification Gate` (repository-wide quality gates, the desktop/mobile browser matrix, and the production build) has not yet been run — see that section and `progress.md`. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
 
 Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
 
@@ -148,7 +148,7 @@ Traceability:
   - Owns: none.
   - Proof: Focused device-authority create, read, transition, cross-authority-isolation, and deletion-cascade tests pass.
 
-- [ ] Task 9 — Enforce governance and publish the repository-kit capability.
+- [x] Task 9 — Enforce governance and publish the repository-kit capability.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 7, Task 8
@@ -172,7 +172,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Tasks 1–8 are complete; Task 9 has no unmet capability requirements.
+- None. Tasks 1–9 are all complete. `capability:repository-sdd-kit` is ready. Nothing left in `## Tasks`; what remains is the slice-level `## Verification Gate` (not a task-level blocker).
 - Resolved by Tasks 7 and 8: `RepositoryKitChangePlan` and `RepositoryKitInstallation` persistence is no longer hosted-only — both now support a `{:device, %DeviceWorkspace{}}` authority through `ChangePlanStore`/`InstallationStore`, mirroring `RepositoryAssessments.ProfileStore`'s existing dual-authority pattern. `RepositoryKitPackage` remains a global, non-project-scoped catalog and never needed this split.
 - Deferred, not blocking: no worker-dispatch mechanism yet resolves a live `repository_path` for `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` from a hosted LiveView (Tasks 3, 4, 5, and 6 all surface this honestly as "not available from this screen yet" rather than fabricating one). This is the same already-declared release-gate concern ("Live authorized worker and repository-host smoke proof"), not new scope; it does not block implementation or local verification of Tasks 1–6.
 - Resolved by Task 6: an already-removed installation is no longer a valid target for a further update or removal — `fetch_current_installation/1` now only treats `"applied"`/`"updated"` rows as active, so both `plan_update/4` and `plan_removal/3` refuse `{:error, :not_installed}` against a `"removed"` row.
