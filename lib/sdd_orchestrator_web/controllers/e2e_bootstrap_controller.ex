@@ -152,6 +152,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       WorkerRepositoryExecutionProfileProposalEnvelope
     }
 
+    alias SddOrchestrator.RepositoryKits
     alias SddOrchestrator.SpecificationStore
 
     alias SddOrchestratorWeb.{
@@ -539,6 +540,28 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # The global, immutable SDD kit package catalog (specs/15 Task 1). It is
+    # not project-scoped, so this scenario seeds no project — only a signed-in
+    # owner and two published versions of the same source-and-publisher
+    # family, so the browser spec can prove both the ordinary detail view and
+    # the read-derived supersession badge.
+    defp run(conn, "repository_kits", _params) do
+      owner = new_owner()
+      older = seed_kit_package("1.0.0")
+      newer = seed_kit_package("1.1.0")
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        older_id: older.id,
+        older_digest: older.digest,
+        older_version: older.version,
+        newer_id: newer.id,
+        newer_digest: newer.digest,
+        newer_version: newer.version
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -732,6 +755,37 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         })
 
       worker
+    end
+
+    # One immutable kit package version through the real publish boundary — no
+    # disk or network I/O, and the tiny script content is never executed.
+    defp seed_kit_package(version) do
+      attrs = %{
+        source: "https://github.com/octo/sdd-kit",
+        publisher: "octo",
+        version: version,
+        license: "MIT",
+        provenance: %{
+          ref_type: "commit",
+          ref: "0123456789abcdef0123456789abcdef01234567",
+          repository: "octo/sdd-kit"
+        },
+        supported_adapters: ["claude_code"],
+        required_permissions: ["repository:read"],
+        scripts: ["scripts/check.sh"]
+      }
+
+      # The digest is content-addressed (`RepositoryKitPackage.digest_of/1`),
+      # so each version's files must differ or the second publish would
+      # collide on the unique digest index instead of producing a distinct
+      # superseded/superseding pair.
+      files = [
+        %{path: "SKILL.md", content: "# skill #{version}\n", executable: false},
+        %{path: "scripts/check.sh", content: "#!/bin/sh\necho ok\n", executable: true}
+      ]
+
+      {:ok, package} = RepositoryKits.publish_package(attrs, files)
+      package
     end
 
     defp seed_github_identity(account) do

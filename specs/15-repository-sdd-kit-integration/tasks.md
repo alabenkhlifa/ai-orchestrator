@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+Blocked
 
-Task 1 is independently executable. Planning waits for the repository execution profile and managed pilot capability.
+Task 1 is complete. Task 2 requires `capability:repository-execution-profile` and `capability:guided-specification-delivery`, neither ready yet, so the slice's next executable task is blocked.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-kit catalog and plan surfaces (`RepositoryKitPackage`, `RepositoryKitChangePlan`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -32,6 +32,10 @@ Provides:
 
 - Every task is standard, owns one independently provable package, plan, apply, lifecycle, or governance outcome, and has no more than three acceptance criteria and two entities.
 - No exception is required.
+
+## Proof Scope Gate
+
+- Applies to: Task 1.
 
 ## Implementation Boundary
 
@@ -65,8 +69,9 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Establish the immutable kit package catalog.
+- [x] Task 1 — Establish the immutable kit package catalog.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: none
   - Purpose: Make every installable file, script, permission, license, and source inspectable under one immutable identity.
   - Owned surfaces: `RepositoryKitPackage` schema and storage, `capability:sdd-kit-package` provider and readiness write-back, package ingestion, canonical manifest and digest, provenance, license, path and size validation, scripts and permissions inventory, adapter compatibility, supersession metadata, package inspection UI, and mutable-reference rejection.
@@ -120,7 +125,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Task 2 remains capability-blocked until its recorded providers are ready, but Task 1 is executable.
+- None. Task 1 is complete; Task 2 remains capability-blocked until its recorded providers are ready.
 
 ## Progress Log
 

@@ -166,6 +166,7 @@ defmodule SddOrchestratorWeb.Router do
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
       live "/projects", ProjectsLive
       live "/ai-connections", AIConnectionsLive
+      live "/repository-kits", RepositoryKitsLive
       live "/projects/:id/overview", ProjectDashboardLive
       live "/projects/:id/backup", ProjectBackupLive, :hosted
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
