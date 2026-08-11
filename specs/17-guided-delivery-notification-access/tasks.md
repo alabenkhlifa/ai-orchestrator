@@ -107,9 +107,10 @@ Traceability:
   - Owns: AC-04
   - Proof: `python3 .agents/scripts/run_proof.py task --task 4 -- mix test test/sdd_orchestrator_web/live/notification_live_test.exs` passes focused LiveView authorization, empty, populated, read, safe-link, keyboard, focus, desktop, and mobile cases.
 
-- [ ] Task 5 — Enforce Slice 07 notification retention.
+- [x] Task 5 — Enforce Slice 07 notification retention.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done. `capability:guided-delivery-notification-governance` is ready.
   - Depends on: Task 2
   - Purpose: Remove expired guided-delivery notification projections without changing their authoritative workflow or participation sources.
   - Owned surfaces: Slice 07 event-namespace selection, 90-day read and unread boundary, shared retention-pruner rule, locked idempotent pruning, restart and reconciliation behavior, unrelated-notification preservation, workflow and participation non-mutation, fixtures, `capability:guided-delivery-notification-governance` provider, and readiness write-back.

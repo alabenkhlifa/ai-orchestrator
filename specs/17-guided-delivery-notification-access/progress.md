@@ -1,5 +1,15 @@
 # Guided Delivery Notification Access Progress Log
 
+### 2026-08-11 — Task 5 complete: 90-day Slice 07 notification retention
+
+- Completed: Added `Privacy.Retention.prune_delivery_notifications/1`, wired into the existing single-lock `prune_all/1` sweep (no new advisory lock — mirrors `prune_terminal_invitations/1`). Deletes `delivery.`-namespace `AccountNotification` rows 90 days past `occurred_at` regardless of read state; `participation.`-namespace rows are never selected. `capability:guided-delivery-notification-governance` is now ready. Implemented in parallel with Task 3 (disjoint files: this touched only `lib/sdd_orchestrator/privacy/` and its test; Task 3 touched only `lib/sdd_orchestrator/delivery/` and its test — both depended only on already-complete Tasks 1/2, no shared-file conflict).
+- Remaining: Task 3 write-back (below), Task 4 (accessible notification inbox LiveView), and the verification gate.
+- Failed checks: None. One transient false alarm during reconciliation — a direct `mix test` invocation across all four task test files together omitted the worktree's `MIX_TEST_PARTITION` env var and hit an unmigrated default-partition database; re-run with the correct partition passed (38 passed, 0 failures). Not a code defect.
+- Proof receipts:
+- Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_notification_retention_test.exs` — exit `0`.
+  (Independently re-run and confirmed by the orchestrating session. Combined regression run of Tasks 1, 2, 3, 5 plus the existing `participation_retention_test.exs`/`retention_test.exs` suites: 38 passed, exit 0 — no cross-task regression.)
+- Spec updates: `tasks.md` Task 5 checked complete; capability readiness noted.
+
 ### 2026-08-11 — Task 2 complete: durable unread and idempotent mark-read
 
 - Completed: Added `NotificationAccess.fetch/3` and `NotificationAccess.mark_read/3`, both gated behind the same per-record participation-revalidation `list/3` uses (extracted into a shared private `authorized_record?/2` helper). `mark_read/3` delegates the actual durable transition to the already-idempotent `Notifications.mark_read/3` rather than re-implementing it. Every failure mode (unknown id, wrong account, unparsable link, removed participant) collapses to the identical `{:error, :not_found}`.
