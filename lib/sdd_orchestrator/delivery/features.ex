@@ -11,10 +11,13 @@ defmodule SddOrchestrator.Delivery.Features do
 
   import Ecto.Query
 
+  alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Delivery.{Feature, ParticipantGuard}
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.SpecificationStore
 
   @type actor :: ParticipantGuard.actor()
+  @type authority :: PersonalWorkspace.t() | DeviceWorkspace.t()
 
   @doc "Creates one feature in `Draft` for the acting member."
   @spec create(Ecto.UUID.t(), actor(), map()) ::
@@ -95,6 +98,103 @@ defmodule SddOrchestrator.Delivery.Features do
       feature
       |> Feature.status_changeset(status, expected)
       |> update()
+    end
+  end
+
+  @doc """
+  Links, or changes, one feature's reference to a current authoritative
+  specification. Owner-only: the specification picker depends on
+  `capability:project-specification-store`, which stays owner-only readable.
+  """
+  @spec link_specification(authority(), Ecto.UUID.t(), actor(), Feature.t(), String.t()) ::
+          {:ok, Feature.t()} | {:error, :unauthorized | :already_linked | term()}
+  def link_specification(authority, project_id, actor, %Feature{} = feature, specification_id) do
+    with {:ok, member} <- ParticipantGuard.authorize_action(project_id, actor, :view_feature),
+         true <- member.role == :owner,
+         :ok <- scoped?(project_id, feature),
+         {:ok, _current} <-
+           SpecificationStore.get_current(authority, project_id, specification_id) do
+      feature
+      |> Feature.specification_link_changeset(specification_id)
+      |> Repo.update()
+      |> normalize_link_error()
+    else
+      false -> {:error, :unauthorized}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Clears one feature's specification link. Owner-only, same as linking."
+  @spec unlink_specification(Ecto.UUID.t(), actor(), Feature.t()) ::
+          {:ok, Feature.t()} | {:error, :unauthorized | term()}
+  def unlink_specification(project_id, actor, %Feature{} = feature) do
+    with {:ok, member} <- ParticipantGuard.authorize_action(project_id, actor, :view_feature),
+         true <- member.role == :owner,
+         :ok <- scoped?(project_id, feature) do
+      feature
+      |> Feature.specification_link_changeset(nil)
+      |> Repo.update()
+    else
+      false -> {:error, :unauthorized}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Lists the project's current authoritative specifications not already linked
+  to a DIFFERENT feature, for the owner-only link picker. The given feature's
+  own current link (if any) stays included so it can render as selected.
+  """
+  @spec available_specifications(authority(), Ecto.UUID.t(), actor(), Feature.t()) ::
+          {:ok, [%{id: String.t(), title: String.t()}]} | {:error, :unauthorized | term()}
+  def available_specifications(authority, project_id, actor, %Feature{} = feature) do
+    with {:ok, member} <- ParticipantGuard.authorize_action(project_id, actor, :view_feature),
+         true <- member.role == :owner,
+         {:ok, snapshot} <- SpecificationStore.current_snapshot(authority, project_id) do
+      linked_elsewhere =
+        Feature
+        |> where(
+          [f],
+          f.project_id == ^project_id and f.id != ^feature.id and not is_nil(f.specification_id)
+        )
+        |> select([f], f.specification_id)
+        |> Repo.all()
+        |> MapSet.new()
+
+      {:ok,
+       snapshot.specifications
+       |> Enum.reject(&(&1.id in linked_elsewhere))
+       |> Enum.map(&%{id: &1.id, title: &1.title})}
+    else
+      false -> {:error, :unauthorized}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  The published capability read: resolves the feature currently linked to
+  one project + specification identity, for another approved specification
+  to consume (e.g. specs/15-repository-sdd-kit-integration). No actor —
+  this is a backend-to-backend capability boundary, not a human action.
+  """
+  @spec fetch_by_specification(Ecto.UUID.t(), String.t()) ::
+          {:ok, Feature.t()} | {:error, :not_linked}
+  def fetch_by_specification(project_id, specification_id) do
+    case Repo.get_by(Feature, project_id: project_id, specification_id: specification_id) do
+      nil -> {:error, :not_linked}
+      feature -> {:ok, feature}
+    end
+  rescue
+    Ecto.Query.CastError -> {:error, :not_linked}
+  end
+
+  defp normalize_link_error({:ok, feature}), do: {:ok, feature}
+
+  defp normalize_link_error({:error, changeset}) do
+    if Keyword.has_key?(changeset.errors, :specification_id) do
+      {:error, :already_linked}
+    else
+      {:error, changeset}
     end
   end
 

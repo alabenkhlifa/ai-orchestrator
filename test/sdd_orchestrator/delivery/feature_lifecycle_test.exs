@@ -233,6 +233,7 @@ defmodule SddOrchestrator.Delivery.FeatureLifecycleTest do
                "id",
                "lifecycle_column",
                "project_id",
+               "specification_id",
                "state_version",
                "status",
                "title"

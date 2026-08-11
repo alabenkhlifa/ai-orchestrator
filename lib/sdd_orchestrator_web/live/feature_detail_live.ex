@@ -484,6 +484,32 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> apply_assignment(socket)
   end
 
+  def handle_event(
+        "link_specification",
+        %{"specification" => %{"specification_id" => ""}},
+        socket
+      ) do
+    socket.assigns.project_id
+    |> Features.unlink_specification(socket.assigns.actor, socket.assigns.feature)
+    |> apply_specification_link(socket)
+  end
+
+  def handle_event(
+        "link_specification",
+        %{"specification" => %{"specification_id" => specification_id}},
+        socket
+      ) do
+    socket
+    |> storage_authority()
+    |> Features.link_specification(
+      socket.assigns.project_id,
+      socket.assigns.actor,
+      socket.assigns.feature,
+      specification_id
+    )
+    |> apply_specification_link(socket)
+  end
+
   # A rejected assignment says what went wrong without revealing whether the
   # chosen person exists elsewhere in the product.
   defp apply_assignment({:ok, feature}, socket) do
@@ -507,6 +533,27 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(account_id), do: account_id
+
+  defp apply_specification_link({:ok, feature}, socket) do
+    {:noreply,
+     socket
+     |> assign_feature(socket.assigns.project_id, socket.assigns.actor, feature)
+     |> assign(:specification_link_error, nil)}
+  end
+
+  defp apply_specification_link({:error, :unauthorized}, socket),
+    do: {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+  defp apply_specification_link({:error, reason}, socket),
+    do: {:noreply, assign(socket, :specification_link_error, specification_link_message(reason))}
+
+  defp specification_link_message(:already_linked),
+    do:
+      "That specification is already linked to another feature. Pick a different one, " <>
+        "or clear the other feature's link first."
+
+  defp specification_link_message(_reason),
+    do: "This feature changed while you were looking at it. It has been refreshed."
 
   defp review_subject(socket),
     do: %{project: socket.assigns.project, feature: socket.assigns.feature}
@@ -590,9 +637,11 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign_evidence(actor, feature)
     |> assign_preview(actor, feature)
     |> assign_review(actor, feature)
+    |> assign_available_specifications(project_id, actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
+    |> assign(:specification_link_error, socket.assigns[:specification_link_error])
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
@@ -608,6 +657,27 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       {:ok, %{role: :owner}} -> true
       _other -> false
     end
+  end
+
+  # The link picker is owner-only because the specification list it offers is
+  # only reachable through the owner-mapped specification-store authority. A
+  # non-owner viewer, or an owner whose store is momentarily unreachable, gets
+  # an empty list rather than a crash or a control nobody could complete.
+  defp assign_available_specifications(socket, project_id, actor, feature) do
+    available =
+      if socket.assigns.owner? do
+        socket
+        |> storage_authority()
+        |> Features.available_specifications(project_id, actor, feature)
+        |> case do
+          {:ok, specifications} -> specifications
+          {:error, _reason} -> []
+        end
+      else
+        []
+      end
+
+    assign(socket, :available_specifications, available)
   end
 
   # The stopped run this reader may restart, if any. Resolved after the project
@@ -1484,6 +1554,58 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
               <.lucide name="user-round-pen" class="size-4" /> Assign to me
             </.button>
           </div>
+        </section>
+
+        <section
+          :if={@owner?}
+          class="mt-6 rounded-lg border border-line bg-surface p-4"
+          data-specification-link
+        >
+          <h2 class="text-[13px] font-semibold text-ink">Linked specification</h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Link this feature to the specification it delivers, so other tools can find its
+            board progress from that specification. Optional, and only you can change it.
+          </p>
+
+          <form id="specification-link-form" phx-change="link_specification" class="mt-4">
+            <label
+              for="specification-link-select"
+              class="block text-[13px] font-semibold text-ink"
+            >
+              Specification
+            </label>
+            <select
+              id="specification-link-select"
+              name="specification[specification_id]"
+              class={[
+                "mt-1.5 w-full h-10 rounded-lg border bg-surface px-3 text-sm text-ink outline-none",
+                "focus:outline focus:outline-2 focus:outline-offset-0 focus:outline-focus",
+                (@specification_link_error && "border-err-fg") ||
+                  "border-line-strong focus:border-focus"
+              ]}
+              aria-invalid={(@specification_link_error && "true") || nil}
+              aria-describedby={(@specification_link_error && "specification-link-error") || nil}
+              data-specification-link-select
+            >
+              <option value="" selected={is_nil(@feature.specification_id)}>Not linked</option>
+              <option
+                :for={spec <- @available_specifications}
+                value={spec.id}
+                selected={spec.id == @feature.specification_id}
+              >
+                {spec.title}
+              </option>
+            </select>
+            <p
+              :if={@specification_link_error}
+              id="specification-link-error"
+              class="mt-2 flex items-center gap-1.5 text-xs text-err-fg"
+              data-specification-link-error
+            >
+              <.lucide name="circle-alert" class="size-3.5 flex-none" />
+              {@specification_link_error}
+            </p>
+          </form>
         </section>
 
         <div class="mt-6 rounded-lg border border-line bg-surface p-4" data-gated-action>
