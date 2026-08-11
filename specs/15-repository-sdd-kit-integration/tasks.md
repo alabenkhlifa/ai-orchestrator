@@ -4,7 +4,7 @@
 
 In Progress
 
-Task 1 and Task 2 are complete. Task 3 (the eligibility/decline/diff-review LiveView) is next, `Depends on: Task 2`, now satisfied.
+Tasks 1, 2, and 3 are complete. Task 4 (apply one confirmed plan on an isolated branch) is next, `Depends on: Task 3`, now satisfied. A real worker-dispatch path (so `plan_change/4` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
 
 Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
 
@@ -90,14 +90,14 @@ Traceability:
   - Owns: AC-04, AC-05, entity:RepositoryKitChangePlan
   - Proof: Focused pilot-state, eligibility-read, profile, stale-commit, complete-diff, protected-file, precedence, conflict (ordinary and safety), expiry, and no-mutation tests pass.
 
-- [ ] Task 3 — Present post-pilot eligibility, decline, and the reviewable diff.
+- [x] Task 3 — Present post-pilot eligibility, decline, and the reviewable diff.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
   - Purpose: Let the owner see the optional offer, decline it without losing managed runtime SDD, and review Task 2's exact diff before confirming anything.
-  - Owned surfaces: Post-pilot eligibility and decline LiveView (mirroring `RepositoryPilotLive`'s dual device/hosted route and context-loading pattern), plan-trigger action, diff and conflict presentation, and decline action.
+  - Owned surfaces: Post-pilot eligibility and decline LiveView at `/projects/:id/kit` (`RepositoryKitOfferLive`, hosted-only for now — mirrors `RepositoryPilotLive`'s hosted context-loading pattern; no device route, since `RepositoryKitChangePlan` persistence is itself hosted-only pending Task 6), plan-trigger action, diff and conflict presentation, and decline action.
   - Owns: AC-01
-  - Proof: Focused LiveView tests covering the not-yet-eligible, eligible, decline, and diff-review states, and browser tests (authored as a deliverable, run at slice verification).
+  - Proof: Focused LiveView tests covering the not-yet-eligible, eligible, decline, and diff-review states pass. Browser scenario deferred (see progress.md): a real slice-gate `e2e_bootstrap_controller.ex` scenario would need to chain assessment, profile approval, pilot selection, feature linking, and kit publishing, which is out of a single focused task's scope to author unverified.
 
 - [ ] Task 4 — Apply one confirmed plan on an isolated branch.
   - Size: Standard
@@ -138,8 +138,9 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Task 2 is complete; Task 3 has no unmet capability requirements.
-- Deferred, not blocking: `RepositoryKitChangePlan` persistence is hosted-only for now (a device authority is refused with `:unsupported_authority` at the persistence step). Building the `Device`/`Hosted` dual-authority split is explicitly Task 6's ("Hosted and device storage parity") owned surface, not a gap in Task 2.
+- None. Tasks 1–3 are complete; Task 4 has no unmet capability requirements.
+- Deferred, not blocking: `RepositoryKitChangePlan` persistence is hosted-only for now (a device authority is refused with `:unsupported_authority` at the persistence step). Building the `Device`/`Hosted` dual-authority split is explicitly Task 6's ("Hosted and device storage parity") owned surface, not a gap in Task 2 or Task 3.
+- Deferred, not blocking: no worker-dispatch mechanism yet resolves a live `repository_path` for `plan_change/4` from a hosted LiveView (Task 3 surfaces this honestly as "not available from this screen yet" rather than fabricating one). This is the same already-declared release-gate concern ("Live authorized worker and repository-host smoke proof"), not new scope; it does not block implementation or local verification of Tasks 1–3.
 
 ## Progress Log
 

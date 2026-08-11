@@ -166,6 +166,7 @@ defmodule SddOrchestratorWeb.Router do
       live "/projects/:id/assessment", RepositoryAssessmentLive, :hosted
       live "/projects/:id/profile", RepositoryExecutionProfileLive, :hosted
       live "/projects/:id/pilot", RepositoryPilotLive, :hosted
+      live "/projects/:id/kit", RepositoryKitOfferLive
     end
 
     # Protected surfaces require a valid application session.
