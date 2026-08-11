@@ -72,6 +72,13 @@ defmodule SddOrchestrator.Privacy.Retention do
       deleted by this timer, regardless of `onboarding_handoff_state` — a
       result is the project's own confirmed birth record and follows the same
       rule as confirmed project metadata below.
+    * Slice 07 guided-delivery notifications — a `delivery.`-namespace
+      `AccountNotification` row is deleted 90 days after its own
+      `occurred_at`, whether it was read or left unread; read state is never
+      consulted. The notification is only a projection presenting a delivery
+      event, so removing it changes no feature, run, review, assignment, or
+      participation state. Slice 08's `participation.`-namespace rows on the
+      same schema are a different feature's data and are never selected here.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -102,6 +109,7 @@ defmodule SddOrchestrator.Privacy.Retention do
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
+  alias SddOrchestrator.Notifications.AccountNotification
   alias SddOrchestrator.Participation.Invitations
 
   alias SddOrchestrator.Participation.{
@@ -120,6 +128,13 @@ defmodule SddOrchestrator.Privacy.Retention do
   # Terminal invitations and departed authorization-to-identity links are removed
   # within 30 days of reaching their approved lifecycle boundary.
   @participation_window 30 * @day
+
+  # A Slice 07 guided-delivery notification is a presentation projection of an
+  # event that already happened; the event's own workflow, run, review,
+  # assignment, and participation state live elsewhere and are unaffected by
+  # this delete. Ninety days after it occurred, whether read or unread, the
+  # projection itself is removed.
+  @delivery_notification_window 90 * @day
 
   # A stable, arbitrary key so every instance contends for the same lock. It is
   # deliberately distinct from the whole-pruner key and from the personal
@@ -201,7 +216,8 @@ defmodule SddOrchestrator.Privacy.Retention do
       acknowledged_personal_ai_connections: reconcile_personal_ai_connections(now),
       revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now),
       unstarted_repository_initialization_plans:
-        prune_unstarted_repository_initialization_plans(now)
+        prune_unstarted_repository_initialization_plans(now),
+      expired_delivery_notifications: prune_delivery_notifications(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -444,6 +460,24 @@ defmodule SddOrchestrator.Privacy.Retention do
       Repo.delete_all(
         from invitation in ProjectInvitation,
           where: invitation.status != "pending" and invitation.terminal_at <= ^cutoff
+      )
+
+    count
+  end
+
+  # A `delivery.`-namespace notification is deleted 90 days after its own
+  # `occurred_at`, whether read or unread — read state is never filtered on.
+  # Slice 08's `participation.`-namespace rows on the same schema are excluded
+  # by the `like` prefix and are never selected here.
+  defp prune_delivery_notifications(now) do
+    cutoff = DateTime.add(now, -@delivery_notification_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from notification in AccountNotification,
+          where:
+            like(notification.event_type, "delivery.%") and
+              notification.occurred_at <= ^cutoff
       )
 
     count

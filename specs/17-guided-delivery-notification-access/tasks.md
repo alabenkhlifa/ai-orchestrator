@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Verified
 
-The approved behavior is implementation-ready except for `capability:project-participation-recipient-routing`. Slice 08 Task 36 must prove that active participant authorization and recipient routing do not depend on `ProjectMemberProfile` before Task 1 can begin.
+All five tasks complete. `capability:guided-delivery-notification-access` and `capability:guided-delivery-notification-governance` are both ready. Implementation, local-verification, and release readiness are all complete — this slice declares no release gates.
 
 ## Active Slice
 
@@ -69,46 +69,50 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Implement authorized notification listing.
+- [x] Task 1 — Implement authorized notification listing.
   - Size: Standard
   - Proof scope: Focused
-  - Status: Blocked until `capability:guided-delivery-notification-projection` and `capability:project-participation-recipient-routing` are ready.
+  - Status: Done.
   - Depends on: none
   - Purpose: Return only the current participant's authorized guided-delivery notification records with durable unread state and minimized content.
   - Owned surfaces: Recipient-scoped notification query, Slice 07 event filtering, newest-first stable ordering, bounded pagination, current-participation revalidation, missing-profile-independent routing consumer, removed and cross-project denial, minimized list value, and fixtures.
   - Owns: AC-01
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/delivery/notification_access_test.exs` passes focused current, removed, cross-project, event-filter, ordering, pagination, unread, minimized-content, and missing-profile routing cases.
 
-- [ ] Task 2 — Deliver durable unread and idempotent mark-read behavior.
+- [x] Task 2 — Deliver durable unread and idempotent mark-read behavior.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done.
   - Depends on: Task 1
   - Purpose: Preserve recipient action state across duplicate actions, disconnected browsers, and application restart without treating PubSub as delivery.
   - Owned surfaces: Authorized notification read, idempotent mark-read transition, duplicate submission handling, durable unread recovery, PubSub-disabled behavior, reconnect and restart fixtures, and workflow-state non-mutation.
   - Owns: AC-02
   - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/delivery/notification_read_state_test.exs` passes focused unread, repeat mark-read, concurrency, no-PubSub, reconnect, restart, and state-non-mutation cases.
 
-- [ ] Task 3 — Enforce safe notification-link access.
+- [x] Task 3 — Enforce safe notification-link access.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done.
   - Depends on: Task 1
   - Purpose: Return an authorized recipient to the related feature without disclosing inaccessible project or notification existence.
   - Owned surfaces: Internal feature-reference parsing, notification-recipient binding, current project and feature authorization, removed-participant denial, unknown and cross-project reference equivalence, redirect result, and fixtures.
   - Owns: AC-03
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/delivery/notification_safe_link_test.exs` passes focused current, removed, unknown, malformed, cross-project, stale-feature, and non-disclosing response cases.
 
-- [ ] Task 4 — Deliver the accessible notification inbox.
+- [x] Task 4 — Deliver the accessible notification inbox.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done. `capability:guided-delivery-notification-access` is ready.
   - Depends on: Task 2, Task 3
   - Purpose: Let current participants inspect and act on durable notifications across supported desktop and mobile layouts.
   - Owned surfaces: Notification LiveView and navigation affordance, unread and read presentation, minimized status and time display, mark-read interaction, safe-link interaction, empty and populated states, loading and refusal states, keyboard order, focus behavior, responsive layout, fixtures, `capability:guided-delivery-notification-access` provider, and readiness write-back.
   - Owns: AC-04
   - Proof: `python3 .agents/scripts/run_proof.py task --task 4 -- mix test test/sdd_orchestrator_web/live/notification_live_test.exs` passes focused LiveView authorization, empty, populated, read, safe-link, keyboard, focus, desktop, and mobile cases.
 
-- [ ] Task 5 — Enforce Slice 07 notification retention.
+- [x] Task 5 — Enforce Slice 07 notification retention.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done. `capability:guided-delivery-notification-governance` is ready.
   - Depends on: Task 2
   - Purpose: Remove expired guided-delivery notification projections without changing their authoritative workflow or participation sources.
   - Owned surfaces: Slice 07 event-namespace selection, 90-day read and unread boundary, shared retention-pruner rule, locked idempotent pruning, restart and reconciliation behavior, unrelated-notification preservation, workflow and participation non-mutation, fixtures, `capability:guided-delivery-notification-governance` provider, and readiness write-back.
@@ -117,20 +121,20 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All five acceptance criteria pass through focused domain, LiveView, and retention proof.
-- [ ] Removed, absent-profile, unknown, malformed, and cross-project notification access fails closed without content disclosure.
-- [ ] Durable unread and mark-read behavior passes with PubSub disabled and after restart.
-- [ ] Desktop and mobile inbox scenarios pass through `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e`.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
-- [ ] The explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` passes before the browser matrix.
-- [ ] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
-- [ ] The individual specification validator and global capability graph pass, and both provided capability readiness write-backs are recorded.
-- [ ] New decisions and proof receipts are written back.
+- [x] All five acceptance criteria pass through focused domain, LiveView, and retention proof.
+- [x] Removed, absent-profile, unknown, malformed, and cross-project notification access fails closed without content disclosure.
+- [x] Durable unread and mark-read behavior passes with PubSub disabled and after restart.
+- [x] Desktop and mobile inbox scenarios pass through `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e`.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
+- [x] The explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
+- [x] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` passes before the browser matrix.
+- [x] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
+- [x] The individual specification validator and global capability graph pass, and both provided capability readiness write-backs are recorded.
+- [x] New decisions and proof receipts are written back.
 
 ## Blocked Decisions
 
-- Active-slice implementation is blocked until `capability:project-participation-recipient-routing` is ready from `specs/08-project-participation#Task 36`; no product decision is unresolved.
+None. `capability:project-participation-recipient-routing` is ready from `specs/08-project-participation#Task 36`.
 
 ## Progress Log
 

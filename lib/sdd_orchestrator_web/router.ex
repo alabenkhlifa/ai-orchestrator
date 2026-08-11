@@ -184,6 +184,22 @@ defmodule SddOrchestratorWeb.Router do
       # GitHub-to-passwordless identity-linking confirmation flow.
       live "/identity/link/:id", IdentityLinkLive
     end
+
+    # The notification inbox requires a hard application-session gate, like
+    # `:authenticated` above, because `AccountNotification` is addressed to an
+    # application account and every read is re-authorized against it. It also
+    # needs the nilable hosted-identity resolution `:participation` uses,
+    # because a current participant acting through their hosted session still
+    # needs `:current_hosted_identity` on the actor map that
+    # `NotificationAccess` revalidates against. Neither existing block alone
+    # is the right combination for this route.
+    live_session :notifications,
+      on_mount: [
+        {SddOrchestratorWeb.UserAuth, :require_authenticated},
+        {SddOrchestratorWeb.HostedUserAuth, :mount_current_hosted_access}
+      ] do
+      live "/notifications", NotificationLive
+    end
   end
 
   # GitHub App installation handoff and validated return (full-page redirects,
