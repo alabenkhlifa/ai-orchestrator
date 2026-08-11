@@ -5,10 +5,11 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
   Enumerates every processing activity that touches personal data — identity,
   session, credential, transient authorization state, passwordless delivery and
   abuse protection, workspace, project and repository metadata, transient
-  onboarding state, personal AI connection references, short-lived model
-  catalog and quota projections, pinned runtime configurations, spending-ceiling
-  ledgers, agent runtime observations, and operational-security logs — with its
-  purpose, lawful basis, retention, rights behaviour, processors, and transfers.
+  onboarding state, pre-project repository-initialization plans/runs/results,
+  personal AI connection references, short-lived model catalog and quota
+  projections, pinned runtime configurations, spending-ceiling ledgers, agent
+  runtime observations, and operational-security logs — with its purpose,
+  lawful basis, retention, rights behaviour, processors, and transfers.
   Purpose limitation is explicit: no activity has an analytics, advertising, or
   model-training purpose, and analytics is not a listed activity.
 
@@ -554,6 +555,29 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
         "Approved AI runtime governance data contract (Slice 11 design.md); deployment processor, region, transfer, notice, retention-enforcement, and accountable review evidence remain release gates."
     },
     %DataProcessingRecord{
+      activity: :repository_initialization,
+      purpose:
+        "Guide a user from an empty local directory through a confirmed plan to one first commit and normal project handoff.",
+      lawful_basis: :contract,
+      personal_data: [
+        "device_workspace_id",
+        "account_id",
+        "purpose, users, first_outcome, constraints, and technical_foundation answers",
+        "opaque target_reference",
+        "kit_choice",
+        "worker_id",
+        "commit_sha",
+        "tree_digest"
+      ],
+      access: "Authenticated user and authorized operations roles; never coding agents.",
+      retention:
+        "A plan with no run is deleted 24 hours after abandonment; a failed or canceled run with no result is deleted 24 hours after it finished, together with its now-unreferenced plan; once a result exists, the plan, run, and result are kept while the account or project requires them and are removed by account erasure, not by time.",
+      rights: "Access, erasure, restriction via operator workflow.",
+      processors: ["Hosting database", "Governed AI runtime (support conversation)"],
+      transfers: "Per deployment privacy profile.",
+      review: "Approved empty-repository initialization data contract (specs/16 design.md)."
+    },
+    %DataProcessingRecord{
       activity: :ai_runtime_operational_log,
       purpose:
         "Diagnose failures and protect the AI-runtime boundary (security and reliability).",
@@ -753,6 +777,79 @@ defmodule SddOrchestrator.Privacy.ProcessingInventory do
           "Name reported keys this version refuses to interpret, without keeping their values.",
         inserted_at: "Record observation storage for lifecycle accountability.",
         updated_at: "Record the row's last write for lifecycle accountability."
+      }
+    }
+  end
+
+  @doc "Purpose limitation for every persisted repository-initialization field."
+  @spec repository_initialization_field_purposes() :: %{atom() => %{atom() => String.t()}}
+  def repository_initialization_field_purposes do
+    %{
+      repository_initialization_plan: %{
+        id: "Preserve the stable identity of one pre-project initialization plan.",
+        device_workspace_id:
+          "Scope the plan to the one device workspace that may read or confirm it.",
+        account_id: "Attribute the plan to a signed-in account when one initiated it.",
+        target_reference:
+          "Address the eligible local directory without ever storing its real path.",
+        version: "Prove the plan's version history is exactly its sequence of accepted answers.",
+        current_field: "Drive the sequential question gate and refuse an out-of-order answer.",
+        purpose: "Record the user's own answer to what they are building.",
+        users: "Record the user's own answer to who this is for.",
+        first_outcome: "Record the user's own answer to the first outcome this should deliver.",
+        constraints: "Record the user's own answer to any hard constraints.",
+        technical_foundation: "Record the user's own answer to the minimum technical foundation.",
+        eligibility: "Record which eligible starting state the target directory matched.",
+        kit_choice: "Record whether the permanent SDD kit is included or declined.",
+        kit_package_id: "Bind the plan to the exact kit package version it reviewed.",
+        kit_package_digest: "Bind the plan to the exact kit package content it reviewed.",
+        disclosure_version:
+          "Gate confirmation on the processing-boundary disclosure having been shown.",
+        confirmed_at: "Record when the user confirmed the exact reviewed plan.",
+        confirmation_digest: "Bind confirmation to the exact bound content the user reviewed.",
+        inserted_at: "Record plan creation for lifecycle accountability.",
+        updated_at: "Record each accepted answer or reviewed change for accountability."
+      },
+      repository_initialization_run: %{
+        id: "Preserve the stable identity of one authorized staging build.",
+        plan_id: "Bind the run to the one confirmed plan it materializes.",
+        device_workspace_id: "Scope the run to the one device workspace that authorized it.",
+        worker_id: "Address the one paired worker the build is authorized for.",
+        dispatch_id: "Correlate the run to its own authorization and capability-grant record.",
+        idempotency_key: "Refuse a retried build request from starting a second staging build.",
+        state: "Track the run through its pending/running/completed/failed/canceled lifecycle.",
+        kit_choice: "Freeze the plan's reviewed kit choice at the moment the run started.",
+        kit_package_id:
+          "Freeze the plan's reviewed kit package version at the moment the run started.",
+        kit_package_digest:
+          "Freeze the plan's reviewed kit package content at the moment the run started.",
+        progress: "Show the ordered build steps this run has actually completed.",
+        failure_reason: "Name the one typed reason a failed run stopped.",
+        cancel_requested_at:
+          "Record when cancellation was requested, checked at the next build checkpoint.",
+        started_at: "Record when the build actually started.",
+        finished_at: "Record when the build reached a terminal state.",
+        inserted_at: "Record run creation for lifecycle accountability.",
+        updated_at: "Record each state or progress change for accountability."
+      },
+      repository_initialization_result: %{
+        id: "Preserve the stable identity of one successful initialization outcome.",
+        plan_id: "Bind the result to the plan it fulfilled.",
+        run_id: "Bind the result to the one run it was published from, exactly once.",
+        target_reference: "Address the initialized directory without ever storing its real path.",
+        commit_sha: "Record the exact first commit that was published.",
+        tree_digest: "Record the exact tree content that first commit published.",
+        kit_choice: "Record whether the permanent SDD kit was actually included.",
+        kit_package_id: "Record the exact kit package version that was actually vendored.",
+        kit_package_digest: "Record the exact kit package content that was actually vendored.",
+        check_evidence: "Hold the evidence of any checks the publication ran.",
+        completed_at: "Record when the repository was actually published.",
+        onboarding_handoff_state:
+          "Track whether normal local-onboarding handoff has completed once.",
+        project_id: "Point at the device project the handoff created, once.",
+        specification_id: "Point at the authoritative specification the handoff created, once.",
+        inserted_at: "Record result creation for lifecycle accountability.",
+        updated_at: "Record the handoff completion for accountability."
       }
     }
   end

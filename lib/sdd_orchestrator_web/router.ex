@@ -121,6 +121,13 @@ defmodule SddOrchestratorWeb.Router do
       live "/local/projects/:id/profile", RepositoryExecutionProfileLive, :device
       live "/local/projects/:id/pilot", RepositoryPilotLive, :device
       live "/local/projects/:id/backup", ProjectBackupLive, :device
+
+      # Accountless empty-repository entry, eligibility, and guided question
+      # gate (specs/16 Task 2). A signed-in account is only ever an
+      # opportunistic enhancement here (it lets the guided questions dispatch
+      # through a governed AI runtime session); the flow itself never
+      # requires one, mirroring `LocalOnboardingLive` above.
+      live "/onboarding/empty-repository", RepositoryInitializationLive
     end
 
     # The shared storage-selection step for the accountless local flow. It also
