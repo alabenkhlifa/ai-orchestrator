@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 1 through 7 are complete. Task 8 (build hosted/device storage parity for the repository-kit installation) is next, `Depends on: Task 6`, now satisfied. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
+Tasks 1 through 8 are complete. Task 9 (enforce governance and publish `capability:repository-sdd-kit`) is next, `Depends on: Task 7, Task 8`, now satisfied. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
 
 Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
 
@@ -42,7 +42,7 @@ Provides:
 
 ## Proof Scope Gate
 
-- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8.
+- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8, Task 9.
 
 ## Implementation Boundary
 
@@ -139,7 +139,7 @@ Traceability:
   - Owns: none.
   - Proof: Focused device-authority build, read, list, cross-authority-isolation, and deletion-cascade tests pass.
 
-- [ ] Task 8 — Build hosted/device storage parity for the repository-kit installation.
+- [x] Task 8 — Build hosted/device storage parity for the repository-kit installation.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 6
@@ -150,6 +150,7 @@ Traceability:
 
 - [ ] Task 9 — Enforce governance and publish the repository-kit capability.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 7, Task 8
   - Purpose: Prove kit lifecycle data remains governed under the storage parity Tasks 7 and 8 just built, and that workflow installation never becomes a second specification authority.
   - Owned surfaces: Role access, retention, deletion, processor and transfer controls, diff and log redaction, no analytics, no secondary use, the specification-authority invariant (the kit never vendors project-specific specification content, and nothing in the plan/apply/update/removal path exports or synchronizes specification content into the repository — proven, not built, since no such external interface exists anywhere in this codebase to fail closed on today), no project-specific specification files, no synchronization, managed-runtime decline and removal fallback, `capability:repository-sdd-kit` readiness write-back, and release evidence.
@@ -171,8 +172,8 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Tasks 1–7 are complete; Task 8 has no unmet capability requirements.
-- Deferred, not blocking: `RepositoryKitChangePlan` and `RepositoryKitInstallation` persistence are hosted-only for now (a device authority is refused with `:unsupported_authority`/`:unauthorized` at the persistence step). Building the `Device`/`Hosted` dual-authority split is explicitly Task 7's (for `RepositoryKitChangePlan`) and Task 8's (for `RepositoryKitInstallation`) owned surface, not a gap in Tasks 2–6.
+- None. Tasks 1–8 are complete; Task 9 has no unmet capability requirements.
+- Resolved by Tasks 7 and 8: `RepositoryKitChangePlan` and `RepositoryKitInstallation` persistence is no longer hosted-only — both now support a `{:device, %DeviceWorkspace{}}` authority through `ChangePlanStore`/`InstallationStore`, mirroring `RepositoryAssessments.ProfileStore`'s existing dual-authority pattern. `RepositoryKitPackage` remains a global, non-project-scoped catalog and never needed this split.
 - Deferred, not blocking: no worker-dispatch mechanism yet resolves a live `repository_path` for `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` from a hosted LiveView (Tasks 3, 4, 5, and 6 all surface this honestly as "not available from this screen yet" rather than fabricating one). This is the same already-declared release-gate concern ("Live authorized worker and repository-host smoke proof"), not new scope; it does not block implementation or local verification of Tasks 1–6.
 - Resolved by Task 6: an already-removed installation is no longer a valid target for a further update or removal — `fetch_current_installation/1` now only treats `"applied"`/`"updated"` rows as active, so both `plan_update/4` and `plan_removal/3` refuse `{:error, :not_installed}` against a `"removed"` row.
 - Resolved by Task 5: apply-retry is now genuinely idempotent (AC-09) — `apply_plan/4` short-circuits on a repeat `plan_id` and returns the already-persisted installation unchanged, before touching the repository or the expiry/conflict gates. Task 4's unique index on `plan_id` remains as a schema-level safety net beneath that behavior.
