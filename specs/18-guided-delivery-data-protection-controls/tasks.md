@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The approved controls depend on the completed Slice 07 data surfaces being published and on the notification-access capability from `specs/17-guided-delivery-notification-access`, which is not yet available.
+Both required capabilities are ready: `capability:guided-delivery-data-surfaces` (`specs/07-guided-specification-delivery#Task 54`) and `capability:guided-delivery-notification-access` (`specs/17-guided-delivery-notification-access#Task 4`). Implementation of Task 1 is starting.
 
 ## Active Slice
 
@@ -70,7 +70,7 @@ Traceability:
 - [ ] Task 1 — Implement the Slice 07 processing inventory.
   - Size: Standard
   - Proof scope: Focused
-  - Status: Blocked until `capability:guided-delivery-data-surfaces` and `capability:guided-delivery-notification-access` are ready.
+  - Status: In Progress
   - Depends on: none
   - Purpose: Give every guided-delivery field and transfer one mechanically valid purpose, basis, authority, recipient, minimum-field, and lifecycle classification.
   - Owned surfaces: `DataProcessingRecord`, migration and schema when required by the existing inventory, field-purpose map, contract-necessity and operational-security basis values, hosted and device authority, recipient and processor categories, transfer classification, lifecycle-owner references, validation, fixtures, and absence of governed content in inventory records.
@@ -128,7 +128,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Active-slice implementation is blocked until `capability:guided-delivery-data-surfaces` and `capability:guided-delivery-notification-access` are ready; no product or technical-design decision is unresolved.
+None.
 
 ## Progress Log
 
