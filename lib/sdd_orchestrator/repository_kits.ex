@@ -1,22 +1,42 @@
 defmodule SddOrchestrator.RepositoryKits do
   @moduledoc """
-  Global, immutable catalog of vendored SDD kit packages.
+  Global, immutable catalog of vendored SDD kit packages, and the
+  project-scoped, worker-local change-planning built on top of it.
 
   A package is inspectable, versioned, and content-addressed. Publication is
   in-memory ingestion only: `publish_package/2` performs no disk or network
   I/O and never executes package content — reading files off disk is the
   `mix repository_kits.publish` task's job. The catalog is global rather than
-  project-scoped, so every function here takes no project or account
+  project-scoped, so every catalog function here takes no project or account
   authority; any authenticated participant may read it, and the LiveView
   route enforces the authentication boundary.
+
+  `plan_change/4` and `current_plan/3`, by contrast, are project-scoped and
+  read/write one project's `RepositoryKitChangePlan` — see that schema's
+  moduledoc for the exact comparison, persistence, and dual-authority
+  boundaries.
   """
 
+  import Ecto.Query
+
+  alias SddOrchestrator.Delivery.Features
+  alias SddOrchestrator.ManagedRuntimeProfile
+  alias SddOrchestrator.Participation
   alias SddOrchestrator.Repo
-  alias SddOrchestrator.RepositoryKits.RepositoryKitPackage
+  alias SddOrchestrator.RepositoryAssessments
+
+  alias SddOrchestrator.RepositoryKits.{
+    RepositoryKitChangePlan,
+    RepositoryKitPackage,
+    WorkerKitComparison
+  }
 
   @max_files 500
   @max_file_bytes 512_000
   @max_package_bytes 5_000_000
+
+  @eligible_lifecycle_columns ~w(ready_for_review done)
+  @plan_ttl_seconds 15 * 60
 
   @package_attrs [
     :source,
@@ -122,6 +142,214 @@ defmodule SddOrchestrator.RepositoryKits do
         Version.compare(candidate.version, package.version) == :gt
     end)
     |> Enum.reduce(nil, &newest/2)
+  end
+
+  @doc """
+  Reports whether the optional permanent-kit offer may appear for one pilot
+  specification.
+
+  Resolves the linked feature through
+  `capability:guided-delivery-feature-specification-link`
+  (`Delivery.Features.fetch_by_specification/2`) and reads its
+  `lifecycle_column`. No linked feature, or a column short of `Ready for
+  review`/`Done`, is not-yet-eligible rather than an error — the offer
+  simply does not appear yet.
+  """
+  @spec eligible_for_kit_offer?(String.t(), String.t()) :: boolean()
+  def eligible_for_kit_offer?(project_id, specification_id) do
+    case Features.fetch_by_specification(project_id, specification_id) do
+      {:ok, feature} -> feature.lifecycle_column in @eligible_lifecycle_columns
+      {:error, :not_linked} -> false
+    end
+  end
+
+  @doc """
+  Builds and persists one worker-local `RepositoryKitChangePlan`.
+
+  Refuses with `{:error, :not_yet_eligible}` when the pilot has not reached
+  `Ready for review` or `Done` — a data-layer defense in depth so the
+  eligibility business rule is enforced here, not only by a later task's
+  UI, since the eligibility read is this module's own owned surface.
+  Otherwise propagates `ManagedRuntimeProfile.build/3`'s own refusals
+  (`:no_approved_profile`, `:no_pilot_selected`, `:stale_profile`,
+  `:stale_pilot_revision`, `:unsupported_authority`) unchanged, and fails
+  closed with `:stale_commit` when the live repository's exact commit no
+  longer matches the approved profile's base commit.
+
+  `opts[:repository_path]` is required: the worker-local git checkout to
+  compare against. It is never derived from stored project data, and it
+  never appears in the persisted plan. `opts[:now]` overrides the clock for
+  `expires_at`; every other option is forwarded to
+  `ManagedRuntimeProfile.build/3` and `RepositoryAssessments.profile_review/3`.
+
+  Persistence is hosted-only for now — see `RepositoryKitChangePlan`'s
+  moduledoc. A `{:device, _}` authority reaches every read-only step (the
+  comparison itself is authority-agnostic) and is refused only at the final
+  persistence step, with `{:error, :unsupported_authority}`.
+  """
+  @spec plan_change(ManagedRuntimeProfile.authority(), String.t(), Ecto.UUID.t(), keyword()) ::
+          {:ok, RepositoryKitChangePlan.t()} | {:error, atom()}
+  def plan_change(authority, project_id, package_id, opts \\ []) do
+    with {:ok, repository_path} <- fetch_repository_path(opts),
+         {:ok, profile_value} <- ManagedRuntimeProfile.build(authority, project_id, opts),
+         :ok <- eligible?(project_id, profile_value.pilot_specification_id),
+         {:ok, execution_profile} <-
+           matching_execution_profile(authority, project_id, profile_value, opts),
+         {:ok, package} <- get_package(package_id),
+         protected_paths <- protected_paths(execution_profile),
+         {:ok, operations} <-
+           WorkerKitComparison.compare(
+             repository_path,
+             profile_value.base_revision,
+             profile_value.root,
+             package.file_manifest["files"],
+             protected_paths
+           ) do
+      persist_plan(authority, project_id, profile_value, package, operations, opts)
+    end
+  end
+
+  @doc """
+  Reads the project's current change plan: the most recent row that has not
+  yet expired. There is no separate mutable "current plan" pointer — this is
+  always a read-time derivation.
+
+  A `{:hosted, account_id}` or `{:participant, account_id, hosted_identity_id}`
+  viewer may read a hosted project's plan; anything else, including a device
+  viewer (no device plan can exist yet — see `RepositoryKitChangePlan`'s
+  moduledoc), returns `{:error, :not_found}` rather than disclosing why.
+  """
+  @spec current_plan(
+          {:hosted, Ecto.UUID.t()}
+          | {:device, term()}
+          | {:participant, Ecto.UUID.t() | nil, Ecto.UUID.t()},
+          String.t(),
+          keyword()
+        ) :: {:ok, RepositoryKitChangePlan.t()} | {:error, :not_found}
+  def current_plan(viewer, project_id, opts \\ [])
+
+  def current_plan({:hosted, account_id}, project_id, opts) do
+    case Participation.owned_project(account_id, project_id) do
+      {:ok, _project} -> read_current_plan(project_id, opts)
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  def current_plan({:participant, account_id, hosted_identity_id}, project_id, opts) do
+    case Participation.visible_project(project_id, account_id, hosted_identity_id) do
+      {:ok, _project, _role} -> read_current_plan(project_id, opts)
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  def current_plan(_viewer, _project_id, _opts), do: {:error, :not_found}
+
+  ## Change-plan building (private)
+
+  defp fetch_repository_path(opts) do
+    case Keyword.get(opts, :repository_path) do
+      path when is_binary(path) and path != "" -> {:ok, path}
+      _missing -> {:error, :repository_path_required}
+    end
+  end
+
+  defp eligible?(project_id, specification_id) do
+    if eligible_for_kit_offer?(project_id, specification_id),
+      do: :ok,
+      else: {:error, :not_yet_eligible}
+  end
+
+  defp matching_execution_profile(authority, project_id, profile_value, opts) do
+    review_opts = Keyword.take(opts, [:assessment_store, :profile_store])
+
+    case RepositoryAssessments.profile_review(authority, project_id, review_opts) do
+      {:ok, %{profiles: profiles}} ->
+        case Enum.find(profiles, &(&1.version == profile_value.profile_version)) do
+          nil -> {:error, :stale_profile}
+          profile -> {:ok, profile}
+        end
+
+      {:error, _reason} ->
+        {:error, :stale_profile}
+    end
+  end
+
+  defp protected_paths(execution_profile) do
+    execution_profile.instruction_precedence
+    |> Enum.map(& &1["path"])
+    |> MapSet.new()
+  end
+
+  defp persist_plan(authority, project_id, profile_value, package, operations, opts) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    attrs = %{
+      id: Ecto.UUID.generate(),
+      project_id: project_id,
+      package_id: package.id,
+      package_digest: package.digest,
+      profile_version: profile_value.profile_version,
+      base_commit: profile_value.base_revision,
+      root: profile_value.root,
+      repository_provider: profile_value.repository_provider,
+      repository_id: profile_value.repository_id,
+      target_branch: target_branch(package),
+      operations: operations,
+      expires_at: DateTime.add(now, @plan_ttl_seconds, :second)
+    }
+
+    case authority do
+      {:hosted, account_id} -> insert_hosted_plan(account_id, project_id, attrs)
+      _unsupported -> {:error, :unsupported_authority}
+    end
+  end
+
+  defp insert_hosted_plan(account_id, project_id, attrs) do
+    case Participation.owned_project(account_id, project_id) do
+      {:ok, _project} ->
+        attrs
+        |> RepositoryKitChangePlan.create_changeset()
+        |> Repo.insert()
+        |> case do
+          {:ok, plan} -> {:ok, plan}
+          {:error, _changeset} -> {:error, :invalid_plan}
+        end
+
+      _unauthorized ->
+        {:error, :not_found}
+    end
+  end
+
+  # A short, deterministic, git-branch-safe name tied to this exact package's
+  # identity: the publisher and version for legibility, plus an 8-character
+  # digest prefix so it stays unique even across two packages that happen to
+  # share a publisher and version string but not a source (the catalog's own
+  # uniqueness is on the full `{source, publisher, version}` triple, one
+  # level wider than publisher + version alone).
+  defp target_branch(package) do
+    slug =
+      package.publisher
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9._-]+/, "-")
+      |> String.trim("-")
+
+    digest_suffix = String.slice(package.digest, 0, 8)
+
+    "sdd-kit/#{slug}-#{package.version}-#{digest_suffix}"
+  end
+
+  defp read_current_plan(project_id, opts) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    RepositoryKitChangePlan
+    |> where([plan], plan.project_id == ^project_id and plan.expires_at > ^now)
+    |> order_by([plan], desc: plan.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      plan -> {:ok, plan}
+    end
   end
 
   ## Attrs normalization (pure, no I/O)

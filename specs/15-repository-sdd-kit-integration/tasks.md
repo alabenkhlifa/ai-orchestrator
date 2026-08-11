@@ -4,7 +4,7 @@
 
 In Progress
 
-Task 1 is complete. `specs/35-guided-delivery-feature-specification-link` (created via `update-spec` to resolve Task 2's AC-01 correlation gap) is now `Verified` and merged to `main`. All four of Task 2's required capabilities (`repository-execution-profile`, `guided-delivery-data-surfaces`, `guided-delivery-feature-specification-link`, `project-storage-authority`) are ready. Task 2 is executable next.
+Task 1 and Task 2 are complete. Task 3 (the eligibility/decline/diff-review LiveView) is next, `Depends on: Task 2`, now satisfied.
 
 Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
 
@@ -81,7 +81,7 @@ Traceability:
   - Owns: AC-02, AC-03, entity:RepositoryKitPackage
   - Proof: Focused package identity, tamper, path, size, license, provenance, permission, mutable-reference, no-network, no-execution, UI, and browser tests pass before `capability:sdd-kit-package` readiness is recorded.
 
-- [ ] Task 2 — Produce the optional exact change plan.
+- [x] Task 2 — Produce the optional exact change plan.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -138,7 +138,8 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. All of Task 2's required capabilities are ready.
+- None. Task 2 is complete; Task 3 has no unmet capability requirements.
+- Deferred, not blocking: `RepositoryKitChangePlan` persistence is hosted-only for now (a device authority is refused with `:unsupported_authority` at the persistence step). Building the `Device`/`Hosted` dual-authority split is explicitly Task 6's ("Hosted and device storage parity") owned surface, not a gap in Task 2.
 
 ## Progress Log
 
