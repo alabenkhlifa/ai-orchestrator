@@ -23,17 +23,15 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
   A plan past its window is never a valid confirmation target; building a
   fresh plan is always required instead of extending an old one.
 
-  Persistence here is hosted (PostgreSQL) only. `RepositoryKitPackage` (Task
-  1) is a global catalog and never needed a device-authoritative store; this
-  entity is project-scoped, so it should eventually follow the same
-  `Device`/`Hosted` dual-authority split `RepositoryAssessments.ProfileStore`
-  uses. Building that split (new `Devices.DeviceStore` callbacks, a `Local`
-  adapter implementation, and the release-gated native adapter) is
-  independent, cross-cutting infrastructure work that a later task in this
-  slice explicitly owns ("Hosted and device storage parity"). Until then,
-  `RepositoryKits.plan_change/4` refuses a device authority at the
-  persistence step with `{:error, :unsupported_authority}` rather than
-  silently writing device-authoritative content into hosted PostgreSQL.
+  Persistence follows the same `Device`/`Hosted` dual-authority split
+  `RepositoryAssessments.ProfileStore` uses, through
+  `RepositoryKits.ChangePlanStore` (Task 7). `RepositoryKitPackage` (Task 1)
+  is a global catalog and never needed a device-authoritative store, but this
+  entity is project-scoped: a device-authoritative project builds, reads, and
+  removal-plans its own change plan entirely on-device, and a hosted project's
+  plan lives in PostgreSQL exactly as before. `to_value/1` and `from_value/1`
+  serialize this schema's exact immutable value for the device adapter,
+  mirroring `RepositoryExecutionProfile`'s own pair.
 
   `plan_type` distinguishes an initial `"install"` plan (Task 2, compared
   against the live repository tree) from an `"update"` plan (Task 5,
@@ -84,9 +82,17 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
     :safety_blocked,
     :has_ordinary_conflicts,
     :expires_at,
-    :plan_type
+    :plan_type,
+    :inserted_at
   ]
 
+  # `:inserted_at` is deliberately absent here. The hosted path never
+  # supplies it in attrs and relies on Ecto's own `timestamps()` to
+  # autogenerate it at `Repo.insert` time (unaffected by `:inserted_at`
+  # simply being castable above — casting only acts on keys attrs actually
+  # has); the device path supplies it explicitly before `build/1`, mirroring
+  # `RepositoryExecutionProfile.approved/4`. Neither path treats it as a
+  # normal required scalar the caller must always pass.
   @required_fields [
     :id,
     :project_id,
@@ -101,6 +107,8 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
     :operations,
     :expires_at
   ]
+
+  @value_keys MapSet.new(Enum.map(@fields, &Atom.to_string/1))
 
   @type t :: %__MODULE__{}
 
@@ -124,15 +132,80 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
   end
 
   @doc """
-  Create-only changeset for one worker-local change plan.
+  Create-only hosted changeset layering database-only constraints onto the
+  shared pure-validation changeset.
 
-  `safety_blocked` and `has_ordinary_conflicts` are always derived here from
-  `operations`, never trusted from caller-supplied attrs, so the two summary
-  flags can never disagree with the operations they summarize.
+  `safety_blocked` and `has_ordinary_conflicts` are always derived by the
+  shared changeset from `operations`, never trusted from caller-supplied
+  attrs, so the two summary flags can never disagree with the operations
+  they summarize.
   """
   @spec create_changeset(map()) :: Ecto.Changeset.t()
   def create_changeset(attrs) do
     %__MODULE__{}
+    |> changeset(attrs)
+    |> check_constraint(:profile_version,
+      name: :repository_kit_change_plans_profile_version_positive
+    )
+    |> check_constraint(:base_commit, name: :repository_kit_change_plans_commit_shape)
+    |> check_constraint(:package_digest, name: :repository_kit_change_plans_digest_shape)
+    |> check_constraint(:plan_type, name: :repository_kit_change_plans_plan_type_shape)
+    |> foreign_key_constraint(:project_id)
+    |> foreign_key_constraint(:package_id)
+  end
+
+  @doc """
+  Builds one in-memory, pure-validated plan without any database constraint.
+
+  Shares the exact same field validation `create_changeset/1` uses; only the
+  database-only constraints are skipped, since there is no database here.
+  Used both by `from_value/1` (restoring a device-authoritative stored value)
+  and by the device change-plan-store adapter (validating a plan before it is
+  ever written to device storage).
+  """
+  @spec build(map()) :: {:ok, t()} | {:error, :invalid_plan}
+  def build(attrs) do
+    %__MODULE__{}
+    |> changeset(attrs)
+    |> apply_action(:insert)
+    |> case do
+      {:ok, plan} -> {:ok, plan}
+      {:error, _changeset} -> {:error, :invalid_plan}
+    end
+  end
+
+  @doc "Serializes the exact device-authoritative value without Ecto metadata."
+  @spec to_value(t()) :: map()
+  def to_value(%__MODULE__{} = plan) do
+    plan
+    |> Map.take(@fields)
+    |> Map.new(fn
+      {key, %DateTime{} = value} -> {Atom.to_string(key), DateTime.to_iso8601(value)}
+      {key, value} -> {Atom.to_string(key), value}
+    end)
+  end
+
+  @doc "Restores only the exact immutable device value."
+  @spec from_value(term()) :: {:ok, t()} | {:error, :invalid_plan}
+  def from_value(value) when is_map(value) do
+    with true <- MapSet.new(Map.keys(value)) == @value_keys,
+         {:ok, expires_at, 0} <- DateTime.from_iso8601(value["expires_at"]),
+         {:ok, inserted_at, 0} <- DateTime.from_iso8601(value["inserted_at"]) do
+      value
+      |> Map.new(fn {key, field_value} -> {String.to_existing_atom(key), field_value} end)
+      |> Map.merge(%{expires_at: expires_at, inserted_at: inserted_at})
+      |> build()
+    else
+      _invalid -> {:error, :invalid_plan}
+    end
+  rescue
+    _error -> {:error, :invalid_plan}
+  end
+
+  def from_value(_value), do: {:error, :invalid_plan}
+
+  defp changeset(plan, attrs) do
+    plan
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
     |> validate_length(:root, max: 4096, count: :bytes)
@@ -145,14 +218,6 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
     |> validate_change(:operations, &validate_operations/2)
     |> validate_inclusion(:plan_type, @plan_types)
     |> derive_summary_flags()
-    |> check_constraint(:profile_version,
-      name: :repository_kit_change_plans_profile_version_positive
-    )
-    |> check_constraint(:base_commit, name: :repository_kit_change_plans_commit_shape)
-    |> check_constraint(:package_digest, name: :repository_kit_change_plans_digest_shape)
-    |> check_constraint(:plan_type, name: :repository_kit_change_plans_plan_type_shape)
-    |> foreign_key_constraint(:project_id)
-    |> foreign_key_constraint(:package_id)
   end
 
   defp validate_operations(:operations, operations) when is_list(operations) do

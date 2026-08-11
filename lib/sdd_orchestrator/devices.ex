@@ -274,6 +274,16 @@ defmodule SddOrchestrator.Devices do
     adapter().list_repository_execution_profiles(project_id)
   end
 
+  @doc "Atomically appends one immutable device-authoritative repository-kit change plan."
+  def append_repository_kit_change_plan(project_id, value) do
+    adapter().append_repository_kit_change_plan(project_id, value)
+  end
+
+  @doc "Lists one project's device-authoritative repository-kit change plan values."
+  def list_repository_kit_change_plans(project_id) do
+    adapter().list_repository_kit_change_plans(project_id)
+  end
+
   @doc "Stores one project's single current device-authoritative pilot selection."
   def put_repository_pilot_selection(project_id, value) do
     adapter().put_repository_pilot_selection(project_id, value)

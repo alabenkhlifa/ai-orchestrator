@@ -32,8 +32,6 @@ defmodule SddOrchestrator.RepositoryKits do
   since it was recorded blocks the entire removal plan instead.
   """
 
-  import Ecto.Query
-
   alias SddOrchestrator.Delivery.Features
   alias SddOrchestrator.ManagedRuntimeProfile
   alias SddOrchestrator.Participation
@@ -41,6 +39,7 @@ defmodule SddOrchestrator.RepositoryKits do
   alias SddOrchestrator.RepositoryAssessments
 
   alias SddOrchestrator.RepositoryKits.{
+    ChangePlanStore,
     RepositoryKitChangePlan,
     RepositoryKitInstallation,
     RepositoryKitPackage,
@@ -234,34 +233,18 @@ defmodule SddOrchestrator.RepositoryKits do
   always a read-time derivation.
 
   A `{:hosted, account_id}` or `{:participant, account_id, hosted_identity_id}`
-  viewer may read a hosted project's plan; anything else, including a device
-  viewer (no device plan can exist yet — see `RepositoryKitChangePlan`'s
-  moduledoc), returns `{:error, :not_found}` rather than disclosing why.
+  viewer may read a hosted project's plan, and a `{:device, %DeviceWorkspace{}}`
+  viewer that owns the project may read a device project's plan; anything
+  else returns `{:error, :not_found}` rather than disclosing why. Dispatch
+  and every authorization rule live in `ChangePlanStore` — see its
+  moduledoc.
   """
-  @spec current_plan(
-          {:hosted, Ecto.UUID.t()}
-          | {:device, term()}
-          | {:participant, Ecto.UUID.t() | nil, Ecto.UUID.t()},
-          String.t(),
-          keyword()
-        ) :: {:ok, RepositoryKitChangePlan.t()} | {:error, :not_found}
-  def current_plan(viewer, project_id, opts \\ [])
-
-  def current_plan({:hosted, account_id}, project_id, opts) do
-    case Participation.owned_project(account_id, project_id) do
-      {:ok, _project} -> read_current_plan(project_id, opts)
-      _unauthorized -> {:error, :not_found}
-    end
+  @spec current_plan(ChangePlanStore.viewer(), String.t(), keyword()) ::
+          {:ok, RepositoryKitChangePlan.t()} | {:error, :not_found}
+  def current_plan(viewer, project_id, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+    ChangePlanStore.current(viewer, project_id, now)
   end
-
-  def current_plan({:participant, account_id, hosted_identity_id}, project_id, opts) do
-    case Participation.visible_project(project_id, account_id, hosted_identity_id) do
-      {:ok, _project, _role} -> read_current_plan(project_id, opts)
-      _unauthorized -> {:error, :not_found}
-    end
-  end
-
-  def current_plan(_viewer, _project_id, _opts), do: {:error, :not_found}
 
   @doc """
   Reads the project's current kit installation, if any — the one row a
@@ -525,26 +508,7 @@ defmodule SddOrchestrator.RepositoryKits do
       plan_type: plan_type
     }
 
-    case authority do
-      {:hosted, account_id} -> insert_hosted_plan(account_id, project_id, attrs)
-      _unsupported -> {:error, :unsupported_authority}
-    end
-  end
-
-  defp insert_hosted_plan(account_id, project_id, attrs) do
-    case Participation.owned_project(account_id, project_id) do
-      {:ok, _project} ->
-        attrs
-        |> RepositoryKitChangePlan.create_changeset()
-        |> Repo.insert()
-        |> case do
-          {:ok, plan} -> {:ok, plan}
-          {:error, _changeset} -> {:error, :invalid_plan}
-        end
-
-      _unauthorized ->
-        {:error, :not_found}
-    end
+    ChangePlanStore.create(authority, attrs)
   end
 
   # A short, deterministic, git-branch-safe name tied to this exact package's
@@ -576,20 +540,6 @@ defmodule SddOrchestrator.RepositoryKits do
 
   defp target_branch_prefix("removal"), do: "sdd-kit/remove-"
   defp target_branch_prefix(_install_or_update), do: "sdd-kit/"
-
-  defp read_current_plan(project_id, opts) do
-    now = Keyword.get(opts, :now, DateTime.utc_now())
-
-    RepositoryKitChangePlan
-    |> where([plan], plan.project_id == ^project_id and plan.expires_at > ^now)
-    |> order_by([plan], desc: plan.inserted_at)
-    |> limit(1)
-    |> Repo.one()
-    |> case do
-      nil -> {:error, :not_found}
-      plan -> {:ok, plan}
-    end
-  end
 
   ## Installation reads (private)
 
