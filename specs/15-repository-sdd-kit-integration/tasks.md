@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 1 through 6 are complete. Task 7 (build hosted/device storage parity for the repository-kit change plan) is next, `Depends on: Task 6`, now satisfied. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
+Tasks 1 through 7 are complete. Task 8 (build hosted/device storage parity for the repository-kit installation) is next, `Depends on: Task 6`, now satisfied. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
 
 Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
 
@@ -42,7 +42,7 @@ Provides:
 
 ## Proof Scope Gate
 
-- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7.
+- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8.
 
 ## Implementation Boundary
 
@@ -99,7 +99,7 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 2
   - Purpose: Let the owner see the optional offer, decline it without losing managed runtime SDD, and review Task 2's exact diff before confirming anything.
-  - Owned surfaces: Post-pilot eligibility and decline LiveView at `/projects/:id/kit` (`RepositoryKitOfferLive`, hosted-only for now — mirrors `RepositoryPilotLive`'s hosted context-loading pattern; no device route, since `RepositoryKitChangePlan` persistence is itself hosted-only pending Task 7), plan-trigger action, diff and conflict presentation, and decline action.
+  - Owned surfaces: Post-pilot eligibility and decline LiveView at `/projects/:id/kit` (`RepositoryKitOfferLive`, hosted-only for now — mirrors `RepositoryPilotLive`'s hosted context-loading pattern; no device route — a device-facing route is separate UI work `RepositoryKitOfferLive` never owned, not blocked on `RepositoryKitChangePlan` persistence itself, which is no longer hosted-only as of Task 7), plan-trigger action, diff and conflict presentation, and decline action.
   - Owns: AC-01
   - Proof: Focused LiveView tests covering the not-yet-eligible, eligible, decline, and diff-review states pass. Browser scenario deferred (see progress.md): a real slice-gate `e2e_bootstrap_controller.ex` scenario would need to chain assessment, profile approval, pilot selection, feature linking, and kit publishing, which is out of a single focused task's scope to author unverified.
 
@@ -130,7 +130,7 @@ Traceability:
   - Owns: AC-11
   - Proof: Focused removal planning, ownership-safe deletion, user-modified and shared-file conflict, removal apply, branch, evidence, LiveView, and browser tests pass.
 
-- [ ] Task 7 — Build hosted/device storage parity for the repository-kit change plan.
+- [x] Task 7 — Build hosted/device storage parity for the repository-kit change plan.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 6
@@ -141,9 +141,10 @@ Traceability:
 
 - [ ] Task 8 — Build hosted/device storage parity for the repository-kit installation.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 6
   - Purpose: Let a device-authoritative project record, read, and transition (update or removal) a repository-kit installation through the same dual-authority pattern, closing the same gap for the mutable lifecycle record.
-  - Owned surfaces: `Devices.DeviceStore` repository-kit-installation callbacks and `Local` (DETS) implementation (create plus in-place state-transition update, closer to `RepositoryAssessment`'s transition-capable precedent than `ProfileStore`'s append-only one); `RepositoryKitInstallation.Device`/`RepositoryKitInstallation.Hosted` split modules and their top-level dispatcher; `apply_plan/4`/`current_installation/3` routed through the dispatcher instead of refusing a `{:device, _}` authority; device-project-deletion cascade for the new DETS key.
+  - Owned surfaces: `Devices.DeviceStore` repository-kit-installation callbacks and `Local` (DETS) implementation (create plus in-place state-transition update, closer to `RepositoryAssessment`'s transition-capable precedent than `ProfileStore`'s append-only one); a new `InstallationStore`/`InstallationStore.Device`/`InstallationStore.Hosted` dispatcher and adapter pair (naming mirrors Task 7's `ChangePlanStore`, not the entity schema module itself); `apply_plan/4`/`current_installation/3` routed through the dispatcher instead of refusing a `{:device, _}` authority; device-project-deletion cascade for the new DETS key.
   - Owns: none.
   - Proof: Focused device-authority create, read, transition, cross-authority-isolation, and deletion-cascade tests pass.
 
@@ -170,7 +171,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Tasks 1–6 are complete; Task 7 has no unmet capability requirements.
+- None. Tasks 1–7 are complete; Task 8 has no unmet capability requirements.
 - Deferred, not blocking: `RepositoryKitChangePlan` and `RepositoryKitInstallation` persistence are hosted-only for now (a device authority is refused with `:unsupported_authority`/`:unauthorized` at the persistence step). Building the `Device`/`Hosted` dual-authority split is explicitly Task 7's (for `RepositoryKitChangePlan`) and Task 8's (for `RepositoryKitInstallation`) owned surface, not a gap in Tasks 2–6.
 - Deferred, not blocking: no worker-dispatch mechanism yet resolves a live `repository_path` for `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` from a hosted LiveView (Tasks 3, 4, 5, and 6 all surface this honestly as "not available from this screen yet" rather than fabricating one). This is the same already-declared release-gate concern ("Live authorized worker and repository-host smoke proof"), not new scope; it does not block implementation or local verification of Tasks 1–6.
 - Resolved by Task 6: an already-removed installation is no longer a valid target for a further update or removal — `fetch_current_installation/1` now only treats `"applied"`/`"updated"` rows as active, so both `plan_update/4` and `plan_removal/3` refuse `{:error, :not_installed}` against a `"removed"` row.
