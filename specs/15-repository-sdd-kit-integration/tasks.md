@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 1 through 5 are complete. Task 6 (implement kit removal) is next, `Depends on: Task 5`, now satisfied. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
+Tasks 1 through 6 are complete. Task 7 (enforce governance and publish `capability:repository-sdd-kit`) is next, `Depends on: Task 6`, now satisfied. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
 
 Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
 
@@ -119,7 +119,7 @@ Traceability:
   - Owns: AC-09, AC-10
   - Proof: Focused replay, changed-input, newer-version-info-only, update kit-owned-file comparison, user-modification conflict, update apply, branch, evidence, LiveView, and browser tests pass.
 
-- [ ] Task 6 — Implement kit removal.
+- [x] Task 6 — Implement kit removal.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5
@@ -151,9 +151,10 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. Tasks 1–5 are complete; Task 6 has no unmet capability requirements.
-- Deferred, not blocking: `RepositoryKitChangePlan` and `RepositoryKitInstallation` persistence are hosted-only for now (a device authority is refused with `:unsupported_authority`/`:unauthorized` at the persistence step). Building the `Device`/`Hosted` dual-authority split is explicitly Task 7's ("Hosted and device storage parity") owned surface, not a gap in Tasks 2–5.
-- Deferred, not blocking: no worker-dispatch mechanism yet resolves a live `repository_path` for `plan_change/4`/`apply_plan/4`/`plan_update/4` from a hosted LiveView (Tasks 3, 4, and 5 all surface this honestly as "not available from this screen yet" rather than fabricating one). This is the same already-declared release-gate concern ("Live authorized worker and repository-host smoke proof"), not new scope; it does not block implementation or local verification of Tasks 1–5.
+- None. Tasks 1–6 are complete; Task 7 has no unmet capability requirements.
+- Deferred, not blocking: `RepositoryKitChangePlan` and `RepositoryKitInstallation` persistence are hosted-only for now (a device authority is refused with `:unsupported_authority`/`:unauthorized` at the persistence step). Building the `Device`/`Hosted` dual-authority split is explicitly Task 7's ("Hosted and device storage parity") owned surface, not a gap in Tasks 2–6.
+- Deferred, not blocking: no worker-dispatch mechanism yet resolves a live `repository_path` for `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` from a hosted LiveView (Tasks 3, 4, 5, and 6 all surface this honestly as "not available from this screen yet" rather than fabricating one). This is the same already-declared release-gate concern ("Live authorized worker and repository-host smoke proof"), not new scope; it does not block implementation or local verification of Tasks 1–6.
+- Resolved by Task 6: an already-removed installation is no longer a valid target for a further update or removal — `fetch_current_installation/1` now only treats `"applied"`/`"updated"` rows as active, so both `plan_update/4` and `plan_removal/3` refuse `{:error, :not_installed}` against a `"removed"` row.
 - Resolved by Task 5: apply-retry is now genuinely idempotent (AC-09) — `apply_plan/4` short-circuits on a repeat `plan_id` and returns the already-persisted installation unchanged, before touching the repository or the expiry/conflict gates. Task 4's unique index on `plan_id` remains as a schema-level safety net beneath that behavior.
 - Discovery, not acted on (out of this slice's scope): `AssessmentStore`/`ProfileStore`'s hosted "latest" reads break an `inserted_at` tie on `id desc` — a random UUID. Two profile approvals stamped with the same caller-supplied `now` therefore pick a non-deterministic "latest" assessment. Task 5's own tests hit this (worked around the same way `managed_runtime_profile_test.exs` already does, by advancing `now` between approvals) but the underlying tie-break belongs to the assessment/profile storage modules (specs/14/specs/30), not this slice — flagged here for whichever of those specs next touches that ordering, not fixed in this change.
 
