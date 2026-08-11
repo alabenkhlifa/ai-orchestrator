@@ -24,7 +24,7 @@ test.describe("notification inbox", () => {
 
     await expect(read).toHaveCount(1);
     await expect(read.locator("[data-notification-title]")).toHaveText(read_title);
-    await expect(read.getByText("Read")).toBeVisible();
+    await expect(read.getByText("Read", { exact: true })).toBeVisible();
     await expect(read.getByRole("button", { name: "Mark read" })).toHaveCount(0);
   });
 
@@ -50,7 +50,7 @@ test.describe("notification inbox", () => {
     await row.getByRole("button", { name: "Mark read" }).click();
 
     await expect(row).toHaveAttribute("data-notification-unread", "false");
-    await expect(row.getByText("Read")).toBeVisible();
+    await expect(row.getByText("Read", { exact: true })).toBeVisible();
     await expect(row.getByRole("button", { name: "Mark read" })).toHaveCount(0);
 
     // The safe-link action stays available either way.

@@ -11,8 +11,8 @@ defmodule SddOrchestrator.Privacy.DeliveryNotificationRetentionTest do
 
   use SddOrchestrator.DataCase, async: false
 
-  alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.Delivery.Feature
+  alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.Notifications
   alias SddOrchestrator.Notifications.AccountNotification
   alias SddOrchestrator.ParticipationFixtures

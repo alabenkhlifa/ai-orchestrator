@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-`capability:project-participation-recipient-routing` is ready from `specs/08-project-participation#Task 36`. Task 1 is unblocked and underway.
+All five tasks complete. `capability:guided-delivery-notification-access` and `capability:guided-delivery-notification-governance` are both ready. Implementation, local-verification, and release readiness are all complete — this slice declares no release gates.
 
 ## Active Slice
 
@@ -121,16 +121,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All five acceptance criteria pass through focused domain, LiveView, and retention proof.
-- [ ] Removed, absent-profile, unknown, malformed, and cross-project notification access fails closed without content disclosure.
-- [ ] Durable unread and mark-read behavior passes with PubSub disabled and after restart.
-- [ ] Desktop and mobile inbox scenarios pass through `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e`.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
-- [ ] The explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` passes before the browser matrix.
-- [ ] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
-- [ ] The individual specification validator and global capability graph pass, and both provided capability readiness write-backs are recorded.
-- [ ] New decisions and proof receipts are written back.
+- [x] All five acceptance criteria pass through focused domain, LiveView, and retention proof.
+- [x] Removed, absent-profile, unknown, malformed, and cross-project notification access fails closed without content disclosure.
+- [x] Durable unread and mark-read behavior passes with PubSub disabled and after restart.
+- [x] Desktop and mobile inbox scenarios pass through `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e`.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
+- [x] The explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
+- [x] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` passes before the browser matrix.
+- [x] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
+- [x] The individual specification validator and global capability graph pass, and both provided capability readiness write-backs are recorded.
+- [x] New decisions and proof receipts are written back.
 
 ## Blocked Decisions
 
