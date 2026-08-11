@@ -40,7 +40,7 @@ Provides:
 
 ## Proof Scope Gate
 
-- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5.
+- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6.
 
 ## Implementation Boundary
 
@@ -121,6 +121,7 @@ Traceability:
 
 - [ ] Task 6 — Implement kit removal.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 5
   - Purpose: Let the owner remove an installed kit's files on a new isolated branch without deleting anything not proven to still be kit-owned and unchanged.
   - Owned surfaces: Removal planning (kit-owned file comparison between the currently-installed file digests and the live repository, distinguishing still-kit-owned-and-unchanged files, safe to delete, from user-modified or shared files, left for explicit review), removal conflict presentation, removal confirmation, ownership-safe deletion, isolated-branch removal apply reusing Task 4's `WorkerKitApply` and Task 5's idempotent-retry mechanism, and the `removed` state transition on Task 5's lifecycle-history schema (extends it, does not redefine it).

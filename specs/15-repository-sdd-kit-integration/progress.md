@@ -1,5 +1,12 @@
 # Repository SDD Kit Integration Progress Log
 
+### 2026-08-11 - Task 6 preflight: Proof Scope Gate prospectively extended via update-spec
+
+- Completed: before starting Task 6 implementation, extended `## Proof Scope Gate`'s `Applies to:` from `Task 1, Task 2, Task 3, Task 4, Task 5.` to include `Task 6`, and added `- Proof scope: Focused` to the Task 6 entry — the same incremental-adoption pattern already used when Task 5 became active (see the "Task 5 split via update-spec" entry below). Purely mechanical: no requirement, design, acceptance criterion, business rule, or task boundary changed.
+- Verified: `validate_spec.py` on `specs/15-repository-sdd-kit-integration` and the global graph check across all 35 specifications both passed.
+- Failed checks: None.
+- Remaining: implement Task 6 (kit removal), running its focused proof through `run_proof.py task --task 6`.
+
 ### 2026-08-11 - Task 5 implemented and verified: idempotent apply and kit update
 
 - Completed: AC-09, AC-10. Added `plan_type` (`"install"`/`"update"`) to `RepositoryKitChangePlan`, extending `@severities` with a new `"drifted"` conflict flavor (a kit-owned file whose live content no longer matches what was recorded at install/last update) folded into the existing `has_ordinary_conflicts` flag so `apply_plan/4`'s conflict gate needed zero changes to also block on it. Added `history` and widened `state` to `~w(applied updated)` plus a new `update_changeset/2` on `RepositoryKitInstallation` — exactly what Task 4's own moduledoc anticipated ("Task 5 needs it"). Added a unique index on `RepositoryKitInstallation.project_id`, closing a latent gap (nothing previously stopped two installation rows existing for one project) that Task 5 is the first task to actually depend on being impossible.
