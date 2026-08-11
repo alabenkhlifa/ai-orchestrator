@@ -301,6 +301,10 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilder do
     end
   end
 
+  # `absolute` was proven contained by `StagingWorkspace.join/2` immediately
+  # before this call, from the fixed literal `"README.md"` — not a traversal
+  # sink. Documented false positive.
+  # sobelow_skip ["Traversal.FileModule"]
   defp write_readme_file(run, absolute, plan) do
     case File.write(absolute, readme_content(plan)) do
       :ok ->
@@ -460,6 +464,10 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilder do
 
   defp maybe_chmod(_absolute, false), do: :ok
 
+  # `absolute` is the same `StagingWorkspace.join/2`-contained path
+  # `write_kit_file/3` just wrote to immediately before this call — not a
+  # traversal sink. Documented false positive.
+  # sobelow_skip ["Traversal.FileModule"]
   defp maybe_chmod(absolute, true) do
     case File.chmod(absolute, 0o755) do
       :ok -> :ok
