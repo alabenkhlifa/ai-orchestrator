@@ -10,6 +10,16 @@
   (Independently re-run and confirmed by the orchestrating session. Combined regression run of Tasks 1, 2, 3, 5 plus the existing `participation_retention_test.exs`/`retention_test.exs` suites: 38 passed, exit 0 — no cross-task regression.)
 - Spec updates: `tasks.md` Task 5 checked complete; capability readiness noted.
 
+### 2026-08-11 — Task 3 complete: safe notification-link access
+
+- Completed: Added `NotificationAccess.resolve_safe_link/3`. Reuses `fetch/3` for notification-level authorization, parses `link_path` into project and feature ids, then calls `Delivery.Features.fetch/3` (the codebase's canonical project-scoped feature loader) to authorize `:view_feature` and confirm the feature genuinely belongs to the parsed project — catching a spliced/cross-project feature id that project-level authorization alone would miss. Every failure mode (unknown, removed, cross-project, malformed link, feature-not-of-project) collapses to the identical `{:error, :not_found}`; returns the notification's own stored `link_path` on success. Implemented in parallel with Task 5 (see that entry for the disjoint-files note).
+- Remaining: Task 4 (accessible notification inbox LiveView) and the verification gate.
+- Failed checks: None.
+- Proof receipts:
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/notification_safe_link_test.exs` — exit `0`.
+  (Independently re-run and confirmed by the orchestrating session.)
+- Spec updates: `tasks.md` Task 3 checked complete.
+
 ### 2026-08-11 — Task 2 complete: durable unread and idempotent mark-read
 
 - Completed: Added `NotificationAccess.fetch/3` and `NotificationAccess.mark_read/3`, both gated behind the same per-record participation-revalidation `list/3` uses (extracted into a shared private `authorized_record?/2` helper). `mark_read/3` delegates the actual durable transition to the already-idempotent `Notifications.mark_read/3` rather than re-implementing it. Every failure mode (unknown id, wrong account, unparsable link, removed participant) collapses to the identical `{:error, :not_found}`.

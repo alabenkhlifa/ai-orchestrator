@@ -26,7 +26,7 @@ defmodule SddOrchestrator.Delivery.NotificationAccess do
 
   import Ecto.Query
 
-  alias SddOrchestrator.Delivery.ParticipantGuard
+  alias SddOrchestrator.Delivery.{Features, ParticipantGuard}
   alias SddOrchestrator.Notifications
   alias SddOrchestrator.Notifications.AccountNotification
   alias SddOrchestrator.Repo
@@ -35,6 +35,7 @@ defmodule SddOrchestrator.Delivery.NotificationAccess do
   @max_limit 200
   @namespace "delivery."
   @project_link ~r{^/projects/([^/]+)(?:/|$)}
+  @feature_link ~r{^/projects/([^/]+)/features/([^/]+)$}
 
   @type actor :: ParticipantGuard.actor()
 
@@ -103,6 +104,38 @@ defmodule SddOrchestrator.Delivery.NotificationAccess do
     end
   end
 
+  @doc """
+  Resolves one account's guided-delivery notification to its safe feature
+  link, so an authorized recipient can be returned to the related feature
+  without ever disclosing whether an inaccessible project or notification
+  exists.
+
+  `fetch/3` first authorizes the notification itself, exactly as `list/3` and
+  `mark_read/3` do. The notification's `link_path` is then parsed into a
+  project id and a feature id — the one `"/projects/:id/features/:id"` shape
+  every `delivery.` notification uses — and
+  `SddOrchestrator.Delivery.Features.fetch/3` authorizes `:view_feature` and
+  scopes the feature lookup to that exact project id, so a feature id that
+  genuinely belongs to a different project misses even when the parsed
+  project id is one the actor currently belongs to. On success the caller
+  gets back the exact stored `link_path`, not a reconstructed one and not the
+  feature itself. An unknown id, a removed or cross-project participant, an
+  unparsable link, and a feature that does not genuinely belong to its
+  project all collapse to the identical `{:error, :not_found}` — nothing here
+  discloses which case occurred.
+  """
+  @spec resolve_safe_link(Ecto.UUID.t() | nil, actor(), Ecto.UUID.t()) ::
+          {:ok, String.t()} | {:error, :not_found}
+  def resolve_safe_link(account_id, actor, id) do
+    with {:ok, notification} <- fetch(account_id, actor, id),
+         {:ok, project_id, feature_id} <- project_and_feature_id(notification.link_path),
+         {:ok, _feature} <- Features.fetch(project_id, actor, feature_id) do
+      {:ok, notification.link_path}
+    else
+      _denied -> {:error, :not_found}
+    end
+  end
+
   defp authorized_record?(notification, actor) do
     {result, _cache} = authorized?(notification, actor, %{})
     result
@@ -167,6 +200,28 @@ defmodule SddOrchestrator.Delivery.NotificationAccess do
   end
 
   defp project_id(_link_path), do: :error
+
+  # Fails closed on anything that is not the exact
+  # "/projects/:project_id/features/:feature_id" shape every `delivery.`
+  # notification's `link_path` uses, including a segment that is not a real
+  # UUID. Shares the same fail-closed contract as `project_id/1` above rather
+  # than a second, possibly inconsistent, parser.
+  defp project_and_feature_id(link_path) when is_binary(link_path) do
+    case Regex.run(@feature_link, link_path) do
+      [_match, project_id, feature_id] ->
+        with {:ok, project_id} <- Ecto.UUID.cast(project_id),
+             {:ok, feature_id} <- Ecto.UUID.cast(feature_id) do
+          {:ok, project_id, feature_id}
+        else
+          :error -> :error
+        end
+
+      _no_match ->
+        :error
+    end
+  end
+
+  defp project_and_feature_id(_link_path), do: :error
 
   defp limit_for(opts) do
     opts

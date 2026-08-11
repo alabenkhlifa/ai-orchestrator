@@ -89,9 +89,10 @@ Traceability:
   - Owns: AC-02
   - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/delivery/notification_read_state_test.exs` passes focused unread, repeat mark-read, concurrency, no-PubSub, reconnect, restart, and state-non-mutation cases.
 
-- [ ] Task 3 — Enforce safe notification-link access.
+- [x] Task 3 — Enforce safe notification-link access.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done.
   - Depends on: Task 1
   - Purpose: Return an authorized recipient to the related feature without disclosing inaccessible project or notification existence.
   - Owned surfaces: Internal feature-reference parsing, notification-recipient binding, current project and feature authorization, removed-participant denial, unknown and cross-project reference equivalence, redirect result, and fixtures.
