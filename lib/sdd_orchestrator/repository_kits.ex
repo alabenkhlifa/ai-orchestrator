@@ -24,7 +24,12 @@ defmodule SddOrchestrator.RepositoryKits do
   package is never selected or applied automatically, and building an update
   plan compares the new package against both the live repository and this
   project's currently-installed file ownership, so only files still proven
-  to be kit-owned and unchanged are ever silently overwritten.
+  to be kit-owned and unchanged are ever silently overwritten. `plan_removal/3`
+  extends the same pattern once more (AC-11): it builds a plan to remove an
+  installed kit's own files on a new isolated branch, and carries the exact
+  same guarantee in the other direction — only files still proven
+  kit-owned-and-unchanged are ever silently deleted; anything that drifted
+  since it was recorded blocks the entire removal plan instead.
   """
 
   import Ecto.Query
@@ -41,6 +46,7 @@ defmodule SddOrchestrator.RepositoryKits do
     RepositoryKitPackage,
     WorkerKitApply,
     WorkerKitComparison,
+    WorkerKitRemovalComparison,
     WorkerKitUpdateComparison
   }
 
@@ -404,6 +410,58 @@ defmodule SddOrchestrator.RepositoryKits do
     end
   end
 
+  @doc """
+  Builds and persists one worker-local `"removal"` `RepositoryKitChangePlan`
+  for a project that already has a current `RepositoryKitInstallation`
+  (AC-11).
+
+  Removal always targets the currently-installed package — there is no
+  "choose a different package to remove" concept, so unlike `plan_change/4`
+  and `plan_update/4` this takes no package id argument.
+
+  Sibling to `plan_update/4`: skips `eligible_for_kit_offer?/2` for the exact
+  same already-documented reason (removal must be available once something
+  is installed, independent of the pilot's lifecycle column), and skips
+  `matching_execution_profile/4`/`protected_paths/1` entirely — neither is
+  needed, because a protected or safety path is never a `"create"` operation
+  at install or update time, so it can never appear in a current
+  installation's `installed_files` to begin with. Refuses with
+  `{:error, :not_installed}` when the project has no *active* installation —
+  `fetch_current_installation/1` now excludes an already-`"removed"` row, so
+  removing twice is refused the same way updating an already-removed
+  installation is.
+
+  The comparison is `WorkerKitRemovalComparison.compare/5`, not
+  `WorkerKitComparison.compare/5` or `WorkerKitUpdateComparison.compare/6`:
+  it iterates the current installation's own recorded `installed_files`
+  (never the package's proposed files) and classifies each as safely
+  removable (`"delete"`), already absent (`"omit"`), or drifted since it was
+  recorded (`"conflict"`/`"drifted"`) — a file that drifted blocks the
+  entire removal plan at `apply_plan/4`, exactly as a drifted file blocks an
+  entire update plan.
+
+  `opts[:repository_path]` is required, for the same reason `plan_change/4`'s
+  and `plan_update/4`'s are.
+  """
+  @spec plan_removal(ManagedRuntimeProfile.authority(), String.t(), keyword()) ::
+          {:ok, RepositoryKitChangePlan.t()} | {:error, atom()}
+  def plan_removal(authority, project_id, opts \\ []) do
+    with {:ok, repository_path} <- fetch_repository_path(opts),
+         {:ok, installation} <- fetch_current_installation(project_id),
+         {:ok, profile_value} <- ManagedRuntimeProfile.build(authority, project_id, opts),
+         {:ok, package} <- get_package(installation.package_id),
+         {:ok, operations} <-
+           WorkerKitRemovalComparison.compare(
+             repository_path,
+             profile_value.base_revision,
+             profile_value.root,
+             package.file_manifest["files"],
+             installation.installed_files
+           ) do
+      persist_plan(authority, project_id, profile_value, package, operations, opts, "removal")
+    end
+  end
+
   ## Change-plan building (private)
 
   defp fetch_repository_path(opts) do
@@ -461,7 +519,7 @@ defmodule SddOrchestrator.RepositoryKits do
       root: profile_value.root,
       repository_provider: profile_value.repository_provider,
       repository_id: profile_value.repository_id,
-      target_branch: target_branch(package),
+      target_branch: target_branch(package, plan_type),
       operations: operations,
       expires_at: DateTime.add(now, @plan_ttl_seconds, :second),
       plan_type: plan_type
@@ -495,7 +553,16 @@ defmodule SddOrchestrator.RepositoryKits do
   # share a publisher and version string but not a source (the catalog's own
   # uniqueness is on the full `{source, publisher, version}` triple, one
   # level wider than publisher + version alone).
-  defp target_branch(package) do
+  #
+  # `plan_type` selects a distinct prefix for a `"removal"` plan (point of
+  # this branching): without it, a removal plan for an already-installed
+  # package's own `installation.package_id` would generate the exact same
+  # branch name as the install (or last update) branch that already exists
+  # in the repository, and `WorkerKitApply.apply/5`'s own
+  # `refuse_existing_branch/2` gate would then reject every removal apply
+  # with `:branch_conflict`. An `"install"` or `"update"` plan keeps the
+  # original, unprefixed-beyond-`sdd-kit/` shape unchanged.
+  defp target_branch(package, plan_type) do
     slug =
       package.publisher
       |> String.downcase()
@@ -504,8 +571,11 @@ defmodule SddOrchestrator.RepositoryKits do
 
     digest_suffix = String.slice(package.digest, 0, 8)
 
-    "sdd-kit/#{slug}-#{package.version}-#{digest_suffix}"
+    target_branch_prefix(plan_type) <> "#{slug}-#{package.version}-#{digest_suffix}"
   end
+
+  defp target_branch_prefix("removal"), do: "sdd-kit/remove-"
+  defp target_branch_prefix(_install_or_update), do: "sdd-kit/"
 
   defp read_current_plan(project_id, opts) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
@@ -530,10 +600,24 @@ defmodule SddOrchestrator.RepositoryKits do
     end
   end
 
+  # Only a genuinely active installation (`"applied"` or `"updated"`) counts
+  # here — a `"removed"` row still exists (Task 6 never deletes the record,
+  # only its files), but it is not something a further update or removal can
+  # target. `current_installation/3` (the public, viewer-facing read) is a
+  # separate concern and deliberately does not apply this filter: the
+  # LiveView still needs to see a `"removed"` row to render the removed
+  # confirmation and its branch/commit.
   defp fetch_current_installation(project_id) do
     case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
-      nil -> {:error, :not_installed}
-      installation -> {:ok, installation}
+      nil ->
+        {:error, :not_installed}
+
+      %RepositoryKitInstallation{state: state} = installation
+      when state in ["applied", "updated"] ->
+        {:ok, installation}
+
+      %RepositoryKitInstallation{} ->
+        {:error, :not_installed}
     end
   end
 
@@ -569,8 +653,14 @@ defmodule SddOrchestrator.RepositoryKits do
 
   defp persist_installation(account_id, project_id, plan, result, now) do
     case plan.plan_type do
-      "update" -> persist_update_installation(account_id, project_id, plan, result, now)
-      _install -> persist_install_installation(account_id, project_id, plan, result, now)
+      "update" ->
+        persist_transition_installation(account_id, project_id, plan, result, now, "updated")
+
+      "removal" ->
+        persist_transition_installation(account_id, project_id, plan, result, now, "removed")
+
+      _install ->
+        persist_install_installation(account_id, project_id, plan, result, now)
     end
   end
 
@@ -603,11 +693,18 @@ defmodule SddOrchestrator.RepositoryKits do
     end
   end
 
-  # Should be unreachable in practice: `plan_update/4` already refuses to
-  # build an update plan when nothing is installed, so by the time an update
-  # plan reaches `apply_plan/4` a current installation should always exist.
-  # Checked defensively anyway rather than assumed.
-  defp persist_update_installation(account_id, project_id, plan, result, now) do
+  # Should be unreachable in practice: `plan_update/4` and `plan_removal/3`
+  # already refuse to build a plan when there is no active installation, so
+  # by the time an update or removal plan reaches `apply_plan/4` a current
+  # installation should always exist. Checked defensively anyway rather than
+  # assumed. Shared by both transitions (Task 5's update and Task 6's
+  # removal) since they overwrite the exact same "current state" fields and
+  # differ only in the target `state` string — `installed_files` needs no
+  # transition-specific handling here: `result.installed_files` is already
+  # `[]` for a removal plan, since a removal plan never contains a
+  # `"create"` operation (`WorkerKitApply.apply/5` only ever returns a
+  # `file_entry` for a `"create"`).
+  defp persist_transition_installation(account_id, project_id, plan, result, now, state) do
     case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
       nil ->
         {:error, :not_installed}
@@ -625,7 +722,7 @@ defmodule SddOrchestrator.RepositoryKits do
           branch: plan.target_branch,
           result_commit: result.commit,
           installed_files: result.installed_files,
-          state: "updated",
+          state: state,
           evidence: result.evidence,
           confirmed_by_actor_ref: account_id,
           confirmed_at: now,
@@ -642,9 +739,11 @@ defmodule SddOrchestrator.RepositoryKits do
     end
   end
 
-  # A small, JSON-safe snapshot of the pre-update installation state — no
+  # A small, JSON-safe snapshot of the pre-transition installation state — no
   # absolute paths, no secrets, same evidence-hygiene rule as the `evidence`
-  # field's own.
+  # field's own. The `"event"` literal is left as `"updated"` unconditionally
+  # (not parameterized by the transition that produced this snapshot) —
+  # unchanged from Task 5, reused here exactly as-is rather than widened.
   defp installation_snapshot(%RepositoryKitInstallation{} = installation) do
     %{
       "event" => "updated",

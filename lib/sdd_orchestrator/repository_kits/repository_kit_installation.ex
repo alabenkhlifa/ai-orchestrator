@@ -15,14 +15,17 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitInstallation do
 
   Unlike `RepositoryKitPackage` and `RepositoryKitChangePlan`, this schema is
   not immutable: it carries a `state` that transitions through `"applied"`
-  (Task 4, the initial install) and `"updated"` (Task 5). There is exactly
-  one current installation row per project — `project_id` is uniquely
-  indexed — and `update_changeset/2` overwrites every "current state" field
-  in place while appending a snapshot of the pre-update state to `history`,
-  so the row's identity is stable across an update rather than replaced by a
-  new row. Removal (a later task) will extend `state` again. The database
-  allows `UPDATE` (no immutability trigger), unlike the append-only schemas
-  above, exactly so `update_changeset/2` can be applied.
+  (Task 4, the initial install), `"updated"` (Task 5), and `"removed"`
+  (Task 6). There is exactly one current installation row per project —
+  `project_id` is uniquely indexed — and `update_changeset/2` overwrites
+  every "current state" field in place while appending a snapshot of the
+  pre-transition state to `history`, so the row's identity is stable across
+  an update or a removal rather than replaced by a new row. A `"removed"`
+  installation always carries an empty `installed_files` list — a removal
+  plan never contains a `"create"` operation, so nothing remains to record
+  as currently installed. The database allows `UPDATE` (no immutability
+  trigger), unlike the append-only schemas above, exactly so
+  `update_changeset/2` can be applied.
   """
 
   use Ecto.Schema
@@ -33,7 +36,7 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitInstallation do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
-  @states ~w(applied updated)
+  @states ~w(applied updated removed)
   @commit_format ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
   @digest_format ~r/\A[0-9a-f]{64}\z/
 
@@ -167,15 +170,15 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitInstallation do
 
   @doc """
   Update changeset transitioning an existing installation to reflect a newly
-  applied `"update"` plan.
+  applied `"update"` or `"removal"` plan.
 
-  Overwrites every "current state" field with the update's new values, and
-  separately accepts a `history` list — the caller (`RepositoryKits`)
-  computes that list as a snapshot of the pre-update state prepended to the
-  existing `installation.history`; this changeset only casts, validates, and
-  persists whatever `history` it is given. `state` is expected to be
-  `"updated"` here, but any value in `@states` validates, exactly mirroring
-  `create_changeset/1`'s own discipline.
+  Overwrites every "current state" field with the transition's new values,
+  and separately accepts a `history` list — the caller (`RepositoryKits`)
+  computes that list as a snapshot of the pre-transition state prepended to
+  the existing `installation.history`; this changeset only casts, validates,
+  and persists whatever `history` it is given. `state` is expected to be
+  `"updated"` or `"removed"` here, but any value in `@states` validates,
+  exactly mirroring `create_changeset/1`'s own discipline.
   """
   @spec update_changeset(t(), map()) :: Ecto.Changeset.t()
   def update_changeset(%__MODULE__{} = installation, attrs) do

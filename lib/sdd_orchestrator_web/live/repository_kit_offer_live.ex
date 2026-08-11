@@ -34,6 +34,18 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
   plan — and, like `:plan`, re-derived from the persisted plan row on every
   reload until it is applied, so a mid-review reload never loses it — then
   applied through the same `apply_plan/4` call and `apply_plan` event.
+
+  Task 6 adds the symmetric removal workflow (AC-11). From `:installed`, the
+  owner may also start a "Remove this kit" action — independent of and
+  coexisting with the update notice above, not mutually exclusive with it —
+  building a removal plan (`RepositoryKits.plan_removal/3`) reviewed
+  read-only on the `:removal_plan` stage, re-derived from the persisted plan
+  row exactly like `:plan` and `:update_plan` are, then applied through the
+  same `apply_plan/4` call and `apply_plan` event. Once a removal plan is
+  applied, the installation's `state` becomes `"removed"` and every reload
+  renders the terminal `:removed` stage instead — checked first, ahead of
+  every other stage rule, since a removed installation is never "installed"
+  again regardless of what plan row happens to be current.
   """
   use SddOrchestratorWeb, :live_view
 
@@ -71,6 +83,9 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
   @apply_failed_message "The plan could not be applied. Nothing was changed. Try again."
 
   @update_plan_failed_message "The update plan could not be built. Nothing was stored. Try again."
+
+  @removal_plan_failed_message "The removal plan could not be built. Nothing was stored. " <>
+                                 "Try again."
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
@@ -132,10 +147,18 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     end
   end
 
+  def handle_event("build_removal_plan", _params, socket) do
+    if installed_actionable?(socket) do
+      build_removal_plan(socket)
+    else
+      {:noreply, assign(socket, :message, {:warn, @owner_only_message})}
+    end
+  end
+
   defp actionable?(%{assigns: assigns}), do: assigns.owner? and assigns.stage == :offer
 
   defp plan_actionable?(%{assigns: assigns}),
-    do: assigns.owner? and assigns.stage in [:plan, :update_plan]
+    do: assigns.owner? and assigns.stage in [:plan, :update_plan, :removal_plan]
 
   defp installed_actionable?(%{assigns: assigns}),
     do: assigns.owner? and assigns.stage == :installed
@@ -240,6 +263,30 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     end
   end
 
+  defp build_removal_plan(socket) do
+    # `opts[:repository_path]` is deliberately not supplied, for the exact
+    # same already-documented reason `build_plan/1`, `apply_plan/1`, and
+    # `build_update_plan/1` above omit it — the same accepted release-gate
+    # gap, not a new one.
+    socket.assigns.viewer
+    |> RepositoryKits.plan_removal(socket.assigns.project.id)
+    |> case do
+      {:ok, plan} ->
+        {:noreply,
+         socket
+         |> assign(:plan, plan)
+         |> assign(:stage, :removal_plan)
+         |> assign(:message, nil)}
+
+      {:error, :repository_path_required} ->
+        {:noreply, socket |> load_offer() |> assign(:message, {:warn, @no_worker_message})}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket |> load_offer() |> assign(:message, {:warn, @removal_plan_failed_message})}
+    end
+  end
+
   ## Offer state loading
 
   defp load_offer(socket) do
@@ -304,6 +351,19 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     end
   end
 
+  # A `"removed"` installation always resolves to the terminal `:removed`
+  # stage, checked first (highest precedence) regardless of what plan row
+  # happens to be current — once removal is applied there is no plan-type
+  # clause below that should ever take over again (AC-11).
+  defp stage(
+         %RepositoryKitInstallation{state: "removed"},
+         _eligible?,
+         _package,
+         _plan,
+         _declined?
+       ),
+       do: :removed
+
   # `:installed` takes precedence over the original offer/plan flow — once a
   # project has an installation, an old install-type plan no longer applies
   # to it (AC-10). A still-open *update* plan (built but not yet applied —
@@ -329,6 +389,20 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
          _declined?
        ),
        do: :update_plan
+
+  # A still-open *removal* plan (AC-11) is shown the same way: no
+  # already-applied counterpart clause is needed here (unlike `:update`'s
+  # pair above) because once a removal plan is applied, `state` becomes
+  # `"removed"` and the very first clause above already catches it before
+  # this pattern would ever be reached.
+  defp stage(
+         %RepositoryKitInstallation{},
+         _eligible?,
+         _package,
+         %RepositoryKitChangePlan{plan_type: "removal"},
+         _declined?
+       ),
+       do: :removal_plan
 
   defp stage(%RepositoryKitInstallation{}, _eligible?, _package, _plan, _declined?),
     do: :installed
@@ -460,6 +534,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
   defp group_key(%{"kind" => "create", "existing_sha256" => nil}), do: :create
   defp group_key(%{"kind" => "create"}), do: :update
+  defp group_key(%{"kind" => "delete"}), do: :delete
   defp group_key(%{"kind" => "omit"}), do: :omit
   defp group_key(%{"kind" => "conflict", "conflict_severity" => "ordinary"}), do: :ordinary
   defp group_key(%{"kind" => "conflict", "conflict_severity" => "safety"}), do: :safety
@@ -736,6 +811,24 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
               </.button>
             </div>
           </div>
+
+          <div
+            :if={@owner?}
+            class="rounded-xl border border-err-fg/40 bg-err-bg p-4 sm:p-5"
+            data-kit-remove-available
+          >
+            <h2 class="text-base font-bold text-err-fg">Remove this kit</h2>
+            <p class="mt-1 text-sm leading-relaxed text-err-fg">
+              Builds a reviewable removal plan on a new isolated branch. Only kit-owned files
+              still proven unchanged since installation are ever removed — anything modified
+              stays exactly where it is until you review it.
+            </p>
+            <div class="mt-4">
+              <.button variant="secondary" phx-click="build_removal_plan" data-build-removal-plan>
+                <.lucide name="unplug" class="size-4" /> Remove this kit
+              </.button>
+            </div>
+          </div>
         </section>
 
         <section :if={@stage == :update_plan} class="mt-6 space-y-4" data-kit-update-plan>
@@ -839,6 +932,100 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
             operations={operations(@plan, :safety)}
             data_group="safety-conflict"
           />
+        </section>
+
+        <section :if={@stage == :removal_plan} class="mt-6 space-y-4" data-kit-removal-plan>
+          <div class="rounded-xl border border-line bg-surface p-4 sm:p-5">
+            <h2 class="text-base font-bold text-ink">Exact reviewable removal plan</h2>
+            <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+              Base commit <code class="font-mono text-xs" data-plan-base-commit>{String.slice(
+                @plan.base_commit,
+                0,
+                12
+              )}</code>, target branch <code
+                class="font-mono text-xs"
+                data-plan-target-branch
+              >{@plan.target_branch}</code>. {plan_review_copy(@plan)}
+            </p>
+          </div>
+
+          <.notice :if={@plan.safety_blocked} variant="err" icon="lock">
+            <span data-kit-safety-blocked>
+              This plan is blocked. It conflicts with a fixed safety, least-privilege,
+              secret-protection, or verification requirement, and that cannot be overridden in
+              the product.
+            </span>
+          </.notice>
+
+          <.notice :if={@plan.has_ordinary_conflicts} variant="warn" icon="triangle-alert">
+            <span data-kit-ordinary-blocked>
+              This plan has conflicts that need manual resolution before it could ever be
+              applied.
+            </span>
+          </.notice>
+
+          <div
+            :if={@owner? and not @plan.safety_blocked and not @plan.has_ordinary_conflicts}
+            class="rounded-xl border border-line bg-surface p-4 sm:p-5"
+            data-kit-apply-action
+          >
+            <h2 class="text-base font-bold text-ink">Apply this removal</h2>
+            <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+              Applying creates one new isolated branch from the base commit above, removes only
+              the confirmed files, and makes one commit. It never writes to or merges into your
+              default branch — your repository's normal review process still applies afterward.
+            </p>
+            <div class="mt-4">
+              <.button phx-click="apply_plan" data-apply-plan>
+                <.lucide name="folder-git-2" class="size-4" /> Apply this removal
+              </.button>
+            </div>
+          </div>
+
+          <.operation_group
+            :if={operations(@plan, :delete) != []}
+            title="Will be removed"
+            tone="err"
+            note="Kit-owned and unchanged since installation; safe to remove."
+            operations={operations(@plan, :delete)}
+            data_group="delete"
+          />
+
+          <.operation_group
+            :if={operations(@plan, :omit) != []}
+            title="Left alone"
+            tone="neutral"
+            note="Already absent from the repository; nothing to remove."
+            operations={operations(@plan, :omit)}
+            data_group="omit"
+          />
+
+          <.operation_group
+            :if={operations(@plan, :drifted) != []}
+            title="Blocked — file was changed since installation"
+            tone="err"
+            note="This kit-owned file no longer matches what was recorded at installation. Reconcile it manually, then build a fresh update plan."
+            operations={operations(@plan, :drifted)}
+            data_group="drifted-conflict"
+          />
+        </section>
+
+        <section :if={@stage == :removed} class="mt-6 space-y-4" data-kit-removed>
+          <.empty_state icon="circle-check" title="Removed">
+            <:description>
+              Branch
+              <code
+                class="font-mono text-xs"
+                data-installation-branch
+              >{@installation.branch}</code>
+              has one commit <code class="font-mono text-xs" data-installation-commit>{String.slice(
+                @installation.result_commit,
+                0,
+                12
+              )}</code>. Nothing was merged — your repository's normal review process still
+              applies. Managed runtime SDD continues to work fully.
+            </:description>
+          </.empty_state>
         </section>
 
         <.notice :if={not @owner?} variant="info" icon="info" class="mt-6">

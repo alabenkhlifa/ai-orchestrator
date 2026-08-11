@@ -466,6 +466,182 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLiveTest do
     assert has_element?(view, ~s([data-operation-group="drifted-conflict"]))
   end
 
+  test "the Remove this kit button appears only for the owner on the installed stage", context do
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+    package = publish_package!([%{path: "NEW_FILE.md", content: "# new\n", executable: false}])
+
+    assert {:ok, plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, _installation} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, plan.id,
+               repository_path: context.repository.path
+             )
+
+    {:ok, owner_view, owner_html} = live(context.owner_conn, kit_path(context))
+    assert owner_html =~ ~s(data-kit-stage="installed")
+    assert has_element?(owner_view, "[data-build-removal-plan]")
+
+    participant = HostedAccessFixtures.hosted_identity_fixture()
+    ParticipationFixtures.participant_fixture(context.project, participant.hosted_identity)
+    conn = log_in_hosted(context.conn, participant.hosted_identity)
+    {:ok, participant_view, participant_html} = live(conn, kit_path(context))
+
+    assert participant_html =~ ~s(data-kit-stage="installed")
+    refute has_element?(participant_view, "[data-build-removal-plan]")
+  end
+
+  test "build_removal_plan honestly refuses without a resolvable worker checkout", context do
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+    package = publish_package!([%{path: "NEW_FILE.md", content: "# new\n", executable: false}])
+
+    assert {:ok, plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, _installation} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, plan.id,
+               repository_path: context.repository.path
+             )
+
+    {:ok, view, _html} = live(context.owner_conn, kit_path(context))
+
+    render_click(view, "build_removal_plan", %{})
+
+    assert view |> element("[data-kit-message]") |> render() =~ "connected worker"
+    assert render(view) =~ ~s(data-kit-stage="installed")
+    assert Repo.aggregate(RepositoryKitChangePlan, :count) == 1
+  end
+
+  test "a real removal plan renders the delete, omit, and drifted operation groups, and hides the apply button",
+       context do
+    original_branch = git!(context.repository.path, ["symbolic-ref", "--short", "HEAD"])
+
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+
+    package =
+      publish_package!([
+        %{path: "KEEP_FILE.md", content: "keep me\n", executable: false},
+        %{path: "GONE_FILE.md", content: "gone already\n", executable: false},
+        %{path: "DRIFT_FILE.md", content: "kit original\n", executable: false}
+      ])
+
+    assert {:ok, install_plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, installation1} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, install_plan.id,
+               repository_path: context.repository.path
+             )
+
+    git!(context.repository.path, ["checkout", "--quiet", original_branch])
+    git!(context.repository.path, ["merge", "--ff-only", "-q", installation1.branch])
+
+    # After the merge, simulate a hand edit and a manual deletion the owner
+    # made outside this product before reviewing the removal plan.
+    write!(context.repository.path, "DRIFT_FILE.md", "hand-edited by someone\n")
+    git!(context.repository.path, ["rm", "-q", "GONE_FILE.md"])
+    git!(context.repository.path, ["add", "DRIFT_FILE.md"])
+    git!(context.repository.path, ["commit", "-q", "-m", "user edits"])
+    edited_commit = git!(context.repository.path, ["rev-parse", "HEAD"])
+
+    approve_at!(%{context | now: DateTime.add(context.now, 60, :second)}, edited_commit)
+
+    assert {:ok, _reselection} =
+             RepositoryPilots.select(hosted(context), context.project.id, %{
+               specification_id: current.specification.id,
+               revision_id: current.revision.id
+             })
+
+    assert {:ok, removal_plan} =
+             RepositoryKits.plan_removal(hosted(context), context.project.id,
+               repository_path: context.repository.path
+             )
+
+    assert removal_plan.plan_type == "removal"
+    assert removal_plan.has_ordinary_conflicts == true
+
+    {:ok, view, html} = live(context.owner_conn, kit_path(context))
+
+    assert html =~ ~s(data-kit-stage="removal_plan")
+    assert has_element?(view, ~s([data-operation-group="delete"]))
+    assert has_element?(view, ~s([data-operation-group="omit"]))
+    assert has_element?(view, ~s([data-operation-group="drifted-conflict"]))
+    refute has_element?(view, "[data-apply-plan]")
+  end
+
+  test "the removed stage renders after a real removal apply, showing branch and commit, with no stray installed-only affordances",
+       context do
+    original_branch = git!(context.repository.path, ["symbolic-ref", "--short", "HEAD"])
+
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+    package = publish_package!([%{path: "NEW_FILE.md", content: "# new\n", executable: false}])
+
+    assert {:ok, install_plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, installation1} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, install_plan.id,
+               repository_path: context.repository.path
+             )
+
+    git!(context.repository.path, ["checkout", "--quiet", original_branch])
+    git!(context.repository.path, ["merge", "--ff-only", "-q", installation1.branch])
+    merged_commit = git!(context.repository.path, ["rev-parse", "HEAD"])
+
+    approve_at!(%{context | now: DateTime.add(context.now, 60, :second)}, merged_commit)
+
+    assert {:ok, _reselection} =
+             RepositoryPilots.select(hosted(context), context.project.id, %{
+               specification_id: current.specification.id,
+               revision_id: current.revision.id
+             })
+
+    assert {:ok, removal_plan} =
+             RepositoryKits.plan_removal(hosted(context), context.project.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, installation2} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, removal_plan.id,
+               repository_path: context.repository.path
+             )
+
+    {:ok, view, html} = live(context.owner_conn, kit_path(context))
+
+    assert html =~ ~s(data-kit-stage="removed")
+    assert has_element?(view, "[data-kit-removed]")
+    assert view |> element("[data-installation-branch]") |> render() =~ installation2.branch
+
+    assert view
+           |> element("[data-installation-commit]")
+           |> render() =~ String.slice(installation2.result_commit, 0, 12)
+
+    refute has_element?(view, "[data-build-plan]")
+    refute has_element?(view, "[data-apply-plan]")
+    refute has_element?(view, "[data-build-update-plan]")
+    refute has_element?(view, "[data-build-removal-plan]")
+  end
+
   ## Screen helpers
 
   defp kit_path(context), do: ~p"/projects/#{context.project.id}/kit"

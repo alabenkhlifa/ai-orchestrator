@@ -3,14 +3,18 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
   Worker-local, isolated-branch application of one confirmed
   `RepositoryKitChangePlan`'s exact operations.
 
-  Applies only the confirmed `"create"` operations (skipping every
-  `"omit"`), never reads a `"conflict"` operation as anything but a reason
-  to refuse via the operation allowlist, never touches a path outside the
-  confirmed root, and never runs a repository hook. Every git invocation
-  this module makes carries `-c core.hooksPath=/dev/null`, so hooks are
-  disabled for branch creation, checkout, staging, and commit alike — not
-  only the commit step — because a `post-checkout` or `pre-commit` hook is
-  equally unreviewed repository content and must never execute.
+  Applies only the confirmed `"create"` and `"delete"` operations (skipping
+  every `"omit"`), never reads a `"conflict"` operation as anything but a
+  reason to refuse via the operation allowlist, never touches a path outside
+  the confirmed root, and never runs a repository hook. A `"delete"`
+  operation (Task 6, a removal plan) removes one file already proven
+  kit-owned and unchanged since it was recorded — re-verified here, exactly
+  as a `"create"` overwrite's `existing_sha256` is, to close the same
+  plan-to-apply TOCTOU gap. Every git invocation this module makes carries
+  `-c core.hooksPath=/dev/null`, so hooks are disabled for branch creation,
+  checkout, staging, and commit alike — not only the commit step — because a
+  `post-checkout` or `pre-commit` hook is equally unreviewed repository
+  content and must never execute.
 
   This intentionally duplicates the small git primitives
   `SddOrchestrator.RepositoryKits.WorkerKitComparison` already defines
@@ -33,7 +37,7 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
   """
 
   @default_branches ~w(head main master)
-  @allowed_kinds ~w(create omit)
+  @allowed_kinds ~w(create omit delete)
   @commit_message "Apply SDD kit change plan"
 
   @type error ::
@@ -71,14 +75,14 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
          :ok <- refuse_default_branch(normalize_branch(target_branch)),
          :ok <- refuse_existing_branch(repository_root, target_branch),
          :ok <- validate_operation_kinds(operations),
-         {:ok, creates} <- validate_paths(repository_root, root, operations) do
-      apply_creates(
+         {:ok, mutations} <- validate_paths(repository_root, root, operations) do
+      apply_mutations(
         repository_root,
         root,
         target_branch,
         base_commit,
         original_ref,
-        creates,
+        mutations,
         omit_count(operations)
       )
     end
@@ -168,14 +172,15 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
 
   defp omit_count(operations), do: Enum.count(operations, &(&1["kind"] == "omit"))
 
-  ## Path and symlink containment (read-only; every "create" operation is
-  ## checked before anything is mutated, so a rejected plan creates no branch)
+  ## Path and symlink containment (read-only; every "create" and "delete"
+  ## operation is checked before anything is mutated, so a rejected plan
+  ## creates no branch)
 
   defp validate_paths(repository_root, root, operations) do
     allowed_root = expanded_root(repository_root, root)
 
     operations
-    |> Enum.filter(&(&1["kind"] == "create"))
+    |> Enum.filter(&(&1["kind"] in ["create", "delete"]))
     |> Enum.reduce_while({:ok, []}, fn operation, {:ok, acc} ->
       case validate_operation_path(repository_root, root, allowed_root, operation) do
         {:ok, target_path} -> {:cont, {:ok, [{operation, target_path} | acc]}}
@@ -183,7 +188,7 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
       end
     end)
     |> case do
-      {:ok, creates} -> {:ok, Enum.reverse(creates)}
+      {:ok, mutations} -> {:ok, Enum.reverse(mutations)}
       error -> error
     end
   end
@@ -241,26 +246,32 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
 
   ## Mutation (only ever reached once every gate above has passed)
 
-  defp apply_creates(
+  defp apply_mutations(
          repository_root,
          root,
          target_branch,
          base_commit,
          original_ref,
-         creates,
+         mutations,
          omit_count
        ) do
-    case do_apply(repository_root, root, target_branch, base_commit, creates) do
-      {:ok, result} -> {:ok, build_result(result, length(creates), omit_count)}
-      {:error, reason} -> rollback(repository_root, original_ref, target_branch, reason)
+    case do_apply(repository_root, root, target_branch, base_commit, mutations) do
+      {:ok, result} ->
+        {:ok, build_result(result, create_count(mutations), delete_count(mutations), omit_count)}
+
+      {:error, reason} ->
+        rollback(repository_root, original_ref, target_branch, reason)
     end
   end
 
-  defp do_apply(repository_root, root, target_branch, base_commit, creates) do
+  defp create_count(mutations), do: Enum.count(mutations, &(elem(&1, 0)["kind"] == "create"))
+  defp delete_count(mutations), do: Enum.count(mutations, &(elem(&1, 0)["kind"] == "delete"))
+
+  defp do_apply(repository_root, root, target_branch, base_commit, mutations) do
     with :ok <- create_branch(repository_root, target_branch, base_commit),
          :ok <- checkout_branch(repository_root, target_branch),
-         {:ok, installed_files} <- write_creates(creates),
-         :ok <- stage_and_verify(repository_root, root, installed_files),
+         {:ok, installed_files} <- write_mutations(mutations),
+         :ok <- stage_and_verify(repository_root, root, mutations),
          {:ok, committed?} <- commit_if_needed(repository_root),
          {:ok, commit} <- read_head(repository_root) do
       {:ok, %{commit: commit, installed_files: installed_files, committed?: committed?}}
@@ -284,11 +295,16 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
   # Every raised error while writing (a bad path, a permission failure, a
   # malformed base64 payload) is caught here and routed to the caller as
   # `:apply_failed` rather than left as an uncaught exception, so the
-  # surrounding `apply_creates/7` always gets a chance to roll back.
-  defp write_creates(creates) do
-    creates
+  # surrounding `apply_mutations/7` always gets a chance to roll back. Only
+  # a `"create"` writes a `file_entry` destined for the persisted
+  # `installed_files`; a `"delete"` yields no entry — a removal plan never
+  # contains a `"create"` operation, so `installed_files` naturally ends up
+  # empty without any special-casing at the caller.
+  defp write_mutations(mutations) do
+    mutations
     |> Enum.reduce_while({:ok, []}, fn {operation, target_path}, {:ok, acc} ->
-      case write_create(target_path, operation) do
+      case write_mutation(operation, target_path) do
+        {:ok, nil} -> {:cont, {:ok, acc}}
         {:ok, file_entry} -> {:cont, {:ok, [file_entry | acc]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -301,9 +317,27 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
     _error -> {:error, :apply_failed}
   end
 
+  defp write_mutation(%{"kind" => "create"} = operation, target_path),
+    do: write_create(target_path, operation)
+
+  defp write_mutation(%{"kind" => "delete"} = operation, target_path),
+    do: write_delete(target_path, operation)
+
   defp write_create(target_path, operation) do
     case verify_existing(target_path, operation["existing_sha256"]) do
       :ok -> do_write_create(target_path, operation)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # `existing_sha256` is always present for a `"delete"` operation by
+  # construction (`WorkerKitRemovalComparison` only ever emits `"delete"`
+  # once the live blob has been read and matched), so this reuses
+  # `verify_existing/2`'s non-nil clause unchanged — the same TOCTOU-closing
+  # re-read `write_create/2`'s overwrite case already relies on.
+  defp write_delete(target_path, operation) do
+    case verify_existing(target_path, operation["existing_sha256"]) do
+      :ok -> do_write_delete(target_path)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -350,8 +384,17 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
      }}
   end
 
-  defp stage_and_verify(repository_root, root, installed_files) do
-    pathspecs = Enum.map(installed_files, &git_pathspec(root, &1["path"]))
+  # sobelow_skip ["Traversal.FileModule"]
+  defp do_write_delete(target_path) do
+    File.rm!(target_path)
+    {:ok, nil}
+  end
+
+  defp stage_and_verify(repository_root, root, mutations) do
+    pathspecs =
+      Enum.map(mutations, fn {operation, _target_path} ->
+        git_pathspec(root, operation["path"])
+      end)
 
     with :ok <- git_add(repository_root, pathspecs),
          {:ok, staged} <- staged_paths(repository_root) do
@@ -406,6 +449,7 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
   defp build_result(
          %{commit: commit, installed_files: installed_files, committed?: committed?},
          create_count,
+         delete_count,
          omit_count
        ) do
     %{
@@ -415,6 +459,7 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
         "hooks_disabled" => true,
         "working_tree_clean_before_apply" => true,
         "operations_applied" => create_count,
+        "operations_deleted" => delete_count,
         "operations_omitted" => omit_count,
         "committed" => committed?
       }

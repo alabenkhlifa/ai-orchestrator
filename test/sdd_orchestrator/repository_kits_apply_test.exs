@@ -379,10 +379,15 @@ defmodule SddOrchestrator.RepositoryKitsApplyTest do
 
   describe "WorkerKitApply.apply/5 operation allowlist" do
     test "refuses a disallowed operation kind before creating any branch", context do
+      # "delete" is a genuinely allowed kind as of Task 6 (a removal plan's
+      # own operation), so it is no longer a valid example of a disallowed
+      # kind here — "rename" (never a member of `@allowed_kinds`) preserves
+      # this test's original intent unchanged: a hand-built, unsupported
+      # kind is refused before anything is touched.
       operations = [
         %{
           "path" => "NEW_FILE.md",
-          "kind" => "delete",
+          "kind" => "rename",
           "conflict_severity" => nil,
           "proposed_sha256" => sha256("x"),
           "existing_sha256" => nil,

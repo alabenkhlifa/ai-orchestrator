@@ -39,9 +39,15 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
   against the live repository tree) from an `"update"` plan (Task 5,
   compared against the currently-installed kit's own recorded file ownership
   as well as the live repository tree — see
-  `SddOrchestrator.RepositoryKits.WorkerKitUpdateComparison`). An update
+  `SddOrchestrator.RepositoryKits.WorkerKitUpdateComparison`) and a
+  `"removal"` plan (Task 6, compared only against the currently-installed
+  kit's own recorded file ownership — see
+  `SddOrchestrator.RepositoryKits.WorkerKitRemovalComparison`). An update
   introduces the `"drifted"` conflict severity: a kit-owned file whose live
-  content no longer matches what was recorded at install or last update.
+  content no longer matches what was recorded at install or last update. A
+  removal plan reuses the same `"drifted"` severity for the exact same
+  reason, and introduces the `"delete"` operation kind: a kit-owned file
+  still proven unchanged since it was recorded, safe to remove.
   """
 
   use Ecto.Schema
@@ -52,9 +58,9 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec, updated_at: false]
 
-  @kinds ~w(create omit conflict)
+  @kinds ~w(create delete omit conflict)
   @severities ~w(ordinary safety drifted)
-  @plan_types ~w(install update)
+  @plan_types ~w(install update removal)
   @commit_format ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
   @digest_format ~r/\A[0-9a-f]{64}\z/
 
@@ -153,7 +159,10 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
     if operations != [] and Enum.all?(operations, &valid_operation?/1) do
       []
     else
-      [operations: "must be a non-empty list of valid create, omit, or conflict operations"]
+      [
+        operations:
+          "must be a non-empty list of valid create, delete, omit, or conflict operations"
+      ]
     end
   end
 
