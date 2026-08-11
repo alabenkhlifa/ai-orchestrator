@@ -26,7 +26,7 @@ defmodule SddOrchestrator.SpecificationStore do
             | SddOrchestrator.Specifications.DeviceSpecificationRevision.t()
         }
 
-  @spec create(PersonalWorkspace.t(), String.t(), map(), keyword()) ::
+  @spec create(PersonalWorkspace.t() | DeviceWorkspace.t(), String.t(), map(), keyword()) ::
           {:ok, current()} | {:error, atom() | Ecto.Changeset.t()}
   def create(authority, project_id, attrs, opts \\ [])
 

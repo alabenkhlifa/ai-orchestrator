@@ -43,8 +43,17 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
        snapshot the page is currently showing
        (`RepositoryInitialization.confirmation_snapshot/1`); a changed-input
        refusal (`{:error, :plan_changed}`) reloads the plan and shows a clear
-       message rather than silently retrying. Task 4 owns what happens after
-       a successful confirmation.
+       message rather than silently retrying.
+    5. `:building_result` / `:failed` (Task 6 — AC-13, AC-14) — "Start
+       building" on the confirmed plan runs `StagingBuilder.start_run/4` ->
+       `Publisher.publish/3` -> `RepositoryInitialization.Handoff.complete/4`
+       in sequence, using a deterministic `"init:" <> plan.id` idempotency
+       key so re-clicking after a page reload is safe. A missing paired
+       worker shows an inline error without leaving `:reviewing_plan`; any
+       later pipeline failure moves to `:failed` showing its reason. Full
+       success moves to `:building_result`, showing the commit, and
+       `RepositoryInitialization.Readiness.evaluate/2`'s four independent
+       assistant/specification/agent-execution/release axes.
 
   The selected directory's real absolute path is kept only in this process's
   own `socket.assigns` for the life of this LiveView session — it is never
@@ -57,7 +66,8 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.RepositoryInitialization
-  alias SddOrchestrator.RepositoryInitialization.{Eligibility, Skeleton, SupportDispatch}
+  alias SddOrchestrator.RepositoryInitialization.{Eligibility, Handoff, Publisher, Readiness}
+  alias SddOrchestrator.RepositoryInitialization.{Skeleton, StagingBuilder, SupportDispatch}
 
   @fallback_questions %{
     "purpose" => "What are you building, in a sentence or two?",
@@ -97,6 +107,9 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
      |> assign(:worker_summary, nil)
      |> assign(:confirm_error, nil)
      |> assign(:confirmed, false)
+     |> assign(:build_error, nil)
+     |> assign(:build_result, nil)
+     |> assign(:build_readiness, nil)
      |> assign_worker_status()}
   end
 
@@ -189,6 +202,63 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
         {:noreply, assign(socket, :confirm_error, "Couldn't confirm this plan. Try again.")}
     end
   end
+
+  def handle_event("start_build", _params, socket) do
+    case worker_summary(socket.assigns.workspace.id) do
+      {:error, :no_worker} ->
+        {:noreply, assign(socket, :build_error, %{stage: :worker, reason: :no_worker})}
+
+      {:ok, worker} ->
+        run_pipeline(socket, worker)
+    end
+  end
+
+  # ---- build pipeline internals (Task 6) ----
+
+  defp run_pipeline(socket, worker) do
+    plan = socket.assigns.plan
+    idempotency_key = "init:" <> plan.id
+
+    case StagingBuilder.start_run(plan, worker.id, ["staging_write"], idempotency_key) do
+      {:ok, run} -> continue_publish(socket, run, plan)
+      error -> enter_failed(socket, error)
+    end
+  end
+
+  defp continue_publish(socket, run, plan) do
+    case Publisher.publish(run, plan, socket.assigns.target_path) do
+      {:ok, result} -> continue_handoff(socket, result, plan)
+      error -> enter_failed(socket, error)
+    end
+  end
+
+  defp continue_handoff(socket, result, plan) do
+    case Handoff.complete(result, plan, socket.assigns.workspace, socket.assigns.target_path) do
+      {:ok, result} -> enter_building_result(socket, result)
+      error -> enter_failed(socket, error)
+    end
+  end
+
+  defp enter_building_result(socket, result) do
+    readiness = Readiness.evaluate(socket.assigns.workspace, result)
+
+    {:noreply,
+     socket
+     |> assign(:step, :building_result)
+     |> assign(:build_result, result)
+     |> assign(:build_readiness, readiness)
+     |> assign(:build_error, nil)}
+  end
+
+  defp enter_failed(socket, error) do
+    {:noreply,
+     socket
+     |> assign(:step, :failed)
+     |> assign(:build_error, %{stage: :build, reason: failure_reason(error)})}
+  end
+
+  defp failure_reason({:error, reason}), do: reason
+  defp failure_reason({:error, reason, _run_or_result}), do: reason
 
   # ---- target selection internals ----
 
@@ -390,7 +460,14 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
           worker_summary={@worker_summary}
           confirm_error={@confirm_error}
           confirmed={@confirmed}
+          build_error={@build_error}
         />
+        <.building_result_step
+          :if={@step == :building_result}
+          result={@build_result}
+          readiness={@build_readiness}
+        />
+        <.failed_step :if={@step == :failed} build_error={@build_error} />
       </div>
     </.app_shell>
     """
@@ -552,6 +629,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   attr :worker_summary, :any, required: true
   attr :confirm_error, :string, default: nil
   attr :confirmed, :boolean, default: false
+  attr :build_error, :any, default: nil
 
   defp reviewing_plan_step(assigns) do
     ~H"""
@@ -569,10 +647,20 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
         </div>
       </header>
 
-      <div :if={@confirmed} class="mt-6" data-state="confirmed">
+      <div :if={@confirmed} class="mt-6 flex flex-col gap-4" data-state="confirmed">
         <.notice variant="info" icon="circle-check">
-          Plan confirmed — building the repository continues in a later step.
+          Plan confirmed. Start building to materialize, commit, and hand off the repository.
         </.notice>
+
+        <div :if={@build_error} data-build-error>
+          <.notice variant="err" icon="triangle-alert">
+            No paired worker was found. Pair a worker, then try again.
+          </.notice>
+        </div>
+
+        <.button phx-click="start_build" data-start-build class="w-full sm:w-auto">
+          Start building <.lucide name="play" class="size-4" />
+        </.button>
       </div>
 
       <div :if={!@confirmed} class="mt-6 flex flex-col gap-6">
@@ -739,6 +827,96 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
     </div>
     """
   end
+
+  attr :result, :any, required: true
+  attr :readiness, :any, required: true
+
+  defp building_result_step(assigns) do
+    ~H"""
+    <div data-step="building-result">
+      <header class="flex items-start gap-3">
+        <span class="flex-none w-11 h-11 rounded-xl bg-raised text-ink-muted flex items-center justify-center">
+          <.lucide name="building-2" class="size-5" />
+        </span>
+        <div class="min-w-0">
+          <h1 class="text-xl font-bold tracking-tight text-ink">Repository initialized</h1>
+          <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty">
+            The repository was built, committed, and handed off to normal local onboarding.
+          </p>
+        </div>
+      </header>
+
+      <div class="mt-6 flex flex-col gap-6">
+        <section data-section="commit">
+          <h2 class="text-sm font-bold text-ink">First commit</h2>
+          <dl class="mt-2 text-sm text-ink-muted grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+            <dt class="font-semibold text-ink">Commit</dt>
+            <dd data-commit-sha class="break-all">{@result.commit_sha}</dd>
+            <dt class="font-semibold text-ink">Tree</dt>
+            <dd data-tree-digest class="break-all">{@result.tree_digest}</dd>
+          </dl>
+        </section>
+
+        <section
+          data-section="readiness"
+          data-earliest-blocked-stage={@readiness.earliest_blocked_stage || "none"}
+        >
+          <h2 class="text-sm font-bold text-ink">Readiness</h2>
+          <dl class="mt-2 text-sm text-ink-muted grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+            <dt class="font-semibold text-ink">Assistant</dt>
+            <dd data-readiness-assistant={readiness_state(@readiness.assistant)}>
+              {readiness_text(@readiness.assistant)}
+            </dd>
+            <dt class="font-semibold text-ink">Specification</dt>
+            <dd data-readiness-specification={readiness_state(@readiness.specification)}>
+              {readiness_text(@readiness.specification)}
+            </dd>
+            <dt class="font-semibold text-ink">Agent execution</dt>
+            <dd data-readiness-agent-execution={readiness_state(@readiness.agent_execution)}>
+              {readiness_text(@readiness.agent_execution)}
+            </dd>
+            <dt class="font-semibold text-ink">Release</dt>
+            <dd data-readiness-release={readiness_state(@readiness.release)}>
+              {readiness_text(@readiness.release)}
+            </dd>
+          </dl>
+        </section>
+      </div>
+    </div>
+    """
+  end
+
+  attr :build_error, :any, required: true
+
+  defp failed_step(assigns) do
+    ~H"""
+    <div data-step="failed">
+      <header class="flex items-start gap-3">
+        <span class="flex-none w-11 h-11 rounded-xl bg-raised text-ink-muted flex items-center justify-center">
+          <.lucide name="triangle-alert" class="size-5" />
+        </span>
+        <div class="min-w-0">
+          <h1 class="text-xl font-bold tracking-tight text-ink">Couldn't build the repository</h1>
+          <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty">
+            Nothing else was created. Review the reason below, then try again.
+          </p>
+        </div>
+      </header>
+
+      <div class="mt-6" data-failure-reason={@build_error && @build_error.reason}>
+        <.notice variant="err" icon="triangle-alert">
+          Building the repository failed: {@build_error && @build_error.reason}.
+        </.notice>
+      </div>
+    </div>
+    """
+  end
+
+  defp readiness_state(:ready), do: "ready"
+  defp readiness_state({:blocked, _reason}), do: "blocked"
+
+  defp readiness_text(:ready), do: "Ready"
+  defp readiness_text({:blocked, reason}), do: "Blocked — #{reason}"
 
   defp worker_summary_text({:ok, worker}),
     do: "#{worker.os_family} #{worker.os_major} (worker app #{worker.app_version})"

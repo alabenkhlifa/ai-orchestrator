@@ -31,6 +31,19 @@ const AxeBuilder = require("@axe-core/playwright").default;
 // real flow and left `test.skip` (documented, not deleted) so it is ready to
 // enable once such a seam exists — do not un-skip it without adding that
 // wiring first.
+//
+// Task 6's own build-and-handoff surface (AC-13, AC-14) — "Start building"
+// running `StagingBuilder` -> `Publisher` -> `Handoff` in sequence and
+// reaching `:building_result` with the commit and the four independent
+// readiness axes, or `:failed` on a pipeline failure — is fully proven at
+// the LiveView level in `repository_initialization_live_test.exs`. It has
+// the exact same out-of-process seam limitation as Task 3's scenario above
+// (reaching the confirmed `:reviewing_plan` step at all requires the same
+// `device_worker_stub_folder` seam), plus it also requires
+// `:initialization_staging_root` to be configured for the running server —
+// another seam this Playwright harness does not have. The scenario below is
+// left `test.skip` for the same documented reason; do not un-skip it without
+// adding both seams first.
 
 // Shell-command shapes that would mean the user was asked to use a terminal.
 const TERMINAL_MARKERS = [/\bsudo\b/, /\bbrew\b/, /\bcurl\b/, /\bchmod\b/, /\bbash\b/, /\$\s/, /```/];
@@ -107,6 +120,46 @@ test.describe("empty repository initialization", () => {
 
       await page.locator("[data-confirm-plan]").click();
       await expect(page.locator("[data-state=confirmed]")).toBeVisible();
+    },
+  );
+
+  // See the file header: skipped for the same seam limitation as Task 3's
+  // scenario above, plus the additional `:initialization_staging_root`
+  // configuration the running server would need.
+  test.skip(
+    "starts the build from the confirmed plan and reaches the result step (Task 6)",
+    async ({ page }) => {
+      await page.goto("/onboarding/empty-repository");
+      await page.getByRole("button", { name: /choose folder/i }).click();
+      await page.getByRole("button", { name: /open folder picker/i }).click();
+
+      const answers = [
+        "A CLI tool",
+        "Founders",
+        "First working release",
+        "None yet",
+        "Elixir + Phoenix",
+      ];
+
+      for (const value of answers) {
+        await page.locator("#answer-value").fill(value);
+        await page.getByRole("button", { name: /continue/i }).click();
+      }
+
+      await page.locator("#kit-declined").click();
+      await page.locator("[data-confirm-plan]").click();
+      await page.locator("[data-start-build]").click();
+
+      await expect(page.locator("[data-step=building-result]")).toBeVisible();
+      await expect(page.locator("[data-commit-sha]")).not.toBeEmpty();
+      await expect(page.locator("[data-readiness-assistant]")).toHaveAttribute(
+        "data-readiness-assistant",
+        "ready",
+      );
+      await expect(page.locator("[data-readiness-release]")).toHaveAttribute(
+        "data-readiness-release",
+        "blocked",
+      );
     },
   );
 });

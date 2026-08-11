@@ -335,7 +335,106 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLiveTest do
     end
   end
 
+  describe "building the repository (Task 6)" do
+    setup do
+      base =
+        Path.join(System.tmp_dir!(), "sdd-ri-live-build-#{System.unique_integer([:positive])}")
+
+      root = Path.join(base, "staging-root")
+      File.mkdir_p!(root)
+
+      previous = Application.fetch_env(:sdd_orchestrator, :initialization_staging_root)
+      Application.put_env(:sdd_orchestrator, :initialization_staging_root, root)
+
+      on_exit(fn ->
+        case previous do
+          {:ok, value} ->
+            Application.put_env(:sdd_orchestrator, :initialization_staging_root, value)
+
+          :error ->
+            Application.delete_env(:sdd_orchestrator, :initialization_staging_root)
+        end
+
+        File.rm_rf!(base)
+      end)
+
+      :ok
+    end
+
+    test "starting the build with a paired worker reaches the result step with commit info and readiness axes",
+         %{conn: conn, workspace: workspace} do
+      view = reach_confirmed_declined(conn, workspace)
+
+      render_click(view, "start_build")
+
+      assert has_element?(view, "[data-step=building-result]")
+      refute has_element?(view, "[data-step=reviewing-plan]")
+
+      assert has_element?(view, "[data-commit-sha]")
+      assert has_element?(view, "[data-tree-digest]")
+
+      assert has_element?(view, "[data-readiness-assistant=ready]")
+      assert has_element?(view, "[data-readiness-specification=ready]")
+      assert has_element?(view, "[data-readiness-agent-execution=blocked]")
+      assert has_element?(view, "[data-readiness-release=blocked]")
+      assert has_element?(view, "[data-earliest-blocked-stage=agent_execution]")
+    end
+
+    test "starting the build without a paired worker shows the no-worker error and stays on the confirmed step",
+         %{conn: conn} do
+      dir = empty_dir_fixture()
+      on_exit(fn -> File.rm_rf!(dir) end)
+      stub_folder(dir)
+
+      {:ok, view, _html} = live(conn, ~p"/onboarding/empty-repository")
+      render_click(view, "continue_to_selection")
+      render_click(view, "select_folder")
+
+      answer(view, "purpose", "A CLI tool")
+      answer(view, "users", "Founders")
+      answer(view, "first_outcome", "First working release")
+      answer(view, "constraints", "None yet")
+      answer(view, "technical_foundation", "Elixir + Phoenix")
+
+      render_click(view, "set_kit_choice", %{"choice" => "declined"})
+      render_click(view, "confirm_plan")
+
+      render_click(view, "start_build")
+
+      assert has_element?(view, "[data-build-error]")
+      assert render(view) =~ "No paired worker was found"
+      assert has_element?(view, "[data-state=confirmed]")
+      refute has_element?(view, "[data-step=building-result]")
+      refute has_element?(view, "[data-step=failed]")
+    end
+
+    test "a pipeline failure moves to the failed step with a visible reason", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      view = reach_reviewing_plan(conn, workspace)
+
+      # The kit choice defaults to "included" with no digest and no package is
+      # published in this test, so `StagingBuilder`'s own package-availability
+      # check refuses the run instead of vendoring nothing.
+      render_click(view, "confirm_plan")
+
+      render_click(view, "start_build")
+
+      assert has_element?(view, "[data-step=failed]")
+      assert has_element?(view, "[data-failure-reason]")
+      refute has_element?(view, "[data-step=building-result]")
+    end
+  end
+
   # ---- helpers ----
+
+  defp reach_confirmed_declined(conn, workspace) do
+    view = reach_reviewing_plan(conn, workspace)
+    render_click(view, "set_kit_choice", %{"choice" => "declined"})
+    render_click(view, "confirm_plan")
+    view
+  end
 
   defp answer(view, field, value) do
     render_submit(view, "submit_answer", %{"field" => field, "value" => value})
