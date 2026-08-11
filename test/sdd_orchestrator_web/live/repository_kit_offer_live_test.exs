@@ -21,7 +21,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLiveTest do
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryAssessments
   alias SddOrchestrator.RepositoryKits
-  alias SddOrchestrator.RepositoryKits.RepositoryKitChangePlan
+  alias SddOrchestrator.RepositoryKits.{RepositoryKitChangePlan, RepositoryKitInstallation}
   alias SddOrchestrator.RepositoryPilots
   alias SddOrchestrator.SpecificationFixtures
 
@@ -240,6 +240,54 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLiveTest do
 
     assert {:error, {:live_redirect, %{to: "/projects"}}} =
              live(context.owner_conn, ~p"/projects/#{Ecto.UUID.generate()}/kit")
+  end
+
+  test "the apply action is hidden for a plan with conflicts", context do
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+
+    package = publish_package!([%{path: ".env", content: "SECRET=x\n", executable: false}])
+
+    assert {:ok, plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package.id,
+               repository_path: context.repository.path
+             )
+
+    assert plan.safety_blocked == true
+
+    {:ok, view, _html} = live(context.owner_conn, kit_path(context))
+
+    refute has_element?(view, "[data-apply-plan]")
+  end
+
+  test "the apply action appears for a clean plan and honestly refuses without a resolvable worker checkout",
+       context do
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+
+    package = publish_package!([%{path: "NEW_FILE.md", content: "# new\n", executable: false}])
+
+    assert {:ok, plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package.id,
+               repository_path: context.repository.path
+             )
+
+    refute plan.safety_blocked
+    refute plan.has_ordinary_conflicts
+
+    {:ok, view, _html} = live(context.owner_conn, kit_path(context))
+
+    assert has_element?(view, "[data-apply-plan]")
+
+    render_click(view, "apply_plan", %{})
+
+    assert view |> element("[data-kit-message]") |> render() =~ "connected worker"
+    assert render(view) =~ ~s(data-kit-stage="plan")
+    assert Repo.aggregate(RepositoryKitInstallation, :count) == 0
   end
 
   ## Screen helpers

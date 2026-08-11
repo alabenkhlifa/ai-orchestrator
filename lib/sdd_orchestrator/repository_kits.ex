@@ -14,7 +14,9 @@ defmodule SddOrchestrator.RepositoryKits do
   `plan_change/4` and `current_plan/3`, by contrast, are project-scoped and
   read/write one project's `RepositoryKitChangePlan` — see that schema's
   moduledoc for the exact comparison, persistence, and dual-authority
-  boundaries.
+  boundaries. `apply_plan/4` is likewise project-scoped: it applies one
+  owner-confirmed, conflict-free plan on a new isolated branch and persists
+  the resulting `RepositoryKitInstallation` — see that schema's moduledoc.
   """
 
   import Ecto.Query
@@ -27,7 +29,9 @@ defmodule SddOrchestrator.RepositoryKits do
 
   alias SddOrchestrator.RepositoryKits.{
     RepositoryKitChangePlan,
+    RepositoryKitInstallation,
     RepositoryKitPackage,
+    WorkerKitApply,
     WorkerKitComparison
   }
 
@@ -244,6 +248,55 @@ defmodule SddOrchestrator.RepositoryKits do
 
   def current_plan(_viewer, _project_id, _opts), do: {:error, :not_found}
 
+  @doc """
+  Applies one owner-confirmed, unexpired, conflict-free `RepositoryKitChangePlan`
+  on a new isolated branch and persists the resulting `RepositoryKitInstallation`.
+
+  Only the project owner may confirm application — business rule "Only the
+  project owner may approve installation". A `{:hosted, account_id}`
+  authority that owns the project is the only accepted shape; a
+  `{:participant, ...}` viewer (read-only for plans), a `{:device, _}`
+  authority, or anything else is refused with `{:error, :unauthorized}`
+  through a catch-all clause, mirroring `current_plan/3`'s own catch-all.
+
+  Refuses with `{:error, :plan_expired}` once `plan.expires_at` has passed
+  (compared against `opts[:now]`, defaulting to `DateTime.utc_now/0`), and
+  with `{:error, :safety_conflict_present}` or
+  `{:error, :ordinary_conflicts_present}` for a plan that still has either
+  kind of conflict (AC-06) — a conflicting plan is simply refused, never
+  overridden.
+
+  `opts[:repository_path]` is required for the exact same reason
+  `plan_change/4`'s is: it is the worker-local git checkout to apply
+  against, never derived from stored project data. Every
+  `WorkerKitApply.apply/5` error atom propagates unchanged.
+  """
+  @spec apply_plan(ManagedRuntimeProfile.authority(), String.t(), Ecto.UUID.t(), keyword()) ::
+          {:ok, RepositoryKitInstallation.t()} | {:error, atom()}
+  def apply_plan(authority, project_id, plan_id, opts \\ [])
+
+  def apply_plan({:hosted, account_id}, project_id, plan_id, opts) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    with {:ok, repository_path} <- fetch_repository_path(opts),
+         {:ok, _project} <- Participation.owned_project(account_id, project_id),
+         {:ok, plan} <- fetch_plan(project_id, plan_id),
+         :ok <- not_expired(plan, now),
+         :ok <- no_conflicts(plan),
+         {:ok, result} <-
+           WorkerKitApply.apply(
+             repository_path,
+             plan.base_commit,
+             plan.root,
+             plan.target_branch,
+             plan.operations
+           ) do
+      persist_installation(account_id, project_id, plan, result, now)
+    end
+  end
+
+  def apply_plan(_authority, _project_id, _plan_id, _opts), do: {:error, :unauthorized}
+
   ## Change-plan building (private)
 
   defp fetch_repository_path(opts) do
@@ -349,6 +402,68 @@ defmodule SddOrchestrator.RepositoryKits do
     |> case do
       nil -> {:error, :not_found}
       plan -> {:ok, plan}
+    end
+  end
+
+  ## Apply (private)
+
+  defp fetch_plan(project_id, plan_id) do
+    case Repo.get_by(RepositoryKitChangePlan, id: plan_id, project_id: project_id) do
+      nil -> {:error, :not_found}
+      plan -> {:ok, plan}
+    end
+  end
+
+  defp not_expired(plan, now) do
+    if DateTime.compare(plan.expires_at, now) == :gt,
+      do: :ok,
+      else: {:error, :plan_expired}
+  end
+
+  defp no_conflicts(plan) do
+    cond do
+      plan.safety_blocked -> {:error, :safety_conflict_present}
+      plan.has_ordinary_conflicts -> {:error, :ordinary_conflicts_present}
+      true -> :ok
+    end
+  end
+
+  defp persist_installation(account_id, project_id, plan, result, now) do
+    attrs = %{
+      id: Ecto.UUID.generate(),
+      project_id: project_id,
+      package_id: plan.package_id,
+      plan_id: plan.id,
+      package_digest: plan.package_digest,
+      profile_version: plan.profile_version,
+      base_commit: plan.base_commit,
+      root: plan.root,
+      repository_provider: plan.repository_provider,
+      repository_id: plan.repository_id,
+      branch: plan.target_branch,
+      result_commit: result.commit,
+      installed_files: result.installed_files,
+      evidence: result.evidence,
+      confirmed_by_actor_ref: account_id,
+      confirmed_at: now
+    }
+
+    attrs
+    |> RepositoryKitInstallation.create_changeset()
+    |> Repo.insert()
+    |> case do
+      {:ok, installation} -> {:ok, installation}
+      {:error, changeset} -> {:error, installation_error_atom(changeset)}
+    end
+  end
+
+  defp installation_error_atom(%Ecto.Changeset{errors: errors}) do
+    if Enum.any?(errors, fn {field, {_msg, opts}} ->
+         field == :plan_id and opts[:constraint] == :unique
+       end) do
+      :already_installed
+    else
+      :invalid_installation
     end
   end
 

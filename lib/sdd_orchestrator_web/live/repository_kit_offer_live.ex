@@ -9,11 +9,17 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
   support is explicitly a later task's job, so there is no
   `/local/projects/:id/kit` route here.
 
-  This view only presents the offer, lets the owner decline it, and renders
-  Task 2's exact plan read-only. It owns AC-01 alone: the kit is clearly
-  optional, and declining leaves managed runtime SDD available. It never
-  applies, confirms, or installs anything — that is a later task's explicit
-  job, so no "Apply" control exists anywhere on this screen.
+  This view presents the offer, lets the owner decline it, renders Task 2's
+  exact plan read-only, and — new in Task 4 — lets the owner apply a
+  conflict-free plan on a new isolated branch through
+  `RepositoryKits.apply_plan/4`. It still owns AC-01 alone (the kit is
+  clearly optional, and declining leaves managed runtime SDD available); the
+  apply control itself is Task 4's AC-06/AC-07/AC-08 surface. The "Apply this
+  plan" action only ever appears for the owner and only when the current
+  plan has no safety or ordinary conflict — a conflicting plan stays exactly
+  as read-only as before, and `apply_plan/4` itself refuses defensively even
+  if this screen's button were somehow reached anyway (stale DOM, event
+  replay).
   """
   use SddOrchestratorWeb, :live_view
 
@@ -34,6 +40,15 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
                               "SDD is unaffected."
 
   @plan_failed_message "The plan could not be built. Nothing was stored. Try again."
+
+  @plan_expired_message "This plan expired. Review the plan again before applying."
+
+  @conflict_blocks_apply_message "This plan has a conflict that blocks application. Resolve " <>
+                                   "it before it can be applied."
+
+  @already_installed_message "This plan was already applied."
+
+  @apply_failed_message "The plan could not be applied. Nothing was changed. Try again."
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
@@ -79,7 +94,55 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     end
   end
 
+  def handle_event("apply_plan", _params, socket) do
+    if plan_actionable?(socket) do
+      apply_plan(socket)
+    else
+      {:noreply, assign(socket, :message, {:warn, @owner_only_message})}
+    end
+  end
+
   defp actionable?(%{assigns: assigns}), do: assigns.owner? and assigns.stage == :offer
+
+  defp plan_actionable?(%{assigns: assigns}), do: assigns.owner? and assigns.stage == :plan
+
+  defp apply_plan(socket) do
+    # `opts[:repository_path]` is deliberately not supplied, for the exact
+    # same reason `build_plan/1` above omits it: no code path in this
+    # codebase resolves a worker-local repository checkout directory
+    # synchronously inside a hosted LiveView process yet. This calls
+    # `apply_plan/4` for real and lets its own `fetch_repository_path/1`
+    # step refuse with the atom it already defines for "no path was given"
+    # — the same already-declared release-gate gap `build_plan/1` surfaces,
+    # not a new one invented here.
+    socket.assigns.viewer
+    |> RepositoryKits.apply_plan(socket.assigns.project.id, socket.assigns.plan.id)
+    |> case do
+      {:ok, installation} ->
+        {:noreply,
+         socket
+         |> assign(:installation, installation)
+         |> assign(:stage, :applied)
+         |> assign(:message, nil)}
+
+      {:error, :repository_path_required} ->
+        {:noreply, socket |> load_offer() |> assign(:message, {:warn, @no_worker_message})}
+
+      {:error, :plan_expired} ->
+        {:noreply, socket |> load_offer() |> assign(:message, {:warn, @plan_expired_message})}
+
+      {:error, reason} when reason in [:safety_conflict_present, :ordinary_conflicts_present] ->
+        {:noreply,
+         socket |> load_offer() |> assign(:message, {:warn, @conflict_blocks_apply_message})}
+
+      {:error, :already_installed} ->
+        {:noreply,
+         socket |> load_offer() |> assign(:message, {:warn, @already_installed_message})}
+
+      {:error, _reason} ->
+        {:noreply, socket |> load_offer() |> assign(:message, {:warn, @apply_failed_message})}
+    end
+  end
 
   defp build_plan(socket) do
     # `opts[:repository_path]` is deliberately not supplied. No code path in
@@ -257,6 +320,21 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
   ## Plan rendering helpers
 
+  defp plan_review_copy(%{safety_blocked: true}),
+    do:
+      "This is a read-only review. This plan is blocked by a safety conflict and cannot be " <>
+        "applied."
+
+  defp plan_review_copy(%{has_ordinary_conflicts: true}),
+    do:
+      "This is a read-only review. This plan has conflicts that need manual resolution and " <>
+        "cannot be applied automatically."
+
+  defp plan_review_copy(_plan),
+    do:
+      "Review the exact plan below, then apply it on a new isolated branch when you're ready " <>
+        "— nothing is applied automatically."
+
   defp operations(plan, group), do: Enum.filter(plan.operations, &(group_key(&1) == group))
 
   defp group_key(%{"kind" => "create"}), do: :create
@@ -407,9 +485,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
               )}</code>, target branch <code
                 class="font-mono text-xs"
                 data-plan-target-branch
-              >{@plan.target_branch}</code>.
-              This is a read-only review — nothing has been applied, and no apply action exists
-              on this screen.
+              >{@plan.target_branch}</code>. {plan_review_copy(@plan)}
             </p>
           </div>
 
@@ -427,6 +503,25 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
               applied.
             </span>
           </.notice>
+
+          <div
+            :if={@owner? and not @plan.safety_blocked and not @plan.has_ordinary_conflicts}
+            class="rounded-xl border border-line bg-surface p-4 sm:p-5"
+            data-kit-apply-action
+          >
+            <h2 class="text-base font-bold text-ink">Apply this plan</h2>
+            <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+              Applying creates one new isolated branch from the base commit above, writes only
+              the confirmed operations, and makes one commit. It never writes to or merges into
+              your default branch — your repository's normal review process still applies
+              afterward.
+            </p>
+            <div class="mt-4">
+              <.button phx-click="apply_plan" data-apply-plan>
+                <.lucide name="folder-git-2" class="size-4" /> Apply this plan
+              </.button>
+            </div>
+          </div>
 
           <.operation_group
             :if={operations(@plan, :create) != []}
@@ -462,6 +557,37 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
             operations={operations(@plan, :safety)}
             data_group="safety-conflict"
           />
+        </section>
+
+        <section :if={@stage == :applied} class="mt-6 space-y-4" data-kit-applied>
+          <.empty_state icon="circle-check" title="Applied to a new branch">
+            <:description>
+              Branch
+              <code
+                class="font-mono text-xs"
+                data-installation-branch
+              >{@installation.branch}</code>
+              now has one commit <code class="font-mono text-xs" data-installation-commit>{String.slice(
+                @installation.result_commit,
+                0,
+                12
+              )}</code>. Nothing was merged — your repository's normal review process still
+              applies.
+            </:description>
+          </.empty_state>
+
+          <div class="rounded-xl border border-line bg-surface p-4 sm:p-5">
+            <h3 class="text-sm font-bold text-ink">Installed files</h3>
+            <ul class="mt-2 space-y-1">
+              <li
+                :for={file <- @installation.installed_files}
+                class="break-all font-mono text-xs text-ink-muted"
+                data-installation-file
+              >
+                {file["path"]}
+              </li>
+            </ul>
+          </div>
         </section>
 
         <.notice :if={not @owner?} variant="info" icon="info" class="mt-6">
