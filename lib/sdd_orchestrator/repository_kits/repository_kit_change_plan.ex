@@ -34,6 +34,14 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
   `RepositoryKits.plan_change/4` refuses a device authority at the
   persistence step with `{:error, :unsupported_authority}` rather than
   silently writing device-authoritative content into hosted PostgreSQL.
+
+  `plan_type` distinguishes an initial `"install"` plan (Task 2, compared
+  against the live repository tree) from an `"update"` plan (Task 5,
+  compared against the currently-installed kit's own recorded file ownership
+  as well as the live repository tree — see
+  `SddOrchestrator.RepositoryKits.WorkerKitUpdateComparison`). An update
+  introduces the `"drifted"` conflict severity: a kit-owned file whose live
+  content no longer matches what was recorded at install or last update.
   """
 
   use Ecto.Schema
@@ -45,7 +53,8 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
   @timestamps_opts [type: :utc_datetime_usec, updated_at: false]
 
   @kinds ~w(create omit conflict)
-  @severities ~w(ordinary safety)
+  @severities ~w(ordinary safety drifted)
+  @plan_types ~w(install update)
   @commit_format ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
   @digest_format ~r/\A[0-9a-f]{64}\z/
 
@@ -68,7 +77,8 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
     :operations,
     :safety_blocked,
     :has_ordinary_conflicts,
-    :expires_at
+    :expires_at,
+    :plan_type
   ]
 
   @required_fields [
@@ -102,6 +112,7 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
     field :safety_blocked, :boolean, default: false
     field :has_ordinary_conflicts, :boolean, default: false
     field :expires_at, :utc_datetime_usec
+    field :plan_type, :string, default: "install"
 
     timestamps()
   end
@@ -126,12 +137,14 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
     |> validate_format(:base_commit, @commit_format)
     |> validate_format(:package_digest, @digest_format)
     |> validate_change(:operations, &validate_operations/2)
+    |> validate_inclusion(:plan_type, @plan_types)
     |> derive_summary_flags()
     |> check_constraint(:profile_version,
       name: :repository_kit_change_plans_profile_version_positive
     )
     |> check_constraint(:base_commit, name: :repository_kit_change_plans_commit_shape)
     |> check_constraint(:package_digest, name: :repository_kit_change_plans_digest_shape)
+    |> check_constraint(:plan_type, name: :repository_kit_change_plans_plan_type_shape)
     |> foreign_key_constraint(:project_id)
     |> foreign_key_constraint(:package_id)
   end
@@ -177,7 +190,7 @@ defmodule SddOrchestrator.RepositoryKits.RepositoryKitChangePlan do
         )
         |> put_change(
           :has_ordinary_conflicts,
-          Enum.any?(operations, &(&1["conflict_severity"] == "ordinary"))
+          Enum.any?(operations, &(&1["conflict_severity"] in ["ordinary", "drifted"]))
         )
 
       _invalid ->

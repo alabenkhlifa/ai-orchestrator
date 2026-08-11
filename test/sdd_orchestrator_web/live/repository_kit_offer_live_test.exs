@@ -290,6 +290,182 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLiveTest do
     assert Repo.aggregate(RepositoryKitInstallation, :count) == 0
   end
 
+  test "the installed stage renders after a real apply, showing branch, commit, and installed files",
+       context do
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+    package = publish_package!([%{path: "NEW_FILE.md", content: "# new\n", executable: false}])
+
+    assert {:ok, plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, installation} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, plan.id,
+               repository_path: context.repository.path
+             )
+
+    {:ok, view, html} = live(context.owner_conn, kit_path(context))
+
+    assert html =~ ~s(data-kit-stage="installed")
+    assert has_element?(view, "[data-kit-installed]")
+    assert view |> element("[data-installation-branch]") |> render() =~ installation.branch
+
+    assert view
+           |> element("[data-installation-commit]")
+           |> render() =~ String.slice(installation.result_commit, 0, 12)
+
+    assert has_element?(view, "[data-installation-file]")
+    refute has_element?(view, "[data-build-plan]")
+    refute has_element?(view, "[data-apply-plan]")
+  end
+
+  test "the newer-version notice and Review update button appear only when a newer package exists and only for the owner",
+       context do
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+    package1 = publish_package!([%{path: "NEW_FILE.md", content: "# new\n", executable: false}])
+
+    assert {:ok, plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package1.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, _installation} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, plan.id,
+               repository_path: context.repository.path
+             )
+
+    {:ok, _owner_view, owner_html_before} = live(context.owner_conn, kit_path(context))
+    refute owner_html_before =~ "data-kit-update-available"
+
+    package2 =
+      publish_package_fixture(%{scripts: [], version: "1.1.0"}, [
+        %{path: "SECOND_FILE.md", content: "second\n", executable: false}
+      ])
+
+    {:ok, owner_view, owner_html} = live(context.owner_conn, kit_path(context))
+    assert owner_html =~ "data-kit-update-available"
+    assert has_element?(owner_view, "[data-build-update-plan]")
+
+    assert owner_view
+           |> element("[data-kit-update-version]")
+           |> render() =~ package2.version
+
+    participant = HostedAccessFixtures.hosted_identity_fixture()
+    ParticipationFixtures.participant_fixture(context.project, participant.hosted_identity)
+    conn = log_in_hosted(context.conn, participant.hosted_identity)
+    {:ok, participant_view, participant_html} = live(conn, kit_path(context))
+
+    assert participant_html =~ ~s(data-kit-stage="installed")
+    refute participant_html =~ "data-kit-update-available"
+    refute has_element?(participant_view, "[data-build-update-plan]")
+  end
+
+  test "build_update_plan honestly refuses without a resolvable worker checkout", context do
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+    package1 = publish_package!([%{path: "NEW_FILE.md", content: "# new\n", executable: false}])
+
+    assert {:ok, plan} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package1.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, _installation} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, plan.id,
+               repository_path: context.repository.path
+             )
+
+    publish_package_fixture(%{scripts: [], version: "1.1.0"}, [
+      %{path: "SECOND_FILE.md", content: "second\n", executable: false}
+    ])
+
+    {:ok, view, _html} = live(context.owner_conn, kit_path(context))
+
+    render_click(view, "build_update_plan", %{})
+
+    assert view |> element("[data-kit-message]") |> render() =~ "connected worker"
+    assert render(view) =~ ~s(data-kit-stage="installed")
+    assert Repo.aggregate(RepositoryKitChangePlan, :count) == 1
+  end
+
+  test "the apply button is hidden on the update_plan stage when the plan has a drifted conflict",
+       context do
+    original_branch = git!(context.repository.path, ["symbolic-ref", "--short", "HEAD"])
+
+    approve!(context)
+    current = hosted_specification!(context)
+    select_pilot!(context, current)
+    link_feature!(context, current.specification.id, "ready_for_review")
+
+    package1 =
+      publish_package!([%{path: "KIT_FILE.md", content: "kit v1\n", executable: false}])
+
+    assert {:ok, plan1} =
+             RepositoryKits.plan_change(hosted(context), context.project.id, package1.id,
+               repository_path: context.repository.path
+             )
+
+    assert {:ok, installation1} =
+             RepositoryKits.apply_plan(hosted(context), context.project.id, plan1.id,
+               repository_path: context.repository.path
+             )
+
+    # Simulate the owner merging the reviewed install branch through the
+    # repository's own normal review process, then a hand edit afterward.
+    git!(context.repository.path, ["checkout", "--quiet", original_branch])
+    git!(context.repository.path, ["merge", "--ff-only", "-q", installation1.branch])
+
+    write!(context.repository.path, "KIT_FILE.md", "hand-edited by someone\n")
+    git!(context.repository.path, ["add", "KIT_FILE.md"])
+    git!(context.repository.path, ["commit", "-q", "-m", "user edit"])
+    edited_commit = git!(context.repository.path, ["rev-parse", "HEAD"])
+
+    # A fresh assessment approval binds a new execution-profile version at
+    # this post-hand-edit live commit, and the pilot is re-pinned to it.
+    #
+    # `RepositoryAssessment.pending/2` stamps `inserted_at` from the
+    # caller-supplied `now` verbatim (not from real insert-time), and
+    # `AssessmentStore.latest/2` breaks an `inserted_at` tie on `id desc` —
+    # a random UUID comparison. Reusing the frozen `context.now` from
+    # `approve!/1` above for this second approval would tie their
+    # `inserted_at` and make "latest assessment" non-deterministic; a
+    # strictly later `now` avoids that tie.
+    approve_at!(%{context | now: DateTime.add(context.now, 60, :second)}, edited_commit)
+
+    assert {:ok, _reselection} =
+             RepositoryPilots.select(hosted(context), context.project.id, %{
+               specification_id: current.specification.id,
+               revision_id: current.revision.id
+             })
+
+    package2 =
+      publish_package_fixture(%{scripts: [], version: "1.1.0"}, [
+        %{path: "KIT_FILE.md", content: "kit v2\n", executable: false}
+      ])
+
+    assert {:ok, update_plan} =
+             RepositoryKits.plan_update(hosted(context), context.project.id, package2.id,
+               repository_path: context.repository.path
+             )
+
+    assert update_plan.has_ordinary_conflicts == true
+
+    {:ok, view, html} = live(context.owner_conn, kit_path(context))
+
+    assert html =~ ~s(data-kit-stage="update_plan")
+    refute has_element?(view, "[data-apply-plan]")
+    assert has_element?(view, ~s([data-operation-group="drifted-conflict"]))
+  end
+
   ## Screen helpers
 
   defp kit_path(context), do: ~p"/projects/#{context.project.id}/kit"
@@ -433,6 +609,104 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLiveTest do
                repository_id: context.project.canonical_repository_id,
                root: ".",
                commit: context.repository.commit,
+               scanner_contract_digest: @scanner_digest,
+               disclosure_digest: @disclosure_digest,
+               worker_ref: Ecto.UUID.generate(),
+               nonce: Ecto.UUID.generate(),
+               issued_at: context.now,
+               expires_at: DateTime.add(context.now, 120, :second)
+             })
+
+    assert {:ok, pending} = RepositoryAssessment.pending(preparation, context.now)
+    assert {:ok, stored} = AssessmentStore.put(hosted(context), pending)
+    stored
+  end
+
+  ## Second-approval fixtures (Task 5 only) — `approve!/1` above is hardcoded
+  ## to `context.repository.commit`, used by every other test in this file.
+  ## A drifted-conflict update scenario needs a *second* approved profile at
+  ## a different, later live commit, so this duplicates the same three-step
+  ## chain parameterized by commit rather than widening the shared helper
+  ## every other test here depends on.
+  defp approve_at!(context, commit) do
+    completed = complete_at!(context, commit)
+
+    assert {:ok, review} =
+             RepositoryAssessments.profile_review(hosted(context), completed.project_id)
+
+    assert {:ok, profile} =
+             RepositoryAssessments.approve_profile(
+               hosted(context),
+               completed.project_id,
+               review.proposal
+             )
+
+    profile
+  end
+
+  defp complete_at!(context, commit) do
+    pending = put_pending_at!(context, commit)
+    assert {:ok, command} = RepositoryAssessment.command(pending)
+
+    scan = %{
+      protocol_version: command.version,
+      assessment_id: command.assessment_id,
+      project_id: command.project_id,
+      repository: %{provider: command.repository_provider, id: command.repository_id},
+      root: command.root,
+      commit: command.commit,
+      scanner_contract_digest: command.scanner_contract_digest,
+      status: "completed",
+      findings: @instruction_findings,
+      structure: [],
+      stats: %{
+        discovered_paths: length(@instruction_findings),
+        inspected_files: length(@instruction_findings),
+        bytes_read: Enum.reduce(@instruction_findings, 0, &(&1.bytes + &2))
+      }
+    }
+
+    assert {:ok, result} = RepositoryAssessmentResult.completed(command, scan)
+
+    assert {:ok, payload} =
+             RepositoryExecutionProfileProposalPayload.new(result, @proposal_fields)
+
+    assert {:ok, envelope} =
+             WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
+
+    {:ok, cache_key_sha256} = RepositoryAssessmentCacheProvenance.cache_key_sha256(command)
+    {:ok, evidence_sha256} = RepositoryAssessmentCacheProvenance.evidence_sha256(result)
+
+    assert {:ok, provenance} =
+             RepositoryAssessmentCacheProvenance.new(%{
+               source: "fresh_scan",
+               cache_key_sha256: cache_key_sha256,
+               evidence_sha256: evidence_sha256,
+               cache_stored: true
+             })
+
+    assert {:ok, completed} =
+             RepositoryAssessments.finish_assessment(
+               hosted(context),
+               pending.project_id,
+               command,
+               result,
+               provenance,
+               now: context.now,
+               proposal_envelope: envelope
+             )
+
+    completed
+  end
+
+  defp put_pending_at!(context, commit) do
+    assert {:ok, preparation} =
+             RepositoryBindingPreparation.new(%{
+               project_id: context.project.id,
+               repository_provider: context.project.repository_provider,
+               repository_id: context.project.canonical_repository_id,
+               root: ".",
+               commit: commit,
                scanner_contract_digest: @scanner_digest,
                disclosure_digest: @disclosure_digest,
                worker_ref: Ecto.UUID.generate(),

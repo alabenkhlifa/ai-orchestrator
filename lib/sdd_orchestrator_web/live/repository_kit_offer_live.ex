@@ -20,12 +20,32 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
   as read-only as before, and `apply_plan/4` itself refuses defensively even
   if this screen's button were somehow reached anyway (stale DOM, event
   replay).
+
+  Task 5 adds a persistent `:installed` stage, derived from
+  `RepositoryKits.current_installation/3` every time `load_offer/1` runs, so
+  "just applied" and "reload the page after installing" render through the
+  exact same code path — the transient `:applied` stage Task 4 introduced is
+  gone. `:installed` takes precedence over the original offer/plan flow:
+  once a project has an installation, an old install-type plan no longer
+  applies to it. From `:installed`, the owner may see an informational "a
+  newer version is available" notice (AC-10 — never selected or applied
+  automatically) and build an update plan (`RepositoryKits.plan_update/4`),
+  reviewed read-only on the `:update_plan` stage exactly like an install
+  plan — and, like `:plan`, re-derived from the persisted plan row on every
+  reload until it is applied, so a mid-review reload never loses it — then
+  applied through the same `apply_plan/4` call and `apply_plan` event.
   """
   use SddOrchestratorWeb, :live_view
 
   alias SddOrchestrator.Participation
   alias SddOrchestrator.RepositoryKits
-  alias SddOrchestrator.RepositoryKits.{RepositoryKitChangePlan, RepositoryKitPackage}
+
+  alias SddOrchestrator.RepositoryKits.{
+    RepositoryKitChangePlan,
+    RepositoryKitInstallation,
+    RepositoryKitPackage
+  }
+
   alias SddOrchestrator.RepositoryPilots
 
   @max_preview_bytes 20_000
@@ -49,6 +69,8 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
   @already_installed_message "This plan was already applied."
 
   @apply_failed_message "The plan could not be applied. Nothing was changed. Try again."
+
+  @update_plan_failed_message "The update plan could not be built. Nothing was stored. Try again."
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
@@ -102,9 +124,21 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     end
   end
 
+  def handle_event("build_update_plan", _params, socket) do
+    if installed_actionable?(socket) do
+      build_update_plan(socket)
+    else
+      {:noreply, assign(socket, :message, {:warn, @owner_only_message})}
+    end
+  end
+
   defp actionable?(%{assigns: assigns}), do: assigns.owner? and assigns.stage == :offer
 
-  defp plan_actionable?(%{assigns: assigns}), do: assigns.owner? and assigns.stage == :plan
+  defp plan_actionable?(%{assigns: assigns}),
+    do: assigns.owner? and assigns.stage in [:plan, :update_plan]
+
+  defp installed_actionable?(%{assigns: assigns}),
+    do: assigns.owner? and assigns.stage == :installed
 
   defp apply_plan(socket) do
     # `opts[:repository_path]` is deliberately not supplied, for the exact
@@ -118,12 +152,8 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     socket.assigns.viewer
     |> RepositoryKits.apply_plan(socket.assigns.project.id, socket.assigns.plan.id)
     |> case do
-      {:ok, installation} ->
-        {:noreply,
-         socket
-         |> assign(:installation, installation)
-         |> assign(:stage, :applied)
-         |> assign(:message, nil)}
+      {:ok, _installation} ->
+        {:noreply, socket |> load_offer() |> assign(:message, nil)}
 
       {:error, :repository_path_required} ->
         {:noreply, socket |> load_offer() |> assign(:message, {:warn, @no_worker_message})}
@@ -180,6 +210,36 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     end
   end
 
+  defp build_update_plan(socket) do
+    case newer_package(socket.assigns.installation) do
+      nil ->
+        {:noreply,
+         socket |> load_offer() |> assign(:message, {:warn, @update_plan_failed_message})}
+
+      package ->
+        # `opts[:repository_path]` is deliberately not supplied, for the exact
+        # same already-documented reason `build_plan/1` and `apply_plan/1`
+        # above omit it — the same accepted release-gate gap, not a new one.
+        socket.assigns.viewer
+        |> RepositoryKits.plan_update(socket.assigns.project.id, package.id)
+        |> case do
+          {:ok, plan} ->
+            {:noreply,
+             socket
+             |> assign(:plan, plan)
+             |> assign(:stage, :update_plan)
+             |> assign(:message, nil)}
+
+          {:error, :repository_path_required} ->
+            {:noreply, socket |> load_offer() |> assign(:message, {:warn, @no_worker_message})}
+
+          {:error, _reason} ->
+            {:noreply,
+             socket |> load_offer() |> assign(:message, {:warn, @update_plan_failed_message})}
+        end
+    end
+  end
+
   ## Offer state loading
 
   defp load_offer(socket) do
@@ -191,13 +251,15 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     eligible? = eligible?(pilot, project_id)
     package = current_package()
     plan = stored_plan(viewer, project_id)
+    installation = stored_installation(viewer, project_id)
 
     socket
     |> assign(:pilot, pilot)
     |> assign(:package, package)
     |> assign(:eligible?, eligible?)
     |> assign(:plan, plan)
-    |> assign(:stage, stage(eligible?, package, plan, declined?))
+    |> assign(:installation, installation)
+    |> assign(:stage, stage(installation, eligible?, package, plan, declined?))
   end
 
   defp stored_pilot(viewer, project_id) do
@@ -235,11 +297,60 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
     end
   end
 
-  defp stage(_eligible?, _package, %RepositoryKitChangePlan{}, _declined?), do: :plan
-  defp stage(false, _package, nil, _declined?), do: :not_yet_eligible
-  defp stage(true, nil, nil, _declined?), do: :not_yet_eligible
-  defp stage(true, %RepositoryKitPackage{}, nil, true), do: :declined
-  defp stage(true, %RepositoryKitPackage{}, nil, false), do: :offer
+  defp stored_installation(viewer, project_id) do
+    case RepositoryKits.current_installation(viewer, project_id) do
+      {:ok, installation} -> installation
+      {:error, :not_found} -> nil
+    end
+  end
+
+  # `:installed` takes precedence over the original offer/plan flow — once a
+  # project has an installation, an old install-type plan no longer applies
+  # to it (AC-10). A still-open *update* plan (built but not yet applied —
+  # its `id` has not yet become this installation's own `plan_id`) is the one
+  # exception: it is the more specific, more relevant thing to show, and
+  # showing it here — re-derived from the persisted plan row on every
+  # `load_offer/1`, exactly like `:plan` already is — is what makes it safe
+  # to reload the page mid-review without losing the reviewed update plan.
+  defp stage(
+         %RepositoryKitInstallation{plan_id: installed_plan_id},
+         _eligible?,
+         _package,
+         %RepositoryKitChangePlan{plan_type: "update", id: installed_plan_id},
+         _declined?
+       ),
+       do: :installed
+
+  defp stage(
+         %RepositoryKitInstallation{},
+         _eligible?,
+         _package,
+         %RepositoryKitChangePlan{plan_type: "update"},
+         _declined?
+       ),
+       do: :update_plan
+
+  defp stage(%RepositoryKitInstallation{}, _eligible?, _package, _plan, _declined?),
+    do: :installed
+
+  defp stage(nil, _eligible?, _package, %RepositoryKitChangePlan{}, _declined?), do: :plan
+  defp stage(nil, false, _package, nil, _declined?), do: :not_yet_eligible
+  defp stage(nil, true, nil, nil, _declined?), do: :not_yet_eligible
+  defp stage(nil, true, %RepositoryKitPackage{}, nil, true), do: :declined
+  defp stage(nil, true, %RepositoryKitPackage{}, nil, false), do: :offer
+
+  # The one non-superseded newer package for this installation's own package,
+  # or `nil`. Informational only (AC-10) — computing it never mutates
+  # anything; only an explicit `build_update_plan` click does.
+  defp newer_package(%RepositoryKitInstallation{} = installation) do
+    case RepositoryKits.get_package(installation.package_id) do
+      {:ok, current_package} ->
+        RepositoryKits.superseded_by(current_package, RepositoryKits.list_packages())
+
+      {:error, :not_found} ->
+        nil
+    end
+  end
 
   ## Context loading — mirrors `RepositoryPilotLive`'s hosted branch exactly.
   ## This route is hosted-only (see moduledoc), so there is no action to
@@ -337,10 +448,22 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
   defp operations(plan, group), do: Enum.filter(plan.operations, &(group_key(&1) == group))
 
-  defp group_key(%{"kind" => "create"}), do: :create
+  # The `:plan` stage's own "New files" group folds `:create` and `:update`
+  # back together: at install time (`WorkerKitComparison`) a "create" whose
+  # `existing_sha256` happens to be present only ever means "identical
+  # content already present" (a harmless no-op), never "will be updated" —
+  # that distinction only exists for an update plan's kit-owned comparison.
+  # Combining here keeps every install-time create operation visible in the
+  # exact reviewable diff rather than silently dropped because it now
+  # group-keys as `:update`.
+  defp plan_create_operations(plan), do: operations(plan, :create) ++ operations(plan, :update)
+
+  defp group_key(%{"kind" => "create", "existing_sha256" => nil}), do: :create
+  defp group_key(%{"kind" => "create"}), do: :update
   defp group_key(%{"kind" => "omit"}), do: :omit
   defp group_key(%{"kind" => "conflict", "conflict_severity" => "ordinary"}), do: :ordinary
   defp group_key(%{"kind" => "conflict", "conflict_severity" => "safety"}), do: :safety
+  defp group_key(%{"kind" => "conflict", "conflict_severity" => "drifted"}), do: :drifted
 
   defp show_content?(%{"kind" => "omit"}), do: false
   defp show_content?(_operation), do: true
@@ -524,10 +647,10 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
           </div>
 
           <.operation_group
-            :if={operations(@plan, :create) != []}
+            :if={plan_create_operations(@plan) != []}
             title="New files"
             tone="ok"
-            operations={operations(@plan, :create)}
+            operations={plan_create_operations(@plan)}
             data_group="create"
           />
 
@@ -559,15 +682,15 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
           />
         </section>
 
-        <section :if={@stage == :applied} class="mt-6 space-y-4" data-kit-applied>
-          <.empty_state icon="circle-check" title="Applied to a new branch">
+        <section :if={@stage == :installed} class="mt-6 space-y-4" data-kit-installed>
+          <.empty_state icon="circle-check" title="Installed">
             <:description>
               Branch
               <code
                 class="font-mono text-xs"
                 data-installation-branch
               >{@installation.branch}</code>
-              now has one commit <code class="font-mono text-xs" data-installation-commit>{String.slice(
+              has one commit <code class="font-mono text-xs" data-installation-commit>{String.slice(
                 @installation.result_commit,
                 0,
                 12
@@ -588,6 +711,134 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
               </li>
             </ul>
           </div>
+
+          <% newer_package = newer_package(@installation) %>
+          <div
+            :if={@owner? and newer_package}
+            class="rounded-xl border border-line bg-surface p-4 sm:p-5"
+            data-kit-update-available
+          >
+            <div class="flex items-start gap-3">
+              <span class="rounded-lg bg-info-bg p-2 text-info-fg">
+                <.lucide name="refresh-cw" class="size-5" />
+              </span>
+              <div class="min-w-0">
+                <h2 class="text-base font-bold text-ink">A newer version is available</h2>
+                <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+                  <span class="font-mono text-xs" data-kit-update-version>v{newer_package.version}</span>
+                  is available. Nothing changes until you review and apply an update plan.
+                </p>
+              </div>
+            </div>
+            <div class="mt-4">
+              <.button phx-click="build_update_plan" data-build-update-plan>
+                <.lucide name="search" class="size-4" /> Review update
+              </.button>
+            </div>
+          </div>
+        </section>
+
+        <section :if={@stage == :update_plan} class="mt-6 space-y-4" data-kit-update-plan>
+          <div class="rounded-xl border border-line bg-surface p-4 sm:p-5">
+            <h2 class="text-base font-bold text-ink">Exact reviewable update plan</h2>
+            <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+              Base commit <code class="font-mono text-xs" data-plan-base-commit>{String.slice(
+                @plan.base_commit,
+                0,
+                12
+              )}</code>, target branch <code
+                class="font-mono text-xs"
+                data-plan-target-branch
+              >{@plan.target_branch}</code>. {plan_review_copy(@plan)}
+            </p>
+          </div>
+
+          <.notice :if={@plan.safety_blocked} variant="err" icon="lock">
+            <span data-kit-safety-blocked>
+              This plan is blocked. It conflicts with a fixed safety, least-privilege,
+              secret-protection, or verification requirement, and that cannot be overridden in
+              the product.
+            </span>
+          </.notice>
+
+          <.notice :if={@plan.has_ordinary_conflicts} variant="warn" icon="triangle-alert">
+            <span data-kit-ordinary-blocked>
+              This plan has conflicts that need manual resolution before it could ever be
+              applied.
+            </span>
+          </.notice>
+
+          <div
+            :if={@owner? and not @plan.safety_blocked and not @plan.has_ordinary_conflicts}
+            class="rounded-xl border border-line bg-surface p-4 sm:p-5"
+            data-kit-apply-action
+          >
+            <h2 class="text-base font-bold text-ink">Apply this update</h2>
+            <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+              Applying creates one new isolated branch from the base commit above, writes only
+              the confirmed operations, and makes one commit. It never writes to or merges into
+              your default branch — your repository's normal review process still applies
+              afterward.
+            </p>
+            <div class="mt-4">
+              <.button phx-click="apply_plan" data-apply-plan>
+                <.lucide name="folder-git-2" class="size-4" /> Apply this update
+              </.button>
+            </div>
+          </div>
+
+          <.operation_group
+            :if={operations(@plan, :create) != []}
+            title="New files"
+            tone="ok"
+            operations={operations(@plan, :create)}
+            data_group="create"
+          />
+
+          <.operation_group
+            :if={operations(@plan, :update) != []}
+            title="Will be updated"
+            tone="ok"
+            note="Kit-owned and unchanged since installation; content will be updated to the new version."
+            operations={operations(@plan, :update)}
+            data_group="update"
+          />
+
+          <.operation_group
+            :if={operations(@plan, :omit) != []}
+            title="Left alone"
+            tone="neutral"
+            note="Protected by your existing repository instructions."
+            operations={operations(@plan, :omit)}
+            data_group="omit"
+          />
+
+          <.operation_group
+            :if={operations(@plan, :ordinary) != []}
+            title="Needs manual resolution"
+            tone="warn"
+            note="These exist with different content already. Nothing is applied automatically."
+            operations={operations(@plan, :ordinary)}
+            data_group="ordinary-conflict"
+          />
+
+          <.operation_group
+            :if={operations(@plan, :drifted) != []}
+            title="Blocked — file was changed since installation"
+            tone="err"
+            note="This kit-owned file no longer matches what was recorded at installation. Reconcile it manually, then build a fresh update plan."
+            operations={operations(@plan, :drifted)}
+            data_group="drifted-conflict"
+          />
+
+          <.operation_group
+            :if={operations(@plan, :safety) != []}
+            title="Blocked — cannot be overridden"
+            tone="err"
+            note="These paths match a protected safety, secret, or credential pattern."
+            operations={operations(@plan, :safety)}
+            data_group="safety-conflict"
+          />
         </section>
 
         <.notice :if={not @owner?} variant="info" icon="info" class="mt-6">

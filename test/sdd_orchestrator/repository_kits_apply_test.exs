@@ -322,7 +322,7 @@ defmodule SddOrchestrator.RepositoryKitsApplyTest do
       assert %{plan_id: ["has already been taken"]} = errors_on(changeset)
     end
 
-    test "apply_plan/4 maps a duplicate insert of the same plan row to :already_installed",
+    test "apply_plan/4 is idempotent for a repeat call with the same plan_id, even after its branch is removed out from under it",
          context do
       %{plan: plan} = build_plan!(context, default_files())
 
@@ -331,18 +331,28 @@ defmodule SddOrchestrator.RepositoryKitsApplyTest do
                  repository_path: context.repository.path
                )
 
-      # WorkerKitApply itself refuses a naive replay onto the still-existing
-      # branch with :branch_conflict — idempotent re-apply is explicitly
-      # Task 5's job (AC-09). To isolate this task's own unique-constraint
-      # safety net against an accidental duplicate insert of the exact same
-      # plan row, remove the branch out from under the next attempt first.
+      # Superseded by Task 5's idempotent-replay short-circuit (AC-09): this
+      # test used to delete the branch out from under the next attempt to
+      # defeat WorkerKitApply's own natural `:branch_conflict` refusal, so
+      # the flow would reach this schema's unique-constraint safety net and
+      # observe the `:already_installed` mapping. `apply_plan/4` now
+      # short-circuits on a repeat `plan_id` before ever reaching
+      # `WorkerKitApply` or that constraint, so a repeat call succeeds
+      # idempotently regardless of what happened to the branch — exactly
+      # the behavior this test's own prior comment already anticipated
+      # ("idempotent re-apply is explicitly Task 5's job (AC-09)"). The
+      # unique-constraint safety net itself is unaffected by this change and
+      # remains covered directly by the sibling test above.
       git!(context.repository.path, ["checkout", "--quiet", plan.base_commit])
       git!(context.repository.path, ["branch", "-D", installation.branch])
 
-      assert {:error, :already_installed} =
+      assert {:ok, replay} =
                RepositoryKits.apply_plan(hosted(context), context.project.id, plan.id,
                  repository_path: context.repository.path
                )
+
+      assert replay.id == installation.id
+      refute branch_exists?(context.repository.path, installation.branch)
     end
   end
 

@@ -16,7 +16,15 @@ defmodule SddOrchestrator.RepositoryKits do
   moduledoc for the exact comparison, persistence, and dual-authority
   boundaries. `apply_plan/4` is likewise project-scoped: it applies one
   owner-confirmed, conflict-free plan on a new isolated branch and persists
-  the resulting `RepositoryKitInstallation` — see that schema's moduledoc.
+  the resulting `RepositoryKitInstallation` — see that schema's moduledoc —
+  and is idempotent: retrying the exact same confirmed plan returns the
+  already-persisted installation unchanged rather than mutating the
+  repository a second time. `plan_update/4` and `current_installation/3`
+  extend the same pattern for an already-installed project: a newer catalog
+  package is never selected or applied automatically, and building an update
+  plan compares the new package against both the live repository and this
+  project's currently-installed file ownership, so only files still proven
+  to be kit-owned and unchanged are ever silently overwritten.
   """
 
   import Ecto.Query
@@ -32,7 +40,8 @@ defmodule SddOrchestrator.RepositoryKits do
     RepositoryKitInstallation,
     RepositoryKitPackage,
     WorkerKitApply,
-    WorkerKitComparison
+    WorkerKitComparison,
+    WorkerKitUpdateComparison
   }
 
   @max_files 500
@@ -249,6 +258,40 @@ defmodule SddOrchestrator.RepositoryKits do
   def current_plan(_viewer, _project_id, _opts), do: {:error, :not_found}
 
   @doc """
+  Reads the project's current kit installation, if any — the one row a
+  project may have, now that `project_id` is uniquely indexed.
+
+  Mirrors `current_plan/3`'s exact authorization shape: a `{:hosted,
+  account_id}` owner or a `{:participant, account_id, hosted_identity_id}`
+  visible viewer may read it; anything else, including a device viewer,
+  returns `{:error, :not_found}` rather than disclosing why.
+  """
+  @spec current_installation(
+          {:hosted, Ecto.UUID.t()}
+          | {:device, term()}
+          | {:participant, Ecto.UUID.t() | nil, Ecto.UUID.t()},
+          String.t(),
+          keyword()
+        ) :: {:ok, RepositoryKitInstallation.t()} | {:error, :not_found}
+  def current_installation(viewer, project_id, opts \\ [])
+
+  def current_installation({:hosted, account_id}, project_id, _opts) do
+    case Participation.owned_project(account_id, project_id) do
+      {:ok, _project} -> read_current_installation(project_id)
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  def current_installation({:participant, account_id, hosted_identity_id}, project_id, _opts) do
+    case Participation.visible_project(project_id, account_id, hosted_identity_id) do
+      {:ok, _project, _role} -> read_current_installation(project_id)
+      _unauthorized -> {:error, :not_found}
+    end
+  end
+
+  def current_installation(_viewer, _project_id, _opts), do: {:error, :not_found}
+
+  @doc """
   Applies one owner-confirmed, unexpired, conflict-free `RepositoryKitChangePlan`
   on a new isolated branch and persists the resulting `RepositoryKitInstallation`.
 
@@ -259,12 +302,23 @@ defmodule SddOrchestrator.RepositoryKits do
   authority, or anything else is refused with `{:error, :unauthorized}`
   through a catch-all clause, mirroring `current_plan/3`'s own catch-all.
 
-  Refuses with `{:error, :plan_expired}` once `plan.expires_at` has passed
-  (compared against `opts[:now]`, defaulting to `DateTime.utc_now/0`), and
-  with `{:error, :safety_conflict_present}` or
+  Idempotent (AC-09): once this exact `plan_id` already has a persisted
+  installation, a retry returns that same installation unchanged without
+  touching the repository again or re-running the expiry or conflict gates
+  — the repository was already mutated once for this plan, and only a
+  changed input (a different plan, from a fresh comparison) should ever
+  cause a further mutation. Otherwise refuses with `{:error, :plan_expired}`
+  once `plan.expires_at` has passed (compared against `opts[:now]`,
+  defaulting to `DateTime.utc_now/0`), and with
+  `{:error, :safety_conflict_present}` or
   `{:error, :ordinary_conflicts_present}` for a plan that still has either
   kind of conflict (AC-06) — a conflicting plan is simply refused, never
   overridden.
+
+  Plan-type aware: an `"install"` plan inserts a new `RepositoryKitInstallation`
+  row; an `"update"` plan (AC-10, from `plan_update/4`) updates the project's
+  existing row in place via `RepositoryKitInstallation.update_changeset/2`,
+  recording a snapshot of the pre-update state in `history`.
 
   `opts[:repository_path]` is required for the exact same reason
   `plan_change/4`'s is: it is the worker-local git checkout to apply
@@ -280,22 +334,75 @@ defmodule SddOrchestrator.RepositoryKits do
 
     with {:ok, repository_path} <- fetch_repository_path(opts),
          {:ok, _project} <- Participation.owned_project(account_id, project_id),
-         {:ok, plan} <- fetch_plan(project_id, plan_id),
-         :ok <- not_expired(plan, now),
-         :ok <- no_conflicts(plan),
-         {:ok, result} <-
-           WorkerKitApply.apply(
-             repository_path,
-             plan.base_commit,
-             plan.root,
-             plan.target_branch,
-             plan.operations
-           ) do
-      persist_installation(account_id, project_id, plan, result, now)
+         {:ok, plan} <- fetch_plan(project_id, plan_id) do
+      case fetch_installation_by_plan(plan.id) do
+        {:ok, installation} ->
+          {:ok, installation}
+
+        {:error, :not_found} ->
+          with :ok <- not_expired(plan, now),
+               :ok <- no_conflicts(plan),
+               {:ok, result} <-
+                 WorkerKitApply.apply(
+                   repository_path,
+                   plan.base_commit,
+                   plan.root,
+                   plan.target_branch,
+                   plan.operations
+                 ) do
+            persist_installation(account_id, project_id, plan, result, now)
+          end
+      end
     end
   end
 
   def apply_plan(_authority, _project_id, _plan_id, _opts), do: {:error, :unauthorized}
+
+  @doc """
+  Builds and persists one worker-local `"update"` `RepositoryKitChangePlan`
+  for a project that already has a current `RepositoryKitInstallation`.
+
+  Sibling to `plan_change/4`, reusing everything that applies and skipping
+  the pilot-eligibility gate: `eligible_for_kit_offer?/2` governs only the
+  *initial* offer, and an update is available once something is installed,
+  independent of the pilot's lifecycle column. Refuses with
+  `{:error, :not_installed}` when the project has no current installation —
+  business rule "a newer available version is information only until the
+  owner starts an explicit update" (AC-10): there is nothing to update yet.
+  Otherwise propagates `ManagedRuntimeProfile.build/3`'s own refusals
+  unchanged, exactly as `plan_change/4` does.
+
+  The comparison is `WorkerKitUpdateComparison.compare/6`, not
+  `WorkerKitComparison.compare/5`: it additionally compares against the
+  current installation's own recorded `installed_files`, so a file this
+  project's kit already owns and that changed live since installation
+  produces a `"drifted"` conflict rather than being silently overwritten.
+
+  `opts[:repository_path]` is required, for the same reason `plan_change/4`'s
+  is.
+  """
+  @spec plan_update(ManagedRuntimeProfile.authority(), String.t(), Ecto.UUID.t(), keyword()) ::
+          {:ok, RepositoryKitChangePlan.t()} | {:error, atom()}
+  def plan_update(authority, project_id, new_package_id, opts \\ []) do
+    with {:ok, repository_path} <- fetch_repository_path(opts),
+         {:ok, installation} <- fetch_current_installation(project_id),
+         {:ok, profile_value} <- ManagedRuntimeProfile.build(authority, project_id, opts),
+         {:ok, execution_profile} <-
+           matching_execution_profile(authority, project_id, profile_value, opts),
+         {:ok, package} <- get_package(new_package_id),
+         protected_paths <- protected_paths(execution_profile),
+         {:ok, operations} <-
+           WorkerKitUpdateComparison.compare(
+             repository_path,
+             profile_value.base_revision,
+             profile_value.root,
+             package.file_manifest["files"],
+             protected_paths,
+             installation.installed_files
+           ) do
+      persist_plan(authority, project_id, profile_value, package, operations, opts, "update")
+    end
+  end
 
   ## Change-plan building (private)
 
@@ -333,7 +440,15 @@ defmodule SddOrchestrator.RepositoryKits do
     |> MapSet.new()
   end
 
-  defp persist_plan(authority, project_id, profile_value, package, operations, opts) do
+  defp persist_plan(
+         authority,
+         project_id,
+         profile_value,
+         package,
+         operations,
+         opts,
+         plan_type \\ "install"
+       ) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
     attrs = %{
@@ -348,7 +463,8 @@ defmodule SddOrchestrator.RepositoryKits do
       repository_id: profile_value.repository_id,
       target_branch: target_branch(package),
       operations: operations,
-      expires_at: DateTime.add(now, @plan_ttl_seconds, :second)
+      expires_at: DateTime.add(now, @plan_ttl_seconds, :second),
+      plan_type: plan_type
     }
 
     case authority do
@@ -405,12 +521,35 @@ defmodule SddOrchestrator.RepositoryKits do
     end
   end
 
+  ## Installation reads (private)
+
+  defp read_current_installation(project_id) do
+    case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
+      nil -> {:error, :not_found}
+      installation -> {:ok, installation}
+    end
+  end
+
+  defp fetch_current_installation(project_id) do
+    case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
+      nil -> {:error, :not_installed}
+      installation -> {:ok, installation}
+    end
+  end
+
   ## Apply (private)
 
   defp fetch_plan(project_id, plan_id) do
     case Repo.get_by(RepositoryKitChangePlan, id: plan_id, project_id: project_id) do
       nil -> {:error, :not_found}
       plan -> {:ok, plan}
+    end
+  end
+
+  defp fetch_installation_by_plan(plan_id) do
+    case Repo.get_by(RepositoryKitInstallation, plan_id: plan_id) do
+      nil -> {:error, :not_found}
+      installation -> {:ok, installation}
     end
   end
 
@@ -429,6 +568,13 @@ defmodule SddOrchestrator.RepositoryKits do
   end
 
   defp persist_installation(account_id, project_id, plan, result, now) do
+    case plan.plan_type do
+      "update" -> persist_update_installation(account_id, project_id, plan, result, now)
+      _install -> persist_install_installation(account_id, project_id, plan, result, now)
+    end
+  end
+
+  defp persist_install_installation(account_id, project_id, plan, result, now) do
     attrs = %{
       id: Ecto.UUID.generate(),
       project_id: project_id,
@@ -455,6 +601,61 @@ defmodule SddOrchestrator.RepositoryKits do
       {:ok, installation} -> {:ok, installation}
       {:error, changeset} -> {:error, installation_error_atom(changeset)}
     end
+  end
+
+  # Should be unreachable in practice: `plan_update/4` already refuses to
+  # build an update plan when nothing is installed, so by the time an update
+  # plan reaches `apply_plan/4` a current installation should always exist.
+  # Checked defensively anyway rather than assumed.
+  defp persist_update_installation(account_id, project_id, plan, result, now) do
+    case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
+      nil ->
+        {:error, :not_installed}
+
+      current ->
+        attrs = %{
+          package_id: plan.package_id,
+          package_digest: plan.package_digest,
+          plan_id: plan.id,
+          profile_version: plan.profile_version,
+          base_commit: plan.base_commit,
+          root: plan.root,
+          repository_provider: plan.repository_provider,
+          repository_id: plan.repository_id,
+          branch: plan.target_branch,
+          result_commit: result.commit,
+          installed_files: result.installed_files,
+          state: "updated",
+          evidence: result.evidence,
+          confirmed_by_actor_ref: account_id,
+          confirmed_at: now,
+          history: [installation_snapshot(current) | current.history]
+        }
+
+        current
+        |> RepositoryKitInstallation.update_changeset(attrs)
+        |> Repo.update()
+        |> case do
+          {:ok, installation} -> {:ok, installation}
+          {:error, changeset} -> {:error, installation_error_atom(changeset)}
+        end
+    end
+  end
+
+  # A small, JSON-safe snapshot of the pre-update installation state — no
+  # absolute paths, no secrets, same evidence-hygiene rule as the `evidence`
+  # field's own.
+  defp installation_snapshot(%RepositoryKitInstallation{} = installation) do
+    %{
+      "event" => "updated",
+      "package_id" => installation.package_id,
+      "package_digest" => installation.package_digest,
+      "plan_id" => installation.plan_id,
+      "branch" => installation.branch,
+      "result_commit" => installation.result_commit,
+      "state" => installation.state,
+      "confirmed_at" => DateTime.to_iso8601(installation.confirmed_at)
+    }
   end
 
   defp installation_error_atom(%Ecto.Changeset{errors: errors}) do

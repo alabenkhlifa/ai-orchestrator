@@ -301,25 +301,53 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitApply do
     _error -> {:error, :apply_failed}
   end
 
-  # sobelow_skip ["Traversal.FileModule"]
   defp write_create(target_path, operation) do
-    if File.exists?(target_path) and is_nil(operation["existing_sha256"]) do
-      {:error, :unexpected_file}
-    else
-      content = Base.decode64!(operation["proposed_content_base64"])
-      File.mkdir_p!(Path.dirname(target_path))
-      File.write!(target_path, content)
-      mode = if operation["proposed_executable"], do: 0o755, else: 0o644
-      File.chmod!(target_path, mode)
-
-      {:ok,
-       %{
-         "path" => operation["path"],
-         "sha256" => content |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower),
-         "size" => byte_size(content),
-         "executable" => !!operation["proposed_executable"]
-       }}
+    case verify_existing(target_path, operation["existing_sha256"]) do
+      :ok -> do_write_create(target_path, operation)
+      {:error, reason} -> {:error, reason}
     end
+  end
+
+  # No `existing_sha256` was expected: any file already at this path — of any
+  # content — is unexpected.
+  defp verify_existing(target_path, nil) do
+    if File.exists?(target_path), do: {:error, :unexpected_file}, else: :ok
+  end
+
+  # `existing_sha256` was expected: the live file must still hold exactly
+  # that content at apply time, not merely have existed at plan time. Between
+  # planning and this owner-confirmed apply (up to the plan's 15-minute
+  # expiry window), the live file could have changed again — re-verifying
+  # here closes that TOCTOU gap for the genuine-overwrite case (update, where
+  # `existing_sha256` differs from the proposed content) exactly as strictly
+  # as the no-file-expected case already refuses an unexpected file.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp verify_existing(target_path, expected_sha256) do
+    case File.read(target_path) do
+      {:ok, content} ->
+        actual = content |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower)
+        if actual == expected_sha256, do: :ok, else: {:error, :unexpected_file}
+
+      {:error, _reason} ->
+        {:error, :unexpected_file}
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp do_write_create(target_path, operation) do
+    content = Base.decode64!(operation["proposed_content_base64"])
+    File.mkdir_p!(Path.dirname(target_path))
+    File.write!(target_path, content)
+    mode = if operation["proposed_executable"], do: 0o755, else: 0o644
+    File.chmod!(target_path, mode)
+
+    {:ok,
+     %{
+       "path" => operation["path"],
+       "sha256" => content |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower),
+       "size" => byte_size(content),
+       "executable" => !!operation["proposed_executable"]
+     }}
   end
 
   defp stage_and_verify(repository_root, root, installed_files) do
