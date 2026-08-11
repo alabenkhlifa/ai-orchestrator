@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Task 1 is complete: `Feature` gained its owner-only `specification_id` link, uniqueness constraint, and `capability:guided-delivery-feature-specification-link` is ready. Task 2 is complete: the owner-facing link control is live on the feature detail screen. Both tasks in this slice are now done; the Verification Gate (full `mix check`, browser matrix, production proof, validators) has not yet run.
+Both tasks are complete and the Verification Gate has passed, with one documented exception: `mix test`'s full run hits 4 pre-existing, unrelated failures (`LocalWorkerRuntimeProjectionTest`, `Participation.AcceptanceTest`, `RevocationConsumerTest`, `InvitationAcceptanceLiveTest`) proven via clean-checkout reproduction to be unrelated to this slice — see `progress.md`. Implementation and local-verification readiness are complete. Release readiness remains open (no release gates declared for this slice; deployment-specific evidence, if any, belongs to the consuming slice).
 
 ## Active Slice
 
@@ -86,17 +86,17 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
-- [ ] Link, unlink, uniqueness, authorization, and capability-read suites pass.
-- [ ] LiveView and browser scenarios pass.
-- [ ] `mix check` and all explicit project code-quality commands pass.
-- [ ] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
-- [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
-- [ ] Specification validator and global capability graph pass.
+- [x] Acceptance criteria pass.
+- [x] Link, unlink, uniqueness, authorization, and capability-read suites pass.
+- [x] LiveView and browser scenarios pass.
+- [x] `mix check` and all explicit project code-quality commands pass, with one documented exception: `mix test`'s full run carries 4 pre-existing, unrelated failures proven (via clean-checkout reproduction) to predate this slice — see `progress.md`. `format`, `compile --warnings-as-errors`, `credo --strict`, `dialyzer`, `deps.audit`, and `sobelow --config` all pass cleanly with no exception.
+- [x] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
+- [x] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
+- [x] Specification validator and global capability graph pass.
 
 ## Blocked Decisions
 
-- None. Both tasks are complete; the slice is ready for its Verification Gate.
+- None. Both tasks are complete and the slice is Verified.
 
 ## Progress Log
 
