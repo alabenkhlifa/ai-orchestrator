@@ -4,7 +4,7 @@
 
 In Progress
 
-The product and design agreements are approved. This slice no longer depends on `capability:local-worker-run-execution` (specs/33): that capability's gateway credential, command, and manifest contract are hard-bound to an existing project and channel topic, and cannot exist before this slice's own project creation (Task 7). Task 1 now builds a project-independent dispatch foundation of its own, reusing `capability:workspace-bound-local-worker-authorization` (specs/02 Task 3, ready) for worker authorization and the existing `WorkerProtocol`/`ProtocolCodec`/`AgentAdapter` code as a library, without touching specs/33's schema or contract. Tasks 1 and 2 are complete. `capability:sdd-kit-package` (Task 3's requirement, provider `specs/15-repository-sdd-kit-integration#Task 1`) is ready again as of 2026-08-11: that task's implementation was cherry-picked from its own slice branch onto `main` ahead of the rest of specs/15 (specs/15 Task 2 remains separately blocked on `capability:guided-delivery-feature-specification-link`), and this branch has rebased onto that `main`. No task has an unresolved external-capability blocker; remaining sequencing is this slice's own `Depends on:` chain.
+The product and design agreements are approved. This slice no longer depends on `capability:local-worker-run-execution` (specs/33): that capability's gateway credential, command, and manifest contract are hard-bound to an existing project and channel topic, and cannot exist before this slice's own project creation (Task 7). Task 1 now builds a project-independent dispatch foundation of its own, reusing `capability:workspace-bound-local-worker-authorization` (specs/02 Task 3, ready) for worker authorization and the existing `WorkerProtocol`/`ProtocolCodec`/`AgentAdapter` code as a library, without touching specs/33's schema or contract. Tasks 1 through 3 are complete. `capability:sdd-kit-package` (Task 3's requirement, provider `specs/15-repository-sdd-kit-integration#Task 1`) was cherry-picked from its own slice branch onto `main` ahead of the rest of specs/15 (specs/15 Task 2 remains separately blocked on `capability:guided-delivery-feature-specification-link`), and this branch rebased onto that `main` before Task 3 started. Task 3's plan skeleton (structure, commands, checks, Git behavior) is a fixed, deterministic constant, not generated from the technical-foundation answer — an explicit product decision (2026-08-11) to avoid inventing an unproven structured-output contract from a coding-agent turn; see `progress.md`. No task has an unresolved external-capability blocker; remaining sequencing is this slice's own `Depends on:` chain.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-initialization plan/run surfaces (`RepositoryInitializationPlan`, `RepositoryInitializationRun`, `InitializationDispatch`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -88,7 +88,7 @@ Traceability:
   - Owns: AC-01, AC-02, AC-03, entity:RepositoryInitializationPlan
   - Proof: Focused empty, unborn, non-empty, existing-commit, opaque-path, support-tool denial, plan-version, decision-gate, LiveView, and browser tests pass.
 
-- [ ] Task 3 — Present the exact plan and capture confirmation.
+- [x] Task 3 — Present the exact plan and capture confirmation.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2

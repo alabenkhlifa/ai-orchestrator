@@ -28,8 +28,23 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
        static fallback question otherwise; either way, the field can only be
        accepted through the user's own submitted answer
        (`RepositoryInitialization.answer_field/3`), which enforces the same
-       decision gate a second time. Reaching `"ready"` ends this task's flow;
-       Task 3 owns what happens next.
+       decision gate a second time.
+    4. `:reviewing_plan` (Task 3 — AC-04, AC-05, AC-06) — reached once the
+       plan's `current_field` reaches `"ready"`. Renders the fixed skeleton
+       (`RepositoryInitialization.Skeleton.content/0`), the default kit
+       package and its include/decline toggle
+       (`RepositoryInitialization.default_kit/1` /
+       `set_kit_choice/2`), the worker/provider summary
+       (`Devices.Pairing.active_workers/1` and
+       `SupportDispatch.provider_preview/1`), and the processing-boundary
+       disclosure (`RepositoryInitialization.disclose_processing_boundary/1`,
+       called once on entry into this step, gating the confirm control).
+       Confirming calls `RepositoryInitialization.confirm_plan/2` with the
+       snapshot the page is currently showing
+       (`RepositoryInitialization.confirmation_snapshot/1`); a changed-input
+       refusal (`{:error, :plan_changed}`) reloads the plan and shows a clear
+       message rather than silently retrying. Task 4 owns what happens after
+       a successful confirmation.
 
   The selected directory's real absolute path is kept only in this process's
   own `socket.assigns` for the life of this LiveView session — it is never
@@ -42,7 +57,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.RepositoryInitialization
-  alias SddOrchestrator.RepositoryInitialization.{Eligibility, SupportDispatch}
+  alias SddOrchestrator.RepositoryInitialization.{Eligibility, Skeleton, SupportDispatch}
 
   @fallback_questions %{
     "purpose" => "What are you building, in a sentence or two?",
@@ -77,6 +92,11 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
      |> assign(:plan, nil)
      |> assign(:question_text, nil)
      |> assign(:answer_error, nil)
+     |> assign(:kit_default, nil)
+     |> assign(:provider_preview, nil)
+     |> assign(:worker_summary, nil)
+     |> assign(:confirm_error, nil)
+     |> assign(:confirmed, false)
      |> assign_worker_status()}
   end
 
@@ -147,6 +167,29 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
     end
   end
 
+  def handle_event("set_kit_choice", %{"choice" => choice}, socket) do
+    case RepositoryInitialization.set_kit_choice(socket.assigns.plan, choice) do
+      {:ok, plan} ->
+        {:noreply, socket |> assign(:plan, plan) |> assign(:confirm_error, nil)}
+
+      {:error, :no_kit_available} ->
+        {:noreply, assign(socket, :confirm_error, "No kit package is available to include.")}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :confirm_error, "Couldn't update the kit choice. Try again.")}
+    end
+  end
+
+  def handle_event("confirm_plan", _params, socket) do
+    case RepositoryInitialization.confirmation_snapshot(socket.assigns.plan) do
+      {:ok, snapshot} ->
+        confirm_with_snapshot(socket, snapshot)
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :confirm_error, "Couldn't confirm this plan. Try again.")}
+    end
+  end
+
   # ---- target selection internals ----
 
   defp classify_target(socket, path) do
@@ -204,11 +247,11 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
 
     case plan.current_field do
       "ready" ->
-        assign(socket, :question_text, nil)
+        enter_reviewing_plan(socket)
 
       field ->
         text = dispatched_or_fallback_question(plan, socket.assigns[:current_account], field)
-        assign(socket, :question_text, text)
+        socket |> assign(:step, :guided_questions) |> assign(:question_text, text)
     end
   end
 
@@ -220,6 +263,70 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   end
 
   defp field_label(field), do: Map.fetch!(@field_labels, field)
+
+  # ---- plan-review internals (Task 3) ----
+
+  defp enter_reviewing_plan(socket) do
+    plan =
+      case RepositoryInitialization.disclose_processing_boundary(socket.assigns.plan) do
+        {:ok, disclosed_plan} -> disclosed_plan
+        {:error, _reason} -> socket.assigns.plan
+      end
+
+    socket
+    |> assign(:step, :reviewing_plan)
+    |> assign(:plan, plan)
+    |> assign(:confirm_error, nil)
+    |> assign(:confirmed, false)
+    |> refresh_reviewing_assigns()
+  end
+
+  defp refresh_reviewing_assigns(socket) do
+    socket
+    |> assign(:kit_default, RepositoryInitialization.default_kit())
+    |> assign(
+      :provider_preview,
+      SupportDispatch.provider_preview(socket.assigns[:current_account])
+    )
+    |> assign(:worker_summary, worker_summary(socket.assigns.workspace.id))
+  end
+
+  defp worker_summary(device_workspace_id) do
+    case Pairing.active_workers(device_workspace_id) do
+      [worker | _rest] -> {:ok, worker}
+      [] -> {:error, :no_worker}
+    end
+  end
+
+  defp confirm_with_snapshot(socket, snapshot) do
+    case RepositoryInitialization.confirm_plan(socket.assigns.plan, snapshot) do
+      {:ok, confirmed_plan} ->
+        {:noreply,
+         socket
+         |> assign(:plan, confirmed_plan)
+         |> assign(:confirmed, true)
+         |> assign(:confirm_error, nil)}
+
+      {:error, :plan_changed} ->
+        {:noreply,
+         socket
+         |> reload_reviewing_plan()
+         |> assign(
+           :confirm_error,
+           "This plan changed since you last reviewed it. Review it again before confirming."
+         )}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :confirm_error, "Couldn't confirm this plan. Try again.")}
+    end
+  end
+
+  defp reload_reviewing_plan(socket) do
+    case RepositoryInitialization.get_plan(socket.assigns.plan.id) do
+      {:ok, plan} -> socket |> assign(:plan, plan) |> refresh_reviewing_assigns()
+      {:error, _reason} -> socket
+    end
+  end
 
   # ---- worker discovery (mirrors the accountless local-worker stand-in) ----
 
@@ -274,6 +381,15 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
           plan={@plan}
           question_text={@question_text}
           answer_error={@answer_error}
+        />
+        <.reviewing_plan_step
+          :if={@step == :reviewing_plan}
+          plan={@plan}
+          kit_default={@kit_default}
+          provider_preview={@provider_preview}
+          worker_summary={@worker_summary}
+          confirm_error={@confirm_error}
+          confirmed={@confirmed}
         />
       </div>
     </.app_shell>
@@ -399,43 +515,239 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   defp guided_questions_step(assigns) do
     ~H"""
     <div data-step="guided-questions" data-current-field={@plan.current_field}>
-      <div :if={@plan.current_field == "ready"} data-state="ready">
+      <header class="flex items-start gap-3">
+        <span class="flex-none w-11 h-11 rounded-xl bg-raised text-ink-muted flex items-center justify-center">
+          <.lucide name="info" class="size-5" />
+        </span>
+        <div class="min-w-0">
+          <h1 class="text-xl font-bold tracking-tight text-ink">
+            {field_label(@plan.current_field)}
+          </h1>
+          <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty" data-question-text>
+            {@question_text}
+          </p>
+        </div>
+      </header>
+
+      <form phx-submit="submit_answer" class="mt-6" data-answer-form>
+        <input type="hidden" name="field" value={@plan.current_field} />
+        <.text_field
+          id="answer-value"
+          name="value"
+          label={field_label(@plan.current_field)}
+          error={@answer_error}
+          autocomplete="off"
+        />
+        <.button type="submit" data-submit-answer class="mt-3 w-full sm:w-auto">
+          Continue <.lucide name="arrow-right" class="size-4" />
+        </.button>
+      </form>
+    </div>
+    """
+  end
+
+  attr :plan, :map, required: true
+  attr :kit_default, :any, required: true
+  attr :provider_preview, :any, required: true
+  attr :worker_summary, :any, required: true
+  attr :confirm_error, :string, default: nil
+  attr :confirmed, :boolean, default: false
+
+  defp reviewing_plan_step(assigns) do
+    ~H"""
+    <div data-step="reviewing-plan" data-kit-choice={@plan.kit_choice}>
+      <header class="flex items-start gap-3">
+        <span class="flex-none w-11 h-11 rounded-xl bg-raised text-ink-muted flex items-center justify-center">
+          <.lucide name="circle-check" class="size-5" />
+        </span>
+        <div class="min-w-0">
+          <h1 class="text-xl font-bold tracking-tight text-ink">Review the exact plan</h1>
+          <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty">
+            Nothing is created until you confirm. Review every generated file, command, check, and
+            transfer below before authorizing the working agent.
+          </p>
+        </div>
+      </header>
+
+      <div :if={@confirmed} class="mt-6" data-state="confirmed">
         <.notice variant="info" icon="circle-check">
-          Plan questions complete. Reviewing and confirming the exact plan continues in a later
-          step.
+          Plan confirmed — building the repository continues in a later step.
         </.notice>
       </div>
 
-      <div :if={@plan.current_field != "ready"}>
-        <header class="flex items-start gap-3">
-          <span class="flex-none w-11 h-11 rounded-xl bg-raised text-ink-muted flex items-center justify-center">
-            <.lucide name="info" class="size-5" />
-          </span>
-          <div class="min-w-0">
-            <h1 class="text-xl font-bold tracking-tight text-ink">
-              {field_label(@plan.current_field)}
-            </h1>
-            <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty" data-question-text>
-              {@question_text}
-            </p>
-          </div>
-        </header>
+      <div :if={!@confirmed} class="mt-6 flex flex-col gap-6">
+        <section data-section="structure">
+          <h2 class="text-sm font-bold text-ink">Files created</h2>
+          <ul class="mt-2 text-sm text-ink-muted list-disc list-inside">
+            <li :for={entry <- Skeleton.content()["structure"]} data-structure-entry>
+              {entry["path"]} <span class="text-[12px]">({entry["category"]})</span>
+            </li>
+          </ul>
+        </section>
 
-        <form phx-submit="submit_answer" class="mt-6" data-answer-form>
-          <input type="hidden" name="field" value={@plan.current_field} />
-          <.text_field
-            id="answer-value"
-            name="value"
-            label={field_label(@plan.current_field)}
-            error={@answer_error}
-            autocomplete="off"
-          />
-          <.button type="submit" data-submit-answer class="mt-3 w-full sm:w-auto">
-            Continue <.lucide name="arrow-right" class="size-4" />
+        <section data-section="commands">
+          <h2 class="text-sm font-bold text-ink">Commands</h2>
+          <p :if={Skeleton.content()["commands"] == []} class="mt-2 text-sm text-ink-muted">
+            None configured yet.
+          </p>
+        </section>
+
+        <section data-section="checks">
+          <h2 class="text-sm font-bold text-ink">Required checks</h2>
+          <p :if={Skeleton.content()["checks"] == []} class="mt-2 text-sm text-ink-muted">
+            None configured yet.
+          </p>
+        </section>
+
+        <section data-section="git-behavior">
+          <h2 class="text-sm font-bold text-ink">Git behavior</h2>
+          <dl class="mt-2 text-sm text-ink-muted grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+            <dt class="font-semibold text-ink">Initial branch</dt>
+            <dd data-git-initial-branch>{Skeleton.content()["git_behavior"]["initial_branch"]}</dd>
+            <dt class="font-semibold text-ink">Hooks</dt>
+            <dd data-git-hooks>{Skeleton.content()["git_behavior"]["hooks"]}</dd>
+            <dt class="font-semibold text-ink">First commit message</dt>
+            <dd data-git-first-commit-message>
+              {Skeleton.content()["git_behavior"]["first_commit_message"]}
+            </dd>
+          </dl>
+        </section>
+
+        <section data-section="kit">
+          <h2 class="text-sm font-bold text-ink">Permanent SDD kit</h2>
+
+          <div :if={match?({:error, :no_kit_available}, @kit_default)} data-kit-state="unavailable">
+            <p class="mt-2 text-sm text-ink-muted">No kit package is available yet.</p>
+          </div>
+
+          <div :if={match?({:ok, _package}, @kit_default)} data-kit-state="available">
+            <% {:ok, package} = @kit_default %>
+            <dl class="mt-2 text-sm text-ink-muted grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+              <dt class="font-semibold text-ink">Source</dt>
+              <dd data-kit-source>{package.source}</dd>
+              <dt class="font-semibold text-ink">Publisher</dt>
+              <dd data-kit-publisher>{package.publisher}</dd>
+              <dt class="font-semibold text-ink">Version</dt>
+              <dd data-kit-version>{package.version}</dd>
+              <dt class="font-semibold text-ink">Digest</dt>
+              <dd data-kit-digest class="break-all">{package.digest}</dd>
+              <dt class="font-semibold text-ink">License</dt>
+              <dd data-kit-license>{package.license}</dd>
+            </dl>
+
+            <div class="mt-2">
+              <p class="text-[13px] font-semibold text-ink">Required permissions</p>
+              <p :if={package.required_permissions == []} class="text-sm text-ink-muted">None.</p>
+              <ul
+                :if={package.required_permissions != []}
+                class="text-sm text-ink-muted list-disc list-inside"
+                data-kit-permissions
+              >
+                <li :for={permission <- package.required_permissions}>{permission}</li>
+              </ul>
+            </div>
+
+            <div class="mt-2">
+              <p class="text-[13px] font-semibold text-ink">Scripts</p>
+              <p :if={package.scripts == []} class="text-sm text-ink-muted">None.</p>
+              <ul
+                :if={package.scripts != []}
+                class="text-sm text-ink-muted list-disc list-inside"
+                data-kit-scripts
+              >
+                <li :for={script <- package.scripts}>{script}</li>
+              </ul>
+            </div>
+
+            <div
+              id="kit-choice"
+              role="radiogroup"
+              aria-label="Permanent SDD kit choice"
+              class="mt-4 flex flex-col gap-2"
+            >
+              <.radio_option
+                id="kit-included"
+                selected={@plan.kit_choice == "included"}
+                label="Include the permanent SDD kit"
+                phx-click="set_kit_choice"
+                phx-value-choice="included"
+              >
+                <span class="text-sm font-semibold text-ink">Include the permanent SDD kit</span>
+              </.radio_option>
+              <.radio_option
+                id="kit-declined"
+                selected={@plan.kit_choice == "declined"}
+                label="Decline the permanent SDD kit"
+                phx-click="set_kit_choice"
+                phx-value-choice="declined"
+              >
+                <span class="text-sm font-semibold text-ink">Decline the permanent SDD kit</span>
+              </.radio_option>
+            </div>
+          </div>
+
+          <div :if={@plan.kit_choice == "declined"} class="mt-2" data-kit-decline-notice>
+            <.notice variant="info" icon="info">
+              Managed runtime SDD stays available through SDD Orchestrator either way. Repository
+              agents you launch independently, outside Orchestrator, will not automatically receive
+              Orchestrator's managed skills, profile, or authoritative project specifications.
+            </.notice>
+          </div>
+        </section>
+
+        <section data-section="worker-provider">
+          <h2 class="text-sm font-bold text-ink">Worker and provider</h2>
+          <dl class="mt-2 text-sm text-ink-muted grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+            <dt class="font-semibold text-ink">Worker</dt>
+            <dd data-worker-summary>{worker_summary_text(@worker_summary)}</dd>
+            <dt class="font-semibold text-ink">Provider</dt>
+            <dd data-provider-summary>{provider_summary_text(@provider_preview)}</dd>
+          </dl>
+        </section>
+
+        <section data-section="processing-disclosure">
+          <h2 class="text-sm font-bold text-ink">Processing boundary</h2>
+          <p
+            class="mt-2 text-sm leading-relaxed text-ink-muted text-pretty"
+            data-processing-disclosure
+          >
+            Your answers stay on this device and inside SDD Orchestrator's governed runtime. Only
+            the minimized purpose, users, first outcome, constraints, and technical-foundation
+            answers above are sent to the configured AI provider shown above for read-only planning
+            support — never your source files or the target folder's contents. Kit package files
+            are vendored and inert; nothing in them executes automatically. This plan is retained
+            only for this initialization attempt and is deleted once the repository is created or
+            the attempt is canceled.
+          </p>
+        </section>
+
+        <div :if={@confirm_error} data-confirm-error>
+          <.notice variant="err" icon="triangle-alert">{@confirm_error}</.notice>
+        </div>
+
+        <div>
+          <.button
+            phx-click="confirm_plan"
+            disabled={is_nil(@plan.disclosure_version)}
+            data-confirm-plan
+            class="w-full sm:w-auto"
+          >
+            Confirm plan <.lucide name="check" class="size-4" />
           </.button>
-        </form>
+        </div>
       </div>
     </div>
     """
   end
+
+  defp worker_summary_text({:ok, worker}),
+    do: "#{worker.os_family} #{worker.os_major} (worker app #{worker.app_version})"
+
+  defp worker_summary_text({:error, :no_worker}), do: "No paired worker detected yet."
+
+  defp provider_summary_text({:ok, %{provider: provider, model: model}}),
+    do: "#{provider} (#{model})"
+
+  defp provider_summary_text({:skip, _reason}),
+    do: "Provider will be shown once you're signed in with a connected AI provider."
 end

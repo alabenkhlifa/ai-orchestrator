@@ -22,6 +22,13 @@ defmodule SddOrchestrator.RepositoryInitialization.SupportDispatch do
   requires every question to stay visible, sequential, and explicitly
   answered, which the plan's own `current_field` cursor enforces regardless
   of whether a turn ran.
+
+  `provider_preview/1` (Task 3, AC-04's "agent, provider" preview) reuses
+  this same account/connection eligibility logic to report what
+  `dispatch_turn/3` *would* use, without pinning a session or dispatching
+  anything — rendering a plan-review preview is not a reason to spend a
+  spending-ceiling check or pin an idempotent-per-consumer-ref session that
+  Task 2's guided-question turns already use for that same plan.
   """
 
   alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, RuntimeSessions}
@@ -69,6 +76,29 @@ defmodule SddOrchestrator.RepositoryInitialization.SupportDispatch do
              @negotiated_grants
            ) do
       {:ok, %{text: assistant_text(result.handle), dispatch_id: result.manifest.dispatch_id}}
+    else
+      {:error, reason} -> {:skip, reason}
+    end
+  end
+
+  @doc """
+  Reports the provider and model `dispatch_turn/3` would use for this
+  account, without pinning a runtime session or dispatching anything
+  (Task 3, AC-04).
+
+  Same accountless-friendly shape as `dispatch_turn/3`: never raises,
+  `{:skip, reason}` whenever no signed-in account or no eligible connection
+  is available, so the caller can render a fallback instead.
+  """
+  @spec provider_preview(term()) :: {:ok, %{provider: term(), model: term()}} | {:skip, atom()}
+  def provider_preview(nil), do: {:skip, :no_account}
+
+  def provider_preview(account) do
+    with {:ok, connection_id} <- eligible_connection(account),
+         {:ok, %{provider: provider, models: models}} <-
+           ModelCatalogs.current_catalog(account, connection_id, now: DateTime.utc_now()),
+         {:ok, model, _effort} <- select_current_model(models) do
+      {:ok, %{provider: provider, model: model}}
     else
       {:error, reason} -> {:skip, reason}
     end

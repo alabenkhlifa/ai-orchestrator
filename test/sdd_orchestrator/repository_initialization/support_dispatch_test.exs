@@ -6,12 +6,18 @@ defmodule SddOrchestrator.RepositoryInitialization.SupportDispatchTest do
   proves the account-scoped pin/dispatch round trip against
   `AgentAdapterDouble`, and that a turn is skipped (never raised) whenever no
   signed-in account or no eligible connection is available.
+
+  Task 3 proof (AC-04): `provider_preview/1` reports what a turn would use
+  without ever pinning a runtime session or dispatching anything — proved
+  directly by asserting no `AIRuntimeSession` row exists and no dispatch
+  double request was recorded after each call.
   """
   use SddOrchestrator.DataCase, async: false
 
   import SddOrchestrator.AIRuntimeFixtures
 
   alias SddOrchestrator.AgentAdapterDouble, as: Double
+  alias SddOrchestrator.AIRuntime.AIRuntimeSession
   alias SddOrchestrator.Delivery.InitializationDispatch
   alias SddOrchestrator.RepositoryInitialization
   alias SddOrchestrator.RepositoryInitialization.SupportDispatch
@@ -126,6 +132,35 @@ defmodule SddOrchestrator.RepositoryInitialization.SupportDispatchTest do
                SupportDispatch.dispatch_turn(plan, context.account)
 
       assert Double.requests() == []
+    end
+  end
+
+  describe "provider_preview/1" do
+    test "skips without raising when no account is signed in" do
+      assert {:skip, :no_account} = SupportDispatch.provider_preview(nil)
+      assert Double.requests() == []
+      assert Repo.aggregate(AIRuntimeSession, :count) == 0
+    end
+
+    test "skips when the account has no eligible personal AI connection" do
+      account = SddOrchestrator.AccountsFixtures.account_fixture()
+
+      assert {:skip, :no_eligible_connection} = SupportDispatch.provider_preview(account)
+      assert Double.requests() == []
+      assert Repo.aggregate(AIRuntimeSession, :count) == 0
+    end
+
+    test "reports the provider and model dispatch_turn/3 would use, without pinning a session" do
+      context = runtime_session_context_fixture(%{now: DateTime.utc_now()})
+
+      assert {:ok, %{provider: provider, model: model}} =
+               SupportDispatch.provider_preview(context.account)
+
+      assert provider == "openai_codex"
+      assert model == "codex-test-model"
+
+      assert Double.requests() == []
+      assert Repo.aggregate(AIRuntimeSession, :count) == 0
     end
   end
 

@@ -10,10 +10,23 @@ defmodule SddOrchestrator.RepositoryInitialization do
   plan version in the same update, so the version history is exactly the
   sequence of accepted answers. Nothing here ever touches the filesystem —
   the plan is a governed record only, matching AC-02's no-mutation rule.
+
+  Once a plan reaches `"ready"`, Task 3's review and confirmation functions
+  apply (AC-04, AC-05, AC-06, AC-07): `default_kit/0`, `set_kit_choice/2`,
+  `disclose_processing_boundary/1`, `confirmation_snapshot/1`, and
+  `confirm_plan/2`. Every one of them that takes a plan refuses with a typed
+  error — never raising, never silently no-op-ing — unless that plan's
+  `current_field` is `"ready"`: Task 2's question gate must be fully
+  complete before any review or confirmation action applies.
   """
 
+  alias SddOrchestrator.Delivery.CanonicalJson
   alias SddOrchestrator.Repo
-  alias SddOrchestrator.RepositoryInitialization.Plan
+  alias SddOrchestrator.RepositoryInitialization.{Plan, Skeleton}
+  alias SddOrchestrator.RepositoryKits
+  alias SddOrchestrator.RepositoryKits.RepositoryKitPackage
+
+  @disclosure_version 1
 
   @type create_attrs :: %{
           required(:device_workspace_id) => Ecto.UUID.t(),
@@ -104,5 +117,188 @@ defmodule SddOrchestrator.RepositoryInitialization do
       "" -> {:error, :invalid_answer}
       trimmed -> {:ok, trimmed}
     end
+  end
+
+  # ---- Task 3: review, kit choice, disclosure, and confirmation ----
+
+  @doc "The current processing-boundary disclosure version (AC-05)."
+  @spec disclosure_version() :: pos_integer()
+  def disclosure_version, do: @disclosure_version
+
+  @doc """
+  Returns the newest published kit package in the catalog, or
+  `{:error, :no_kit_available}` when the catalog is empty.
+
+  "Newest" is the entry with the greatest `version` by `Version.compare/2` —
+  the same idiom `RepositoryKits.superseded_by/2` already uses. There is at
+  most one real published kit in this system today; nothing more elaborate
+  than "newest version wins" is warranted yet.
+  """
+  @spec default_kit() :: {:ok, RepositoryKitPackage.t()} | {:error, :no_kit_available}
+  def default_kit do
+    case RepositoryKits.list_packages() do
+      [] -> {:error, :no_kit_available}
+      packages -> {:ok, Enum.reduce(packages, &newest_package/2)}
+    end
+  end
+
+  @doc """
+  Records the reviewed plan's kit choice (default-included permanent SDD
+  kit, AC-06's decline path).
+
+  Refuses unless `plan.current_field == "ready"`. Including with no kit in
+  the catalog refuses `{:error, :no_kit_available}` — the LiveView should
+  already prevent offering "include" in that case, but this function does
+  not trust the caller. Always clears `confirmed_at`/`confirmation_digest`
+  as a safety default: a changed kit choice invalidates any prior
+  confirmation (AC-07).
+  """
+  @spec set_kit_choice(Plan.t(), String.t()) ::
+          {:ok, Plan.t()}
+          | {:error,
+             :plan_not_ready | :no_kit_available | :invalid_kit_choice | Ecto.Changeset.t()}
+  def set_kit_choice(%Plan{} = plan, "included") do
+    with :ok <- ensure_ready(plan),
+         {:ok, package} <- default_kit() do
+      plan
+      |> Plan.kit_choice_changeset(%{
+        kit_choice: "included",
+        kit_package_id: package.id,
+        kit_package_digest: package.digest,
+        confirmed_at: nil,
+        confirmation_digest: nil
+      })
+      |> Repo.update()
+    end
+  end
+
+  def set_kit_choice(%Plan{} = plan, "declined") do
+    with :ok <- ensure_ready(plan) do
+      plan
+      |> Plan.kit_choice_changeset(%{
+        kit_choice: "declined",
+        kit_package_id: nil,
+        kit_package_digest: nil,
+        confirmed_at: nil,
+        confirmation_digest: nil
+      })
+      |> Repo.update()
+    end
+  end
+
+  def set_kit_choice(_plan, _choice), do: {:error, :invalid_kit_choice}
+
+  @doc """
+  Marks the processing-boundary disclosure (AC-05) as shown, gating
+  `confirm_plan/2`.
+
+  Idempotent: setting it again while already set at the current version is a
+  no-op that still succeeds. Refuses unless `plan.current_field == "ready"`.
+  """
+  @spec disclose_processing_boundary(Plan.t()) ::
+          {:ok, Plan.t()} | {:error, :plan_not_ready | Ecto.Changeset.t()}
+  def disclose_processing_boundary(%Plan{} = plan) do
+    with :ok <- ensure_ready(plan) do
+      if plan.disclosure_version == @disclosure_version do
+        {:ok, plan}
+      else
+        plan
+        |> Plan.disclosure_changeset(%{disclosure_version: @disclosure_version})
+        |> Repo.update()
+      end
+    end
+  end
+
+  @doc """
+  Returns the exact map of fields the business rules bind one confirmation
+  to: plan version, target reference, technical foundation, kit choice, kit
+  package digest, the fixed skeleton's commands and checks, and the
+  disclosure version.
+
+  This is what the client "saw" — the LiveView renders it, and `confirm_plan/2`
+  re-derives and compares against it, so both share one definition of what's
+  bound. Refuses unless `plan.current_field == "ready"`.
+  """
+  @spec confirmation_snapshot(Plan.t()) :: {:ok, map()} | {:error, :plan_not_ready}
+  def confirmation_snapshot(%Plan{} = plan) do
+    with :ok <- ensure_ready(plan) do
+      {:ok, build_snapshot(plan)}
+    end
+  end
+
+  @doc """
+  Confirms the exact plan (AC-06's exact-plan confirmation), binding
+  `confirmation_digest` to the sha256 hex of the canonical JSON encoding of
+  `confirmation_snapshot/1`'s bound-field map.
+
+  `client_snapshot` is what the caller (the LiveView, from what it rendered)
+  believes the bound fields are. This always re-fetches the plan by id and
+  re-derives its live snapshot rather than trusting either the caller's
+  passed-in `plan` struct or its `client_snapshot` claim — the
+  changed-input invalidation check (AC-07) — and refuses `{:error,
+  :plan_changed}` unless the live snapshot matches exactly. Refuses
+  `{:error, :disclosure_required}` when the processing-boundary disclosure
+  has not been shown yet.
+  """
+  @spec confirm_plan(Plan.t(), map()) ::
+          {:ok, Plan.t()}
+          | {:error,
+             :plan_not_ready
+             | :disclosure_required
+             | :plan_changed
+             | :not_found
+             | :invalid_snapshot
+             | Ecto.Changeset.t()}
+  def confirm_plan(%Plan{id: id}, client_snapshot) when is_map(client_snapshot) do
+    with {:ok, live_plan} <- get_plan(id),
+         :ok <- ensure_ready(live_plan),
+         :ok <- ensure_disclosed(live_plan),
+         {:ok, live_snapshot} <- confirmation_snapshot(live_plan),
+         :ok <- ensure_unchanged(live_snapshot, client_snapshot) do
+      persist_confirmation(live_plan, live_snapshot)
+    end
+  end
+
+  def confirm_plan(_plan, _client_snapshot), do: {:error, :invalid_snapshot}
+
+  defp newest_package(candidate, current) do
+    if Version.compare(candidate.version, current.version) == :gt, do: candidate, else: current
+  end
+
+  defp ensure_ready(%Plan{current_field: "ready"}), do: :ok
+  defp ensure_ready(%Plan{}), do: {:error, :plan_not_ready}
+
+  defp ensure_disclosed(%Plan{disclosure_version: nil}), do: {:error, :disclosure_required}
+  defp ensure_disclosed(%Plan{}), do: :ok
+
+  defp ensure_unchanged(live_snapshot, client_snapshot) do
+    if live_snapshot == client_snapshot, do: :ok, else: {:error, :plan_changed}
+  end
+
+  defp build_snapshot(plan) do
+    skeleton = Skeleton.content()
+
+    %{
+      "version" => plan.version,
+      "target_reference" => plan.target_reference,
+      "technical_foundation" => plan.technical_foundation,
+      "kit_choice" => plan.kit_choice,
+      "kit_package_digest" => plan.kit_package_digest,
+      "commands" => Map.fetch!(skeleton, "commands"),
+      "checks" => Map.fetch!(skeleton, "checks"),
+      "disclosure_version" => plan.disclosure_version
+    }
+  end
+
+  defp persist_confirmation(plan, snapshot) do
+    {:ok, encoded} = CanonicalJson.encode(snapshot)
+    digest = encoded |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower)
+
+    plan
+    |> Plan.confirm_changeset(%{
+      confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      confirmation_digest: digest
+    })
+    |> Repo.update()
   end
 end

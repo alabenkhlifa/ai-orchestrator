@@ -9,6 +9,14 @@ defmodule SddOrchestrator.RepositoryInitialization.Plan do
   `version` by one, so the version history is exactly the sequence of
   accepted answers. `target_reference` is an opaque token issued once
   eligibility succeeds — the real selected path never appears here.
+
+  Once the cursor reaches `"ready"`, Task 3's review and confirmation fields
+  apply: `kit_choice` (the permanent SDD kit is proposed by default, `nil`
+  package fields when declined or unavailable), `disclosure_version` (the
+  processing-boundary disclosure, AC-05), and `confirmed_at`/
+  `confirmation_digest` (the exact-plan confirmation binding, AC-06/AC-07).
+  Any kit-choice change always clears `confirmed_at`/`confirmation_digest` —
+  a changed bound input invalidates a prior confirmation.
   """
   use Ecto.Schema
 
@@ -21,6 +29,8 @@ defmodule SddOrchestrator.RepositoryInitialization.Plan do
   @field_order ~w(purpose users first_outcome constraints technical_foundation ready)
   @answerable_fields ~w(purpose users first_outcome constraints technical_foundation)
   @eligibilities ~w(empty_directory unborn_repository)
+  @kit_choices ~w(included declined)
+  @confirmation_digest_format ~r/\A[0-9a-f]{64}\z/
 
   @field_atoms %{
     "purpose" => :purpose,
@@ -47,6 +57,13 @@ defmodule SddOrchestrator.RepositoryInitialization.Plan do
     field :technical_foundation, :map, default: %{}
 
     field :eligibility, :string
+
+    field :kit_choice, :string, default: "included"
+    field :kit_package_id, :binary_id
+    field :kit_package_digest, :string
+    field :disclosure_version, :integer
+    field :confirmed_at, :utc_datetime
+    field :confirmation_digest, :string
 
     timestamps()
   end
@@ -77,6 +94,42 @@ defmodule SddOrchestrator.RepositoryInitialization.Plan do
     |> cast(attrs, Map.values(@field_atoms) ++ [:current_field, :version])
     |> validate_required([:current_field, :version])
     |> validate_inclusion(:current_field, @field_order)
+  end
+
+  @doc """
+  Changeset that records the reviewed plan's kit choice.
+
+  Always writes `confirmed_at`/`confirmation_digest` (both `nil` unless the
+  caller explicitly re-supplies them, which `RepositoryInitialization` never
+  does) so a kit-choice change always invalidates any prior confirmation.
+  """
+  def kit_choice_changeset(plan, attrs) do
+    plan
+    |> cast(attrs, [
+      :kit_choice,
+      :kit_package_id,
+      :kit_package_digest,
+      :confirmed_at,
+      :confirmation_digest
+    ])
+    |> validate_required([:kit_choice])
+    |> validate_inclusion(:kit_choice, @kit_choices)
+  end
+
+  @doc "Changeset that records the processing-boundary disclosure version (AC-05)."
+  def disclosure_changeset(plan, attrs) do
+    plan
+    |> cast(attrs, [:disclosure_version])
+    |> validate_required([:disclosure_version])
+    |> validate_number(:disclosure_version, greater_than: 0)
+  end
+
+  @doc "Changeset that records one exact-plan confirmation (AC-06/AC-07)."
+  def confirm_changeset(plan, attrs) do
+    plan
+    |> cast(attrs, [:confirmed_at, :confirmation_digest])
+    |> validate_required([:confirmed_at, :confirmation_digest])
+    |> validate_format(:confirmation_digest, @confirmation_digest_format)
   end
 
   @doc "The full cursor sequence, ending in the terminal `\"ready\"` value."
