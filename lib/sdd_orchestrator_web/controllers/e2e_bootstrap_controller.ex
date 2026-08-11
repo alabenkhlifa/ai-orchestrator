@@ -133,6 +133,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.Devices.Pairing
     alias SddOrchestrator.HostedAccess
     alias SddOrchestrator.HostedAccess.Sessions
+    alias SddOrchestrator.Notifications
     alias SddOrchestrator.Participation
     alias SddOrchestrator.Participation.{Acceptance, Invitations}
     alias SddOrchestrator.Projects
@@ -334,6 +335,35 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         owner_name: @owner_name,
         participant_name: @participant_name,
         features: features
+      })
+    end
+
+    # One hosted project whose owner holds two guided-delivery notifications
+    # addressed to their own application account, exactly the way the real
+    # projector delivers them: one still unread and pointing at a real feature,
+    # and one already marked read. Notification reads require a hard
+    # application-session gate (specs/17 Task 4), so this scenario signs in
+    # through `sign_in_account` only — there is no hosted-identity variant.
+    defp run(conn, "notifications", _params) do
+      %{project: project, owner: owner} = member_graph()
+      actor = %{account_id: owner.account.id, hosted_identity_id: nil}
+
+      {:ok, feature} = Features.create(project.id, actor, %{title: "Notified feature"})
+
+      {:ok, unread} = deliver_notification(owner.account, project, feature, "unread")
+      {:ok, read} = deliver_notification(owner.account, project, feature, "read")
+      {:ok, _read} = Notifications.mark_read(owner.account.id, read.id)
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        project_id: project.id,
+        project_name: project.name,
+        feature_id: feature.id,
+        unread_notification_id: unread.id,
+        unread_title: unread.title,
+        read_notification_id: read.id,
+        read_title: read.title
       })
     end
 
@@ -929,6 +959,23 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     defp status("in_development"), do: [status: "blocked"]
     defp status(_column), do: []
+
+    # A `delivery.` notification addressed the same way the real projector
+    # addresses one: to the recipient's own application account, carrying only
+    # the minimized presentation fields and the feature's safe in-product link.
+    defp deliver_notification(account, project, feature, suffix) do
+      Notifications.deliver(%{
+        account_id: account.id,
+        event_type: "delivery.run_blocked",
+        subject_ref: "e2e-notification-#{suffix}-#{unique_suffix()}",
+        event_version: 1,
+        title: "Notification #{suffix}",
+        body: "A feature is waiting on an answer before development continues.",
+        project_label: project.name,
+        link_path: "/projects/#{project.id}/features/#{feature.id}",
+        occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+    end
 
     defp column_title(column),
       do: column |> String.replace("_", " ") |> String.capitalize()

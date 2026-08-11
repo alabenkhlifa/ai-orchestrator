@@ -1,5 +1,15 @@
 # Guided Delivery Notification Access Progress Log
 
+### 2026-08-11 — Task 4 complete: accessible notification inbox
+
+- Completed: Added `SddOrchestratorWeb.NotificationLive` at `/notifications`, gated by a new `live_session :notifications` combining a hard application-session requirement with nilable hosted-identity resolution (neither existing `live_session` block alone carries both). Lists via `NotificationAccess.list/3`; `Mark read`/`Open` actions revalidate through `mark_read/3`/`resolve_safe_link/3` at click time, so a notification whose access lapsed between render and action shows one non-disclosing flash and disappears on reload rather than erroring. Unread rows show a `Mark read` button, read rows a `Read` badge (mirrors `HostedSessionsLive`'s existing badge-vs-button precedent). Added a "Notifications" entry point to `ProjectsLive`'s actions. Added `assets/e2e/notification-inbox.spec.js` for the slice verification gate's browser matrix (not run by this task — desktop/mobile browser proof is slice-scoped) and a matching `"notifications"` scenario in the shared `e2e_bootstrap_controller.ex` (additive; same per-scenario dispatch pattern every other e2e-consuming feature already uses there, no other task owns it). `capability:guided-delivery-notification-access` is now ready.
+- Remaining: The verification gate only — all five tasks are now complete.
+- Failed checks: None.
+- Proof receipts:
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/notification_live_test.exs` — exit `0`.
+  (Independently re-run and confirmed by the orchestrating session. Combined regression run of Tasks 1, 2, 3, 4, 5 plus `projects_live_test.exs`, `feature_board_live_test.exs`, `hosted_sessions_live_test.exs`, `e2e_bootstrap_controller_test.exs`, and the existing retention suites: 105 passed, exit 0 — no cross-task regression.)
+- Spec updates: `tasks.md` Task 4 checked complete; capability readiness noted.
+
 ### 2026-08-11 — Task 5 complete: 90-day Slice 07 notification retention
 
 - Completed: Added `Privacy.Retention.prune_delivery_notifications/1`, wired into the existing single-lock `prune_all/1` sweep (no new advisory lock — mirrors `prune_terminal_invitations/1`). Deletes `delivery.`-namespace `AccountNotification` rows 90 days past `occurred_at` regardless of read state; `participation.`-namespace rows are never selected. `capability:guided-delivery-notification-governance` is now ready. Implemented in parallel with Task 3 (disjoint files: this touched only `lib/sdd_orchestrator/privacy/` and its test; Task 3 touched only `lib/sdd_orchestrator/delivery/` and its test — both depended only on already-complete Tasks 1/2, no shared-file conflict).

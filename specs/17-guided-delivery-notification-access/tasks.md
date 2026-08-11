@@ -99,9 +99,10 @@ Traceability:
   - Owns: AC-03
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/delivery/notification_safe_link_test.exs` passes focused current, removed, unknown, malformed, cross-project, stale-feature, and non-disclosing response cases.
 
-- [ ] Task 4 — Deliver the accessible notification inbox.
+- [x] Task 4 — Deliver the accessible notification inbox.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done. `capability:guided-delivery-notification-access` is ready.
   - Depends on: Task 2, Task 3
   - Purpose: Let current participants inspect and act on durable notifications across supported desktop and mobile layouts.
   - Owned surfaces: Notification LiveView and navigation affordance, unread and read presentation, minimized status and time display, mark-read interaction, safe-link interaction, empty and populated states, loading and refusal states, keyboard order, focus behavior, responsive layout, fixtures, `capability:guided-delivery-notification-access` provider, and readiness write-back.

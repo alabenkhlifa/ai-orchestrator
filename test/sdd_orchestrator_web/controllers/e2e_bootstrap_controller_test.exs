@@ -13,11 +13,14 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
   # local sink for the whole application.
   use SddOrchestratorWeb.ConnCase, async: false
 
+  alias SddOrchestrator.Accounts
   alias SddOrchestrator.Delivery.Feature
+  alias SddOrchestrator.Delivery.NotificationAccess
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.HostedAccess.SessionCookie
+  alias SddOrchestrator.Notifications.AccountNotification
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Participation.{InvitationProof, Invitations}
   alias SddOrchestrator.Projects
@@ -203,6 +206,40 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
       # rather than a flag the harness reports about itself.
       refute Projects.configured?(bare_id)
       assert Projects.configured?(configured_id)
+    end
+  end
+
+  describe "notifications" do
+    test "seeds one unread and one read notification addressed to the signed-in owner", %{
+      conn: conn
+    } do
+      conn = get(conn, ~p"/_e2e/session?scenario=notifications")
+
+      assert %{
+               "project_id" => project_id,
+               "project_name" => project_name,
+               "feature_id" => feature_id,
+               "unread_notification_id" => unread_id,
+               "unread_title" => unread_title,
+               "read_notification_id" => read_id,
+               "read_title" => read_title
+             } = json_response(conn, 200)
+
+      link_path = "/projects/#{project_id}/features/#{feature_id}"
+
+      {:ok, account} =
+        conn |> get_session(:session_token) |> Accounts.fetch_account_by_session_token()
+
+      listed = NotificationAccess.list(account.id, %{account_id: account.id})
+      by_id = Map.new(listed, &{&1.id, &1})
+
+      assert AccountNotification.unread?(by_id[unread_id])
+      assert by_id[unread_id].title == unread_title
+      assert by_id[unread_id].link_path == link_path
+      assert by_id[unread_id].project_label == project_name
+
+      refute AccountNotification.unread?(by_id[read_id])
+      assert by_id[read_id].title == read_title
     end
   end
 
