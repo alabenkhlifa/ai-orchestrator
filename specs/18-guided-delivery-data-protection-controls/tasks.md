@@ -77,9 +77,10 @@ Traceability:
   - Owns: AC-01, entity:DataProcessingRecord
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/delivery_processing_inventory_test.exs` passes focused completeness, purpose, basis, authority, recipient, processor, transfer, lifecycle-owner, minimum-field, content-absence, and invalid-classification cases.
 
-- [ ] Task 2 — Enforce project and exceptional-support access.
+- [x] Task 2 — Enforce project and exceptional-support access.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done
   - Depends on: Task 1
   - Purpose: Keep project content inside current participation while allowing only verified, least-privilege, time-bounded, purpose-limited support elevation.
   - Owned surfaces: Current-participant project reads, stale, removed, absent and cross-project denial, metadata-only support default, exceptional-support capability issue and expiry, purpose and scope validation, revocation, minimized audit event, fixtures, and content-existence non-disclosure.
