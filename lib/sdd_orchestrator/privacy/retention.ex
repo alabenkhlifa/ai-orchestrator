@@ -60,12 +60,28 @@ defmodule SddOrchestrator.Privacy.Retention do
       what it cost is held elsewhere and outlives the trail. This sweep runs
       last and under its own advisory lock, so it never recounts an observation
       the session cascade already removed earlier in the same pass.
+    * Repository-initialization plans and runs — a plan abandoned with no run
+      ever started is deleted 24 hours after its last update, the same
+      unconsumed-abandonment idiom the onboarding-attempt rule above uses. A
+      run left `"failed"` or `"canceled"` is deleted 24 hours after it
+      finished (or was last updated, if it never recorded a finish time) once
+      no `RepositoryInitializationResult` exists for it, and its
+      now-unreferenced plan is deleted with it. A run still `"pending"` or
+      `"running"` is an in-flight build and is never touched here. Once a
+      `RepositoryInitializationResult` exists, its plan and run are never
+      deleted by this timer, regardless of `onboarding_handoff_state` — a
+      result is the project's own confirmed birth record and follows the same
+      rule as confirmed project metadata below.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
-  Operational-security log and backup retention (30 and 35 days) are enforced by the
-  deployment's log and backup infrastructure, recorded in the deployment privacy
-  profile. These deletes are idempotent, so re-running the pruner is safe.
+  A completed repository-initialization result, and the plan and run it
+  completed, follow this identical rule for the identical reason: they are the
+  project's own confirmed birth record and are removed by account erasure
+  (`Rights.erase_account/2`), not by time. Operational-security log and backup
+  retention (30 and 35 days) are enforced by the deployment's log and backup
+  infrastructure, recorded in the deployment privacy profile. These deletes
+  are idempotent, so re-running the pruner is safe.
   """
   import Ecto.Query
 
@@ -97,6 +113,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Portability.ImportAttempt
   alias SddOrchestrator.Projects.ProjectOnboardingAttempt
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryInitialization.{Plan, Result, Run}
 
   @day 24 * 60 * 60
 
@@ -182,11 +199,14 @@ defmodule SddOrchestrator.Privacy.Retention do
       departed_participant_links: prune_departed_participant_links(now),
       participation_revocation_links: prune_participation_revocation_links(now),
       acknowledged_personal_ai_connections: reconcile_personal_ai_connections(now),
-      revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now)
+      revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now),
+      unstarted_repository_initialization_plans:
+        prune_unstarted_repository_initialization_plans(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
     |> Map.merge(observation_counts(now))
+    |> Map.merge(repository_initialization_run_counts(now))
   end
 
   @doc false
@@ -510,6 +530,64 @@ defmodule SddOrchestrator.Privacy.Retention do
       )
 
     count
+  end
+
+  # A plan abandoned before any build was ever started: no `Run` row names
+  # this plan at all, so it is trivially never referenced by a `Result`
+  # either. Mirrors `prune_onboarding_attempts/1`'s own 24-hour unconsumed
+  # idiom above.
+  defp prune_unstarted_repository_initialization_plans(now) do
+    cutoff = DateTime.add(now, -@day, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from plan in Plan,
+          where:
+            plan.updated_at <= ^cutoff and
+              plan.id not in subquery(from run in Run, select: run.plan_id)
+      )
+
+    count
+  end
+
+  # A run left in a terminal failure/cancellation state, 24 hours after it
+  # finished, is deleted together with its now-unreferenced plan — but only
+  # when no `Result` exists for either the run or its plan. A `Result`
+  # existing means initialization succeeded, so that plan/run pair is never a
+  # candidate here regardless of `onboarding_handoff_state` (governed by
+  # account erasure instead, per this module's own moduledoc). The second
+  # `Result.plan_id` check is defensive: it should never trigger, since a
+  # run's own idempotency key is deterministically derived from its plan id,
+  # so a plan has at most one run in practice.
+  defp repository_initialization_run_counts(now) do
+    cutoff = DateTime.add(now, -@day, :second)
+
+    due_runs =
+      Repo.all(
+        from run in Run,
+          where: run.state in ["failed", "canceled"],
+          where: fragment("COALESCE(?, ?)", run.finished_at, run.updated_at) <= ^cutoff,
+          where: run.id not in subquery(from result in Result, select: result.run_id),
+          select: %{id: run.id, plan_id: run.plan_id}
+      )
+
+    run_ids = Enum.map(due_runs, & &1.id)
+    plan_ids = due_runs |> Enum.map(& &1.plan_id) |> Enum.uniq()
+
+    {runs_deleted, _} = Repo.delete_all(from run in Run, where: run.id in ^run_ids)
+
+    {plans_deleted, _} =
+      Repo.delete_all(
+        from plan in Plan,
+          where:
+            plan.id in ^plan_ids and
+              plan.id not in subquery(from result in Result, select: result.plan_id)
+      )
+
+    %{
+      expired_repository_initialization_runs: runs_deleted,
+      expired_repository_initialization_orphan_plans: plans_deleted
+    }
   end
 
   defp prune_hosted_import_attempts(now) do

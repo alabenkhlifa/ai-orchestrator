@@ -45,7 +45,7 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilder do
   alias SddOrchestrator.Delivery.{InitializationDispatch, InitializationManifest, WorkerProtocol}
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryInitialization
-  alias SddOrchestrator.RepositoryInitialization.{Plan, Run, StagingWorkspace}
+  alias SddOrchestrator.RepositoryInitialization.{Plan, Run, SecurityLog, StagingWorkspace}
   alias SddOrchestrator.RepositoryKits
 
   @capability_grant "staging_write"
@@ -83,6 +83,16 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilder do
           {:ok, Run.t()} | {:error, start_error()} | {:error, atom(), Run.t()}
   def start_run(%Plan{} = plan, worker_id, negotiated_grants, idempotency_key)
       when is_binary(worker_id) and is_list(negotiated_grants) and is_binary(idempotency_key) do
+    plan
+    |> do_start_run(worker_id, negotiated_grants, idempotency_key)
+    |> SecurityLog.audit(:start_run)
+  end
+
+  def start_run(_plan, _worker_id, _negotiated_grants, _idempotency_key) do
+    SecurityLog.audit({:error, :invalid_request}, :start_run)
+  end
+
+  defp do_start_run(plan, worker_id, negotiated_grants, idempotency_key) do
     case existing_run(idempotency_key) do
       {:ok, run} ->
         {:ok, run}
@@ -91,9 +101,6 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilder do
         authorize_and_start(plan, worker_id, negotiated_grants, idempotency_key)
     end
   end
-
-  def start_run(_plan, _worker_id, _negotiated_grants, _idempotency_key),
-    do: {:error, :invalid_request}
 
   @doc """
   Requests cancellation of one run.
@@ -123,6 +130,7 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilder do
     |> build_steps(hook)
     |> Enum.reduce_while({:ok, run}, &run_step/2)
     |> finish()
+    |> SecurityLog.audit(:build)
   end
 
   defp authorize_and_start(plan, worker_id, negotiated_grants, idempotency_key) do
@@ -168,17 +176,20 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilder do
 
   defp ensure_ready_and_confirmed(%Plan{}), do: {:error, :plan_not_ready}
 
-  # The plan-staleness re-check: re-fetches the plan by id, re-derives its
-  # live confirmation snapshot, hashes it exactly the way
+  # The plan-staleness re-check: re-fetches the plan by id (scoped to the
+  # plan's own already-established `device_workspace_id`, specs/16 Task 7's
+  # access rule — no `Run` exists yet at this point in the pipeline, so the
+  # plan's own immutable identity field is what's in scope, not a run's),
+  # re-derives its live confirmation snapshot, hashes it exactly the way
   # `RepositoryInitialization`'s own `persist_confirmation/2` does (canonical
   # JSON, sha256 hex), and compares against the *live* row's own
-  # `confirmation_digest` — never the passed-in `plan` struct's fields. This
-  # is what makes the changed-input invalidation proof real: it catches a
+  # `confirmation_digest` — never the passed-in `plan` struct's other fields.
+  # This is what makes the changed-input invalidation proof real: it catches a
   # bound field that changed without going through the invalidation path
   # `set_kit_choice/2` normally guarantees, not just a plan the caller passed
   # in stale.
-  defp ensure_unchanged(%Plan{id: id}) do
-    case RepositoryInitialization.get_plan(id) do
+  defp ensure_unchanged(%Plan{id: id, device_workspace_id: device_workspace_id}) do
+    case RepositoryInitialization.get_plan(device_workspace_id, id) do
       {:ok, live_plan} -> compare_digest(live_plan)
       {:error, :not_found} -> {:error, :plan_changed}
     end

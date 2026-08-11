@@ -39,7 +39,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
        `SupportDispatch.provider_preview/1`), and the processing-boundary
        disclosure (`RepositoryInitialization.disclose_processing_boundary/1`,
        called once on entry into this step, gating the confirm control).
-       Confirming calls `RepositoryInitialization.confirm_plan/2` with the
+       Confirming calls `RepositoryInitialization.confirm_plan/3` with the
        snapshot the page is currently showing
        (`RepositoryInitialization.confirmation_snapshot/1`); a changed-input
        refusal (`{:error, :plan_changed}`) reloads the plan and shows a clear
@@ -369,7 +369,11 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   end
 
   defp confirm_with_snapshot(socket, snapshot) do
-    case RepositoryInitialization.confirm_plan(socket.assigns.plan, snapshot) do
+    case RepositoryInitialization.confirm_plan(
+           socket.assigns.plan,
+           socket.assigns.workspace.id,
+           snapshot
+         ) do
       {:ok, confirmed_plan} ->
         {:noreply,
          socket
@@ -392,7 +396,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   end
 
   defp reload_reviewing_plan(socket) do
-    case RepositoryInitialization.get_plan(socket.assigns.plan.id) do
+    case RepositoryInitialization.get_plan(socket.assigns.workspace.id, socket.assigns.plan.id) do
       {:ok, plan} -> socket |> assign(:plan, plan) |> refresh_reviewing_assigns()
       {:error, _reason} -> socket
     end

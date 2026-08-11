@@ -27,7 +27,14 @@ defmodule SddOrchestrator.RepositoryInitialization.Handoff do
   alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
   alias SddOrchestrator.Repo
-  alias SddOrchestrator.RepositoryInitialization.{Plan, Result, SpecificationRenderer}
+
+  alias SddOrchestrator.RepositoryInitialization.{
+    Plan,
+    Result,
+    SecurityLog,
+    SpecificationRenderer
+  }
+
   alias SddOrchestrator.SpecificationStore
 
   # A device-readiness receipt stays valid for this window. Duplicated from
@@ -66,7 +73,7 @@ defmodule SddOrchestrator.RepositoryInitialization.Handoff do
         _workspace,
         _target_path
       ) do
-    {:ok, result}
+    SecurityLog.audit({:ok, result}, :handoff)
   end
 
   def complete(
@@ -78,19 +85,22 @@ defmodule SddOrchestrator.RepositoryInitialization.Handoff do
       when is_binary(target_path) do
     name = Path.basename(target_path)
 
-    with {:ok, fingerprint} <- identify_repository(target_path, workspace),
-         {:ok, attempt} <- start_attempt(workspace),
-         {:ok, attempt} <- select_repository(workspace, attempt, fingerprint, name),
-         {:ok, attempt} <- record_receipt(workspace, attempt),
-         {:ok, attempt} <- select_storage(workspace, attempt),
-         {:ok, project} <- register_project(workspace, attempt, name),
-         documents = SpecificationRenderer.render(plan),
-         {:ok, specification} <- create_specification(workspace, project, result, documents),
-         {:ok, updated} <- persist_handoff(result, project, specification) do
-      {:ok, updated}
-    else
-      {:error, reason} -> {:error, reason, result}
-    end
+    outcome =
+      with {:ok, fingerprint} <- identify_repository(target_path, workspace),
+           {:ok, attempt} <- start_attempt(workspace),
+           {:ok, attempt} <- select_repository(workspace, attempt, fingerprint, name),
+           {:ok, attempt} <- record_receipt(workspace, attempt),
+           {:ok, attempt} <- select_storage(workspace, attempt),
+           {:ok, project} <- register_project(workspace, attempt, name),
+           documents = SpecificationRenderer.render(plan),
+           {:ok, specification} <- create_specification(workspace, project, result, documents),
+           {:ok, updated} <- persist_handoff(result, project, specification) do
+        {:ok, updated}
+      else
+        {:error, reason} -> {:error, reason, result}
+      end
+
+    SecurityLog.audit(outcome, :handoff)
   end
 
   ## Pipeline steps

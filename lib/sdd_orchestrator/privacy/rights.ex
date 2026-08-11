@@ -9,16 +9,18 @@ defmodule SddOrchestrator.Privacy.Rights do
       identities, workspace, projects, repository connections, passwordless
       attempts, session metadata, the short-lived model catalog and quota
       snapshots still held for it, the pinned runtime configurations and
-      ceiling ledgers still retained for project accountability, and the
+      ceiling ledgers still retained for project accountability, the
       minimized agent runtime observations still within their operational
-      window, into a structured, credential-free map.
+      window, and its own pre-project repository-initialization plans (with
+      each plan's run and result), into a structured, credential-free map.
     * `erase_account/2` — erasure: atomically deletes the hosted workspace root
       and account, cascading to identities, credentials, sessions, the personal
       profile, projects, repository connections, hosted storage, onboarding
       attempts, and personal AI connection references together with the model
       catalog and quota snapshots that hang off both the account and those
       connections, while explicitly deleting passwordless attempts keyed to the
-      account's verified email. Before that transaction it asks every paired
+      account's verified email and every repository-initialization plan, run,
+      and result the account owns. Before that transaction it asks every paired
       worker to remove the credential it holds locally, and reports the outcome
       as counts and typed reasons.
     * `terminate_personal_ai_service/1` — service termination: revokes every
@@ -104,6 +106,7 @@ defmodule SddOrchestrator.Privacy.Rights do
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryInitialization.{Plan, Result, Run}
 
   alias SddOrchestrator.Specifications.{
     ProjectSpecification,
@@ -140,6 +143,7 @@ defmodule SddOrchestrator.Privacy.Rights do
            ai_runtime_sessions: export_ai_runtime_sessions(account_id),
            runtime_cost_ledgers: export_runtime_cost_ledgers(account_id),
            agent_runtime_observations: export_agent_runtime_observations(account_id),
+           repository_initialization_plans: export_repository_initialization_plans(account_id),
            projects: export_projects(account_id),
            sessions: export_sessions(account_id),
            hosted_sessions: export_hosted_sessions(account_id)
@@ -175,6 +179,7 @@ defmodule SddOrchestrator.Privacy.Rights do
         Multi.new()
         |> delete_magic_link_attempts(email_keys)
         |> delete_merge_records(workspace)
+        |> delete_repository_initialization_records(account.id)
         |> maybe_delete_workspace(workspace)
         |> Multi.delete(:account, account)
         |> Repo.transaction()
@@ -723,6 +728,32 @@ defmodule SddOrchestrator.Privacy.Rights do
     )
   end
 
+  # Repository-initialization `Plan`/`Run`/`Result` rows are a separate store
+  # from hosted device-project data: this is account-scoped erasure only, not
+  # a device-project deletion cascade — the two are different stores by
+  # design (retention.ex's own moduledoc explains why). There is no
+  # database-level cascade between these three tables, so each is deleted
+  # explicitly, in child-before-parent order (results, then runs, then
+  # plans) so no foreign-key constraint is ever violated mid-transaction.
+  defp delete_repository_initialization_records(multi, account_id) do
+    plan_ids_query =
+      from plan in Plan, where: plan.account_id == ^account_id, select: plan.id
+
+    multi
+    |> Multi.delete_all(
+      :repository_initialization_results,
+      from(result in Result, where: result.plan_id in subquery(plan_ids_query))
+    )
+    |> Multi.delete_all(
+      :repository_initialization_runs,
+      from(run in Run, where: run.plan_id in subquery(plan_ids_query))
+    )
+    |> Multi.delete_all(
+      :repository_initialization_plans,
+      from(plan in Plan, where: plan.id in subquery(plan_ids_query))
+    )
+  end
+
   defp delete_magic_link_attempts(multi, email_keys) do
     Multi.delete_all(
       multi,
@@ -988,6 +1019,84 @@ defmodule SddOrchestrator.Privacy.Rights do
     )
     |> Repo.all()
     |> Enum.map(&stored_observation/1)
+  end
+
+  # The pre-project plan, its run (if any), and its result (if any) are the
+  # account's own initialization request and outcome: the free-text answers
+  # the account gave, the opaque target reference, the kit choice, and — once
+  # published — the first commit's own identity. No absolute path and no
+  # repository content is ever stored here to export.
+  defp export_repository_initialization_plans(account_id) do
+    from(plan in Plan,
+      where: plan.account_id == ^account_id,
+      order_by: [asc: plan.inserted_at, asc: plan.id],
+      select: %{
+        id: plan.id,
+        device_workspace_id: plan.device_workspace_id,
+        target_reference: plan.target_reference,
+        version: plan.version,
+        current_field: plan.current_field,
+        purpose: plan.purpose,
+        users: plan.users,
+        first_outcome: plan.first_outcome,
+        constraints: plan.constraints,
+        technical_foundation: plan.technical_foundation,
+        eligibility: plan.eligibility,
+        kit_choice: plan.kit_choice,
+        kit_package_digest: plan.kit_package_digest,
+        disclosure_version: plan.disclosure_version,
+        confirmed_at: plan.confirmed_at,
+        inserted_at: plan.inserted_at,
+        updated_at: plan.updated_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(fn plan ->
+      plan
+      |> Map.put(:run, export_repository_initialization_run(plan.id))
+      |> Map.put(:result, export_repository_initialization_result(plan.id))
+    end)
+  end
+
+  defp export_repository_initialization_run(plan_id) do
+    Repo.one(
+      from run in Run,
+        where: run.plan_id == ^plan_id,
+        select: %{
+          id: run.id,
+          worker_id: run.worker_id,
+          state: run.state,
+          kit_choice: run.kit_choice,
+          kit_package_digest: run.kit_package_digest,
+          failure_reason: run.failure_reason,
+          started_at: run.started_at,
+          finished_at: run.finished_at,
+          inserted_at: run.inserted_at,
+          updated_at: run.updated_at
+        }
+    )
+  end
+
+  defp export_repository_initialization_result(plan_id) do
+    Repo.one(
+      from result in Result,
+        where: result.plan_id == ^plan_id,
+        select: %{
+          id: result.id,
+          run_id: result.run_id,
+          target_reference: result.target_reference,
+          commit_sha: result.commit_sha,
+          tree_digest: result.tree_digest,
+          kit_choice: result.kit_choice,
+          kit_package_digest: result.kit_package_digest,
+          completed_at: result.completed_at,
+          onboarding_handoff_state: result.onboarding_handoff_state,
+          project_id: result.project_id,
+          specification_id: result.specification_id,
+          inserted_at: result.inserted_at,
+          updated_at: result.updated_at
+        }
+    )
   end
 
   defp stored_observation(observation) do

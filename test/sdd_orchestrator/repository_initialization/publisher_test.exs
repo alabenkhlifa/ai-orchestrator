@@ -306,7 +306,7 @@ defmodule SddOrchestrator.RepositoryInitialization.PublisherTest do
   end
 
   defp fetch_plan(run) do
-    {:ok, plan} = RepositoryInitialization.get_plan(run.plan_id)
+    {:ok, plan} = RepositoryInitialization.get_plan(run.device_workspace_id, run.plan_id)
     plan
   end
 
@@ -326,7 +326,7 @@ defmodule SddOrchestrator.RepositoryInitialization.PublisherTest do
     {:ok, plan} = RepositoryInitialization.set_kit_choice(plan, kit_choice)
     {:ok, plan} = RepositoryInitialization.disclose_processing_boundary(plan)
     {:ok, snapshot} = RepositoryInitialization.confirmation_snapshot(plan)
-    {:ok, plan} = RepositoryInitialization.confirm_plan(plan, snapshot)
+    {:ok, plan} = RepositoryInitialization.confirm_plan(plan, plan.device_workspace_id, snapshot)
     plan
   end
 

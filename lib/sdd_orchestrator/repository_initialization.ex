@@ -14,15 +14,26 @@ defmodule SddOrchestrator.RepositoryInitialization do
   Once a plan reaches `"ready"`, Task 3's review and confirmation functions
   apply (AC-04, AC-05, AC-06, AC-07): `default_kit/0`, `set_kit_choice/2`,
   `disclose_processing_boundary/1`, `confirmation_snapshot/1`, and
-  `confirm_plan/2`. Every one of them that takes a plan refuses with a typed
+  `confirm_plan/3`. Every one of them that takes a plan refuses with a typed
   error — never raising, never silently no-op-ing — unless that plan's
   `current_field` is `"ready"`: Task 2's question gate must be fully
   complete before any review or confirmation action applies.
+
+  `get_plan/2` and `confirm_plan/3` are scoped to the caller's own device
+  workspace (specs/16 Task 7, AC-15's access rule) — a plan belonging to a
+  different workspace is refused `{:error, :not_found}` exactly as an
+  unknown id is, never disclosed to exist. `confirm_plan/3`, and every
+  public entry point through Task 4/5/6's staging, publish, and handoff
+  pipeline, is audited through `SecurityLog.audit/2`: only a failure is
+  logged, and only as a fixed, redacted outcome class, never the plan's own
+  content.
   """
+
+  import Ecto.Query
 
   alias SddOrchestrator.Delivery.CanonicalJson
   alias SddOrchestrator.Repo
-  alias SddOrchestrator.RepositoryInitialization.{Plan, Skeleton}
+  alias SddOrchestrator.RepositoryInitialization.{Plan, SecurityLog, Skeleton}
   alias SddOrchestrator.RepositoryKits
   alias SddOrchestrator.RepositoryKits.RepositoryKitPackage
 
@@ -43,14 +54,27 @@ defmodule SddOrchestrator.RepositoryInitialization do
     |> Repo.insert()
   end
 
-  @doc "Fetches one plan by id."
-  @spec get_plan(Ecto.UUID.t()) :: {:ok, Plan.t()} | {:error, :not_found}
-  def get_plan(id) do
-    with {:ok, uuid} <- Ecto.UUID.cast(id),
-         %Plan{} = plan <- Repo.get(Plan, uuid) do
-      {:ok, plan}
+  @doc """
+  Fetches one plan by id, scoped to the caller's own device workspace.
+
+  Refuses `{:error, :not_found}` for a plan that exists but belongs to a
+  different device workspace, exactly as for an unknown id — a caller never
+  learns whether the id exists elsewhere.
+  """
+  @spec get_plan(Ecto.UUID.t(), Ecto.UUID.t()) :: {:ok, Plan.t()} | {:error, :not_found}
+  def get_plan(device_workspace_id, id) do
+    with {:ok, workspace_uuid} <- Ecto.UUID.cast(device_workspace_id),
+         {:ok, uuid} <- Ecto.UUID.cast(id) do
+      query =
+        from p in Plan,
+          where: p.device_workspace_id == ^workspace_uuid and p.id == ^uuid
+
+      case Repo.one(query) do
+        %Plan{} = plan -> {:ok, plan}
+        nil -> {:error, :not_found}
+      end
     else
-      _not_found -> {:error, :not_found}
+      _invalid -> {:error, :not_found}
     end
   end
 
@@ -190,7 +214,7 @@ defmodule SddOrchestrator.RepositoryInitialization do
 
   @doc """
   Marks the processing-boundary disclosure (AC-05) as shown, gating
-  `confirm_plan/2`.
+  `confirm_plan/3`.
 
   Idempotent: setting it again while already set at the current version is a
   no-op that still succeeds. Refuses unless `plan.current_field == "ready"`.
@@ -215,7 +239,7 @@ defmodule SddOrchestrator.RepositoryInitialization do
   package digest, the fixed skeleton's commands and checks, and the
   disclosure version.
 
-  This is what the client "saw" — the LiveView renders it, and `confirm_plan/2`
+  This is what the client "saw" — the LiveView renders it, and `confirm_plan/3`
   re-derives and compares against it, so both share one definition of what's
   bound. Refuses unless `plan.current_field == "ready"`.
   """
@@ -231,16 +255,20 @@ defmodule SddOrchestrator.RepositoryInitialization do
   `confirmation_digest` to the sha256 hex of the canonical JSON encoding of
   `confirmation_snapshot/1`'s bound-field map.
 
-  `client_snapshot` is what the caller (the LiveView, from what it rendered)
-  believes the bound fields are. This always re-fetches the plan by id and
-  re-derives its live snapshot rather than trusting either the caller's
-  passed-in `plan` struct or its `client_snapshot` claim — the
+  `device_workspace_id` is the caller's own authenticated device workspace —
+  never read from the passed-in `plan` struct — and scopes the re-fetch
+  through `get_plan/2` (specs/16 Task 7's access rule), so a plan belonging
+  to a different workspace is refused `{:error, :not_found}` exactly as an
+  unknown id is. `client_snapshot` is what the caller (the LiveView, from
+  what it rendered) believes the bound fields are. This always re-fetches the
+  plan by id and re-derives its live snapshot rather than trusting either the
+  caller's passed-in `plan` struct or its `client_snapshot` claim — the
   changed-input invalidation check (AC-07) — and refuses `{:error,
   :plan_changed}` unless the live snapshot matches exactly. Refuses
   `{:error, :disclosure_required}` when the processing-boundary disclosure
   has not been shown yet.
   """
-  @spec confirm_plan(Plan.t(), map()) ::
+  @spec confirm_plan(Plan.t(), Ecto.UUID.t(), map()) ::
           {:ok, Plan.t()}
           | {:error,
              :plan_not_ready
@@ -249,17 +277,20 @@ defmodule SddOrchestrator.RepositoryInitialization do
              | :not_found
              | :invalid_snapshot
              | Ecto.Changeset.t()}
-  def confirm_plan(%Plan{id: id}, client_snapshot) when is_map(client_snapshot) do
-    with {:ok, live_plan} <- get_plan(id),
+  def confirm_plan(%Plan{id: id}, device_workspace_id, client_snapshot)
+      when is_binary(device_workspace_id) and is_map(client_snapshot) do
+    with {:ok, live_plan} <- get_plan(device_workspace_id, id),
          :ok <- ensure_ready(live_plan),
          :ok <- ensure_disclosed(live_plan),
          {:ok, live_snapshot} <- confirmation_snapshot(live_plan),
          :ok <- ensure_unchanged(live_snapshot, client_snapshot) do
       persist_confirmation(live_plan, live_snapshot)
     end
+    |> SecurityLog.audit(:confirm_plan)
   end
 
-  def confirm_plan(_plan, _client_snapshot), do: {:error, :invalid_snapshot}
+  def confirm_plan(_plan, _device_workspace_id, _client_snapshot),
+    do: SecurityLog.audit({:error, :invalid_snapshot}, :confirm_plan)
 
   defp newest_package(candidate, current) do
     if Version.compare(candidate.version, current.version) == :gt, do: candidate, else: current

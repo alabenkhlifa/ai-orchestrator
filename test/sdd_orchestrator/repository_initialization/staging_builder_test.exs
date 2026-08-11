@@ -476,7 +476,7 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilderTest do
     {:ok, plan} = RepositoryInitialization.set_kit_choice(plan, kit_choice)
     {:ok, plan} = RepositoryInitialization.disclose_processing_boundary(plan)
     {:ok, snapshot} = RepositoryInitialization.confirmation_snapshot(plan)
-    {:ok, plan} = RepositoryInitialization.confirm_plan(plan, snapshot)
+    {:ok, plan} = RepositoryInitialization.confirm_plan(plan, plan.device_workspace_id, snapshot)
     plan
   end
 

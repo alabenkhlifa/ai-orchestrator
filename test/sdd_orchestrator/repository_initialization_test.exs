@@ -9,8 +9,12 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
   refusal, `set_kit_choice/2`'s include/decline behavior and its
   changed-input invalidation of a prior confirmation,
   `disclose_processing_boundary/1`, `confirmation_snapshot/1`'s exact bound
-  shape, and `confirm_plan/2`'s success, `:plan_changed`, and
+  shape, and `confirm_plan/3`'s success, `:plan_changed`, and
   `:disclosure_required` refusals plus the confirmation-digest binding proof.
+
+  Task 7 proof (specs/16 governance retrofit, AC-15): `get_plan/2` and
+  `confirm_plan/3` are scoped to the caller's own device workspace and refuse
+  `{:error, :not_found}` for a plan belonging to a different one.
   """
   use SddOrchestrator.DataCase, async: true
 
@@ -75,7 +79,9 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
                  "language" => "elixir"
                })
 
-      assert {:ok, reloaded} = RepositoryInitialization.get_plan(plan.id)
+      assert {:ok, reloaded} =
+               RepositoryInitialization.get_plan(plan.device_workspace_id, plan.id)
+
       assert reloaded.current_field == "purpose"
       assert reloaded.version == 1
       assert reloaded.technical_foundation == %{}
@@ -123,7 +129,9 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
       assert {:error, :invalid_answer} =
                RepositoryInitialization.answer_field(plan, "purpose", "   ")
 
-      assert {:ok, reloaded} = RepositoryInitialization.get_plan(plan.id)
+      assert {:ok, reloaded} =
+               RepositoryInitialization.get_plan(plan.device_workspace_id, plan.id)
+
       assert reloaded.current_field == "purpose"
       assert reloaded.version == 1
     end
@@ -147,18 +155,29 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
       assert {:error, :out_of_order} =
                RepositoryInitialization.answer_field(plan, "constraints", "None")
 
-      assert {:ok, reloaded} = RepositoryInitialization.get_plan(plan.id)
+      assert {:ok, reloaded} =
+               RepositoryInitialization.get_plan(plan.device_workspace_id, plan.id)
+
       assert reloaded.version == 1
     end
   end
 
-  describe "get_plan/1" do
+  describe "get_plan/2" do
     test "returns not_found for an unknown id" do
-      assert {:error, :not_found} = RepositoryInitialization.get_plan(Ecto.UUID.generate())
+      assert {:error, :not_found} =
+               RepositoryInitialization.get_plan(Ecto.UUID.generate(), Ecto.UUID.generate())
     end
 
     test "returns not_found for a malformed id rather than raising" do
-      assert {:error, :not_found} = RepositoryInitialization.get_plan("not-a-uuid")
+      assert {:error, :not_found} =
+               RepositoryInitialization.get_plan(Ecto.UUID.generate(), "not-a-uuid")
+    end
+
+    test "returns not_found for a plan belonging to a different device workspace" do
+      {:ok, plan} = RepositoryInitialization.create_plan(base_attrs())
+
+      assert {:error, :not_found} =
+               RepositoryInitialization.get_plan(Ecto.UUID.generate(), plan.id)
     end
   end
 
@@ -254,7 +273,9 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
       {:ok, plan} = RepositoryInitialization.set_kit_choice(plan, "included")
       {:ok, plan} = RepositoryInitialization.disclose_processing_boundary(plan)
       {:ok, snapshot} = RepositoryInitialization.confirmation_snapshot(plan)
-      {:ok, plan} = RepositoryInitialization.confirm_plan(plan, snapshot)
+
+      {:ok, plan} =
+        RepositoryInitialization.confirm_plan(plan, plan.device_workspace_id, snapshot)
 
       assert plan.confirmed_at != nil
       assert plan.confirmation_digest != nil
@@ -318,13 +339,14 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
     end
   end
 
-  describe "confirm_plan/2" do
+  describe "confirm_plan/3" do
     test "succeeds with a matching snapshot" do
       plan = ready_plan_fixture()
       {:ok, plan} = RepositoryInitialization.disclose_processing_boundary(plan)
       {:ok, snapshot} = RepositoryInitialization.confirmation_snapshot(plan)
 
-      assert {:ok, confirmed} = RepositoryInitialization.confirm_plan(plan, snapshot)
+      assert {:ok, confirmed} =
+               RepositoryInitialization.confirm_plan(plan, plan.device_workspace_id, snapshot)
 
       assert confirmed.confirmed_at != nil
       assert confirmed.confirmation_digest != nil
@@ -336,7 +358,7 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
       {:ok, snapshot} = RepositoryInitialization.confirmation_snapshot(plan)
 
       assert {:error, :disclosure_required} =
-               RepositoryInitialization.confirm_plan(plan, snapshot)
+               RepositoryInitialization.confirm_plan(plan, plan.device_workspace_id, snapshot)
     end
 
     test "refuses :plan_changed with a stale snapshot (changed-input invalidation)" do
@@ -347,13 +369,28 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
 
       {:ok, _mutated} = RepositoryInitialization.set_kit_choice(plan, "included")
 
-      assert {:error, :plan_changed} = RepositoryInitialization.confirm_plan(plan, stale_snapshot)
+      assert {:error, :plan_changed} =
+               RepositoryInitialization.confirm_plan(
+                 plan,
+                 plan.device_workspace_id,
+                 stale_snapshot
+               )
     end
 
     test "refuses :plan_not_ready when the plan hasn't reached ready" do
       {:ok, plan} = RepositoryInitialization.create_plan(base_attrs())
 
-      assert {:error, :plan_not_ready} = RepositoryInitialization.confirm_plan(plan, %{})
+      assert {:error, :plan_not_ready} =
+               RepositoryInitialization.confirm_plan(plan, plan.device_workspace_id, %{})
+    end
+
+    test "refuses :not_found for a plan belonging to a different device workspace" do
+      plan = ready_plan_fixture()
+      {:ok, plan} = RepositoryInitialization.disclose_processing_boundary(plan)
+      {:ok, snapshot} = RepositoryInitialization.confirmation_snapshot(plan)
+
+      assert {:error, :not_found} =
+               RepositoryInitialization.confirm_plan(plan, Ecto.UUID.generate(), snapshot)
     end
   end
 
@@ -364,12 +401,16 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
       plan_a = ready_plan_fixture(%{target_reference: shared_target})
       {:ok, plan_a} = RepositoryInitialization.disclose_processing_boundary(plan_a)
       {:ok, snapshot_a} = RepositoryInitialization.confirmation_snapshot(plan_a)
-      {:ok, confirmed_a} = RepositoryInitialization.confirm_plan(plan_a, snapshot_a)
+
+      {:ok, confirmed_a} =
+        RepositoryInitialization.confirm_plan(plan_a, plan_a.device_workspace_id, snapshot_a)
 
       plan_b = ready_plan_fixture(%{target_reference: shared_target})
       {:ok, plan_b} = RepositoryInitialization.disclose_processing_boundary(plan_b)
       {:ok, snapshot_b} = RepositoryInitialization.confirmation_snapshot(plan_b)
-      {:ok, confirmed_b} = RepositoryInitialization.confirm_plan(plan_b, snapshot_b)
+
+      {:ok, confirmed_b} =
+        RepositoryInitialization.confirm_plan(plan_b, plan_b.device_workspace_id, snapshot_b)
 
       assert confirmed_a.confirmation_digest == confirmed_b.confirmation_digest
 
@@ -377,7 +418,9 @@ defmodule SddOrchestrator.RepositoryInitializationTest do
       {:ok, plan_c} = RepositoryInitialization.set_kit_choice(plan_b, "included")
       {:ok, plan_c} = RepositoryInitialization.disclose_processing_boundary(plan_c)
       {:ok, snapshot_c} = RepositoryInitialization.confirmation_snapshot(plan_c)
-      {:ok, confirmed_c} = RepositoryInitialization.confirm_plan(plan_c, snapshot_c)
+
+      {:ok, confirmed_c} =
+        RepositoryInitialization.confirm_plan(plan_c, plan_c.device_workspace_id, snapshot_c)
 
       refute confirmed_c.confirmation_digest == confirmed_a.confirmation_digest
     end

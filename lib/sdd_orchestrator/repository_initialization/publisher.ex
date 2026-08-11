@@ -44,7 +44,7 @@ defmodule SddOrchestrator.RepositoryInitialization.Publisher do
 
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryInitialization.{Eligibility, Plan, Result, Run, Skeleton}
-  alias SddOrchestrator.RepositoryInitialization.StagingWorkspace
+  alias SddOrchestrator.RepositoryInitialization.{SecurityLog, StagingWorkspace}
 
   @type publish_error ::
           :run_not_ready
@@ -70,10 +70,13 @@ defmodule SddOrchestrator.RepositoryInitialization.Publisher do
   @spec publish(Run.t(), Plan.t(), Path.t()) ::
           {:ok, Result.t()} | {:error, publish_error(), Run.t()}
   def publish(%Run{} = run, %Plan{} = plan, target_path) when is_binary(target_path) do
-    case existing_result(run.id) do
-      {:ok, result} -> {:ok, result}
-      {:error, :not_found} -> do_publish(run, plan, target_path)
-    end
+    result =
+      case existing_result(run.id) do
+        {:ok, result} -> {:ok, result}
+        {:error, :not_found} -> do_publish(run, plan, target_path)
+      end
+
+    SecurityLog.audit(result, :publish)
   end
 
   defp do_publish(run, plan, target_path) do
