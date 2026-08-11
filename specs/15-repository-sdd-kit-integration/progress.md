@@ -1,5 +1,15 @@
 # Repository SDD Kit Integration Progress Log
 
+### 2026-08-11 - Task 2 split via update-spec: domain (Task 2) and UI (new Task 3) separated
+
+- Completed: Task 2 preflight (before broad code exploration, per implement-spec's own stop condition) found it combined a substantial worker-local git-diff and conflict-classification domain engine — reusing `WorkerRepositoryAssessment`'s exact-commit staleness check, selected-root containment, tree-entry listing, and blob-content-read primitives — with a full eligibility, decline, and diff-review LiveView. That is "domain foundation plus UI" and "work expected to need more than one meaningful implementation commit," an explicit Task Size Gate split trigger, not just subjective complexity. User confirmed splitting via `update-spec` over implementing it as one oversized task.
+- Split: Task 2 keeps its label and stays domain-only (`RepositoryKitChangePlan`, worker-local comparison, protected-file precedence, conflict classification, expiry, no-mutation planning; owns AC-04, AC-05, entity:RepositoryKitChangePlan). New Task 3 owns the eligibility/decline/diff-review LiveView and AC-01 alone (AC-01 is fundamentally about presentation and decline behavior, not the plan computation). Tasks 3, 4, 5 (apply, update/removal, governance) renumbered to 4, 5, 6 with no other change to their scope, owned surfaces, or acceptance criteria.
+- Updated `## Cross-Specification Dependencies`: the two capabilities required before old Task 5 (`project-storage-governance`, `project-specification-store`, `project-specification-governance`) now read `required before Task 6`; `capability:repository-sdd-kit` now reads `ready after Task 6`. Updated the one external consumer of that edge, `specs/13-sdd-adoption/tasks.md`'s `capability:repository-sdd-kit` requirement, from `#Task 5` to `#Task 6` in the same change. Confirmed `specs/16-empty-repository-initialization`'s reference to `specs/15#Task 1` needs no change (Task 1 was not renumbered).
+- Extended `## Proof Scope Gate`'s `Applies to:` from `Task 1.` to `Task 1, Task 2, Task 3.`, since both are being refined right now and the proof runner is available — same incremental-adoption pattern already used for Task 1.
+- Remaining: Implement Task 2 (domain), then Task 3 (UI), then Tasks 4–6.
+- Failed checks: None.
+- Spec updates: `tasks.md` restructured as above; `specs/13-sdd-adoption/tasks.md`'s capability reference corrected in the same change.
+
 ### 2026-08-11 - Task 2 fully unblocked: specs/35 Verified and merged, slice rebased onto main
 
 - Completed: `specs/35-guided-delivery-feature-specification-link` reached `Verified` (both tasks complete, Verification Gate passed with one documented pre-existing-test exception unrelated to that slice) and was merged into `main` (`3a7fdb4`). Separately, this slice's own Task 1 was cherry-picked directly onto `main` ahead of the rest of the slice (`0cc5d04`), a deliberate early merge since Task 1 was independently complete and proven — this repository's capability graph is meant to let a consumer depend on the smallest stable capability rather than wait on a whole slice.
