@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The approved behavior is implementation-ready except for `capability:project-participation-recipient-routing`. Slice 08 Task 36 must prove that active participant authorization and recipient routing do not depend on `ProjectMemberProfile` before Task 1 can begin.
+`capability:project-participation-recipient-routing` is ready from `specs/08-project-participation#Task 36`. Task 1 is unblocked and underway.
 
 ## Active Slice
 
@@ -69,10 +69,10 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Implement authorized notification listing.
+- [x] Task 1 — Implement authorized notification listing.
   - Size: Standard
   - Proof scope: Focused
-  - Status: Blocked until `capability:guided-delivery-notification-projection` and `capability:project-participation-recipient-routing` are ready.
+  - Status: Done.
   - Depends on: none
   - Purpose: Return only the current participant's authorized guided-delivery notification records with durable unread state and minimized content.
   - Owned surfaces: Recipient-scoped notification query, Slice 07 event filtering, newest-first stable ordering, bounded pagination, current-participation revalidation, missing-profile-independent routing consumer, removed and cross-project denial, minimized list value, and fixtures.
@@ -130,7 +130,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Active-slice implementation is blocked until `capability:project-participation-recipient-routing` is ready from `specs/08-project-participation#Task 36`; no product decision is unresolved.
+None. `capability:project-participation-recipient-routing` is ready from `specs/08-project-participation#Task 36`.
 
 ## Progress Log
 
