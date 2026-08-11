@@ -27,6 +27,7 @@ defmodule SddOrchestrator.Delivery.NotificationAccess do
   import Ecto.Query
 
   alias SddOrchestrator.Delivery.ParticipantGuard
+  alias SddOrchestrator.Notifications
   alias SddOrchestrator.Notifications.AccountNotification
   alias SddOrchestrator.Repo
 
@@ -62,6 +63,49 @@ defmodule SddOrchestrator.Delivery.NotificationAccess do
     |> filter_authorized(actor)
   rescue
     Ecto.Query.CastError -> []
+  end
+
+  @doc """
+  Fetches one account's guided-delivery notification, revalidating current
+  participation the same way `list/3` does.
+
+  A genuinely unknown id, a record belonging to another account, a record
+  whose link cannot be parsed to a project, and a record whose project the
+  actor is no longer a current participant of all return the identical
+  `{:error, :not_found}` — nothing here discloses which case occurred.
+  """
+  @spec fetch(Ecto.UUID.t() | nil, actor(), Ecto.UUID.t()) ::
+          {:ok, AccountNotification.t()} | {:error, :not_found}
+  def fetch(account_id, actor, id) do
+    with {:ok, notification} <- Notifications.fetch(account_id, id),
+         true <- authorized_record?(notification, actor) do
+      {:ok, notification}
+    else
+      _denied -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Marks one account's guided-delivery notification read, gated behind the
+  same authorization revalidation as `fetch/3`.
+
+  The durable, idempotent read transition itself belongs to
+  `SddOrchestrator.Notifications.mark_read/3`, which already keeps the first
+  `read_at` across repeated calls; this function only stands the current
+  participation gate in front of it, so a removed participant cannot mark a
+  stale notification read.
+  """
+  @spec mark_read(Ecto.UUID.t() | nil, actor(), Ecto.UUID.t()) ::
+          {:ok, AccountNotification.t()} | {:error, :not_found}
+  def mark_read(account_id, actor, id) do
+    with {:ok, _notification} <- fetch(account_id, actor, id) do
+      Notifications.mark_read(account_id, id)
+    end
+  end
+
+  defp authorized_record?(notification, actor) do
+    {result, _cache} = authorized?(notification, actor, %{})
+    result
   end
 
   defp candidates(account_id, opts) do

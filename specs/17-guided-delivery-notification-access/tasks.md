@@ -79,9 +79,10 @@ Traceability:
   - Owns: AC-01
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/delivery/notification_access_test.exs` passes focused current, removed, cross-project, event-filter, ordering, pagination, unread, minimized-content, and missing-profile routing cases.
 
-- [ ] Task 2 — Deliver durable unread and idempotent mark-read behavior.
+- [x] Task 2 — Deliver durable unread and idempotent mark-read behavior.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done.
   - Depends on: Task 1
   - Purpose: Preserve recipient action state across duplicate actions, disconnected browsers, and application restart without treating PubSub as delivery.
   - Owned surfaces: Authorized notification read, idempotent mark-read transition, duplicate submission handling, durable unread recovery, PubSub-disabled behavior, reconnect and restart fixtures, and workflow-state non-mutation.

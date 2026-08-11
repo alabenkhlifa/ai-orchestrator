@@ -1,5 +1,15 @@
 # Guided Delivery Notification Access Progress Log
 
+### 2026-08-11 — Task 2 complete: durable unread and idempotent mark-read
+
+- Completed: Added `NotificationAccess.fetch/3` and `NotificationAccess.mark_read/3`, both gated behind the same per-record participation-revalidation `list/3` uses (extracted into a shared private `authorized_record?/2` helper). `mark_read/3` delegates the actual durable transition to the already-idempotent `Notifications.mark_read/3` rather than re-implementing it. Every failure mode (unknown id, wrong account, unparsable link, removed participant) collapses to the identical `{:error, :not_found}`.
+- Remaining: Tasks 3 through 5 and the verification gate.
+- Failed checks: None.
+- Proof receipts:
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/notification_read_state_test.exs` — exit `0`.
+  (8 passed. Independently re-run and confirmed by the orchestrating session. Task 1's `notification_access_test.exs` re-run standalone after this edit — 10 passed, no regression.)
+- Spec updates: `tasks.md` Task 2 checked complete.
+
 ### 2026-08-11 — Task 1 complete: authorized notification listing
 
 - Completed: Implemented `SddOrchestrator.Delivery.NotificationAccess.list/3` — recipient-scoped, `delivery.`-namespace-only query with newest-first stable ordering (`desc: occurred_at, desc: id`), bounded/clamped pagination mirroring `Delivery.Activity`'s convention, and per-call (never cross-call) participation revalidation through `Delivery.ParticipantGuard`/`Participation.Boundary`. Project id is parsed from `link_path` since `AccountNotification` carries no `project_id` column; unparsable or unauthorized records are dropped without backfilling the page. Confirmed a current participant with no `ProjectMemberProfile` row is still listed (the case the whole slice was blocked on).
