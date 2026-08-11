@@ -1004,7 +1004,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
             :if={operations(@plan, :drifted) != []}
             title="Blocked — file was changed since installation"
             tone="err"
-            note="This kit-owned file no longer matches what was recorded at installation. Reconcile it manually, then build a fresh update plan."
+            note="This kit-owned file no longer matches what was recorded at installation. Reconcile it manually, then build a fresh removal plan."
             operations={operations(@plan, :drifted)}
             data_group="drifted-conflict"
           />

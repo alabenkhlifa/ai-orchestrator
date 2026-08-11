@@ -726,7 +726,7 @@ defmodule SddOrchestrator.RepositoryKits do
           evidence: result.evidence,
           confirmed_by_actor_ref: account_id,
           confirmed_at: now,
-          history: [installation_snapshot(current) | current.history]
+          history: [installation_snapshot(current, state) | current.history]
         }
 
         current
@@ -741,12 +741,13 @@ defmodule SddOrchestrator.RepositoryKits do
 
   # A small, JSON-safe snapshot of the pre-transition installation state — no
   # absolute paths, no secrets, same evidence-hygiene rule as the `evidence`
-  # field's own. The `"event"` literal is left as `"updated"` unconditionally
-  # (not parameterized by the transition that produced this snapshot) —
-  # unchanged from Task 5, reused here exactly as-is rather than widened.
-  defp installation_snapshot(%RepositoryKitInstallation{} = installation) do
+  # field's own. `event` names the transition that produced this snapshot
+  # (`"updated"` or `"removed"`) so the audit history accurately reflects
+  # what happened, rather than always reading `"updated"` even for a
+  # removal.
+  defp installation_snapshot(%RepositoryKitInstallation{} = installation, event) do
     %{
-      "event" => "updated",
+      "event" => event,
       "package_id" => installation.package_id,
       "package_digest" => installation.package_digest,
       "plan_id" => installation.plan_id,
