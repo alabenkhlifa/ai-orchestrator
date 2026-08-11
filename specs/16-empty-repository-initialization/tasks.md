@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product and design agreements are approved. This slice no longer depends on `capability:local-worker-run-execution` (specs/33): that capability's gateway credential, command, and manifest contract are hard-bound to an existing project and channel topic, and cannot exist before this slice's own project creation (Task 7). Task 1 now builds a project-independent dispatch foundation of its own, reusing `capability:workspace-bound-local-worker-authorization` (specs/02 Task 3, ready) for worker authorization and the existing `WorkerProtocol`/`ProtocolCodec`/`AgentAdapter` code as a library, without touching specs/33's schema or contract. Tasks 1 and 2 are complete. Task 3 is next and is blocked: `capability:sdd-kit-package` (provider `specs/15-repository-sdd-kit-integration#Task 1`) currently reports `pending`, not ready — that specification's own Task 1 is unchecked on `main` today, contradicting an earlier (2026-08-09) note in this file that had recorded it as ready; see `progress.md`'s 2026-08-10 entry for the correction. Tasks 4 through 7 remain sequenced behind Task 3 through this slice's own `Depends on:` chain and are not separately blocked by this.
+The product and design agreements are approved. This slice no longer depends on `capability:local-worker-run-execution` (specs/33): that capability's gateway credential, command, and manifest contract are hard-bound to an existing project and channel topic, and cannot exist before this slice's own project creation (Task 7). Task 1 now builds a project-independent dispatch foundation of its own, reusing `capability:workspace-bound-local-worker-authorization` (specs/02 Task 3, ready) for worker authorization and the existing `WorkerProtocol`/`ProtocolCodec`/`AgentAdapter` code as a library, without touching specs/33's schema or contract. Tasks 1 and 2 are complete. `capability:sdd-kit-package` (Task 3's requirement, provider `specs/15-repository-sdd-kit-integration#Task 1`) is ready again as of 2026-08-11: that task's implementation was cherry-picked from its own slice branch onto `main` ahead of the rest of specs/15 (specs/15 Task 2 remains separately blocked on `capability:guided-delivery-feature-specification-link`), and this branch has rebased onto that `main`. No task has an unresolved external-capability blocker; remaining sequencing is this slice's own `Depends on:` chain.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-initialization plan/run surfaces (`RepositoryInitializationPlan`, `RepositoryInitializationRun`, `InitializationDispatch`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -149,7 +149,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Task 3 is blocked on `capability:sdd-kit-package` — provider `specs/15-repository-sdd-kit-integration#Task 1`, currently `pending`. This is an external-capability wait, not an unresolved decision within this slice: no specification change is needed here, only for specs/15's own Task 1 to complete and merge. Re-check with `python3 .agents/scripts/capability_index.py --capability sdd-kit-package` before resuming Task 3.
+- None. `capability:sdd-kit-package` (Task 3's requirement) is ready as of 2026-08-11 — see `progress.md`.
 
 ## Progress Log
 
