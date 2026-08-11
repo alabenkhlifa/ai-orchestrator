@@ -284,6 +284,16 @@ defmodule SddOrchestrator.Devices do
     adapter().list_repository_kit_change_plans(project_id)
   end
 
+  @doc "Stores one project's single current device-authoritative repository-kit installation value."
+  def put_repository_kit_installation(project_id, value) do
+    adapter().put_repository_kit_installation(project_id, value)
+  end
+
+  @doc "Reads one project's current device-authoritative repository-kit installation value."
+  def get_repository_kit_installation(project_id) do
+    adapter().get_repository_kit_installation(project_id)
+  end
+
   @doc "Stores one project's single current device-authoritative pilot selection."
   def put_repository_pilot_selection(project_id, value) do
     adapter().put_repository_pilot_selection(project_id, value)

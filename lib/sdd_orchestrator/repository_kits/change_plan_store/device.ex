@@ -41,6 +41,29 @@ defmodule SddOrchestrator.RepositoryKits.ChangePlanStore.Device do
 
   def current(_viewer, _project_id, _now), do: {:error, :not_found}
 
+  @impl true
+  def get({:device, %DeviceWorkspace{} = authority}, project_id, plan_id) do
+    case authorize(authority, project_id) do
+      {:ok, _project} ->
+        project_id
+        |> Devices.list_repository_kit_change_plans()
+        |> Enum.reduce_while([], &collect_plan/2)
+        |> find_by_id(plan_id)
+
+      _missing ->
+        {:error, :not_found}
+    end
+  end
+
+  def get(_authority, _project_id, _plan_id), do: {:error, :not_found}
+
+  defp find_by_id(plans, plan_id) do
+    case Enum.find(plans, &(&1.id == plan_id)) do
+      nil -> {:error, :not_found}
+      plan -> {:ok, plan}
+    end
+  end
+
   # `attrs` never carries `inserted_at` (`RepositoryKits.persist_plan/7`
   # never sets it) — the hosted path gets it for free from Ecto's own
   # `timestamps()` exclusively at `Repo.insert` time, which this device path

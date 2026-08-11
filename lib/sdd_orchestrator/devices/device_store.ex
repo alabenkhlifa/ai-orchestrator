@@ -41,7 +41,8 @@ defmodule SddOrchestrator.Devices.DeviceStore do
   @doc """
   Deletes one device project and every device-authoritative specification,
   repository assessment, repository execution profile, repository-kit change
-  plan, and pilot selection aggregate scoped to it.
+  plan, repository-kit installation, and pilot selection aggregate scoped to
+  it.
   """
   @callback delete_project(String.t()) ::
               {:ok,
@@ -52,6 +53,7 @@ defmodule SddOrchestrator.Devices.DeviceStore do
                  deleted_repository_assessments: non_neg_integer(),
                  deleted_repository_execution_profiles: non_neg_integer(),
                  deleted_repository_kit_change_plans: non_neg_integer(),
+                 deleted_repository_kit_installation: boolean(),
                  deleted_pilot_selection: boolean()
                }}
               | {:error, :not_found}
@@ -165,6 +167,13 @@ defmodule SddOrchestrator.Devices.DeviceStore do
 
   @doc "Lists one project's device-authoritative repository-kit change plan values."
   @callback list_repository_kit_change_plans(String.t()) :: [map()]
+
+  @doc "Stores one project's single current device-authoritative repository-kit installation value, replacing any prior one."
+  @callback put_repository_kit_installation(String.t(), map()) ::
+              {:ok, map()} | {:error, atom()}
+
+  @doc "Reads one project's current device-authoritative repository-kit installation value."
+  @callback get_repository_kit_installation(String.t()) :: {:ok, map()} | {:error, :not_found}
 
   @doc "Stores one project's single current pilot selection value, replacing any prior one."
   @callback put_repository_pilot_selection(String.t(), map()) :: {:ok, map()} | {:error, atom()}

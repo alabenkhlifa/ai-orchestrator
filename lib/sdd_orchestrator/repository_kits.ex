@@ -32,7 +32,9 @@ defmodule SddOrchestrator.RepositoryKits do
   since it was recorded blocks the entire removal plan instead.
   """
 
+  alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Delivery.Features
+  alias SddOrchestrator.Devices
   alias SddOrchestrator.ManagedRuntimeProfile
   alias SddOrchestrator.Participation
   alias SddOrchestrator.Repo
@@ -40,6 +42,7 @@ defmodule SddOrchestrator.RepositoryKits do
 
   alias SddOrchestrator.RepositoryKits.{
     ChangePlanStore,
+    InstallationStore,
     RepositoryKitChangePlan,
     RepositoryKitInstallation,
     RepositoryKitPackage,
@@ -251,34 +254,19 @@ defmodule SddOrchestrator.RepositoryKits do
   project may have, now that `project_id` is uniquely indexed.
 
   Mirrors `current_plan/3`'s exact authorization shape: a `{:hosted,
-  account_id}` owner or a `{:participant, account_id, hosted_identity_id}`
-  visible viewer may read it; anything else, including a device viewer,
-  returns `{:error, :not_found}` rather than disclosing why.
+  account_id}` owner, a `{:participant, account_id, hosted_identity_id}`
+  visible viewer, or a `{:device, %DeviceWorkspace{}}` authority that owns
+  the project may read it; anything else returns `{:error, :not_found}`
+  rather than disclosing why. Dispatch and every authorization rule live in
+  `InstallationStore` — see its moduledoc.
   """
-  @spec current_installation(
-          {:hosted, Ecto.UUID.t()}
-          | {:device, term()}
-          | {:participant, Ecto.UUID.t() | nil, Ecto.UUID.t()},
-          String.t(),
-          keyword()
-        ) :: {:ok, RepositoryKitInstallation.t()} | {:error, :not_found}
+  @spec current_installation(InstallationStore.viewer(), String.t(), keyword()) ::
+          {:ok, RepositoryKitInstallation.t()} | {:error, :not_found}
   def current_installation(viewer, project_id, opts \\ [])
 
-  def current_installation({:hosted, account_id}, project_id, _opts) do
-    case Participation.owned_project(account_id, project_id) do
-      {:ok, _project} -> read_current_installation(project_id)
-      _unauthorized -> {:error, :not_found}
-    end
+  def current_installation(viewer, project_id, _opts) do
+    InstallationStore.current(viewer, project_id)
   end
-
-  def current_installation({:participant, account_id, hosted_identity_id}, project_id, _opts) do
-    case Participation.visible_project(project_id, account_id, hosted_identity_id) do
-      {:ok, _project, _role} -> read_current_installation(project_id)
-      _unauthorized -> {:error, :not_found}
-    end
-  end
-
-  def current_installation(_viewer, _project_id, _opts), do: {:error, :not_found}
 
   @doc """
   Applies one owner-confirmed, unexpired, conflict-free `RepositoryKitChangePlan`
@@ -286,10 +274,14 @@ defmodule SddOrchestrator.RepositoryKits do
 
   Only the project owner may confirm application — business rule "Only the
   project owner may approve installation". A `{:hosted, account_id}`
+  authority that owns the project or a `{:device, %DeviceWorkspace{}}`
   authority that owns the project is the only accepted shape; a
-  `{:participant, ...}` viewer (read-only for plans), a `{:device, _}`
+  `{:participant, ...}` viewer (read-only for plans), an unowned device
   authority, or anything else is refused with `{:error, :unauthorized}`
-  through a catch-all clause, mirroring `current_plan/3`'s own catch-all.
+  through a catch-all clause, mirroring `current_plan/3`'s own catch-all. A
+  device project has no separate owner/participant distinction, so "owns the
+  device project" is the full check there, exactly as `ChangePlanStore.Device`
+  already requires for building a plan.
 
   Idempotent (AC-09): once this exact `plan_id` already has a persisted
   installation, a retry returns that same installation unchanged without
@@ -318,13 +310,13 @@ defmodule SddOrchestrator.RepositoryKits do
           {:ok, RepositoryKitInstallation.t()} | {:error, atom()}
   def apply_plan(authority, project_id, plan_id, opts \\ [])
 
-  def apply_plan({:hosted, account_id}, project_id, plan_id, opts) do
+  def apply_plan({:hosted, account_id} = authority, project_id, plan_id, opts) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
     with {:ok, repository_path} <- fetch_repository_path(opts),
          {:ok, _project} <- Participation.owned_project(account_id, project_id),
-         {:ok, plan} <- fetch_plan(project_id, plan_id) do
-      case fetch_installation_by_plan(plan.id) do
+         {:ok, plan} <- ChangePlanStore.get(authority, project_id, plan_id) do
+      case fetch_installation_by_plan(authority, project_id, plan.id) do
         {:ok, installation} ->
           {:ok, installation}
 
@@ -339,7 +331,34 @@ defmodule SddOrchestrator.RepositoryKits do
                    plan.target_branch,
                    plan.operations
                  ) do
-            persist_installation(account_id, project_id, plan, result, now)
+            persist_installation(authority, project_id, plan, result, now)
+          end
+      end
+    end
+  end
+
+  def apply_plan({:device, %DeviceWorkspace{}} = authority, project_id, plan_id, opts) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    with {:ok, repository_path} <- fetch_repository_path(opts),
+         {:ok, _project} <- authorize_device_project(authority, project_id),
+         {:ok, plan} <- ChangePlanStore.get(authority, project_id, plan_id) do
+      case fetch_installation_by_plan(authority, project_id, plan.id) do
+        {:ok, installation} ->
+          {:ok, installation}
+
+        {:error, :not_found} ->
+          with :ok <- not_expired(plan, now),
+               :ok <- no_conflicts(plan),
+               {:ok, result} <-
+                 WorkerKitApply.apply(
+                   repository_path,
+                   plan.base_commit,
+                   plan.root,
+                   plan.target_branch,
+                   plan.operations
+                 ) do
+            persist_installation(authority, project_id, plan, result, now)
           end
       end
     end
@@ -374,7 +393,7 @@ defmodule SddOrchestrator.RepositoryKits do
           {:ok, RepositoryKitChangePlan.t()} | {:error, atom()}
   def plan_update(authority, project_id, new_package_id, opts \\ []) do
     with {:ok, repository_path} <- fetch_repository_path(opts),
-         {:ok, installation} <- fetch_current_installation(project_id),
+         {:ok, installation} <- fetch_current_installation(authority, project_id),
          {:ok, profile_value} <- ManagedRuntimeProfile.build(authority, project_id, opts),
          {:ok, execution_profile} <-
            matching_execution_profile(authority, project_id, profile_value, opts),
@@ -430,7 +449,7 @@ defmodule SddOrchestrator.RepositoryKits do
           {:ok, RepositoryKitChangePlan.t()} | {:error, atom()}
   def plan_removal(authority, project_id, opts \\ []) do
     with {:ok, repository_path} <- fetch_repository_path(opts),
-         {:ok, installation} <- fetch_current_installation(project_id),
+         {:ok, installation} <- fetch_current_installation(authority, project_id),
          {:ok, profile_value} <- ManagedRuntimeProfile.build(authority, project_id, opts),
          {:ok, package} <- get_package(installation.package_id),
          {:ok, operations} <-
@@ -543,47 +562,51 @@ defmodule SddOrchestrator.RepositoryKits do
 
   ## Installation reads (private)
 
-  defp read_current_installation(project_id) do
-    case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
-      nil -> {:error, :not_found}
-      installation -> {:ok, installation}
-    end
-  end
-
   # Only a genuinely active installation (`"applied"` or `"updated"`) counts
   # here — a `"removed"` row still exists (Task 6 never deletes the record,
   # only its files), but it is not something a further update or removal can
   # target. `current_installation/3` (the public, viewer-facing read) is a
   # separate concern and deliberately does not apply this filter: the
   # LiveView still needs to see a `"removed"` row to render the removed
-  # confirmation and its branch/commit.
-  defp fetch_current_installation(project_id) do
-    case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
-      nil ->
-        {:error, :not_installed}
-
-      %RepositoryKitInstallation{state: state} = installation
+  # confirmation and its branch/commit. Unauthenticated at this layer, same
+  # as before Task 8: both callers (`plan_update/4`, `plan_removal/3`)
+  # already authorize `authority` against `project_id` themselves through
+  # `ManagedRuntimeProfile.build/3`, later in the same `with` chain.
+  defp fetch_current_installation(authority, project_id) do
+    case InstallationStore.raw(authority, project_id) do
+      {:ok, %RepositoryKitInstallation{state: state} = installation}
       when state in ["applied", "updated"] ->
         {:ok, installation}
 
-      %RepositoryKitInstallation{} ->
+      _not_active ->
         {:error, :not_installed}
     end
   end
 
   ## Apply (private)
 
-  defp fetch_plan(project_id, plan_id) do
-    case Repo.get_by(RepositoryKitChangePlan, id: plan_id, project_id: project_id) do
-      nil -> {:error, :not_found}
-      plan -> {:ok, plan}
+  defp authorize_device_project(
+         {:device, %DeviceWorkspace{id: authority_id} = workspace},
+         project_id
+       ) do
+    with {:ok, %DeviceWorkspace{id: ^authority_id}} <- Devices.get_workspace(),
+         {:ok, %{storage_mode: "device", status: "connected"} = project} <-
+           Devices.get_project(project_id),
+         true <- DeviceWorkspace.owns_project?(workspace, project) do
+      {:ok, project}
+    else
+      _missing -> {:error, :unauthorized}
     end
   end
 
-  defp fetch_installation_by_plan(plan_id) do
-    case Repo.get_by(RepositoryKitInstallation, plan_id: plan_id) do
-      nil -> {:error, :not_found}
-      installation -> {:ok, installation}
+  # The plan's own FK, not its state, is what matters for this idempotency
+  # check — unauthenticated at this layer for the same reason
+  # `fetch_current_installation/2` is: `apply_plan/4`'s own authorization
+  # already ran before this is ever called.
+  defp fetch_installation_by_plan(authority, project_id, plan_id) do
+    case InstallationStore.raw(authority, project_id) do
+      {:ok, %RepositoryKitInstallation{plan_id: ^plan_id} = installation} -> {:ok, installation}
+      _no_match -> {:error, :not_found}
     end
   end
 
@@ -601,20 +624,20 @@ defmodule SddOrchestrator.RepositoryKits do
     end
   end
 
-  defp persist_installation(account_id, project_id, plan, result, now) do
+  defp persist_installation(authority, project_id, plan, result, now) do
     case plan.plan_type do
       "update" ->
-        persist_transition_installation(account_id, project_id, plan, result, now, "updated")
+        persist_transition_installation(authority, project_id, plan, result, now, "updated")
 
       "removal" ->
-        persist_transition_installation(account_id, project_id, plan, result, now, "removed")
+        persist_transition_installation(authority, project_id, plan, result, now, "removed")
 
       _install ->
-        persist_install_installation(account_id, project_id, plan, result, now)
+        persist_install_installation(authority, project_id, plan, result, now)
     end
   end
 
-  defp persist_install_installation(account_id, project_id, plan, result, now) do
+  defp persist_install_installation(authority, project_id, plan, result, now) do
     attrs = %{
       id: Ecto.UUID.generate(),
       project_id: project_id,
@@ -630,17 +653,11 @@ defmodule SddOrchestrator.RepositoryKits do
       result_commit: result.commit,
       installed_files: result.installed_files,
       evidence: result.evidence,
-      confirmed_by_actor_ref: account_id,
+      confirmed_by_actor_ref: actor_ref(authority),
       confirmed_at: now
     }
 
-    attrs
-    |> RepositoryKitInstallation.create_changeset()
-    |> Repo.insert()
-    |> case do
-      {:ok, installation} -> {:ok, installation}
-      {:error, changeset} -> {:error, installation_error_atom(changeset)}
-    end
+    InstallationStore.create(authority, attrs)
   end
 
   # Should be unreachable in practice: `plan_update/4` and `plan_removal/3`
@@ -653,13 +670,17 @@ defmodule SddOrchestrator.RepositoryKits do
   # transition-specific handling here: `result.installed_files` is already
   # `[]` for a removal plan, since a removal plan never contains a
   # `"create"` operation (`WorkerKitApply.apply/5` only ever returns a
-  # `file_entry` for a `"create"`).
-  defp persist_transition_installation(account_id, project_id, plan, result, now, state) do
-    case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
-      nil ->
+  # `file_entry` for a `"create"`). The current installation is read here
+  # (any state, unauthenticated at this layer — see
+  # `fetch_current_installation/2`'s own comment) purely to build the
+  # `history` snapshot; `InstallationStore.transition/3` does its own
+  # authorized fetch of the row it actually overwrites.
+  defp persist_transition_installation(authority, project_id, plan, result, now, state) do
+    case InstallationStore.raw(authority, project_id) do
+      {:error, :not_found} ->
         {:error, :not_installed}
 
-      current ->
+      {:ok, current} ->
         attrs = %{
           package_id: plan.package_id,
           package_digest: plan.package_digest,
@@ -674,20 +695,17 @@ defmodule SddOrchestrator.RepositoryKits do
           installed_files: result.installed_files,
           state: state,
           evidence: result.evidence,
-          confirmed_by_actor_ref: account_id,
+          confirmed_by_actor_ref: actor_ref(authority),
           confirmed_at: now,
           history: [installation_snapshot(current, state) | current.history]
         }
 
-        current
-        |> RepositoryKitInstallation.update_changeset(attrs)
-        |> Repo.update()
-        |> case do
-          {:ok, installation} -> {:ok, installation}
-          {:error, changeset} -> {:error, installation_error_atom(changeset)}
-        end
+        InstallationStore.transition(authority, project_id, attrs)
     end
   end
+
+  defp actor_ref({:hosted, account_id}), do: account_id
+  defp actor_ref({:device, %DeviceWorkspace{id: id}}), do: id
 
   # A small, JSON-safe snapshot of the pre-transition installation state — no
   # absolute paths, no secrets, same evidence-hygiene rule as the `evidence`
@@ -706,16 +724,6 @@ defmodule SddOrchestrator.RepositoryKits do
       "state" => installation.state,
       "confirmed_at" => DateTime.to_iso8601(installation.confirmed_at)
     }
-  end
-
-  defp installation_error_atom(%Ecto.Changeset{errors: errors}) do
-    if Enum.any?(errors, fn {field, {_msg, opts}} ->
-         field == :plan_id and opts[:constraint] == :unique
-       end) do
-      :already_installed
-    else
-      :invalid_installation
-    end
   end
 
   ## Attrs normalization (pure, no I/O)

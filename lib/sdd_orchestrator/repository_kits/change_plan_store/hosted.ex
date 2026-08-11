@@ -45,6 +45,16 @@ defmodule SddOrchestrator.RepositoryKits.ChangePlanStore.Hosted do
 
   def current(_viewer, _project_id, _now), do: {:error, :not_found}
 
+  @impl true
+  def get({:hosted, _account_id}, project_id, plan_id) do
+    case Repo.get_by(RepositoryKitChangePlan, id: plan_id, project_id: project_id) do
+      nil -> {:error, :not_found}
+      plan -> {:ok, plan}
+    end
+  end
+
+  def get(_authority, _project_id, _plan_id), do: {:error, :not_found}
+
   defp read_current_plan(project_id, now) do
     RepositoryKitChangePlan
     |> where([plan], plan.project_id == ^project_id and plan.expires_at > ^now)
