@@ -1,5 +1,15 @@
 # Repository SDD Kit Integration Progress Log
 
+### 2026-08-11 - Task 2 fully unblocked: specs/35 Verified and merged, slice rebased onto main
+
+- Completed: `specs/35-guided-delivery-feature-specification-link` reached `Verified` (both tasks complete, Verification Gate passed with one documented pre-existing-test exception unrelated to that slice) and was merged into `main` (`3a7fdb4`). Separately, this slice's own Task 1 was cherry-picked directly onto `main` ahead of the rest of the slice (`0cc5d04`), a deliberate early merge since Task 1 was independently complete and proven — this repository's capability graph is meant to let a consumer depend on the smallest stable capability rather than wait on a whole slice.
+- Rebased `slice/15-repository-sdd-kit-integration` onto the updated `main`. This produced one conflict: `lib/sdd_orchestrator/repository_kits.ex`, an add/add conflict between this slice's own Task 1 commit (`231778b`) and the cherry-picked copy already on `main`. Confirmed by diffing both sides that the only difference was the exact credo `--strict` nesting-depth fix the cherry-pick's own commit message described making during reconciliation — main's copy is a strict improvement, not a divergent change. Resolved with `git rebase --skip`, dropping the now-fully-redundant commit; the slice's remaining three commits (all `specs/15` doc-only) don't touch that file. `mix compile --warnings-as-errors` and both spec validators pass clean post-rebase.
+- All four of Task 2's required capabilities are now `ready`: `repository-execution-profile`, `guided-delivery-data-surfaces`, `guided-delivery-feature-specification-link` (specs/35, new), and `project-storage-authority`.
+- `## Status` set to `In Progress`.
+- Remaining: Implement Task 2 through Task 5, then the verification gate.
+- Failed checks: None.
+- Spec updates: `## Status` and `## Blocked Decisions` in `tasks.md`.
+
 ### 2026-08-10 - Task 2 AC-01 correlation gap resolved via update-spec plus new specs/35
 
 - Completed: Task 2 preflight (delivery-coverage and execution-order simulation) found AC-01's eligibility gate — "the selected pilot reaches `Ready for review` or `Done`" — had no implementable read path. `RepositoryPilotSelection` (`specs/30`, `Verified`) stores only `specification_id`; `Delivery.Feature` (`specs/07`, `Verified`) owns `lifecycle_column` but has no `specification_id`; `Delivery.Readiness.current_revision/2` just reads a project's first current specification regardless of feature, confirmed by direct code reading, not a real correlation; no test or fixture anywhere ties the two together.

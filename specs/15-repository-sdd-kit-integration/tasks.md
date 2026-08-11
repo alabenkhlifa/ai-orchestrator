@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-Task 1 is complete. Task 2 preflight found AC-01's eligibility gate had no implementable read path from a piloted `specification_id` to a `Delivery.Feature`'s `lifecycle_column` — no existing code correlates the two. Resolved via `update-spec` plus a new child specification, `specs/35-guided-delivery-feature-specification-link` (Feature gains an owner-only, optional `specification_id` link; publishes `capability:guided-delivery-feature-specification-link`). Task 2 now also requires that capability (see `progress.md`) and is blocked until `specs/35#Task 1` is complete. Task 2's other required capabilities (`repository-execution-profile`, `guided-delivery-data-surfaces`, `project-storage-authority`) remain ready.
+Task 1 is complete. `specs/35-guided-delivery-feature-specification-link` (created via `update-spec` to resolve Task 2's AC-01 correlation gap) is now `Verified` and merged to `main`. All four of Task 2's required capabilities (`repository-execution-profile`, `guided-delivery-data-surfaces`, `guided-delivery-feature-specification-link`, `project-storage-authority`) are ready. Task 2 is executable next.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-kit catalog and plan surfaces (`RepositoryKitPackage`, `RepositoryKitChangePlan`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -126,7 +126,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Task 2 is capability-blocked on `capability:guided-delivery-feature-specification-link` (provider `specs/35-guided-delivery-feature-specification-link#Task 1`, not started). Not a product-decision blocker — the correlation mechanism itself is resolved and recorded in `design.md` and `specs/35`.
+- None. All of Task 2's required capabilities are ready.
 
 ## Progress Log
 
