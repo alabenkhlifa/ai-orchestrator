@@ -75,7 +75,9 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
 
       # Acknowledging the second handoff must not disturb the first, still
       # pending, handoff from the earlier departure.
-      assert {:ok, acknowledged} = Revocations.acknowledge(second_revocation.id, "compat-consumer")
+      assert {:ok, acknowledged} =
+               Revocations.acknowledge(second_revocation.id, "compat-consumer")
+
       assert is_nil(acknowledged.former_account_id)
       assert is_nil(acknowledged.former_hosted_identity_id)
 
@@ -124,7 +126,11 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       {:ok, _} = invite_and_accept(context, leaver, "Leaver")
 
       assert {:ok, :participant} =
-               Participation.member_role(context.project, bystander.account.id, bystander.hosted_identity.id)
+               Participation.member_role(
+                 context.project,
+                 bystander.account.id,
+                 bystander.hosted_identity.id
+               )
 
       # A different account's fresh re-acceptance elsewhere in the project.
       {:ok, _} = Revocations.leave(context.project, mover.account.id, mover.hosted_identity.id)
@@ -140,7 +146,11 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
                )
 
       assert {:ok, :participant} =
-               Participation.member_role(context.project, bystander.account.id, bystander.hosted_identity.id)
+               Participation.member_role(
+                 context.project,
+                 bystander.account.id,
+                 bystander.hosted_identity.id
+               )
 
       assert Participation.active_participant(context.project.id, bystander.hosted_identity.id)
     end
@@ -152,7 +162,9 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       identity = ParticipationFixtures.invited_identity_fixture()
       {:ok, first} = invite_and_accept(context, identity, "First Term")
 
-      {:ok, _} = Revocations.leave(context.project, identity.account.id, identity.hosted_identity.id)
+      {:ok, _} =
+        Revocations.leave(context.project, identity.account.id, identity.hosted_identity.id)
+
       fresh = reinvite(context, identity)
       owner_profile = Participation.owner_profile(context.project.id)
 
@@ -168,7 +180,9 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       assert Repo.get!(ProjectMemberProfile, first.profile.id).state == "historical"
 
       # The invitation stays usable: the rollback was total, not partial.
-      assert {:ok, accepted} = Acceptance.accept(fresh.id, identity.hosted_identity, "Retry Works")
+      assert {:ok, accepted} =
+               Acceptance.accept(fresh.id, identity.hosted_identity, "Retry Works")
+
       assert accepted.profile.id == first.profile.id
     end
   end
@@ -245,7 +259,8 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       delivery = DeliveryFixtures.delivery_project_fixture()
       identity = delivery.identity
 
-      {:ok, _} = Revocations.leave(delivery.project, identity.account.id, identity.hosted_identity.id)
+      {:ok, _} =
+        Revocations.leave(delivery.project, identity.account.id, identity.hosted_identity.id)
 
       # Drains the first departure's own handoff (nothing was assigned yet) so
       # the pass below claims exactly the handoff this test is about.
@@ -286,7 +301,8 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       delivery = DeliveryFixtures.delivery_project_fixture()
       identity = delivery.identity
 
-      {:ok, _} = Revocations.leave(delivery.project, identity.account.id, identity.hosted_identity.id)
+      {:ok, _} =
+        Revocations.leave(delivery.project, identity.account.id, identity.hosted_identity.id)
 
       # Drains the first departure's own handoff (nothing was assigned yet) so
       # the pass below claims exactly the handoff this test is about.
@@ -323,11 +339,17 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       identity = ParticipationFixtures.invited_identity_fixture()
 
       {:ok, _first} = invite_and_accept(context, identity, "Round Tripper")
-      {:ok, _} = Revocations.leave(context.project, identity.account.id, identity.hosted_identity.id)
+
+      {:ok, _} =
+        Revocations.leave(context.project, identity.account.id, identity.hosted_identity.id)
+
       {:ok, _second} = invite_and_accept(context, identity, "Round Tripper Returns")
 
       joined_events =
-        Enum.filter(Notifications.list(identity.account.id), &(&1.event_type == "participation.joined"))
+        Enum.filter(
+          Notifications.list(identity.account.id),
+          &(&1.event_type == "participation.joined")
+        )
 
       assert length(joined_events) == 2
 
@@ -336,7 +358,11 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       drain_emails()
 
       assert {:ok, %{revocation: revocation}} =
-               Revocations.remove(context.project, context.account.id, identity.hosted_identity.id)
+               Revocations.remove(
+                 context.project,
+                 context.account.id,
+                 identity.hosted_identity.id
+               )
 
       assert [removed_notification] =
                Enum.filter(
@@ -388,7 +414,11 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       context = joined_project()
 
       assert {:error, :owner_cannot_leave} =
-               Revocations.leave(context.project, context.account.id, context.owner.hosted_identity.id)
+               Revocations.leave(
+                 context.project,
+                 context.account.id,
+                 context.owner.hosted_identity.id
+               )
     end
   end
 
@@ -401,7 +431,9 @@ defmodule SddOrchestrator.Participation.IdentityLifecycleCompatibilityTest do
       {:ok, _accept_a} = invite_and_accept(context_a, identity, "In Project A")
       {:ok, accept_b} = invite_and_accept(context_b, identity, "In Project B")
 
-      {:ok, _} = Revocations.leave(context_a.project, identity.account.id, identity.hosted_identity.id)
+      {:ok, _} =
+        Revocations.leave(context_a.project, identity.account.id, identity.hosted_identity.id)
+
       {:ok, _} = invite_and_accept(context_a, identity, "Back In A")
 
       assert {:ok, result} =

@@ -115,13 +115,7 @@ defmodule SddOrchestrator.Participation.Revocations do
           ensure_identity_released(acknowledged)
 
         revocation ->
-          revocation
-          |> ParticipationRevocation.acknowledge_changeset(consumer_ref, now)
-          |> Repo.update()
-          |> case do
-            {:ok, updated} -> updated
-            {:error, _changeset} -> Repo.rollback(:not_found)
-          end
+          apply_acknowledgement(revocation, consumer_ref, now)
       end
     end)
     |> case do
@@ -130,6 +124,16 @@ defmodule SddOrchestrator.Participation.Revocations do
     end
   rescue
     Ecto.Query.CastError -> {:error, :not_found}
+  end
+
+  defp apply_acknowledgement(revocation, consumer_ref, now) do
+    revocation
+    |> ParticipationRevocation.acknowledge_changeset(consumer_ref, now)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} -> updated
+      {:error, _changeset} -> Repo.rollback(:not_found)
+    end
   end
 
   defp claim_revocation(revocation_id) do

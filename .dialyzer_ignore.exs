@@ -23,7 +23,7 @@
   {"lib/sdd_orchestrator/privacy/rights.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/portability/hosted_restore.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/participation.ex", :call_without_opaque, {450, 11}},
-  {"lib/sdd_orchestrator/participation.ex", :call_without_opaque, {480, 11}},
+  {"lib/sdd_orchestrator/participation.ex", :call_without_opaque, {487, 11}},
   {"lib/sdd_orchestrator/specifications/specification_store/hosted.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/participation/acceptance.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/participation/revocations.ex", :call_without_opaque},
