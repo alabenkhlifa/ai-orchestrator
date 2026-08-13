@@ -29,23 +29,8 @@ defmodule SddOrchestrator.RepositoryKits.InstallationStore.Hosted do
   @impl true
   def transition({:hosted, account_id}, project_id, attrs) do
     case Participation.owned_project(account_id, project_id) do
-      {:ok, _project} ->
-        case read_current_installation(project_id) do
-          {:ok, current} ->
-            current
-            |> RepositoryKitInstallation.update_changeset(attrs)
-            |> Repo.update()
-            |> case do
-              {:ok, installation} -> {:ok, installation}
-              {:error, changeset} -> {:error, error_atom(changeset)}
-            end
-
-          {:error, :not_found} ->
-            {:error, :not_installed}
-        end
-
-      _unauthorized ->
-        {:error, :not_found}
+      {:ok, _project} -> transition_current(project_id, attrs)
+      _unauthorized -> {:error, :not_found}
     end
   end
 
@@ -76,6 +61,23 @@ defmodule SddOrchestrator.RepositoryKits.InstallationStore.Hosted do
     case Repo.get_by(RepositoryKitInstallation, project_id: project_id) do
       nil -> {:error, :not_found}
       installation -> {:ok, installation}
+    end
+  end
+
+  defp transition_current(project_id, attrs) do
+    case read_current_installation(project_id) do
+      {:ok, current} -> persist_transition(current, attrs)
+      {:error, :not_found} -> {:error, :not_installed}
+    end
+  end
+
+  defp persist_transition(current, attrs) do
+    current
+    |> RepositoryKitInstallation.update_changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, installation} -> {:ok, installation}
+      {:error, changeset} -> {:error, error_atom(changeset)}
     end
   end
 

@@ -73,9 +73,9 @@ defmodule SddOrchestrator.Privacy.RepositoryKitPrivacyTest do
     WorkerRepositoryExecutionProfileProposalEnvelope
   }
 
+  alias SddOrchestrator.{AccountsFixtures, ProjectsFixtures, SpecificationFixtures}
   alias SddOrchestrator.RepositoryPilots
   alias SddOrchestrator.Specifications.SpecificationLifecycle
-  alias SddOrchestrator.{AccountsFixtures, ProjectsFixtures, SpecificationFixtures}
 
   @scanner_digest String.duplicate("a", 64)
   @disclosure_digest String.duplicate("b", 64)

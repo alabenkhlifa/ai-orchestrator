@@ -311,60 +311,52 @@ defmodule SddOrchestrator.RepositoryKits do
   def apply_plan(authority, project_id, plan_id, opts \\ [])
 
   def apply_plan({:hosted, account_id} = authority, project_id, plan_id, opts) do
-    now = Keyword.get(opts, :now, DateTime.utc_now())
-
     with {:ok, repository_path} <- fetch_repository_path(opts),
-         {:ok, _project} <- Participation.owned_project(account_id, project_id),
-         {:ok, plan} <- ChangePlanStore.get(authority, project_id, plan_id) do
-      case fetch_installation_by_plan(authority, project_id, plan.id) do
-        {:ok, installation} ->
-          {:ok, installation}
-
-        {:error, :not_found} ->
-          with :ok <- not_expired(plan, now),
-               :ok <- no_conflicts(plan),
-               {:ok, result} <-
-                 WorkerKitApply.apply(
-                   repository_path,
-                   plan.base_commit,
-                   plan.root,
-                   plan.target_branch,
-                   plan.operations
-                 ) do
-            persist_installation(authority, project_id, plan, result, now)
-          end
-      end
+         {:ok, _project} <- Participation.owned_project(account_id, project_id) do
+      do_apply_plan(authority, project_id, plan_id, repository_path, opts)
     end
   end
 
   def apply_plan({:device, %DeviceWorkspace{}} = authority, project_id, plan_id, opts) do
+    with {:ok, repository_path} <- fetch_repository_path(opts),
+         {:ok, _project} <- authorize_device_project(authority, project_id) do
+      do_apply_plan(authority, project_id, plan_id, repository_path, opts)
+    end
+  end
+
+  def apply_plan(_authority, _project_id, _plan_id, _opts), do: {:error, :unauthorized}
+
+  # Shared by both `apply_plan/4` clauses once their own authorization has
+  # passed — the exact-plan fetch, idempotency check, and confirmed-plan
+  # apply are authority-agnostic worker/git logic.
+  defp do_apply_plan(authority, project_id, plan_id, repository_path, opts) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
-    with {:ok, repository_path} <- fetch_repository_path(opts),
-         {:ok, _project} <- authorize_device_project(authority, project_id),
-         {:ok, plan} <- ChangePlanStore.get(authority, project_id, plan_id) do
+    with {:ok, plan} <- ChangePlanStore.get(authority, project_id, plan_id) do
       case fetch_installation_by_plan(authority, project_id, plan.id) do
         {:ok, installation} ->
           {:ok, installation}
 
         {:error, :not_found} ->
-          with :ok <- not_expired(plan, now),
-               :ok <- no_conflicts(plan),
-               {:ok, result} <-
-                 WorkerKitApply.apply(
-                   repository_path,
-                   plan.base_commit,
-                   plan.root,
-                   plan.target_branch,
-                   plan.operations
-                 ) do
-            persist_installation(authority, project_id, plan, result, now)
-          end
+          apply_confirmed_plan(authority, project_id, plan, repository_path, now)
       end
     end
   end
 
-  def apply_plan(_authority, _project_id, _plan_id, _opts), do: {:error, :unauthorized}
+  defp apply_confirmed_plan(authority, project_id, plan, repository_path, now) do
+    with :ok <- not_expired(plan, now),
+         :ok <- no_conflicts(plan),
+         {:ok, result} <-
+           WorkerKitApply.apply(
+             repository_path,
+             plan.base_commit,
+             plan.root,
+             plan.target_branch,
+             plan.operations
+           ) do
+      persist_installation(authority, project_id, plan, result, now)
+    end
+  end
 
   @doc """
   Builds and persists one worker-local `"update"` `RepositoryKitChangePlan`

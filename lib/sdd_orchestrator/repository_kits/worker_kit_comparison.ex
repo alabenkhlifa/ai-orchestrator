@@ -116,27 +116,35 @@ defmodule SddOrchestrator.RepositoryKits.WorkerKitComparison do
          )}
 
       true ->
-        with {:ok, existing_sha256} <- blob_sha256(repository_root, found[path].object_id) do
-          if existing_sha256 == file["sha256"] do
-            {:ok,
-             operation(
-               file,
-               "create",
-               nil,
-               existing_sha256,
-               "identical content already present in the repository"
-             )}
-          else
-            {:ok,
-             operation(
-               file,
-               "conflict",
-               "ordinary",
-               existing_sha256,
-               "existing file content differs from the proposed content"
-             )}
-          end
-        end
+        classify_existing(file, repository_root, found, path)
+    end
+  end
+
+  defp classify_existing(file, repository_root, found, path) do
+    with {:ok, existing_sha256} <- blob_sha256(repository_root, found[path].object_id) do
+      classify_by_content(file, existing_sha256)
+    end
+  end
+
+  defp classify_by_content(file, existing_sha256) do
+    if existing_sha256 == file["sha256"] do
+      {:ok,
+       operation(
+         file,
+         "create",
+         nil,
+         existing_sha256,
+         "identical content already present in the repository"
+       )}
+    else
+      {:ok,
+       operation(
+         file,
+         "conflict",
+         "ordinary",
+         existing_sha256,
+         "existing file content differs from the proposed content"
+       )}
     end
   end
 
