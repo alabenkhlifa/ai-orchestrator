@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Verified
 
-The coordination task waits for the three child capabilities. The umbrella has no independent implementation work.
+The three required child capabilities are ready, Task 1 reconciled their capability, terminology, source-of-truth, and trust-boundary contracts with no duplication or conflict found, and `capability:sdd-adoption-coordination` is published. See `progress.md` for the full receipt.
 
 ## Active Slice
 
@@ -55,7 +55,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Reconcile child capability and release contracts.
+- [x] Task 1 — Reconcile child capability and release contracts.
   - Size: Standard
   - Depends on: none
   - Purpose: Prove the three independently implemented adoption paths compose without duplicate authority, hidden mutation, or readiness ambiguity.
@@ -65,16 +65,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All three required child capabilities are ready with recorded proof.
-- [ ] Individual child specification validators pass.
-- [ ] The global cross-specification graph passes without a cycle or ambiguous provider.
-- [ ] Coordinated routing and four-axis readiness browser proof passes.
-- [ ] Source-of-truth, privacy, and mutation boundaries agree across children.
-- [ ] Release gates remain reported separately from implementation readiness.
+- [x] All three required child capabilities are ready with recorded proof — see `capability_index.py` receipts in progress.md.
+- [x] Individual child specification validators pass — specs/13, /14, /15, /16, /30 each exit `0`, see progress.md.
+- [x] The global cross-specification graph passes without a cycle or ambiguous provider — `validate_spec.py --all specs` exit `0` (35 specifications).
+- [x] Coordinated routing and four-axis readiness browser proof passes — six-spec Playwright run, 10 passed / 2 pre-existing documented skips, exit `0`, see progress.md.
+- [x] Source-of-truth, privacy, and mutation boundaries agree across children — manual contract review in progress.md, no conflict found.
+- [x] Release gates remain reported separately from implementation readiness — each child's own release gates (specs/14 §Release gates via specs/30, specs/15, specs/16) remain distinct from this umbrella's implementation-readiness proof; this task adds no release-gate evidence of its own.
 
 ## Blocked Decisions
 
-- `capability:repository-execution-profile`, `capability:repository-sdd-kit`, and `capability:initialized-sdd-repository` are unavailable; this blocks Task 1 implementation.
+- None. `capability:repository-execution-profile`, `capability:repository-sdd-kit`, and `capability:initialized-sdd-repository` are all ready.
 
 ## Progress Log
 
