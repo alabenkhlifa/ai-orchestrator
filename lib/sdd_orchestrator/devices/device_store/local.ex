@@ -40,6 +40,7 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     RepositoryExecutionProfileProposalEnvelope
   }
 
+  alias SddOrchestrator.RepositoryKits.{RepositoryKitChangePlan, RepositoryKitInstallation}
   alias SddOrchestrator.RepositoryPilots.RepositoryPilotSelection
 
   alias SddOrchestrator.Specifications.{
@@ -206,6 +207,26 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
   @impl SddOrchestrator.Devices.DeviceStore
   def list_repository_execution_profiles(project_id) do
     GenServer.call(__MODULE__, {:list_repository_execution_profiles, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def append_repository_kit_change_plan(project_id, value) do
+    GenServer.call(__MODULE__, {:append_repository_kit_change_plan, project_id, value})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def list_repository_kit_change_plans(project_id) do
+    GenServer.call(__MODULE__, {:list_repository_kit_change_plans, project_id})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def put_repository_kit_installation(project_id, value) do
+    GenServer.call(__MODULE__, {:put_repository_kit_installation, project_id, value})
+  end
+
+  @impl SddOrchestrator.Devices.DeviceStore
+  def get_repository_kit_installation(project_id) do
+    GenServer.call(__MODULE__, {:get_repository_kit_installation, project_id})
   end
 
   @impl SddOrchestrator.Devices.DeviceStore
@@ -502,6 +523,22 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
     {:reply, repository_execution_profile_values(state.table, project_id), state}
   end
 
+  def handle_call({:append_repository_kit_change_plan, project_id, value}, _from, state) do
+    {:reply, append_repository_kit_change_plan(state.table, project_id, value), state}
+  end
+
+  def handle_call({:list_repository_kit_change_plans, project_id}, _from, state) do
+    {:reply, repository_kit_change_plan_values(state.table, project_id), state}
+  end
+
+  def handle_call({:put_repository_kit_installation, project_id, value}, _from, state) do
+    {:reply, put_repository_kit_installation(state.table, project_id, value), state}
+  end
+
+  def handle_call({:get_repository_kit_installation, project_id}, _from, state) do
+    {:reply, fetch_repository_kit_installation(state.table, project_id), state}
+  end
+
   def handle_call({:put_repository_pilot_selection, project_id, value}, _from, state) do
     {:reply, put_repository_pilot_selection(state.table, project_id, value), state}
   end
@@ -682,21 +719,29 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
         repository_execution_profile_keys =
           project_scoped_keys(table, :repository_execution_profile, project_id)
 
+        repository_kit_change_plan_keys =
+          project_scoped_keys(table, :repository_kit_change_plan, project_id)
+
         provenance_key = {:package_provenance, project_id}
         deleted_provenance? = :dets.member(table, provenance_key)
 
-        # The pilot selection has no independent record of its own once its
-        # project is gone, so it is removed with the project rather than left
-        # to outlive the repository assessment and profile it references.
+        # The pilot selection and the repository-kit installation each have no
+        # independent record of their own once their project is gone, so both
+        # are removed with the project rather than left to outlive the
+        # repository assessment and profile they reference.
         pilot_selection_key = {:repository_pilot_selection, project_id}
         deleted_pilot_selection? = :dets.member(table, pilot_selection_key)
 
+        installation_key = {:repository_kit_installation, project_id}
+        deleted_repository_kit_installation? = :dets.member(table, installation_key)
+
         keys =
-          [{:project, project_id}, provenance_key, pilot_selection_key] ++
+          [{:project, project_id}, provenance_key, pilot_selection_key, installation_key] ++
             specification_keys ++
             repository_assessment_keys ++
             repository_assessment_envelope_keys ++
-            repository_execution_profile_keys
+            repository_execution_profile_keys ++
+            repository_kit_change_plan_keys
 
         Enum.each(keys, &:dets.delete(table, &1))
 
@@ -709,6 +754,8 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
            deleted_specifications: length(specification_keys),
            deleted_repository_assessments: length(repository_assessment_keys),
            deleted_repository_execution_profiles: length(repository_execution_profile_keys),
+           deleted_repository_kit_change_plans: length(repository_kit_change_plan_keys),
+           deleted_repository_kit_installation: deleted_repository_kit_installation?,
            deleted_pilot_selection: deleted_pilot_selection?
          }}
     end
@@ -1235,6 +1282,101 @@ defmodule SddOrchestrator.Devices.DeviceStore.Local do
       table
     )
     |> Enum.sort_by(& &1["version"])
+  end
+
+  # ---- repository-kit change plans ----
+
+  # No assessment-binding precondition and no existing-digest replay check:
+  # unlike an execution profile, a change plan is always a fresh append —
+  # there is no plan-creation replay semantics anywhere in this codebase,
+  # only apply-time replay, a separate mechanism this does not touch.
+  defp append_repository_kit_change_plan(table, project_id, value) when is_map(value) do
+    with {:ok, _project} <- authorize_device_project(table, project_id),
+         {:ok, plan} <- RepositoryKitChangePlan.from_value(value),
+         true <- plan.project_id == project_id do
+      :ok = :dets.insert(table, {{:repository_kit_change_plan, project_id, plan.id}, value})
+      :ok = :dets.sync(table)
+      {:ok, value}
+    else
+      {:error, :not_found} -> {:error, :not_found}
+      {:error, :invalid_plan} -> {:error, :invalid_plan}
+      false -> {:error, :invalid_plan}
+    end
+  end
+
+  defp append_repository_kit_change_plan(_table, _project_id, _value),
+    do: {:error, :invalid_plan}
+
+  defp repository_kit_change_plan_values(table, project_id) do
+    :dets.foldl(
+      fn
+        {{:repository_kit_change_plan, ^project_id, _plan_id}, value}, values ->
+          [value | values]
+
+        _other, values ->
+          values
+      end,
+      [],
+      table
+    )
+  end
+
+  # The same three checks `ProfileStore.Device`'s own `authorize/2` makes
+  # against the public `Devices` context, made here directly against the
+  # table since this code already runs inside the store's own GenServer:
+  # the device workspace exists, the project is a connected device project,
+  # and the project belongs to that workspace.
+  defp authorize_device_project(table, project_id) do
+    with {:ok, workspace} <- fetch_workspace(table),
+         [{{:project, ^project_id}, %{storage_mode: "device", status: "connected"} = project}] <-
+           :dets.lookup(table, {:project, project_id}),
+         true <- project.workspace_id == workspace.id do
+      {:ok, project}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  # ---- repository-kit installation ----
+
+  # One installation per project, so a plain insert replaces the prior
+  # value — this is what gives a fresh install and a later transition
+  # (update or removal) the same primitive, mirroring
+  # `put_repository_pilot_selection/3`'s own "plain insert replaces" shape.
+  # Unlike that older precedent, this still runs the same defense-in-depth
+  # inline authorization `append_repository_kit_change_plan/3` established,
+  # since a stale write here silently discards this project's whole
+  # installation state rather than merely appending an extra row.
+  defp put_repository_kit_installation(table, project_id, value) when is_map(value) do
+    with {:ok, _project} <- authorize_device_project(table, project_id),
+         {:ok, installation} <- RepositoryKitInstallation.from_value(value),
+         true <- installation.project_id == project_id do
+      :ok = :dets.insert(table, {{:repository_kit_installation, project_id}, value})
+      :ok = :dets.sync(table)
+      {:ok, value}
+    else
+      {:error, :not_found} -> {:error, :not_found}
+      {:error, :invalid_installation} -> {:error, :invalid_installation}
+      false -> {:error, :invalid_installation}
+    end
+  end
+
+  defp put_repository_kit_installation(_table, _project_id, _value),
+    do: {:error, :invalid_installation}
+
+  # No revalidation here, unlike `fetch_repository_pilot_selection/2`: the
+  # raw stored value is handed back exactly as
+  # `repository_kit_change_plan_values/2` hands back a change plan value,
+  # and `InstallationStore.Device` is the layer that decodes and revalidates
+  # it through `RepositoryKitInstallation.from_value/1`. No authorization
+  # check either — this mirrors how the pre-Task-8 hosted
+  # `fetch_current_installation/1` read did no ownership check of its own at
+  # its own layer.
+  defp fetch_repository_kit_installation(table, project_id) do
+    case :dets.lookup(table, {:repository_kit_installation, project_id}) do
+      [{_key, value}] -> {:ok, value}
+      _missing -> {:error, :not_found}
+    end
   end
 
   # ---- repository pilot selection ----

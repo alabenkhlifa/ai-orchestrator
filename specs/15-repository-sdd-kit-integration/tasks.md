@@ -2,9 +2,15 @@
 
 ## Status
 
-Blocked
+Verified
 
-Task 1 is complete. Task 2 requires `capability:repository-execution-profile` and `capability:guided-specification-delivery`, neither ready yet, so the slice's next executable task is blocked.
+All nine tasks are complete and the `## Verification Gate` below has passed, with one documented exception: `mix test`'s full run fails 4 pre-existing tests unrelated to this slice — `LocalWorkerRuntimeProjectionTest`, `Participation.AcceptanceTest`, `RevocationConsumerTest`, `InvitationAcceptanceLiveTest` — none touching any file this slice changed, reproducing byte-for-byte the same already-investigated, already-accepted exception `specs/35-guided-delivery-feature-specification-link`'s own Verification Gate documented and the user accepted; see `progress.md`. `capability:repository-sdd-kit` is ready. Implementation, local verification, and this slice's own Verification Gate are complete. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open, consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof") — release readiness remains open per that gate; see progress.md.
+
+Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
+
+Task 5 was split via `update-spec` into a narrowed idempotency-and-update task (Task 5, unchanged label, now AC-09+AC-10) and a new removal task (Task 6, AC-11), because the original Task 5 bundled two independently-testable lifecycle workflows — update (one state transition: `applied` → `updated`) and removal (a different state transition: `applied`/`updated` → `removed`) — plus a general idempotency fix into one task, the same "combines independently testable behaviors" / "more than one primary state transition" Task Size Gate trigger that split Task 2. The former Task 6 (governance) renumbered to Task 7, `Depends on: Task 6`; no scope, acceptance criterion, or business rule changed. `specs/13-sdd-adoption/tasks.md`'s `capability:repository-sdd-kit` requirement corrected from `#Task 6` to `#Task 7` in the same change.
+
+Task 7 was split via `update-spec` (preflight before dispatch, before any implementation) into two new hosted/device storage-parity tasks (Task 7 — `RepositoryKitChangePlan`, unchanged label; Task 8 — `RepositoryKitInstallation`) and a narrowed governance task (Task 9, unchanged AC-12+AC-13), because the original Task 7 bundled two structurally separate `Devices.DeviceStore`/`Local`/`Device`/`Hosted` adapter builds (one per entity — "multiple adapter integrations", an explicit Task Size Gate trigger, confirmed unbuilt cross-cutting infrastructure by direct inspection: neither entity has any device-side schema, migration, or `DeviceStore` callback today) together with an unrelated governance/privacy-proof workflow, into one task. Tasks 7 and 8 both `Depends on: Task 6` (siblings, not chained — neither entity's split needs the other's to exist first) and own no acceptance criterion (`Owns: none.`); the storage-parity build is a prerequisite the governance task's proof depends on, not itself an AC-bearing outcome. Task 9 (renumbered from the former Task 7) becomes `Depends on: Task 7, Task 8` and keeps AC-12/AC-13 unchanged. `capability:repository-sdd-kit`'s `ready after` and its three `required before` capability requirements moved from `Task 7` to `Task 9` in the same change; `specs/13-sdd-adoption/tasks.md`'s `capability:repository-sdd-kit` requirement corrected from `#Task 7` to `#Task 9`. Also resolved in the same pass: the former Task 7's "authorized specification-tool adapter" owned surface named no implementable surface anywhere in this codebase (confirmed by search: no external-facing API, MCP server, or CLI exists for an independently-launched coding agent to read or write Orchestrator specification content, and the only vendored kit content today is a test fixture stub) — reworded on the new Task 9 as an invariant to *prove* (the kit never vendors project-specific specification content, and nothing in the plan/apply/update/removal path exports or synchronizes specification content into the repository), not new API/backend work to *build*, consistent with design.md's already-approved "One Specification Authority" decision and requirements.md's exclusion of bidirectional synchronization from this slice's scope. No requirement, business rule, or acceptance criterion changed.
 
 Parallel-slice check (2026-08-09): reviewed against concurrently active slice 25 (Participation Identity Lifecycle). This slice owns only the repository-kit catalog and plan surfaces (`RepositoryKitPackage`, `RepositoryKitChangePlan`); no shared schema, migration, context, or UI. Partitioned by ownership — no serialization required.
 
@@ -18,24 +24,25 @@ Requires:
 
 - `capability:repository-execution-profile` — provider `specs/30-repository-execution-profile-completion#Task 2` — required before `Task 2`.
 - `capability:guided-delivery-data-surfaces` — provider `specs/07-guided-specification-delivery#Task 54` — required before `Task 2`.
+- `capability:guided-delivery-feature-specification-link` — provider `specs/35-guided-delivery-feature-specification-link#Task 1` — required before `Task 2`.
 - `capability:project-storage-authority` — provider `specs/05-project-storage-lifecycle#Task 4` — required before `Task 2`.
-- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 5`.
-- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 5`.
-- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 5`.
+- `capability:project-storage-governance` — provider `specs/05-project-storage-lifecycle#Task 6` — required before `Task 9`.
+- `capability:project-specification-store` — provider `specs/09-project-specification-storage#Task 8` — required before `Task 9`.
+- `capability:project-specification-governance` — provider `specs/09-project-specification-storage#Task 5` — required before `Task 9`.
 
 Provides:
 
 - `capability:sdd-kit-package` — ready after `Task 1`.
-- `capability:repository-sdd-kit` — ready after `Task 5`.
+- `capability:repository-sdd-kit` — ready after `Task 9`.
 
 ## Task Size Gate
 
-- Every task is standard, owns one independently provable package, plan, apply, lifecycle, or governance outcome, and has no more than three acceptance criteria and two entities.
+- Every task is standard, owns one independently provable package, plan, presentation, apply, lifecycle, or governance outcome, and has no more than three acceptance criteria and two entities.
 - No exception is required.
 
 ## Proof Scope Gate
 
-- Applies to: Task 1.
+- Applies to: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8, Task 9.
 
 ## Implementation Boundary
 
@@ -78,54 +85,99 @@ Traceability:
   - Owns: AC-02, AC-03, entity:RepositoryKitPackage
   - Proof: Focused package identity, tamper, path, size, license, provenance, permission, mutable-reference, no-network, no-execution, UI, and browser tests pass before `capability:sdd-kit-package` readiness is recorded.
 
-- [ ] Task 2 — Produce the optional exact change plan.
+- [x] Task 2 — Produce the optional exact change plan.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 1
   - Purpose: Let owners decide from a complete repository-specific diff after their pilot proves the managed path.
-  - Owned surfaces: Post-pilot eligibility and decline UX, `RepositoryKitChangePlan`, approved-profile and exact-commit binding, worker-local comparison, complete file-operation diff, existing-rule precedence, protected-file handling, ordinary conflict classification, safety conflict classification, expiry, and no-mutation planning.
-  - Owns: AC-01, AC-04, AC-05, entity:RepositoryKitChangePlan
-  - Proof: Focused pilot-state, decline, profile, stale-commit, complete-diff, protected-file, precedence, conflict, no-mutation, LiveView, and browser tests pass.
+  - Owned surfaces: Post-pilot eligibility read (resolve the linked feature via `capability:guided-delivery-feature-specification-link` by the pilot's `specification_id`, then read that feature's `lifecycle_column` through the existing board read; a not-linked result is not-yet-eligible, not an error), `RepositoryKitChangePlan` schema and persistence, approved-profile and exact-commit binding, worker-local comparison (reusing `WorkerRepositoryAssessment`'s exact-commit staleness check, selected-root containment, tree-entry listing, and blob-content-read primitives), complete file-operation diff, existing-rule precedence, protected-file handling (an existing `AGENTS.md`, `CLAUDE.md`, CI definition, specification template, or contribution rule is always omitted from the plan, never an overwrite target or an ordinary conflict), ordinary conflict classification, safety conflict classification, expiry, and no-mutation planning.
+  - Owns: AC-04, AC-05, entity:RepositoryKitChangePlan
+  - Proof: Focused pilot-state, eligibility-read, profile, stale-commit, complete-diff, protected-file, precedence, conflict (ordinary and safety), expiry, and no-mutation tests pass.
 
-- [ ] Task 3 — Apply one confirmed plan on an isolated branch.
+- [x] Task 3 — Present post-pilot eligibility, decline, and the reviewable diff.
   - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 2
+  - Purpose: Let the owner see the optional offer, decline it without losing managed runtime SDD, and review Task 2's exact diff before confirming anything.
+  - Owned surfaces: Post-pilot eligibility and decline LiveView at `/projects/:id/kit` (`RepositoryKitOfferLive`, hosted-only for now — mirrors `RepositoryPilotLive`'s hosted context-loading pattern; no device route — a device-facing route is separate UI work `RepositoryKitOfferLive` never owned, not blocked on `RepositoryKitChangePlan` persistence itself, which is no longer hosted-only as of Task 7), plan-trigger action, diff and conflict presentation, and decline action.
+  - Owns: AC-01
+  - Proof: Focused LiveView tests covering the not-yet-eligible, eligible, decline, and diff-review states pass. Browser scenario deferred (see progress.md): a real slice-gate `e2e_bootstrap_controller.ex` scenario would need to chain assessment, profile approval, pilot selection, feature linking, and kit publishing, which is out of a single focused task's scope to author unverified.
+
+- [x] Task 4 — Apply one confirmed plan on an isolated branch.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 3
   - Purpose: Turn only the reviewed operations into one auditable repository commit without bypassing repository ownership.
   - Owned surfaces: Safety and ordinary conflict gate, exact-plan owner confirmation, `RepositoryKitInstallation`, branch creation, default-branch prohibition, root and symlink containment, hooks-disabled application, confirmed file operations, one resulting commit, installed-file ownership digests, rollback-safe failure, and proof capture.
   - Owns: AC-06, AC-07, AC-08, entity:RepositoryKitInstallation
   - Proof: Focused authorization, stale-plan, conflict, branch isolation, default-branch negative, path and symlink, unexpected-file, hooks-disabled, operation allowlist, partial-failure, commit, evidence, and browser tests pass.
 
-- [ ] Task 4 — Implement idempotent update and removal.
+- [x] Task 5 — Implement idempotent apply and kit update.
   - Size: Standard
-  - Depends on: Task 3
-  - Purpose: Keep permanent workflow files controllable without silent changes or deletion of repository-owned work.
-  - Owned surfaces: Apply idempotency, explicit newer-version presentation, update planning and confirmation, kit-owned file comparison, user-modification conflicts, removal planning and confirmation, ownership-safe deletion, lifecycle history, and resulting branch evidence.
-  - Owns: AC-09, AC-10, AC-11
-  - Proof: Focused replay, changed-input, no-silent-update, owned and modified file, shared file, removal safety, history, branch, LiveView, and browser tests pass.
-
-- [ ] Task 5 — Enforce governance and publish the repository-kit capability.
-  - Size: Standard
+  - Proof scope: Focused
   - Depends on: Task 4
-  - Purpose: Prove kit lifecycle data remains governed and workflow installation never becomes a second specification authority.
-  - Owned surfaces: Hosted and device storage parity, role access, retention, deletion, processor and transfer controls, diff and log redaction, no analytics, no secondary use, authorized specification-tool adapter, no project-specific specification files, no synchronization, managed-runtime decline and removal fallback, `capability:repository-sdd-kit` readiness write-back, and release evidence.
+  - Purpose: Let a retried confirmation return its already-recorded result instead of erroring or duplicating, and let the owner move an installed kit to a newer version without silently touching files no longer proven to be kit-owned.
+  - Owned surfaces: Idempotent apply-retry for any confirmed plan (returns the existing `RepositoryKitInstallation` unchanged when the exact same plan is retried, generalized so Task 6's removal path can reuse the same mechanism rather than redefining it), the `RepositoryKitInstallation` lifecycle-history and state-transition schema extension (introduces the `updated` state alongside `applied` and the history mechanism Task 6's `removed` transition will also use, without redefining Task 4's existing columns), explicit newer-package-available presentation (informational only — a newer version is never selected or applied automatically), update planning (kit-owned file comparison among the new package's proposed content, the currently-installed file digests, and the live repository, distinguishing still-kit-owned-and-unchanged files from user-modified ones), update conflict presentation, update confirmation, and isolated-branch update apply reusing Task 4's `WorkerKitApply`.
+  - Owns: AC-09, AC-10
+  - Proof: Focused replay, changed-input, newer-version-info-only, update kit-owned-file comparison, user-modification conflict, update apply, branch, evidence, LiveView, and browser tests pass.
+
+- [x] Task 6 — Implement kit removal.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 5
+  - Purpose: Let the owner remove an installed kit's files on a new isolated branch without deleting anything not proven to still be kit-owned and unchanged.
+  - Owned surfaces: Removal planning (kit-owned file comparison between the currently-installed file digests and the live repository, distinguishing still-kit-owned-and-unchanged files, safe to delete, from user-modified or shared files, left for explicit review), removal conflict presentation, removal confirmation, ownership-safe deletion, isolated-branch removal apply reusing Task 4's `WorkerKitApply` and Task 5's idempotent-retry mechanism, and the `removed` state transition on Task 5's lifecycle-history schema (extends it, does not redefine it).
+  - Owns: AC-11
+  - Proof: Focused removal planning, ownership-safe deletion, user-modified and shared-file conflict, removal apply, branch, evidence, LiveView, and browser tests pass.
+
+- [x] Task 7 — Build hosted/device storage parity for the repository-kit change plan.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 6
+  - Purpose: Let a device-authoritative project build, read, update, and remove-plan a repository-kit change plan through the same dual-authority pattern `RepositoryAssessments.ProfileStore` already established for `RepositoryExecutionProfile`, closing the `{:error, :unsupported_authority}` gap Tasks 2, 5, and 6 deliberately left open.
+  - Owned surfaces: `Devices.DeviceStore` repository-kit-change-plan callbacks and `Local` (DETS) implementation; `RepositoryKitChangePlan.Device`/`RepositoryKitChangePlan.Hosted` split modules and their top-level dispatcher (mirroring `ProfileStore`'s exact append-only shape, since a plan is itself immutable); `plan_change/4`/`plan_update/4`/`plan_removal/3`/`current_plan/3` routed through the dispatcher instead of refusing a `{:device, _}` authority; device-project-deletion cascade for the new DETS key.
+  - Owns: none.
+  - Proof: Focused device-authority build, read, list, cross-authority-isolation, and deletion-cascade tests pass.
+
+- [x] Task 8 — Build hosted/device storage parity for the repository-kit installation.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 6
+  - Purpose: Let a device-authoritative project record, read, and transition (update or removal) a repository-kit installation through the same dual-authority pattern, closing the same gap for the mutable lifecycle record.
+  - Owned surfaces: `Devices.DeviceStore` repository-kit-installation callbacks and `Local` (DETS) implementation (create plus in-place state-transition update, closer to `RepositoryAssessment`'s transition-capable precedent than `ProfileStore`'s append-only one); a new `InstallationStore`/`InstallationStore.Device`/`InstallationStore.Hosted` dispatcher and adapter pair (naming mirrors Task 7's `ChangePlanStore`, not the entity schema module itself); `apply_plan/4`/`current_installation/3` routed through the dispatcher instead of refusing a `{:device, _}` authority; device-project-deletion cascade for the new DETS key.
+  - Owns: none.
+  - Proof: Focused device-authority create, read, transition, cross-authority-isolation, and deletion-cascade tests pass.
+
+- [x] Task 9 — Enforce governance and publish the repository-kit capability.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 7, Task 8
+  - Purpose: Prove kit lifecycle data remains governed under the storage parity Tasks 7 and 8 just built, and that workflow installation never becomes a second specification authority.
+  - Owned surfaces: Role access, retention, deletion, processor and transfer controls, diff and log redaction, no analytics, no secondary use, the specification-authority invariant (the kit never vendors project-specific specification content, and nothing in the plan/apply/update/removal path exports or synchronizes specification content into the repository — proven, not built, since no such external interface exists anywhere in this codebase to fail closed on today), no project-specific specification files, no synchronization, managed-runtime decline and removal fallback, `capability:repository-sdd-kit` readiness write-back, and release evidence.
   - Owns: AC-12, AC-13
-  - Proof: Focused storage, access, lifecycle, rights, redaction, processor, no-analytics, source-of-truth, fail-closed tool, no-sync, managed-runtime fallback, and capability readiness tests pass.
+  - Proof: Focused storage, access, retention, deletion, redaction, processor, no-analytics, specification-authority, no-sync, managed-runtime fallback, and capability readiness tests pass.
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
-- [ ] Package integrity, provenance, license, permission, and no-execution suites pass.
-- [ ] Conflict, exact-diff, stale-plan, branch-isolation, and mutation-negative suites pass.
-- [ ] Update, removal, file-ownership, and idempotency suites pass.
-- [ ] Hosted and device storage, privacy, lifecycle, and no-analytics suites pass.
-- [ ] Desktop and mobile package, plan, conflict, apply, update, removal, and decline browser scenarios pass.
-- [ ] `mix check` and all explicit project code-quality commands pass.
-- [ ] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
-- [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
-- [ ] Specification validator and global capability graph pass.
+- [x] Acceptance criteria pass.
+- [x] Package integrity, provenance, license, permission, and no-execution suites pass.
+- [x] Conflict, exact-diff, stale-plan, branch-isolation, and mutation-negative suites pass.
+- [x] Update, removal, file-ownership, and idempotency suites pass.
+- [x] Hosted and device storage, privacy, lifecycle, and no-analytics suites pass.
+- [x] Desktop and mobile package, plan, conflict, apply, update, removal, and decline browser scenarios pass.
+- [x] `mix check` and all explicit project code-quality commands pass, except the documented pre-existing exception in `## Status`.
+- [x] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
+- [x] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
+- [x] Specification validator and global capability graph pass.
 
 ## Blocked Decisions
 
-- None. Task 1 is complete; Task 2 remains capability-blocked until its recorded providers are ready.
+- None. Tasks 1–9 are all complete. `capability:repository-sdd-kit` is ready. Nothing left in `## Tasks`; what remains is the slice-level `## Verification Gate` (not a task-level blocker).
+- Resolved by Tasks 7 and 8: `RepositoryKitChangePlan` and `RepositoryKitInstallation` persistence is no longer hosted-only — both now support a `{:device, %DeviceWorkspace{}}` authority through `ChangePlanStore`/`InstallationStore`, mirroring `RepositoryAssessments.ProfileStore`'s existing dual-authority pattern. `RepositoryKitPackage` remains a global, non-project-scoped catalog and never needed this split.
+- Deferred, not blocking: no worker-dispatch mechanism yet resolves a live `repository_path` for `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` from a hosted LiveView (Tasks 3, 4, 5, and 6 all surface this honestly as "not available from this screen yet" rather than fabricating one). This is the same already-declared release-gate concern ("Live authorized worker and repository-host smoke proof"), not new scope; it does not block implementation or local verification of Tasks 1–6.
+- Resolved by Task 6: an already-removed installation is no longer a valid target for a further update or removal — `fetch_current_installation/1` now only treats `"applied"`/`"updated"` rows as active, so both `plan_update/4` and `plan_removal/3` refuse `{:error, :not_installed}` against a `"removed"` row.
+- Resolved by Task 5: apply-retry is now genuinely idempotent (AC-09) — `apply_plan/4` short-circuits on a repeat `plan_id` and returns the already-persisted installation unchanged, before touching the repository or the expiry/conflict gates. Task 4's unique index on `plan_id` remains as a schema-level safety net beneath that behavior.
+- Discovery, not acted on (out of this slice's scope): `AssessmentStore`/`ProfileStore`'s hosted "latest" reads break an `inserted_at` tie on `id desc` — a random UUID. Two profile approvals stamped with the same caller-supplied `now` therefore pick a non-deterministic "latest" assessment. Task 5's own tests hit this (worked around the same way `managed_runtime_profile_test.exs` already does, by advancing `now` between approvals) but the underlying tie-break belongs to the assessment/profile storage modules (specs/14/specs/30), not this slice — flagged here for whichever of those specs next touches that ordering, not fixed in this change.
 
 ## Progress Log
 
