@@ -19,15 +19,17 @@ defmodule SddOrchestrator.ProjectAssistant.Guard do
   module, the same split `SpecificationStore.Hosted` and
   `SpecificationStore.Device` already draw for specification authorization.
 
-  Task 1 owns three actions: `open_panel`, `read_history`, and `delete`.
-  Later tasks add `ask` (Task 2, layered under its own processing-boundary
-  confirmation gate) and `open_citation` (Task 7/8) without changing this
-  contract.
+  Task 1 owned three actions: `open_panel`, `read_history`, and `delete`.
+  Task 2 adds `confirm_boundary` (reviewing and confirming the disclosed
+  processing summary) and `ask` (submitting a question, layered under its
+  own processing-boundary confirmation gate in
+  `SddOrchestrator.ProjectAssistant.BoundaryGate`). A later task adds
+  `open_citation` (Task 7/8) without changing this contract.
   """
 
   alias SddOrchestrator.Participation.Boundary
 
-  @protected_actions ~w(open_panel read_history delete)a
+  @protected_actions ~w(open_panel read_history delete confirm_boundary ask)a
 
   @type actor :: %{
           optional(:account_id) => Ecto.UUID.t() | nil,
