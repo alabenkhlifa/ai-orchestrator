@@ -86,8 +86,7 @@ Traceability:
   - Owns: AC-02, AC-03, AC-23, entity:ProjectAssistantConversation, entity:ProjectAssistantTurn
   - Proof: Run focused domain and adapter tests that create exactly one conversation per participant and project, preserve independent histories for two participants, reject stale and cross-project reads without existence disclosure, create no shared activity, and prove equivalent hosted and device behavior.
 
-- [ ] Task 2 — Integrate personal AI availability and processing-boundary confirmation.
-  - Status: Blocked until `capability:ai-runtime-session` and `capability:ai-runtime-observation` are ready.
+- [x] Task 2 — Integrate personal AI availability and processing-boundary confirmation.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Make one participant-funded runtime session an informed, explicit boundary without exposing credentials or silently selecting a fallback.
@@ -95,12 +94,11 @@ Traceability:
   - Owns: AC-04, AC-05, AC-06, entity:AssistantBoundaryConfirmation
   - Proof: Run focused runtime-adapter and LiveView tests proving unavailable and temporarily limited states, no provider fallback, no tool or model call before matching confirmation, invalidation after each material boundary change, and automatic bounded reads after unchanged confirmation.
 
-- [ ] Task 3 — Assemble and project current stored project context.
-  - Status: Blocked until `capability:guided-specification-delivery` is ready.
+- [x] Task 3 — Assemble and project current stored project context.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Ground ordinary questions in minimum current authoritative project data before any source observation is considered.
-  - Owned surfaces: `capability:project-specification-store` current-snapshot consumer, `capability:guided-specification-delivery` read-only board, recent-run and accepted-evidence consumer, project metadata reader, context minimizer, destination-local `ProjectContextProjection`, projection refresh and deletion, hosted and device isolation, exact context-version references, fixtures, and negative source-copy assertions.
+  - Owned surfaces: `capability:project-specification-store` current-snapshot consumer, `capability:guided-delivery-data-surfaces` read-only board, recent-run and accepted-evidence consumer, project metadata reader, context minimizer, destination-local `ProjectContextProjection`, projection refresh and deletion, hosted and device isolation, exact context-version references, fixtures, and negative source-copy assertions.
   - Owns: AC-07, AC-17, entity:ProjectContextProjection
   - Proof: Run focused hosted and device tests that assemble only current metadata, specification heads, board state, and needed recent run or evidence state; reject every delivery mutation; rebuild the projection idempotently; and find no repository path, source, source index, prior revision, raw log, or unrelated activity in the projection.
 
