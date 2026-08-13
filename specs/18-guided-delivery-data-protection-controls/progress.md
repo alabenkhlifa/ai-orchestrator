@@ -1,5 +1,42 @@
 # Guided Delivery Data Protection Controls Progress Log
 
+### 2026-08-13 — Verification Gate passed; slice Verified
+
+- Completed: Ran the full Verification Gate in the `slice/18-guided-delivery-data-protection-controls` worktree (`MIX_TEST_PARTITION=482714`).
+  - `MIX_TEST_PARTITION=482714 mix check` (format --check-formatted, `compile --warnings-as-errors`, `credo --strict` — 9094 mods/funs, no issues — and the full test suite) — command's real exit reflects the documented accepted exception below; format, compile, and Credo sub-steps are individually clean.
+  - `mix dialyzer` — exit `0` (23 errors, 23 skipped via exact accepted entries, 0 unnecessary skips — same accepted-skip count as the specs/17 precedent).
+  - `mix sobelow --config` — exit `0`, scan complete, no findings.
+  - `mix deps.audit` — exit `0`, no vulnerabilities.
+  - `npm --prefix assets ci` — exit `0`.
+  - Dropped the stale shared `sdd_orchestrator_e2e_desktop`/`sdd_orchestrator_e2e_mobile` databases first (confirmed no other worktree's mix/node/playwright process was running), matching this repo's known e2e non-idempotent-seed precedent.
+  - `MIX_TEST_PARTITION=482714 npm --prefix assets run test:e2e` — exit `0`: 136 passed (+2 skipped) on `chromium` (desktop) and 136 passed (+2 skipped) on `mobile-chromium`.
+  - `MIX_ENV=prod mix assets.deploy` — exit `0`.
+  - `MIX_ENV=prod mix release --overwrite` — exit `0` (`--overwrite` needed for a non-interactive run against this worktree's pre-existing `_build/prod/rel`, same as the specs/17 precedent).
+  - `python3 .agents/scripts/validate_spec.py specs/18-guided-delivery-data-protection-controls` — exit `0`.
+  - `python3 .agents/scripts/validate_spec.py --all specs` — exit `0` (35 specifications).
+  - `python3 .agents/scripts/split_progress_log.py --check` — exit `0`.
+  - `git diff --check` — exit `0`.
+  - `cmp -s AGENTS.md CLAUDE.md` — match.
+- **Accepted exception, not new, thoroughly reproduced against unmodified `main` before acceptance** (following the exact specs/17 precedent's discipline): `mix test` (and therefore `mix check`'s test sub-step) does not exit clean, for two documented, pre-existing, out-of-scope reasons — neither touches any file specs/18 owns:
+  1. **Four known pre-existing failures**, identical to the specs/17-documented set: `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest`, `SddOrchestrator.Participation.AcceptanceTest`, `SddOrchestratorWeb.InvitationAcceptanceLiveTest`, `SddOrchestrator.Delivery.RevocationConsumerTest`. Reconfirmed here: ran these four files in isolation directly against unmodified `main` — identical failures, identical error messages (31/35 passed, same 4 failed).
+  2. **Newly observed, and investigated in full**: `SddOrchestrator.RepositoryInitialization.StagingBuilderTest` and `StagingWorkspaceTest` (specs/16's own domain, never touched by specs/18) are flaky under the full 3700+-test parallel suite (`max_cases: 20`) — a different specific subset of their tests fails on each run (5 different tests failed on one `mix test` run, 4 different ones on the next, 6 different ones on a third), always passing 100% cleanly when run in isolation (`mix test test/sdd_orchestrator/repository_initialization/staging_builder_test.exs test/sdd_orchestrator/repository_initialization/staging_workspace_test.exs` — 40/40 passed). One captured failure shows the actual mechanism: a test asserted a path built from its own locally-generated tmp directory name but received a *different* test's tmp directory name (`sdd-staging-build-6667` vs. expected `sdd-staging-13314`), indicating shared/global state under concurrent load rather than genuine timing flakiness. Reproduced the identical pattern (different specific tests failing each run, always in this same suite) on unmodified `main` under the same full-suite load (10 failures on one run: the same 4 pre-existing plus 6 different Staging tests). This is a pre-existing concurrency-isolation issue in specs/16's own test suite, unrelated to and not introduced by specs/18 — worth a follow-up owned by specs/16, not fixed here.
+- specs/18's own delivered surfaces remain fully clean throughout: every `delivery_processing_inventory`, `delivery_access_controls`, `delivery_content_boundary`, `delivery_purpose_limitation`, and `delivery_routing_boundary` suite passed in every run, isolated and as part of the full suite (89 passed across Tasks 1–5: 44+28+30+19+8, reconfirmed together with no interaction failures).
+- `## Status` set to `Verified`. Product, technical-design, implementation, and local-verification readiness are all complete. This slice declares no release gates of its own, so nothing further is deferred to release.
+- Failed checks: None outstanding for specs/18's own scope. The four pre-existing `mix test` failures and the RepositoryInitialization Staging concurrency flakiness remain open as separately-owned, cross-cutting issues, not specs/18 defects.
+- Proof receipts:
+  - `mix dialyzer` — exit `0`.
+  - `mix sobelow --config` — exit `0`.
+  - `mix deps.audit` — exit `0`.
+  - `npm --prefix assets ci` — exit `0`.
+  - `npm --prefix assets run test:e2e` — exit `0` (272 passed, 4 skipped across both browser projects).
+  - `mix assets.deploy` (MIX_ENV=prod) — exit `0`.
+  - `mix release --overwrite` (MIX_ENV=prod) — exit `0`.
+  - `python3 .agents/scripts/validate_spec.py specs/18-guided-delivery-data-protection-controls` — exit `0`.
+  - `python3 .agents/scripts/validate_spec.py --all specs` — exit `0` (35 specifications).
+  - `python3 .agents/scripts/split_progress_log.py --check` — exit `0`.
+  - `git diff --check` — exit `0`.
+- Spec updates: `tasks.md` — checked every Verification Gate line, moved `## Status` to `Verified` with product, design, implementation, verification, and release readiness recorded. No requirement, design, or acceptance criterion changed.
+
 ### 2026-08-13 — Task 5 complete: browser, provider, and storage routing proof; capability:guided-delivery-purpose-limitation ready; all five tasks done
 
 - Completed: Proved AC-06 by driving genuine Slice 07 call sites rather than re-testing Tasks 3-4's detectors in the abstract: the router's real Content-Security-Policy on the authenticated `FeatureBoardLive`/`FeatureDetailLive` routes (same-origin `connect-src 'self'`, no `unsafe-inline`/`unsafe-eval` — the browser itself refuses any analytics/tracking beacon before it leaves the page, which is what "focused browser-network capture" proves without a live browser or the Playwright matrix); a real worker command/event/heartbeat round-trip through `CommandTransport`/`WorkerChannel`/`WorkerDouble`; a real `AgentAdapter.launch/2` and `Previews.start/3` call against `AgentAdapterDouble`/`PreviewAdapterDouble`, scanned with Task 3's `DeliveryContentBoundary` and authorized against Task 4's `DeliveryDataUsePolicy` (`:run_command`→`:worker_dispatch`→`:model_provider` and `:preview_deployment`→`:preview_deployment`→`:preview_provider`, each the one narrow approved route); and a real device-authority `DeliveryStore.commit/3` proving zero hosted-table rows exist for device-authoritative content. A structural absence check (`@training_use_keys`) proves no training-consent/opt-in configuration key exists anywhere in real recorded provider requests — confirmed by grep that the vocabulary is genuinely absent from `lib/sdd_orchestrator/delivery/` entirely.

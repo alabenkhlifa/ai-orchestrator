@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Both required capabilities are ready: `capability:guided-delivery-data-surfaces` (`specs/07-guided-specification-delivery#Task 54`) and `capability:guided-delivery-notification-access` (`specs/17-guided-delivery-notification-access#Task 4`). Implementation of Task 1 is starting.
+Product, technical-design, implementation, and local-verification readiness are all complete: all five tasks are done, all six acceptance criteria are proven, and the full Verification Gate passes. This slice declares no release gates of its own (deployment-specific processor and transfer evidence belongs to the guided-delivery deployment-governance specification), so nothing further is deferred to release. Both provided capabilities (`capability:guided-delivery-processing-controls`, `capability:guided-delivery-purpose-limitation`) are ready.
 
 ## Active Slice
 
@@ -119,16 +119,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All six acceptance criteria and the complete `DataProcessingRecord` traceability map pass.
-- [ ] Current-participant, removed-participant, cross-project, and exceptional-support paths fail or authorize exactly as approved.
-- [ ] Credential, participant-email, project-content, and raw-provider-event negative scans pass.
-- [ ] No analytics, advertising, model-training reuse, secondary use, or durable hosted device-project copy is observed.
-- [ ] Focused browser-network scenarios pass through `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e`.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` and the explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` passes before the browser matrix.
-- [ ] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
-- [ ] The individual specification validator and global capability graph pass, and both provided capability readiness write-backs are recorded.
-- [ ] New decisions and proof receipts are written back.
+- [x] All six acceptance criteria and the complete `DataProcessingRecord` traceability map pass.
+- [x] Current-participant, removed-participant, cross-project, and exceptional-support paths fail or authorize exactly as approved.
+- [x] Credential, participant-email, project-content, and raw-provider-event negative scans pass.
+- [x] No analytics, advertising, model-training reuse, secondary use, or durable hosted device-project copy is observed.
+- [x] Focused browser-network scenarios pass through `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e`.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check` and the explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
+- [x] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` passes before the browser matrix.
+- [x] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
+- [x] The individual specification validator and global capability graph pass, and both provided capability readiness write-backs are recorded.
+- [x] New decisions and proof receipts are written back.
 
 ## Blocked Decisions
 
