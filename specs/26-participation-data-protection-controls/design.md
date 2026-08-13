@@ -16,7 +16,7 @@ Apply one participation content boundary before persistence or transmission to r
 
 ## Components Affected
 
-- `SddOrchestrator.Privacy.ProcessingInventory` and `DataProcessingRecord` participation classifications.
+- `SddOrchestrator.Privacy.ParticipationProcessingInventory` and `ParticipationProcessingRecord` participation classifications.
 - Participation owner, participant, operations, and exceptional-support access policies.
 - Project-participation authorization and identity-lifecycle capability consumers.
 - Participation content minimization, secret rejection, and credential-transfer denial boundary.
@@ -25,7 +25,7 @@ Apply one participation content boundary before persistence or transmission to r
 
 ## Data and Access Boundaries
 
-- `DataProcessingRecord`: one configuration record for a participation activity or transfer, including its field names, purpose, lawful basis, authority, recipients, access boundary, lifecycle owner, processors, transfer classification, and review state without copying the governed data.
+- `ParticipationProcessingRecord`: one configuration record for a participation activity or transfer, including its field names, purpose, lawful basis, authority, recipients, access boundary, lifecycle owner, processors, transfer classification, and review state without copying the governed data.
 
 Required boundaries:
 
@@ -51,9 +51,9 @@ Required boundaries:
 
 ### Extend The Shared Processing Inventory
 
-- Choice: Add participation activities to the existing `ProcessingInventory` and reuse `DataProcessingRecord` rather than create a second privacy registry.
-- Reason: One machine-checkable inventory avoids inconsistent purpose, basis, processor, transfer, and lifecycle classifications across product slices.
-- Consequence: Participation implementation must satisfy the shared record contract and keep deployment-specific evidence outside the development inventory.
+- Choice: Add a dedicated `ParticipationProcessingRecord` classification module (mirroring the Slice 07 `DeliveryProcessingRecord` pattern) rather than a hand-written free-text registry or an extension of the legacy `DataProcessingRecord` struct.
+- Reason: AC-01 requires every participation field to carry a purpose, basis, authority, recipient category, processor category, transfer classification, and lifecycle owner drawn from a closed, machine-validated vocabulary. `DataProcessingRecord` holds free-text purpose/basis/retention/rights prose per *activity* with no fixed vocabulary a validator can check, and it also inlines retention and rights handling that this slice must not own or redefine (`capability:participation-identity-lifecycle` remains authoritative for those). Reusing it would either weaken AC-01's completeness proof to free text or force retrofitting closed enums onto the 27 already-approved legacy records shared across unrelated slices. A dedicated struct keeps those legacy records untouched, exactly as Slice 18 already established for the same reason.
+- Consequence: Participation implementation defines its own closed vocabulary and `validate/1` contract instead of the shared `DataProcessingRecord` contract; deployment-specific evidence stays out of the development inventory either way.
 
 ### Consume Final Identity Lifecycle Before Classification
 

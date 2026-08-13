@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The agreement is approved. `capability:project-participation-boundary` is ready, but Task 1 remains blocked until `capability:participation-identity-lifecycle` is ready so the inventory can classify the final revocation, rights, retention, and attribution lifecycle.
+The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Task 1 is complete; Task 2 is next.
 
 ## Active Slice
 
@@ -70,14 +70,14 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Classify participation processing and transfer activity.
-  - Status: Blocked until `capability:participation-identity-lifecycle` is ready; `capability:project-participation-boundary` is already ready.
+- [x] Task 1 — Classify participation processing and transfer activity.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Give every participation field and transfer one complete, lifecycle-consistent purpose, basis, authority, recipient, processor, transfer, and review classification.
-  - Owned surfaces: `DataProcessingRecord` participation activities, processing-inventory completeness, contract-necessity and legitimate-interest purpose map, personal-data field lists, hosted authority, owner, participant, operations and support recipient classes, final lifecycle-owner references from `capability:participation-identity-lifecycle`, processor categories, minimum processor fields, transfer classifications, review state, invalid and duplicate classification rejection, fixtures, and content-absence checks.
-  - Owns: AC-01, entity:DataProcessingRecord
+  - Owned surfaces: `ParticipationProcessingRecord` participation activities, processing-inventory completeness, contract-necessity and legitimate-interest purpose map, personal-data field lists, hosted authority, owner, participant, operations and support recipient classes, final lifecycle-owner references from `capability:participation-identity-lifecycle`, processor categories, minimum processor fields, transfer classifications, review state, invalid and duplicate classification rejection, fixtures, and content-absence checks.
+  - Owns: AC-01, entity:ParticipationProcessingRecord
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/participation_processing_inventory_test.exs` passes focused activity-completeness, field, purpose, basis, authority, recipient, lifecycle-provider, processor, minimum-field, transfer, review, invalid-classification, duplicate, and governed-content-absence cases.
 
 - [ ] Task 2 — Enforce participation and operations access.
@@ -118,7 +118,7 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All five acceptance criteria and the complete `DataProcessingRecord` traceability map pass.
+- [ ] All five acceptance criteria and the complete `ParticipationProcessingRecord` traceability map pass.
 - [ ] Every participation activity and transfer has one lifecycle-consistent purpose, basis, authority, recipient, minimum-field, processor, transfer, and review classification.
 - [ ] Owner, participant, operations, stale, removed, departed, absent, cross-project, and exceptional-support paths authorize or deny exactly as approved without enumeration disclosure.
 - [ ] Credential, secret, unauthorized project-content, out-of-context participant-email, unrelated-identity, processor, transfer, persistence, and transmission negative scans pass.
@@ -132,7 +132,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Active-slice implementation is blocked until `capability:participation-identity-lifecycle` from `specs/25-participation-identity-lifecycle#Task 4` is ready; no product or technical-design decision is unresolved.
+- None. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready.
 
 ## Progress Log
 

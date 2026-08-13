@@ -1,5 +1,27 @@
 # Participation Data Protection Controls Progress Log
 
+### 2026-08-13 - Task 1 complete
+
+- Completed: Added `SddOrchestrator.Privacy.ParticipationProcessingRecord` (closed classification vocabulary: basis, hosted-only authority, four recipient categories, processor category, transfer classification, lifecycle owner) and `SddOrchestrator.Privacy.ParticipationProcessingInventory` (reflection-driven, one record per persisted field across `ProjectInvitation`, `ProjectParticipant`, `ProjectMemberProfile`, `ParticipationRevocation`, `ParticipationEmailDelivery`, and the `participation.`-namespaced shared `AccountNotification` schema). `lifecycle_owner` classifications point at specs/25 (ready, authoritative for revocation/departure/rights/anonymization), and forward at not-yet-implemented specs/27 and specs/28 for operational-retention and deletion/backup enforcement, mirroring the specs/18 precedent of approving forward-pointing lifecycle-owner values before their provider slices exist.
+- Scope classification: unchanged.
+- Remaining: Implement Tasks 2 through 5 and the verification gate.
+- Failed checks: None.
+- Proof receipts:
+  - Result: 45 passed.
+  - Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_processing_inventory_test.exs` — exit `0`.
+  - Confirmed independently by the orchestrating session (not only the implementing sub-agent), same command, same exit status.
+- Spec updates: None beyond the Task 1 checkbox and status line above; `entity:ParticipationProcessingRecord` traceability already recorded in `tasks.md`.
+
+### 2026-08-13 - Capability blocker cleared, Task 1 started
+
+- Completed: Confirmed via `capability_index.py` that `capability:project-participation-boundary` (specs/08#Task 4) and `capability:participation-identity-lifecycle` (specs/25#Task 4) are both `ready`. Corrected the stale `Blocked` status and `Blocked Decisions` entry in `tasks.md` to reflect readiness. Started Task 1.
+- Engineering mechanism resolved: `design.md`'s "Extend The Shared Processing Inventory" decision said to reuse the generic `DataProcessingRecord` struct, but AC-01 needs closed-vocabulary `authority`, `recipient_category`, `processor_category`, `transfer_classification`, and `lifecycle_owner` fields that struct does not have, and that struct also inlines retention/rights text this slice must not own. Slice 18 hit the identical mismatch and resolved it with a dedicated `DeliveryProcessingRecord`. Updated `design.md` and `tasks.md` (Task 1 owned surfaces, `Owns:` entity, verification-gate line) to use a dedicated `ParticipationProcessingRecord` module instead, mirroring that precedent. Non-behavioral: no AC, scope, or boundary change. Re-ran both validators after the edit; both pass.
+- Scope classification: unchanged.
+- Remaining: Implement Tasks 1 through 5 and the verification gate.
+- Failed checks: None.
+- Proof receipts: None yet for Task 1.
+- Spec updates: `design.md` "Extend The Shared Processing Inventory" decision and "Components Affected"/"Data and Access Boundaries" naming; `tasks.md` status/blocker text and Task 1 entity naming. No requirements, AC, or scope change.
+
 ### 2026-08-02 - Focused participation data-protection specification created
 
 - Completed: Approved the participation processing inventory, project and operations access, exceptional-support elevation, processor and transfer controls, content and credential boundary, purpose limitation, and genuinely anonymous aggregate contract as one focused child specification.
