@@ -4,7 +4,7 @@
 
 In Progress
 
-The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 through 4 are complete; Task 5 is next.
+All five tasks are complete and locally proven. `capability:participation-processing-controls` is ready. The verification gate is next.
 
 ## Active Slice
 
@@ -110,7 +110,8 @@ Traceability:
   - Owns: AC-04
   - Proof: `python3 .agents/scripts/run_proof.py task --task 4 -- mix test test/sdd_orchestrator/privacy/participation_content_boundary_test.exs` passes focused field-allowlist, credential, secret, project-content, participant-email, unrelated-identity, processor, transfer, destination, persistence, transmission, diagnostic, and no-live-provider cases.
 
-- [ ] Task 5 — Prohibit participation secondary use and linkable analytics.
+- [x] Task 5 — Prohibit participation secondary use and linkable analytics.
+  - Status: Complete. `capability:participation-processing-controls` ready.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 4

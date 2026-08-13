@@ -1,5 +1,18 @@
 # Participation Data Protection Controls Progress Log
 
+### 2026-08-13 - Task 5 complete; capability ready
+
+- Completed: Added `SddOrchestrator.Privacy.ParticipationDataUsePolicy`, a fail-closed purpose/consumer allowlist covering all six Task 1 entities, mirroring specs/18's `DeliveryDataUsePolicy`. `@prohibited_purposes` (advertising/analytics/identity_tracking/model_training/unrelated_product_improvement) and `@prohibited_consumers` (advertising_network/analytics_processor/unrelated_processor) are refused unconditionally before the per-entity `@allowed` map is consulted. Routes: `membership_management → project_owner` (project_invitation/project_participant/participation_revocation), `participant_presentation → current_participant` (project_member_profile), `notification_delivery → current_participant` (account_notification), `email_delivery → email_delivery_provider` (project_invitation, participation_email_delivery — the only two entities with a field Task 1 classifies leaving the hosted store), `operations_diagnostics → approved_operations` (participation_email_delivery), plus universal `retention_cleanup`/`verified_rights` routes on every entity. `@anonymous_aggregate_boundary`'s `prohibited_identifiers` list is taken verbatim from design.md's own sentence (account/identity/email-or-digest/project/workspace/invitation/participant/notification/repository/device/network/session/stable-or-singling-out-identifier), not copied from delivery's differently-scoped list.
+- `capability:participation-processing-controls` is now ready (Task 5 complete, proof passed). Downstream consumers: specs/12 Task 9, specs/22 Task 1, specs/28 Task 1, specs/29 Task 1.
+- Scope classification: unchanged.
+- Remaining: Slice verification gate (full mix check/format/compile/credo/dialyzer/deps.audit/sobelow/test, prod assets/release, spec validators).
+- Failed checks: None.
+- Proof receipts:
+  - Result: 19 passed.
+  - Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_purpose_limitation_test.exs` — exit `0`.
+  - Confirmed independently by the orchestrating session, same command, same exit status.
+- Spec updates: Task 5 checkbox/status line; slice Status section updated to reflect all five tasks complete and the capability ready.
+
 ### 2026-08-13 - Task 4 complete
 
 - Completed: Added `SddOrchestrator.Privacy.ParticipationContentBoundary` (`scan_text/2`, `scan_structure/2` mirroring specs/18's `DeliveryContentBoundary` credential/email detection as a privacy-owned copy, plus `authorize_destination/3` — cross-references `ParticipationProcessingInventory.records/0` directly so a field's approved processor/transfer destination is never a second hand-maintained list) and `SddOrchestrator.Privacy.ParticipationContentBoundaryAudit` (allowlist `event check field outcome` only). Proof exercises the real `ParticipationEmail`/`ProjectNotifications` payload shapes and the full inventory's destination classification, not just isolated unit cases.
