@@ -87,9 +87,10 @@ Traceability:
   - Owns: AC-02, AC-03
   - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/privacy/delivery_access_controls_test.exs` passes focused participant, removal, cross-project, default-support, elevation, least-privilege, expiry, revocation, purpose, audit-minimization, and non-disclosure cases.
 
-- [ ] Task 3 — Enforce delivery-boundary minimization and redaction.
+- [x] Task 3 — Enforce delivery-boundary minimization and redaction.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done
   - Depends on: Task 1, Task 2
   - Purpose: Stop raw credentials, participant emails, raw provider events, and unauthorized project content before durable storage or participant exposure.
   - Owned surfaces: Shared delivery redaction contract, participant-authored free-text scan boundary, worker normalized-event allowlist, raw-provider-event rejection, notification and audit minimization checks, credential and email detection, refusal result, diagnostic field-name-only logging, fixtures, and negative persistence scans.
