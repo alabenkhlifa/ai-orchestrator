@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product and technical agreements are approved. Task 1 is blocked until the current-participation capability is available in this branch. Later tasks remain blocked at their own earliest consumer boundary until the separately specified AI-runtime session and observation capabilities are ready. Task 3's `guided-specification-delivery` dependency was corrected to `guided-delivery-data-surfaces` (see `progress.md`) — that capability, like the read-only board/run/evidence access it gates, is already ready.
+The product and technical agreements are approved. `capability:project-storage-authority`, `capability:project-participation-boundary`, `capability:ai-runtime-session`, `capability:ai-runtime-observation`, `capability:project-specification-store`, and `capability:guided-delivery-data-surfaces` are all ready. Tasks 1 through 8 are underway on `slice/12-project-assistant`. Task 9 remains blocked on `capability:project-participation-governance` (provider `specs/29-participation-completion#Task 1`, currently pending) and is deferred to a later session.
 
 ## Active Slice
 
@@ -78,8 +78,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Establish private conversation identity, persistence, and authorization.
-  - Status: Blocked until `capability:project-participation-boundary` is ready.
+- [x] Task 1 — Establish private conversation identity, persistence, and authorization.
   - Size: Standard
   - Depends on: none
   - Purpose: Create the durable private history boundary that every later turn uses without treating the conversation as shared project activity.
@@ -187,7 +186,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None. The slice is capability-blocked, not decision-blocked: Task 1 cannot start until the separately approved current-participation provider is ready in this branch.
+- Task 9 is capability-blocked, not decision-blocked: `capability:project-participation-governance` (provider `specs/29-participation-completion#Task 1`) is still pending. Tasks 1 through 8 are unblocked and underway.
 
 ## Progress Log
 
