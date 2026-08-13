@@ -102,7 +102,7 @@ Traceability:
   - Owns: AC-07, AC-17, entity:ProjectContextProjection
   - Proof: Run focused hosted and device tests that assemble only current metadata, specification heads, board state, and needed recent run or evidence state; reject every delivery mutation; rebuild the projection idempotently; and find no repository path, source, source index, prior revision, raw log, or unrelated activity in the projection.
 
-- [ ] Task 4 — Observe the authorized participant's current working tree safely.
+- [x] Task 4 — Observe the authorized participant's current working tree safely.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Add exact source provenance without converting project participation into repository authority or treating the last commit as the whole current project.
