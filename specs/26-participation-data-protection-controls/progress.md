@@ -1,5 +1,18 @@
 # Participation Data Protection Controls Progress Log
 
+### 2026-08-13 - Task 2 complete
+
+- Completed: Added `SddOrchestrator.Privacy.ParticipationOperationsAccess.metadata_for_project/1`, the new minimized-operations view AC-02 requires — no such view existed before. Owner and participant views were proven, not rebuilt: tests exercise the already-approved `SddOrchestrator.Participation.Boundary.current_member/2` and `SddOrchestrator.Participation.members/3` directly (Slice 08), mirroring the specs/18 Task 2 "prove, don't rebuild" precedent, covering absent/stale/removed/departed/cross-project/unknown-project denial (uniform, non-disclosing) and owner-vs-participant email masking. A telemetry probe proves authorization runs before any `project_member_profiles` lookup for a denied actor.
+- Discovery: Task 1's inventory classifies `ParticipationEmailDelivery.recipient_address` and `ProjectInvitation.email_digest/token_digest/token_salt` under the same `recipient_category: :minimized_operations` as the safe diagnostic fields — that classification is a ceiling (an approved-if-shown audience), not a shaping policy by itself. `allowed_fields/0` is deliberately a stricter subset (event/status/failure_code/timestamps only), documented and directly tested. No design.md change needed: this is a legitimate narrowing within Task 2's own scope, not a contradiction of Task 1's contract.
+- Scope classification: unchanged.
+- Remaining: Implement Tasks 3 through 5 and the verification gate.
+- Failed checks: None.
+- Proof receipts:
+  - Result: 12 passed.
+  - Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_access_controls_test.exs` — exit `0`.
+  - Confirmed independently by the orchestrating session, same command, same exit status.
+- Spec updates: None beyond the Task 2 checkbox and status line.
+
 ### 2026-08-13 - Task 1 complete
 
 - Completed: Added `SddOrchestrator.Privacy.ParticipationProcessingRecord` (closed classification vocabulary: basis, hosted-only authority, four recipient categories, processor category, transfer classification, lifecycle owner) and `SddOrchestrator.Privacy.ParticipationProcessingInventory` (reflection-driven, one record per persisted field across `ProjectInvitation`, `ProjectParticipant`, `ProjectMemberProfile`, `ParticipationRevocation`, `ParticipationEmailDelivery`, and the `participation.`-namespaced shared `AccountNotification` schema). `lifecycle_owner` classifications point at specs/25 (ready, authoritative for revocation/departure/rights/anonymization), and forward at not-yet-implemented specs/27 and specs/28 for operational-retention and deletion/backup enforcement, mirroring the specs/18 precedent of approving forward-pointing lifecycle-owner values before their provider slices exist.

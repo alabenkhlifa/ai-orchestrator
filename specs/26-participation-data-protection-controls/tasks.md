@@ -4,7 +4,7 @@
 
 In Progress
 
-The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Task 1 is complete; Task 2 is next.
+The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 and 2 are complete; Task 3 is next.
 
 ## Active Slice
 
@@ -80,7 +80,8 @@ Traceability:
   - Owns: AC-01, entity:ParticipationProcessingRecord
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/participation_processing_inventory_test.exs` passes focused activity-completeness, field, purpose, basis, authority, recipient, lifecycle-provider, processor, minimum-field, transfer, review, invalid-classification, duplicate, and governed-content-absence cases.
 
-- [ ] Task 2 — Enforce participation and operations access.
+- [x] Task 2 — Enforce participation and operations access.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
