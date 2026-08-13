@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Tasks 1 through 9 are complete — every task in this slice is now checked and proven. `capability:repository-sdd-kit` is ready. Implementation and focused task-level verification are done; the slice-level `## Verification Gate` (repository-wide quality gates, the desktop/mobile browser matrix, and the production build) has not yet been run — see that section and `progress.md`. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open — consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof"), not an implementation defect; see progress.md.
+All nine tasks are complete and the `## Verification Gate` below has passed, with one documented exception: `mix test`'s full run fails 4 pre-existing tests unrelated to this slice — `LocalWorkerRuntimeProjectionTest`, `Participation.AcceptanceTest`, `RevocationConsumerTest`, `InvitationAcceptanceLiveTest` — none touching any file this slice changed, reproducing byte-for-byte the same already-investigated, already-accepted exception `specs/35-guided-delivery-feature-specification-link`'s own Verification Gate documented and the user accepted; see `progress.md`. `capability:repository-sdd-kit` is ready. Implementation, local verification, and this slice's own Verification Gate are complete. A real worker-dispatch path (so `plan_change/4`/`apply_plan/4`/`plan_update/4`/`plan_removal/3` can resolve a live `repository_path` instead of refusing) remains open, consistent with this slice's own declared release gate ("Live authorized worker and repository-host smoke proof") — release readiness remains open per that gate; see progress.md.
 
 Task 2 was split via `update-spec` into a domain task (Task 2, unchanged label) and a new UI task (Task 3), because the original Task 2 combined a substantial worker-local git-diff and conflict-classification engine with a full eligibility, decline, and diff-review LiveView — domain foundation plus UI, a Task Size Gate split trigger. Tasks 3, 4, and 5 renumbered to 4, 5, and 6; no scope, acceptance criterion, or business rule changed.
 
@@ -159,16 +159,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
-- [ ] Package integrity, provenance, license, permission, and no-execution suites pass.
-- [ ] Conflict, exact-diff, stale-plan, branch-isolation, and mutation-negative suites pass.
-- [ ] Update, removal, file-ownership, and idempotency suites pass.
-- [ ] Hosted and device storage, privacy, lifecycle, and no-analytics suites pass.
-- [ ] Desktop and mobile package, plan, conflict, apply, update, removal, and decline browser scenarios pass.
-- [ ] `mix check` and all explicit project code-quality commands pass.
-- [ ] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
-- [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
-- [ ] Specification validator and global capability graph pass.
+- [x] Acceptance criteria pass.
+- [x] Package integrity, provenance, license, permission, and no-execution suites pass.
+- [x] Conflict, exact-diff, stale-plan, branch-isolation, and mutation-negative suites pass.
+- [x] Update, removal, file-ownership, and idempotency suites pass.
+- [x] Hosted and device storage, privacy, lifecycle, and no-analytics suites pass.
+- [x] Desktop and mobile package, plan, conflict, apply, update, removal, and decline browser scenarios pass.
+- [x] `mix check` and all explicit project code-quality commands pass, except the documented pre-existing exception in `## Status`.
+- [x] `npm --prefix assets ci` and `npm --prefix assets run test:e2e` pass.
+- [x] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass.
+- [x] Specification validator and global capability graph pass.
 
 ## Blocked Decisions
 
