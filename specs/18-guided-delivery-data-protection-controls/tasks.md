@@ -107,9 +107,10 @@ Traceability:
   - Owns: AC-05
   - Proof: `python3 .agents/scripts/run_proof.py task --task 4 -- mix test test/sdd_orchestrator/privacy/delivery_purpose_limitation_test.exs` passes focused store, request, event, metric, identifier, profile, advertising, training, unrelated-use, telemetry-classification, and negative-scan cases.
 
-- [ ] Task 5 — Prove browser, provider, and storage routing boundaries.
+- [x] Task 5 — Prove browser, provider, and storage routing boundaries.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done
   - Depends on: Task 3, Task 4
   - Purpose: Confirm representative runtime paths do not transmit forbidden analytics, credentials, participant emails, provider reuse, or durable device-project copies.
   - Owned surfaces: Focused browser-network capture, worker command and event observation, model and preview adapter-double routing, hosted and device persistence scan, stable-identifier absence, raw-credential absence, participant-email absence, provider training-use configuration assertion, fixtures, proof harness, `capability:guided-delivery-purpose-limitation` provider, and readiness write-back.
