@@ -1,5 +1,18 @@
 # Participation Data Protection Controls Progress Log
 
+### 2026-08-13 - Task 4 complete
+
+- Completed: Added `SddOrchestrator.Privacy.ParticipationContentBoundary` (`scan_text/2`, `scan_structure/2` mirroring specs/18's `DeliveryContentBoundary` credential/email detection as a privacy-owned copy, plus `authorize_destination/3` — cross-references `ParticipationProcessingInventory.records/0` directly so a field's approved processor/transfer destination is never a second hand-maintained list) and `SddOrchestrator.Privacy.ParticipationContentBoundaryAudit` (allowlist `event check field outcome` only). Proof exercises the real `ParticipationEmail`/`ProjectNotifications` payload shapes and the full inventory's destination classification, not just isolated unit cases.
+- Discovery (documented, not fixed — out of this specification's Excluded scope): `SddOrchestrator.Participation.DisplayName.normalize/1` (Slice 08) accepts a credential-shaped display name (rejects only email-shaped ones). `ParticipationContentBoundary.scan_text/2` would catch it; the gap and the catch are both proven in `participation_content_boundary_test.exs`. Recorded as a residual risk in `design.md`'s Risks section (mirrors specs/18's own documented `ReviewDecision` gap) for a future Slice 08 change to close — fixing it here would touch `lib/sdd_orchestrator/participation/`, which this task does not own.
+- Scope classification: unchanged.
+- Remaining: Implement Task 5 and the verification gate.
+- Failed checks: None.
+- Proof receipts:
+  - Result: 29 passed.
+  - Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_content_boundary_test.exs` — exit `0`.
+  - Confirmed independently by the orchestrating session, same command, same exit status.
+- Spec updates: Task 4 checkbox/status line; one new Risks bullet in `design.md` documenting the DisplayName gap (additive, non-behavioral — no AC, scope, or boundary change).
+
 ### 2026-08-13 - Task 3 complete
 
 - Completed: Added `SddOrchestrator.Privacy.ParticipationSupportElevation` (table `participation_support_elevations`, DB-enforced bounded-expiry ≤24h and revocation-pairing constraints, mirroring specs/18's `DeliverySupportElevation`), `SddOrchestrator.Privacy.ParticipationSupportAccess` (issue/authorize_content_read/revoke; every denial path returns the identical `{:error, :unauthorized}`), and `SddOrchestrator.Privacy.ParticipationSupportAudit` (allowlisted payload: `event outcome reason elevation_id project_id operations_account_id revoked_by_account_id purpose scope` — no content, email, display name, or credential key). Purpose vocabulary (`incident_diagnosis`, `security_investigation`) and scope vocabulary (`:metadata` default / `:content`) reused as-is from the specs/18 precedent since specs/26's Business Rules describe the same concept.

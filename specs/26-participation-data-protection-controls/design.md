@@ -86,6 +86,7 @@ Required boundaries:
 - Support elevation could become standing access. Capabilities have one purpose and scope, a fixed expiry, explicit revocation, and minimized audit evidence.
 - A broad processor classification could transfer unnecessary data. Destination rules bind each processor and transfer category to an approved minimum field set.
 - Redaction patterns alone could miss typed credentials or nested content. Field allowlists, typed rejection, and negative persistence and transmission scans complement value detection.
+- Concrete instance found during Task 4: `SddOrchestrator.Participation.DisplayName.normalize/1` (Slice 08, out of this specification's Excluded scope) rejects an email-shaped display name but runs no credential-shape scan, so a credential-shaped string (e.g. `sk-...`) is accepted into `ProjectMemberProfile.display_name` and would later reach another participant's view or a notification's `actor_label`. `ParticipationContentBoundary.scan_text/2` (Task 4) would catch it; proof of the gap and of the scanner catching it both live in `participation_content_boundary_test.exs`. Not fixed here: it requires a Slice 08 change, which this specification's Implementation Boundary excludes. Left as a known, deliberately unaddressed residual risk for a future Slice 08 change to close.
 - Aggregate output could remain singling-out or linkable. The boundary rejects stable dimensions and raw participation input and treats any uncertain output as governed personal data.
 
 ## Open Questions

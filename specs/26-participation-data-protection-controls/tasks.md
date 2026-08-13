@@ -4,7 +4,7 @@
 
 In Progress
 
-The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 through 3 are complete; Task 4 is next.
+The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 through 4 are complete; Task 5 is next.
 
 ## Active Slice
 
@@ -100,7 +100,8 @@ Traceability:
   - Owns: AC-03
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/privacy/participation_support_access_test.exs` passes focused default-denial, metadata-only, actor-verification, purpose, scope, least-privilege, issue, expiry, revocation, replay, audit-minimization, non-disclosure, and forbidden-audit-content cases.
 
-- [ ] Task 4 — Enforce participation content and destination minimization.
+- [x] Task 4 — Enforce participation content and destination minimization.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 2, Task 3
