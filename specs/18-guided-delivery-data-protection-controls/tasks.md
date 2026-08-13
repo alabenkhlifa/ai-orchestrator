@@ -97,9 +97,10 @@ Traceability:
   - Owns: AC-04
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/privacy/delivery_content_boundary_test.exs` passes focused credential, email, project-content, comment, review-feedback, worker-event, raw-provider, notification, audit, log, rejection, and no-persistence cases.
 
-- [ ] Task 4 — Prohibit product analytics and secondary use.
+- [x] Task 4 — Prohibit product analytics and secondary use.
   - Size: Standard
   - Proof scope: Focused
+  - Status: Done
   - Depends on: Task 1, Task 3
   - Purpose: Prevent guided-delivery data from becoming an analytics, advertising, training, unrelated-improvement, or stable-profile input.
   - Owned surfaces: Slice 07 store, request, event, metric, identifier and stable-profile negative contract, analytics configuration denial, advertising and training-use denial, unrelated processor denial, operational-telemetry classification, static diagnostic scans, fixtures, `capability:guided-delivery-processing-controls` provider, and readiness write-back.
