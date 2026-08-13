@@ -1,5 +1,13 @@
 # Repository SDD Kit Integration Progress Log
 
+### 2026-08-13 - Rebased again ahead of merge; found and fixed one more cross-slice migration collision with specs/18
+
+- Completed: while checking merge readiness, found `main` had advanced 8 more commits since the prior rebase (`specs/17-guided-delivery-notification-access` and `specs/18-guided-delivery-data-protection-controls`, both merged). `specs/18` introduced exactly one new migration, `20260811130000_create_delivery_support_elevations.exs`, colliding with this slice's own `20260811130000_add_plan_type_to_repository_kit_change_plans.exs` — the same class of cross-slice migration-timestamp collision found and fixed against `specs/16` two entries below, coincidental again rather than a repeated mistake (independent sessions authoring migrations the same day).
+- Rebased `slice/15-repository-sdd-kit-integration` onto the updated `main` — clean, no conflicts this time (`git rerere` had the prior `specs/13-sdd-adoption/tasks.md` resolutions recorded, and `specs/18` never touches that file). Renamed this slice's own colliding file to `20260811130050_add_plan_type_to_repository_kit_change_plans.exs` (unmerged, never pushed, so fully safe) — still sorts correctly between `..._120050_create_repository_kit_installations.exs` and `..._140000_add_lifecycle_fields_to_repository_kit_installations.exs`.
+- Verified: reset both this worktree's test databases (bare `sdd_orchestrator_test` and the `run_proof.py`-derived `sdd_orchestrator_test914236` partition) from scratch; the full specs/15 regression suite (135 tests) passed, real exit `0`; `mix compile --warnings-as-errors`, `mix format --check-formatted`, and `mix credo --strict` all clean; both spec validators pass.
+- Failed checks: None.
+- Remaining: none for this slice's own scope — ready to merge into `main` pending the user's go-ahead.
+
 ### 2026-08-13 - Verification Gate passed — slice Verified
 
 - Completed: ran the full slice-level Verification Gate (`## Verification Gate` in `tasks.md`) with every command wrapped through the slice-scope proof runner, per this repository's Task Proof Gate contract. `## Status` set to `Verified`.
