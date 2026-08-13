@@ -4,7 +4,7 @@
 
 In Progress
 
-The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 and 2 are complete; Task 3 is next.
+The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 through 3 are complete; Task 4 is next.
 
 ## Active Slice
 
@@ -90,7 +90,8 @@ Traceability:
   - Owns: AC-02
   - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/privacy/participation_access_controls_test.exs` passes focused owner, participant, operations, absent-presentation, stale, removed, departed, absent, cross-project, invitation, identity, account-neutral denial, project-scope, recipient-minimization, and no-content-lookup cases.
 
-- [ ] Task 3 — Enforce exceptional-support access.
+- [x] Task 3 — Enforce exceptional-support access.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 2

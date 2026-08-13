@@ -1,5 +1,17 @@
 # Participation Data Protection Controls Progress Log
 
+### 2026-08-13 - Task 3 complete
+
+- Completed: Added `SddOrchestrator.Privacy.ParticipationSupportElevation` (table `participation_support_elevations`, DB-enforced bounded-expiry ≤24h and revocation-pairing constraints, mirroring specs/18's `DeliverySupportElevation`), `SddOrchestrator.Privacy.ParticipationSupportAccess` (issue/authorize_content_read/revoke; every denial path returns the identical `{:error, :unauthorized}`), and `SddOrchestrator.Privacy.ParticipationSupportAudit` (allowlisted payload: `event outcome reason elevation_id project_id operations_account_id revoked_by_account_id purpose scope` — no content, email, display name, or credential key). Purpose vocabulary (`incident_diagnosis`, `security_investigation`) and scope vocabulary (`:metadata` default / `:content`) reused as-is from the specs/18 precedent since specs/26's Business Rules describe the same concept.
+- Scope classification: unchanged.
+- Remaining: Implement Tasks 4 and 5 and the verification gate.
+- Failed checks: None.
+- Proof receipts:
+  - Result: 22 passed.
+  - Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_support_access_test.exs` — exit `0`.
+  - Confirmed independently by the orchestrating session, same command, same exit status.
+- Spec updates: None beyond the Task 3 checkbox and status line.
+
 ### 2026-08-13 - Task 2 complete
 
 - Completed: Added `SddOrchestrator.Privacy.ParticipationOperationsAccess.metadata_for_project/1`, the new minimized-operations view AC-02 requires — no such view existed before. Owner and participant views were proven, not rebuilt: tests exercise the already-approved `SddOrchestrator.Participation.Boundary.current_member/2` and `SddOrchestrator.Participation.members/3` directly (Slice 08), mirroring the specs/18 Task 2 "prove, don't rebuild" precedent, covering absent/stale/removed/departed/cross-project/unknown-project denial (uniform, non-disclosing) and owner-vs-participant email masking. A telemetry probe proves authorization runs before any `project_member_profiles` lookup for a denied actor.
