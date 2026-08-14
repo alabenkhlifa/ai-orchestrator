@@ -271,11 +271,10 @@ defmodule SddOrchestrator.Privacy.ParticipationGovernance do
       providers
       |> Enum.map(&declared_capability/1)
       |> Enum.reject(&is_nil/1)
-      |> MapSet.new()
+      |> Enum.uniq()
 
-    required = MapSet.new(@capability_names)
-    missing = required |> MapSet.difference(declared) |> Enum.sort()
-    unexpected = declared |> MapSet.difference(required) |> Enum.sort()
+    missing = @capability_names |> Enum.reject(&(&1 in declared)) |> Enum.sort()
+    unexpected = declared |> Enum.reject(&(&1 in @capability_names)) |> Enum.sort()
 
     if missing == [] and unexpected == [] do
       []
