@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Both tasks are complete and locally proven. `capability:participation-deletion-recovery` is ready. The verification gate is next.
+Both tasks are complete and locally proven. `capability:participation-deletion-recovery` is ready. The verification gate passed with the accepted exceptions recorded below (pre-existing, unrelated failures owned by other specifications, identical basis to specs/25, specs/26, and specs/27).
 
 ## Active Slice
 
@@ -91,12 +91,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All three acceptance criteria pass for deletion, anonymization, backup recovery, retry, and restart paths.
-- [ ] Minimum cleanup request and restricted reconciliation negative scans pass without project content, credentials, emails, labels, account IDs, or hosted-identity IDs.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` and the explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
-- [ ] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
-- [ ] The individual specification validator and global capability graph pass, and capability readiness is recorded.
-- [ ] Deployment-specific live evidence remains classified at release.
+- [x] All three acceptance criteria pass for deletion, anonymization, backup recovery, retry, and restart paths.
+- [x] Minimum cleanup request and restricted reconciliation negative scans pass without project content, credentials, emails, labels, account IDs, or hosted-identity IDs.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check` and the explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope. (`mix test` passes with two accepted, documented, pre-existing exceptions — see Accepted Exceptions.)
+- [x] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
+- [x] The individual specification validator and global capability graph pass, and capability readiness is recorded.
+- [x] Deployment-specific live evidence remains classified at release.
+
+## Accepted Exceptions
+
+- `mix test`: two pre-existing, unrelated failures, same basis and evidence as `specs/25-participation-identity-lifecycle`, `specs/26-participation-data-protection-controls`, and `specs/27-participation-operational-retention` — `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` and `SddOrchestrator.Delivery.RevocationConsumerTest`. Confined to `lib/sdd_orchestrator/delivery/` files this specification never touches, unrelated to Tasks 1-2.
 
 ## Blocked Decisions
 

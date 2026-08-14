@@ -1,5 +1,12 @@
 # Participation Deletion And Recovery Progress Log
 
+### 2026-08-14 - Verification gate: accepted exception, clean otherwise
+
+- `mix test`: 4023/4025 passed, 2 failed — both the same already-documented pre-existing, unrelated failures accepted for specs/25/26/27 on the same basis and evidence: `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` and `SddOrchestrator.Delivery.RevocationConsumerTest`. Confined to `lib/sdd_orchestrator/delivery/` files this specification never touches, unrelated to Tasks 1-2. No new or participation-related failures this run.
+- Format, compile --warnings-as-errors, credo --strict, dialyzer, deps.audit, and sobelow --config all pass with zero issues.
+- Remaining: Production proof, validators, then mark Verified and merge.
+- Spec updates: None — accepted gate exception, not a specification change.
+
 ### 2026-08-14 - Task 2 complete; capability ready
 
 - Completed: Added `SddOrchestrator.Privacy.ParticipationCleanupRequest` (Ecto schema, table `participation_cleanup_requests`, opaque caller-minted `subject_ref` only — never a raw account/hosted-identity/participant id, email, or display name; closed `action`/`destination`/`state`/`failure_reason` vocabularies enforced by DB check constraints; unique `(subject_ref, action, destination)` index) and `SddOrchestrator.Privacy.ParticipationPropagation` (`propagate/3` issues one idempotent request per each of the four fixed destinations `Rights.anonymize_participation_attribution/3`'s `pending_propagation` already declares — `:configured_processors`, `:caches`, `:indexes`, `:exports`; `acknowledge/2`, `fail/3`, and `reconcile/2` under a dedicated advisory lock mirroring `RetentionPruner.prune_with_lock/1`).
