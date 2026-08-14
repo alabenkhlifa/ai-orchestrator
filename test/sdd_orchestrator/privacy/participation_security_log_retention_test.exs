@@ -55,19 +55,19 @@ defmodule SddOrchestrator.Privacy.ParticipationSecurityLogRetentionTest do
     end
 
     test "an unlisted event type or outcome is rejected by the function clause, not stored" do
-      # Routed through `String.to_atom/1` and `apply/3` so the compiler cannot
-      # statically narrow these to a literal outside the closed vocabularies
-      # and treat the call as always-invalid at compile time; the rejection
-      # this test proves happens at runtime, via `emit/3`'s own guard clause.
+      # Routed through `String.to_atom/1` so these are runtime-bound values,
+      # not literals the compiler could treat as always-invalid; the
+      # rejection this test proves happens at runtime, via `emit/3`'s own
+      # guard clause.
       unlisted_event_type = String.to_atom("invitation_enumeration_attempt")
       unlisted_outcome = String.to_atom("blocked")
 
       assert_raise FunctionClauseError, fn ->
-        apply(ParticipationSecurityLog, :emit, [unlisted_event_type, :rejected, []])
+        ParticipationSecurityLog.emit(unlisted_event_type, :rejected, [])
       end
 
       assert_raise FunctionClauseError, fn ->
-        apply(ParticipationSecurityLog, :emit, [:revocation_denied, unlisted_outcome, []])
+        ParticipationSecurityLog.emit(:revocation_denied, unlisted_outcome, [])
       end
 
       assert Repo.aggregate(ParticipationSecurityEvent, :count) == 0
