@@ -110,7 +110,7 @@ Traceability:
   - Owns: AC-08, AC-09, AC-16, entity:RepositoryObservation
   - Proof: Run focused worker-contract tests against clean, dirty, unborn-branch, concurrently changing, unauthorized, cross-project, offline, and credential-substitution fixtures, proving exact provenance and an unstable result whenever relevant state changes during observation.
 
-- [ ] Task 5 — Deliver bounded progressive source discovery and worker-local indexing.
+- [x] Task 5 — Deliver bounded progressive source discovery and worker-local indexing.
   - Size: Standard
   - Depends on: Task 4
   - Purpose: Make empty and large repositories answerable without full upload, stale lookup, or a hosted derived-source copy.

@@ -29,6 +29,18 @@ defmodule SddOrchestrator.ProjectAssistant.RepositoryObserverTest do
     @impl true
     def observe(_request),
       do: raise("RepositoryObservationAdapter.observe/1 must not run after a denial")
+
+    @impl true
+    def tree(_request),
+      do: raise("RepositoryObservationAdapter.tree/1 must not run after a denial")
+
+    @impl true
+    def search(_request),
+      do: raise("RepositoryObservationAdapter.search/1 must not run after a denial")
+
+    @impl true
+    def lines(_request),
+      do: raise("RepositoryObservationAdapter.lines/1 must not run after a denial")
   end
 
   defp always_available, do: fn _authority, _project_id -> true end
