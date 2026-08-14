@@ -4,7 +4,7 @@
 
 In Progress
 
-The agreement is approved. `capability:project-participation-boundary`, `capability:participation-processing-controls`, and `capability:participation-operational-retention` are all ready. Task 1 is complete; Task 2 is next.
+Both tasks are complete and locally proven. `capability:participation-deletion-recovery` is ready. The verification gate is next.
 
 ## Active Slice
 
@@ -79,7 +79,8 @@ Traceability:
   - Owns: AC-01
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/participation_backup_lifecycle_test.exs` passes focused encryption, recovery-only, 35-day boundary, tombstone-preservation, restore-order, product-denial, support-denial, and no-restored-link cases.
 
-- [ ] Task 2 — Propagate participation deletion and anonymization.
+- [x] Task 2 — Propagate participation deletion and anonymization.
+  - Status: Complete. `capability:participation-deletion-recovery` ready.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
