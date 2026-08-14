@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The agreement is approved. Task 1 is blocked until the participation processing and operational-retention capabilities are ready.
+The agreement is approved. `capability:project-participation-boundary`, `capability:participation-processing-controls`, and `capability:participation-operational-retention` are all ready. Task 1 is complete; Task 2 is next.
 
 ## Active Slice
 
@@ -69,8 +69,8 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Enforce participation backup expiry and tombstone-first recovery.
-  - Status: Blocked until `capability:participation-processing-controls` and `capability:participation-operational-retention` are ready.
+- [x] Task 1 — Enforce participation backup expiry and tombstone-first recovery.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -99,7 +99,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Task 1 is blocked on unavailable provider capabilities; no product or technical-design decision is unresolved.
+- None. All required capabilities are ready.
 
 ## Progress Log
 
