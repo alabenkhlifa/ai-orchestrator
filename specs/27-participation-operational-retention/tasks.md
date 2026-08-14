@@ -4,7 +4,7 @@
 
 In Progress
 
-The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 and 2 are complete; Task 3 is next.
+All three tasks are complete and locally proven. `capability:participation-operational-retention` is ready. The verification gate is next.
 
 ## Active Slice
 
@@ -90,7 +90,8 @@ Traceability:
   - Owns: AC-02
   - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/privacy/participation_account_notification_retention_test.exs` passes focused 89-day and 90-day, read, unread, participation namespace, guided-delivery namespace, future namespace, active authorization, idempotency, lock, restart, reconciliation, and shared-store cases.
 
-- [ ] Task 3 — Enforce minimized participation security-log retention and publish readiness.
+- [x] Task 3 — Enforce minimized participation security-log retention and publish readiness.
+  - Status: Complete. `capability:participation-operational-retention` ready.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2

@@ -97,16 +97,29 @@ defmodule SddOrchestrator.Privacy.Retention do
       `delivery.`-namespace rows above are a different feature's data and are
       never selected here, and a row outside the approved notification
       vocabulary is never selected either.
+    * Participation operational-security events — a fixed, minimized
+      `ParticipationSecurityEvent` row (specs/27 Task 3, AC-03) is deleted 30
+      days after its own `occurred_at` through
+      `SddOrchestrator.Privacy.ParticipationSecurityLog`'s retention-capable
+      local sink. The event carries only an allowlisted event type, coarse
+      outcome, fixed reason classification when required, UTC occurrence
+      time, and a fresh non-secret correlation identifier; it is its own
+      locally provable 30-day window, independent of the deployment-enforced
+      operational-security log ceiling `AIRuntime.SecurityLog` documents.
+      Emitting or pruning a security event never reads or changes any
+      invitation, participant, profile, revocation, or account row.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
   A completed repository-initialization result, and the plan and run it
   completed, follow this identical rule for the identical reason: they are the
   project's own confirmed birth record and are removed by account erasure
-  (`Rights.erase_account/2`), not by time. Operational-security log and backup
-  retention (30 and 35 days) are enforced by the deployment's log and backup
-  infrastructure, recorded in the deployment privacy profile. These deletes
-  are idempotent, so re-running the pruner is safe.
+  (`Rights.erase_account/2`), not by time. Every other operational-security
+  log and backup retention (30 and 35 days) is enforced by the deployment's
+  log and backup infrastructure, recorded in the deployment privacy profile —
+  participation operational-security events are the one category this module
+  deletes locally, per the paragraph above. These deletes are idempotent, so
+  re-running the pruner is safe.
   """
   import Ecto.Query
 
@@ -170,6 +183,13 @@ defmodule SddOrchestrator.Privacy.Retention do
   # itself is removed. It is its own named window even though the value
   # matches `@delivery_notification_window` above.
   @participation_notification_window 90 * @day
+
+  # A participation operational-security event is fixed, minimized evidence
+  # of one security-relevant occurrence, not a durable record: it is deleted
+  # 30 days after its own `occurred_at` through `ParticipationSecurityLog`'s
+  # retention-capable local sink. It is its own named window even though the
+  # value matches `@participation_window` above.
+  @participation_security_log_window 30 * @day
 
   # A stable, arbitrary key so every instance contends for the same lock. It is
   # deliberately distinct from the whole-pruner key and from the personal
@@ -255,7 +275,8 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_delivery_notifications: prune_delivery_notifications(now),
       expired_participation_email_delivery_diagnostics:
         prune_participation_email_delivery_diagnostics(now),
-      expired_participation_notifications: prune_participation_notifications(now)
+      expired_participation_notifications: prune_participation_notifications(now),
+      expired_participation_security_events: prune_participation_security_events(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -538,6 +559,17 @@ defmodule SddOrchestrator.Privacy.Retention do
       )
 
     count
+  end
+
+  # A fixed, minimized participation security event is deleted 30 days after
+  # its own occurred_at through ParticipationSecurityLog's retention-capable
+  # local sink, which owns the table and the delete statement itself; this
+  # rule only supplies the window and the call, mirroring how
+  # `prune_device_import_attempts/1` above delegates to its own domain
+  # module's deletion function.
+  defp prune_participation_security_events(now) do
+    cutoff = DateTime.add(now, -@participation_security_log_window, :second)
+    SddOrchestrator.Privacy.ParticipationSecurityLog.prune(cutoff)
   end
 
   # A finalized ("sent" or "failed") diagnostic is deleted 30 days after its

@@ -1,5 +1,20 @@
 # Participation Operational Retention Progress Log
 
+### 2026-08-14 — Task 3 complete; capability ready
+
+- Completed: Added `SddOrchestrator.Privacy.ParticipationSecurityEvent` (append-only Ecto schema, table `participation_security_events`, closed `event_type`/`outcome`/`reason` vocabularies enforced by both changeset validation and DB check constraints) and `SddOrchestrator.Privacy.ParticipationSecurityLog` (`emit/3`, `audit/3`, `prune/1`). Unlike `AIRuntime.SecurityLog` (a pure `Logger` sink with no local deletion boundary — retention there is deployment/release-gate evidence only), this module gives `Privacy.Retention` a genuinely callable local deletion boundary, per design.md's "Retention-Capable Structured Security Sink" decision — required because a 30-day policy with no callable deletion boundary cannot provide deterministic local lifecycle proof.
+- Vocabulary grounded in real atoms already returned by existing participation code (not invented): event types `invitation_credential_rejected` (`InvitationProof`), `invitation_acceptance_rejected` (`Acceptance`), `revocation_denied` (`Revocations`); outcomes `rejected`/`denied`/`failed` (catch-all redaction sink); reasons scoped one-to-one per outcome.
+- Added `prune_participation_security_events/1` to `Privacy.Retention`, its `prune_all/1` registration, window constant, and moduledoc paragraph — plus one small correction to the moduledoc's pre-existing closing sentence ("operational-security log... retention... enforced by the deployment's... infrastructure"), now qualified as true for every category except this new locally-deleted one.
+- Capstone compatibility proof (`participation_operational_retention_test.exs`): one `Retention.prune_all/1` pass with all three specs/27 rules and the specs/25 provider-owned `prune_participation_revocation_links/1` rule simultaneously due — all four category counts correct in the same pass, no duplicate `prune_all/1` map keys, provider rule unaffected, repeat pass fully idempotent (all zero).
+- Proof receipts:
+  - Result: 19 passed (Task 3's own two files); 40 passed re-running all four specs/27 test files together after the moduledoc correction.
+  - Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_security_log_retention_test.exs test/sdd_orchestrator/privacy/participation_operational_retention_test.exs` — exit `0`.
+  - Confirmed independently by the orchestrating session, same command, same exit status.
+- `capability:participation-operational-retention` is now ready (Task 3 complete, proof passed). Downstream consumers: specs/12 Task 9, specs/26 (already ready, unaffected), specs/28 Task 1, specs/29 Task 1.
+- Remaining: Slice verification gate (mix check pieces, browser matrix, prod release, validators).
+- Failed checks: None.
+- Spec updates: Task 3 checkbox/status line; slice Status updated to reflect all three tasks complete and the capability ready.
+
 ### 2026-08-14 — Task 2 complete: account-notification retention
 
 - Completed: Added `prune_participation_notifications/1` to `Privacy.Retention`, mirroring `prune_delivery_notifications/1` exactly (90-day window, `like(event_type, "participation.%")`, no `read_at` filter — both read and unread rows are eligible), registered under `expired_participation_notifications` in `prune_all/1`. Namespace isolation proven both ways: a `delivery.*` row and an out-of-vocabulary row (inserted directly, bypassing the changeset's closed-vocabulary validation, to prove the DB has no constraint doing this job) are never selected.
