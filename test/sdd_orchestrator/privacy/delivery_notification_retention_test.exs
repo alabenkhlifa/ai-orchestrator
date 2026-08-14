@@ -66,7 +66,14 @@ defmodule SddOrchestrator.Privacy.DeliveryNotificationRetentionTest do
       refute Repo.get(AccountNotification, overdue.id)
     end
 
-    test "never deletes a participation-namespace notification for the same account" do
+    test "never selects a participation-namespace notification for the delivery category" do
+      # specs/27 Task 2 added its own 90-day `participation.`-namespace rule to
+      # the same shared `Retention.prune_all/1`, so an old-enough participation
+      # notification is now legitimately removed too — by that rule, not this
+      # one. What this test still proves is namespace selector isolation: the
+      # delivery rule's `like "delivery.%"` filter never matches a
+      # `participation.*` row, so the two categories never double-count or
+      # cross-select the same row.
       %{project: project, account: account} = owned_project()
       feature = DeliveryFixtures.feature_fixture(project, account)
       now = truncated_now()
@@ -81,10 +88,11 @@ defmodule SddOrchestrator.Privacy.DeliveryNotificationRetentionTest do
 
       due = notification_fixture!(account, project, feature, DateTime.add(now, -@window, :second))
 
-      assert %{expired_delivery_notifications: 1} = Retention.prune_all(now)
+      assert %{expired_delivery_notifications: 1, expired_participation_notifications: 1} =
+               Retention.prune_all(now)
 
       refute Repo.get(AccountNotification, due.id)
-      assert Repo.get(AccountNotification, participation.id)
+      refute Repo.get(AccountNotification, participation.id)
     end
 
     test "deleting an expired notification changes nothing else" do

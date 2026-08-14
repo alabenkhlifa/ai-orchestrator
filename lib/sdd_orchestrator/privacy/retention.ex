@@ -27,6 +27,14 @@ defmodule SddOrchestrator.Privacy.Retention do
     * Participation revocation handoffs — former account and hosted-identity
       routing links are erased no later than 30 days after the handoff occurred.
       The stable handoff and its acknowledgement state remain intact.
+    * Participation email-delivery diagnostics — a finalized (`"sent"` or
+      `"failed"`) `ParticipationEmailDelivery` row is deleted 30 days after its
+      authoritative attempt or completion time (`delivered_at` when present,
+      otherwise `attempted_at`). A `"pending"` row is never selected: it still
+      represents retry state the delivery workflow may need, not evidence whose
+      short diagnostic purpose has ended. The invitation, participant, profile,
+      revocation, and account rows this diagnostic references are never
+      touched by this delete.
     * Personal AI connections — an outstanding worker-local credential removal is
       retried first, so a connection the worker acknowledges in this pass starts
       its own terminal window now. An acknowledged connection's opaque
@@ -79,16 +87,39 @@ defmodule SddOrchestrator.Privacy.Retention do
       event, so removing it changes no feature, run, review, assignment, or
       participation state. Slice 08's `participation.`-namespace rows on the
       same schema are a different feature's data and are never selected here.
+    * Participation account notifications — a `participation.`-namespace
+      `AccountNotification` row is deleted 90 days after its own
+      `occurred_at`, whether it was read or left unread; read state is never
+      consulted. The row is only a projection of an invitation, join,
+      decline, removal, or departure event that already happened elsewhere,
+      so removing it changes no invitation, participant, profile, or
+      revocation state, and no current project authorization. The
+      `delivery.`-namespace rows above are a different feature's data and are
+      never selected here, and a row outside the approved notification
+      vocabulary is never selected either.
+    * Participation operational-security events — a fixed, minimized
+      `ParticipationSecurityEvent` row (specs/27 Task 3, AC-03) is deleted 30
+      days after its own `occurred_at` through
+      `SddOrchestrator.Privacy.ParticipationSecurityLog`'s retention-capable
+      local sink. The event carries only an allowlisted event type, coarse
+      outcome, fixed reason classification when required, UTC occurrence
+      time, and a fresh non-secret correlation identifier; it is its own
+      locally provable 30-day window, independent of the deployment-enforced
+      operational-security log ceiling `AIRuntime.SecurityLog` documents.
+      Emitting or pruning a security event never reads or changes any
+      invitation, participant, profile, revocation, or account row.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
   A completed repository-initialization result, and the plan and run it
   completed, follow this identical rule for the identical reason: they are the
   project's own confirmed birth record and are removed by account erasure
-  (`Rights.erase_account/2`), not by time. Operational-security log and backup
-  retention (30 and 35 days) are enforced by the deployment's log and backup
-  infrastructure, recorded in the deployment privacy profile. These deletes
-  are idempotent, so re-running the pruner is safe.
+  (`Rights.erase_account/2`), not by time. Every other operational-security
+  log and backup retention (30 and 35 days) is enforced by the deployment's
+  log and backup infrastructure, recorded in the deployment privacy profile —
+  participation operational-security events are the one category this module
+  deletes locally, per the paragraph above. These deletes are idempotent, so
+  re-running the pruner is safe.
   """
   import Ecto.Query
 
@@ -113,6 +144,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Participation.Invitations
 
   alias SddOrchestrator.Participation.{
+    ParticipationEmailDelivery,
     ParticipationRevocation,
     ProjectInvitation,
     ProjectParticipant
@@ -129,12 +161,35 @@ defmodule SddOrchestrator.Privacy.Retention do
   # within 30 days of reaching their approved lifecycle boundary.
   @participation_window 30 * @day
 
+  # A finalized participation email-delivery diagnostic serves a short
+  # operational purpose (explaining and, while pending, retrying delivery),
+  # not a durable record. It is removed 30 days after its own authoritative
+  # attempt or completion time, its own named window even though the value
+  # matches `@participation_window` above.
+  @participation_email_delivery_window 30 * @day
+
   # A Slice 07 guided-delivery notification is a presentation projection of an
   # event that already happened; the event's own workflow, run, review,
   # assignment, and participation state live elsewhere and are unaffected by
   # this delete. Ninety days after it occurred, whether read or unread, the
   # projection itself is removed.
   @delivery_notification_window 90 * @day
+
+  # A participation account notification (invitation, join, decline, removal,
+  # or departure) is the same kind of presentation projection as the Slice 07
+  # guided-delivery notification above: the event's own workflow and
+  # authorization state live elsewhere and are unaffected by this delete.
+  # Ninety days after it occurred, whether read or unread, the projection
+  # itself is removed. It is its own named window even though the value
+  # matches `@delivery_notification_window` above.
+  @participation_notification_window 90 * @day
+
+  # A participation operational-security event is fixed, minimized evidence
+  # of one security-relevant occurrence, not a durable record: it is deleted
+  # 30 days after its own `occurred_at` through `ParticipationSecurityLog`'s
+  # retention-capable local sink. It is its own named window even though the
+  # value matches `@participation_window` above.
+  @participation_security_log_window 30 * @day
 
   # A stable, arbitrary key so every instance contends for the same lock. It is
   # deliberately distinct from the whole-pruner key and from the personal
@@ -217,7 +272,11 @@ defmodule SddOrchestrator.Privacy.Retention do
       revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now),
       unstarted_repository_initialization_plans:
         prune_unstarted_repository_initialization_plans(now),
-      expired_delivery_notifications: prune_delivery_notifications(now)
+      expired_delivery_notifications: prune_delivery_notifications(now),
+      expired_participation_email_delivery_diagnostics:
+        prune_participation_email_delivery_diagnostics(now),
+      expired_participation_notifications: prune_participation_notifications(now),
+      expired_participation_security_events: prune_participation_security_events(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -478,6 +537,56 @@ defmodule SddOrchestrator.Privacy.Retention do
           where:
             like(notification.event_type, "delivery.%") and
               notification.occurred_at <= ^cutoff
+      )
+
+    count
+  end
+
+  # A `participation.`-namespace notification is deleted 90 days after its own
+  # `occurred_at`, whether read or unread — read state is never filtered on.
+  # The `delivery.`-namespace rows above are excluded by the `like` prefix and
+  # are never selected here, and a row outside the approved notification
+  # vocabulary carries neither prefix and is never selected either.
+  defp prune_participation_notifications(now) do
+    cutoff = DateTime.add(now, -@participation_notification_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from notification in AccountNotification,
+          where:
+            like(notification.event_type, "participation.%") and
+              notification.occurred_at <= ^cutoff
+      )
+
+    count
+  end
+
+  # A fixed, minimized participation security event is deleted 30 days after
+  # its own occurred_at through ParticipationSecurityLog's retention-capable
+  # local sink, which owns the table and the delete statement itself; this
+  # rule only supplies the window and the call, mirroring how
+  # `prune_device_import_attempts/1` above delegates to its own domain
+  # module's deletion function.
+  defp prune_participation_security_events(now) do
+    cutoff = DateTime.add(now, -@participation_security_log_window, :second)
+    SddOrchestrator.Privacy.ParticipationSecurityLog.prune(cutoff)
+  end
+
+  # A finalized ("sent" or "failed") diagnostic is deleted 30 days after its
+  # authoritative attempt or completion time: `delivered_at` when present,
+  # otherwise `attempted_at`. A "pending" row is never selected — it still
+  # represents retry state, not evidence whose short diagnostic purpose has
+  # ended — and only the diagnostic row itself is deleted, never the
+  # invitation, participant, profile, revocation, or account it references.
+  defp prune_participation_email_delivery_diagnostics(now) do
+    cutoff = DateTime.add(now, -@participation_email_delivery_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from delivery in ParticipationEmailDelivery,
+          where:
+            delivery.status in ["sent", "failed"] and
+              fragment("COALESCE(?, ?)", delivery.delivered_at, delivery.attempted_at) <= ^cutoff
       )
 
     count
