@@ -18,7 +18,9 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
   @accept_messages %{
     invalid_or_expired: "This invitation can't be used anymore.",
     invalid_display_name: "Choose a name people on this project will recognize.",
-    display_name_taken: "That name is already used on this project. Pick another one."
+    display_name_taken: "That name is already used on this project. Pick another one.",
+    identity_lifecycle_conflict:
+      "This invitation can't be accepted right now. Ask the project owner to send a new one."
   }
 
   @impl true

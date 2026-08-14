@@ -279,7 +279,13 @@ defmodule SddOrchestrator.Participation.Acceptance do
     errors = changeset.errors
 
     cond do
-      Enum.any?(Keyword.keys(errors), &(&1 != :display_name)) ->
+      # `:display_name_key` is a pure derived index of `:display_name` — a
+      # rejected `DisplayName.normalize/1` never sets it, so
+      # `validate_required/2` always adds its own "can't be blank" error on
+      # `:display_name_key` alongside the real `:display_name` error. Without
+      # excluding it here, every invalid or taken display name would be
+      # misclassified as an unrelated identity-lifecycle conflict.
+      Enum.any?(Keyword.keys(errors), &(&1 not in [:display_name, :display_name_key])) ->
         :identity_lifecycle_conflict
 
       match?({"is already used in this project", _opts}, errors[:display_name]) ->
