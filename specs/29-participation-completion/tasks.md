@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The agreement is approved. Task 1 is blocked until every participation foundation and focused continuation capability is ready.
+Task 1 is complete and locally proven. `capability:project-participation-governance` is ready (implementation and local-verification readiness only; release readiness remains a separate, deferred gate). The verification gate is next.
 
 ## Active Slice
 
@@ -73,8 +73,8 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Reconcile participation readiness and publish governance.
-  - Status: Blocked until every capability named for Task 1 is ready.
+- [x] Task 1 — Reconcile participation readiness and publish governance.
+  - Status: Complete. `capability:project-participation-governance` ready (implementation/local-verification; release remains a separate gate).
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -97,7 +97,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Task 1 is blocked on unavailable provider capabilities; no product or technical-design decision is unresolved.
+- None. Every required capability is ready.
 
 ## Progress Log
 
