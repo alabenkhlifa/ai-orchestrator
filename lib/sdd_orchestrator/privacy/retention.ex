@@ -27,6 +27,14 @@ defmodule SddOrchestrator.Privacy.Retention do
     * Participation revocation handoffs — former account and hosted-identity
       routing links are erased no later than 30 days after the handoff occurred.
       The stable handoff and its acknowledgement state remain intact.
+    * Participation email-delivery diagnostics — a finalized (`"sent"` or
+      `"failed"`) `ParticipationEmailDelivery` row is deleted 30 days after its
+      authoritative attempt or completion time (`delivered_at` when present,
+      otherwise `attempted_at`). A `"pending"` row is never selected: it still
+      represents retry state the delivery workflow may need, not evidence whose
+      short diagnostic purpose has ended. The invitation, participant, profile,
+      revocation, and account rows this diagnostic references are never
+      touched by this delete.
     * Personal AI connections — an outstanding worker-local credential removal is
       retried first, so a connection the worker acknowledges in this pass starts
       its own terminal window now. An acknowledged connection's opaque
@@ -113,6 +121,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Participation.Invitations
 
   alias SddOrchestrator.Participation.{
+    ParticipationEmailDelivery,
     ParticipationRevocation,
     ProjectInvitation,
     ProjectParticipant
@@ -128,6 +137,13 @@ defmodule SddOrchestrator.Privacy.Retention do
   # Terminal invitations and departed authorization-to-identity links are removed
   # within 30 days of reaching their approved lifecycle boundary.
   @participation_window 30 * @day
+
+  # A finalized participation email-delivery diagnostic serves a short
+  # operational purpose (explaining and, while pending, retrying delivery),
+  # not a durable record. It is removed 30 days after its own authoritative
+  # attempt or completion time, its own named window even though the value
+  # matches `@participation_window` above.
+  @participation_email_delivery_window 30 * @day
 
   # A Slice 07 guided-delivery notification is a presentation projection of an
   # event that already happened; the event's own workflow, run, review,
@@ -217,7 +233,9 @@ defmodule SddOrchestrator.Privacy.Retention do
       revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now),
       unstarted_repository_initialization_plans:
         prune_unstarted_repository_initialization_plans(now),
-      expired_delivery_notifications: prune_delivery_notifications(now)
+      expired_delivery_notifications: prune_delivery_notifications(now),
+      expired_participation_email_delivery_diagnostics:
+        prune_participation_email_delivery_diagnostics(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -478,6 +496,26 @@ defmodule SddOrchestrator.Privacy.Retention do
           where:
             like(notification.event_type, "delivery.%") and
               notification.occurred_at <= ^cutoff
+      )
+
+    count
+  end
+
+  # A finalized ("sent" or "failed") diagnostic is deleted 30 days after its
+  # authoritative attempt or completion time: `delivered_at` when present,
+  # otherwise `attempted_at`. A "pending" row is never selected — it still
+  # represents retry state, not evidence whose short diagnostic purpose has
+  # ended — and only the diagnostic row itself is deleted, never the
+  # invitation, participant, profile, revocation, or account it references.
+  defp prune_participation_email_delivery_diagnostics(now) do
+    cutoff = DateTime.add(now, -@participation_email_delivery_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from delivery in ParticipationEmailDelivery,
+          where:
+            delivery.status in ["sent", "failed"] and
+              fragment("COALESCE(?, ?)", delivery.delivered_at, delivery.attempted_at) <= ^cutoff
       )
 
     count

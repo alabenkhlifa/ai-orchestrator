@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The agreement is approved. Task 1 is blocked until `capability:participation-identity-lifecycle` is ready; `capability:project-participation-boundary` is already available.
+The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Task 1 is complete; Task 2 is next.
 
 ## Active Slice
 
@@ -70,8 +70,8 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Enforce participation email-delivery diagnostic retention.
-  - Status: Blocked until `capability:participation-identity-lifecycle` is ready.
+- [x] Task 1 — Enforce participation email-delivery diagnostic retention.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -114,7 +114,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- No product or technical-design decision is unresolved. Active-slice implementation is capability-blocked until `specs/25-participation-identity-lifecycle#Task 4` publishes `capability:participation-identity-lifecycle`.
+- None. Both required capabilities are ready.
 
 ## Progress Log
 
