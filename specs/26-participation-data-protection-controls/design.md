@@ -16,7 +16,7 @@ Apply one participation content boundary before persistence or transmission to r
 
 ## Components Affected
 
-- `SddOrchestrator.Privacy.ProcessingInventory` and `DataProcessingRecord` participation classifications.
+- `SddOrchestrator.Privacy.ParticipationProcessingInventory` and `ParticipationProcessingRecord` participation classifications.
 - Participation owner, participant, operations, and exceptional-support access policies.
 - Project-participation authorization and identity-lifecycle capability consumers.
 - Participation content minimization, secret rejection, and credential-transfer denial boundary.
@@ -25,7 +25,7 @@ Apply one participation content boundary before persistence or transmission to r
 
 ## Data and Access Boundaries
 
-- `DataProcessingRecord`: one configuration record for a participation activity or transfer, including its field names, purpose, lawful basis, authority, recipients, access boundary, lifecycle owner, processors, transfer classification, and review state without copying the governed data.
+- `ParticipationProcessingRecord`: one configuration record for a participation activity or transfer, including its field names, purpose, lawful basis, authority, recipients, access boundary, lifecycle owner, processors, transfer classification, and review state without copying the governed data.
 
 Required boundaries:
 
@@ -51,9 +51,9 @@ Required boundaries:
 
 ### Extend The Shared Processing Inventory
 
-- Choice: Add participation activities to the existing `ProcessingInventory` and reuse `DataProcessingRecord` rather than create a second privacy registry.
-- Reason: One machine-checkable inventory avoids inconsistent purpose, basis, processor, transfer, and lifecycle classifications across product slices.
-- Consequence: Participation implementation must satisfy the shared record contract and keep deployment-specific evidence outside the development inventory.
+- Choice: Add a dedicated `ParticipationProcessingRecord` classification module (mirroring the Slice 07 `DeliveryProcessingRecord` pattern) rather than a hand-written free-text registry or an extension of the legacy `DataProcessingRecord` struct.
+- Reason: AC-01 requires every participation field to carry a purpose, basis, authority, recipient category, processor category, transfer classification, and lifecycle owner drawn from a closed, machine-validated vocabulary. `DataProcessingRecord` holds free-text purpose/basis/retention/rights prose per *activity* with no fixed vocabulary a validator can check, and it also inlines retention and rights handling that this slice must not own or redefine (`capability:participation-identity-lifecycle` remains authoritative for those). Reusing it would either weaken AC-01's completeness proof to free text or force retrofitting closed enums onto the 27 already-approved legacy records shared across unrelated slices. A dedicated struct keeps those legacy records untouched, exactly as Slice 18 already established for the same reason.
+- Consequence: Participation implementation defines its own closed vocabulary and `validate/1` contract instead of the shared `DataProcessingRecord` contract; deployment-specific evidence stays out of the development inventory either way.
 
 ### Consume Final Identity Lifecycle Before Classification
 
@@ -86,6 +86,7 @@ Required boundaries:
 - Support elevation could become standing access. Capabilities have one purpose and scope, a fixed expiry, explicit revocation, and minimized audit evidence.
 - A broad processor classification could transfer unnecessary data. Destination rules bind each processor and transfer category to an approved minimum field set.
 - Redaction patterns alone could miss typed credentials or nested content. Field allowlists, typed rejection, and negative persistence and transmission scans complement value detection.
+- Concrete instance found during Task 4: `SddOrchestrator.Participation.DisplayName.normalize/1` (Slice 08, out of this specification's Excluded scope) rejects an email-shaped display name but runs no credential-shape scan, so a credential-shaped string (e.g. `sk-...`) is accepted into `ProjectMemberProfile.display_name` and would later reach another participant's view or a notification's `actor_label`. `ParticipationContentBoundary.scan_text/2` (Task 4) would catch it; proof of the gap and of the scanner catching it both live in `participation_content_boundary_test.exs`. Not fixed here: it requires a Slice 08 change, which this specification's Implementation Boundary excludes. Left as a known, deliberately unaddressed residual risk for a future Slice 08 change to close.
 - Aggregate output could remain singling-out or linkable. The boundary rejects stable dimensions and raw participation input and treats any uncertain output as governed personal data.
 
 ## Open Questions
