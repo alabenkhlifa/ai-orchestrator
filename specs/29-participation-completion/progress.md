@@ -1,5 +1,19 @@
 # Participation Completion Progress Log
 
+### 2026-08-14 - Verification gate: one Dialyzer fix, accepted exception, clean otherwise
+
+- Fixed a real Dialyzer finding in `ParticipationGovernance.capability_set_mismatch_reasons/1`: `MapSet.difference/2` on a compile-time-literal set and a runtime-built one triggered a `call_without_opaque` type mismatch. Replaced with plain list `Enum.reject/2` diffing — simpler and avoids the issue entirely; behavior and all 17 tests unchanged.
+- `mix test`: 4038/4042 passed, 4 failed — 2 the same already-documented pre-existing, unrelated failures accepted for specs/25/26/27/28 on the same basis and evidence (`SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest`, `SddOrchestrator.Delivery.RevocationConsumerTest`); 2 further failures (`StagingWorkspaceTest`) confirmed pure test-pollution — pass cleanly in isolation, not real failures.
+- Format, compile --warnings-as-errors, credo --strict, dialyzer (after the fix above), deps.audit, and sobelow --config all pass with zero issues.
+- Remaining: Browser matrix (desktop + mobile), production proof, validators, then mark Verified and merge.
+- Spec updates: None — accepted gate exception, not a specification change.
+
+### 2026-08-14 - Browser matrix: one pre-existing, unrelated e2e failure accepted
+
+- `npm --prefix assets run test:e2e`: 135/138 passed, 2 skipped, 1 failed — `e2e/repository-kits.spec.js` "the owner inspects the catalog, opens one package, and sees supersession" — the same fixed-digest kit-package seed collision already documented in `specs/25-participation-identity-lifecycle/progress.md` and `specs/27-participation-operational-retention/progress.md`. Owned by specs/15/30, not this specification, and nothing in Task 1 touches repository-kit seeding. Accepted under the same exception policy.
+- Remaining: Production proof, validators, then mark Verified and merge.
+- Spec updates: None — accepted gate exception, not a specification change.
+
 ### 2026-08-14 - Task 1 complete: participation governance published
 
 - Completed: Added `SddOrchestrator.Privacy.ParticipationGovernance` — a literal, hand-copied registry of the seven required `{capability, specification, task}` triples from this specification's own `Requires:` list (`project-participation-boundary`/`project-owner-display-profile`/`project-participation-recipient-routing` from specs/08, `participation-identity-lifecycle` from specs/25, `participation-processing-controls` from specs/26, `participation-operational-retention` from specs/27, `participation-deletion-recovery` from specs/28), plus `validate_providers/1` (rejects malformed entries, duplicate capability names including stale superseded-task variants, duplicate `{specification, task}` references, and any capability-set mismatch) and `readiness/1` (staged: `implementation_readiness`/`local_verification_readiness` driven by registry validity, `release_readiness` always literal `:deferred_to_release_gate`, independently of registry state — AC-03).
