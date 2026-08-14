@@ -4,7 +4,7 @@
 
 In Progress
 
-The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Task 1 is complete; Task 2 is next.
+The agreement is approved. `capability:project-participation-boundary` and `capability:participation-identity-lifecycle` are both ready. Tasks 1 and 2 are complete; Task 3 is next.
 
 ## Active Slice
 
@@ -80,7 +80,8 @@ Traceability:
   - Owns: AC-01
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/participation_email_delivery_retention_test.exs` passes focused 29-day and 30-day, sent, failed, pending, authoritative-time, invitation, participant, profile, revocation, account, idempotency, lock, restart, reconciliation, and identity-lifecycle compatibility cases.
 
-- [ ] Task 2 — Enforce participation account-notification retention.
+- [x] Task 2 — Enforce participation account-notification retention.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1

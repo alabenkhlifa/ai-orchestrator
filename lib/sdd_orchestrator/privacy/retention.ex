@@ -87,6 +87,16 @@ defmodule SddOrchestrator.Privacy.Retention do
       event, so removing it changes no feature, run, review, assignment, or
       participation state. Slice 08's `participation.`-namespace rows on the
       same schema are a different feature's data and are never selected here.
+    * Participation account notifications — a `participation.`-namespace
+      `AccountNotification` row is deleted 90 days after its own
+      `occurred_at`, whether it was read or left unread; read state is never
+      consulted. The row is only a projection of an invitation, join,
+      decline, removal, or departure event that already happened elsewhere,
+      so removing it changes no invitation, participant, profile, or
+      revocation state, and no current project authorization. The
+      `delivery.`-namespace rows above are a different feature's data and are
+      never selected here, and a row outside the approved notification
+      vocabulary is never selected either.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -151,6 +161,15 @@ defmodule SddOrchestrator.Privacy.Retention do
   # this delete. Ninety days after it occurred, whether read or unread, the
   # projection itself is removed.
   @delivery_notification_window 90 * @day
+
+  # A participation account notification (invitation, join, decline, removal,
+  # or departure) is the same kind of presentation projection as the Slice 07
+  # guided-delivery notification above: the event's own workflow and
+  # authorization state live elsewhere and are unaffected by this delete.
+  # Ninety days after it occurred, whether read or unread, the projection
+  # itself is removed. It is its own named window even though the value
+  # matches `@delivery_notification_window` above.
+  @participation_notification_window 90 * @day
 
   # A stable, arbitrary key so every instance contends for the same lock. It is
   # deliberately distinct from the whole-pruner key and from the personal
@@ -235,7 +254,8 @@ defmodule SddOrchestrator.Privacy.Retention do
         prune_unstarted_repository_initialization_plans(now),
       expired_delivery_notifications: prune_delivery_notifications(now),
       expired_participation_email_delivery_diagnostics:
-        prune_participation_email_delivery_diagnostics(now)
+        prune_participation_email_delivery_diagnostics(now),
+      expired_participation_notifications: prune_participation_notifications(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -495,6 +515,25 @@ defmodule SddOrchestrator.Privacy.Retention do
         from notification in AccountNotification,
           where:
             like(notification.event_type, "delivery.%") and
+              notification.occurred_at <= ^cutoff
+      )
+
+    count
+  end
+
+  # A `participation.`-namespace notification is deleted 90 days after its own
+  # `occurred_at`, whether read or unread — read state is never filtered on.
+  # The `delivery.`-namespace rows above are excluded by the `like` prefix and
+  # are never selected here, and a row outside the approved notification
+  # vocabulary carries neither prefix and is never selected either.
+  defp prune_participation_notifications(now) do
+    cutoff = DateTime.add(now, -@participation_notification_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from notification in AccountNotification,
+          where:
+            like(notification.event_type, "participation.%") and
               notification.occurred_at <= ^cutoff
       )
 

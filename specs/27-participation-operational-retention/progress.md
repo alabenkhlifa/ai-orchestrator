@@ -1,5 +1,17 @@
 # Participation Operational Retention Progress Log
 
+### 2026-08-14 — Task 2 complete: account-notification retention
+
+- Completed: Added `prune_participation_notifications/1` to `Privacy.Retention`, mirroring `prune_delivery_notifications/1` exactly (90-day window, `like(event_type, "participation.%")`, no `read_at` filter — both read and unread rows are eligible), registered under `expired_participation_notifications` in `prune_all/1`. Namespace isolation proven both ways: a `delivery.*` row and an out-of-vocabulary row (inserted directly, bypassing the changeset's closed-vocabulary validation, to prove the DB has no constraint doing this job) are never selected.
+- Scope classification: unchanged.
+- Remaining: Task 3, then the verification gate.
+- Failed checks: None.
+- Proof receipts:
+  - Result: 10 passed.
+  - Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/participation_account_notification_retention_test.exs` — exit `0`.
+  - Confirmed independently by the orchestrating session, same command, same exit status.
+- Spec updates: Task 2 checkbox/status line only.
+
 ### 2026-08-14 — Task 1 complete: email-delivery diagnostic retention
 
 - Completed: Added `prune_participation_email_delivery_diagnostics/1` to `Privacy.Retention` (30-day window, finalized `"sent"`/`"failed"` rows only, eligibility timestamp `COALESCE(delivered_at, attempted_at)`, `"pending"` never selected), registered under `expired_participation_email_delivery_diagnostics` in `prune_all/1`, and a matching moduledoc paragraph. No new module — extends the existing shared retention runner per design.md's "One Shared Runner With Serialized Rule Ownership" decision.
