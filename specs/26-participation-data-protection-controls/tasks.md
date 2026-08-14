@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-All five tasks are complete and locally proven. `capability:participation-processing-controls` is ready. The verification gate is next.
+All five tasks are complete and locally proven. `capability:participation-processing-controls` is ready. The verification gate passed with two accepted exceptions recorded below (pre-existing, unrelated `mix test` failures owned by other specifications, identical basis to specs/25).
 
 ## Active Slice
 
@@ -122,17 +122,21 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All five acceptance criteria and the complete `ParticipationProcessingRecord` traceability map pass.
-- [ ] Every participation activity and transfer has one lifecycle-consistent purpose, basis, authority, recipient, minimum-field, processor, transfer, and review classification.
-- [ ] Owner, participant, operations, stale, removed, departed, absent, cross-project, and exceptional-support paths authorize or deny exactly as approved without enumeration disclosure.
-- [ ] Credential, secret, unauthorized project-content, out-of-context participant-email, unrelated-identity, processor, transfer, persistence, and transmission negative scans pass.
-- [ ] No advertising, model-training reuse, unrelated improvement, product analytics, linkable stable profile, or other secondary-use path exists, and aggregate-boundary proof rejects raw or linkable input.
-- [ ] Deterministic participation notification, delivery, revocation, rights, retention, and recipient-routing compatibility suites pass through slice scope without changing provider behavior.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` passes.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix format --check-formatted`, `python3 .agents/scripts/run_proof.py slice -- mix compile --warnings-as-errors`, `python3 .agents/scripts/run_proof.py slice -- mix credo --strict`, `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `python3 .agents/scripts/run_proof.py slice -- mix deps.audit`, `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config`, and `python3 .agents/scripts/run_proof.py slice -- mix test` pass.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release` pass.
-- [ ] The individual specification validator and global cross-specification capability graph pass, the two provider contracts remain authoritative, and the provided capability readiness write-back is recorded.
-- [ ] Implementation and local-verification readiness are recorded separately from deployment release readiness.
+- [x] All five acceptance criteria and the complete `ParticipationProcessingRecord` traceability map pass.
+- [x] Every participation activity and transfer has one lifecycle-consistent purpose, basis, authority, recipient, minimum-field, processor, transfer, and review classification.
+- [x] Owner, participant, operations, stale, removed, departed, absent, cross-project, and exceptional-support paths authorize or deny exactly as approved without enumeration disclosure.
+- [x] Credential, secret, unauthorized project-content, out-of-context participant-email, unrelated-identity, processor, transfer, persistence, and transmission negative scans pass.
+- [x] No advertising, model-training reuse, unrelated improvement, product analytics, linkable stable profile, or other secondary-use path exists, and aggregate-boundary proof rejects raw or linkable input.
+- [x] Deterministic participation notification, delivery, revocation, rights, retention, and recipient-routing compatibility suites pass through slice scope without changing provider behavior.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check` passes. (Passes with two accepted, documented, pre-existing exceptions — see Accepted Exceptions below.)
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix format --check-formatted`, `python3 .agents/scripts/run_proof.py slice -- mix compile --warnings-as-errors`, `python3 .agents/scripts/run_proof.py slice -- mix credo --strict`, `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `python3 .agents/scripts/run_proof.py slice -- mix deps.audit`, `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config`, and `python3 .agents/scripts/run_proof.py slice -- mix test` pass. (Same exception as above.)
+- [x] `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release` pass.
+- [x] The individual specification validator and global cross-specification capability graph pass, the two provider contracts remain authoritative, and the provided capability readiness write-back is recorded.
+- [x] Implementation and local-verification readiness are recorded separately from deployment release readiness.
+
+## Accepted Exceptions
+
+- `mix test` / `mix check`: two pre-existing, unrelated failures accepted by explicit user decision on 2026-08-13 (same basis as `specs/25-participation-identity-lifecycle`'s identical exception) — `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` and `SddOrchestrator.Delivery.RevocationConsumerTest`. Both reproduce in isolation, are confined to `lib/sdd_orchestrator/delivery/` files this specification never touches, and are unrelated to Tasks 1-5. See `progress.md` 2026-08-14 entry for full evidence.
 
 ## Blocked Decisions
 
