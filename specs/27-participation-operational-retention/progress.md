@@ -1,5 +1,21 @@
 # Participation Operational Retention Progress Log
 
+### 2026-08-14 — Verification gate: one direct fix, one accepted exception
+
+- Fixed a Credo `--strict` finding in Task 3's own test (`apply/3` with known arity) by calling `ParticipationSecurityLog.emit/3` directly — the runtime-atom values from `String.to_atom/1` still exercise the guard clause at runtime exactly as intended.
+- Fixed `test/sdd_orchestrator/privacy/delivery_notification_retention_test.exs` (specs/18, already Verified/merged) — its "never deletes a participation-namespace notification" test used a fixture aged far past 90 days to prove the delivery rule's namespace selector never matches a `participation.*` row. That is still true, but Task 2's new `expired_participation_notifications` rule now legitimately deletes that same fixture through its OWN 90-day rule, so the old assertion ("participation row survives indefinitely") became false. Updated the test to assert namespace-selector isolation (both categories fire, delivery count is still only 1, neither cross-matches the other's row) instead of indefinite survival. This is a direct, foreseen consequence of Task 2's own approved behavior (AC-02 requires participation notifications to expire), not an unrelated pre-existing defect — fixed directly rather than treated as an exception.
+- Accepted exception (same basis as specs/25 and specs/26, same two tests, same evidence): `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` and `SddOrchestrator.Delivery.RevocationConsumerTest` fail even in isolation, are confined to `lib/sdd_orchestrator/delivery/` files this specification never touches, and are unrelated to Tasks 1-3. Two further failures in this run (`StagingBuilderTest`, `Worker.IsolationTest`) are pure test-pollution under full concurrent load — confirmed clean in isolation, not real failures.
+- Failed checks: `mix test` — 3983/3987 passed, 4 failed; 2 confirmed genuine pre-existing/unrelated (accepted), 2 confirmed pollution.
+- Format, compile --warnings-as-errors, credo --strict (after the fix above), dialyzer, deps.audit, and sobelow --config all pass with zero issues.
+- Remaining: Browser matrix, production proof, validators, then mark Verified and merge.
+- Spec updates: None — accepted gate exception, not a specification change.
+
+### 2026-08-14 — Browser matrix: one pre-existing, unrelated e2e failure accepted
+
+- `npm --prefix assets run test:e2e`: 135/138 passed, 2 skipped, 1 failed — `e2e/repository-kits.spec.js` "the owner inspects the catalog, opens one package, and sees supersession" — the same fixed-digest kit-package seed collision already documented in `specs/25-participation-identity-lifecycle/progress.md` (2026-08-14 entry). `RepositoryKits.publish_package/2` belongs to specs/15/30, not this specification, and nothing in Tasks 1-3 touches repository-kit seeding. Accepted under the same exception policy.
+- Remaining: Production proof, validators, then mark Verified and merge.
+- Spec updates: None — accepted gate exception, not a specification change.
+
 ### 2026-08-14 — Task 3 complete; capability ready
 
 - Completed: Added `SddOrchestrator.Privacy.ParticipationSecurityEvent` (append-only Ecto schema, table `participation_security_events`, closed `event_type`/`outcome`/`reason` vocabularies enforced by both changeset validation and DB check constraints) and `SddOrchestrator.Privacy.ParticipationSecurityLog` (`emit/3`, `audit/3`, `prune/1`). Unlike `AIRuntime.SecurityLog` (a pure `Logger` sink with no local deletion boundary — retention there is deployment/release-gate evidence only), this module gives `Privacy.Retention` a genuinely callable local deletion boundary, per design.md's "Retention-Capable Structured Security Sink" decision — required because a 30-day policy with no callable deletion boundary cannot provide deterministic local lifecycle proof.
