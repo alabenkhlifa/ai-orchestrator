@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+In Progress
 
-The product and technical agreements are approved. `capability:project-storage-authority`, `capability:project-participation-boundary`, `capability:ai-runtime-session`, `capability:ai-runtime-observation`, `capability:project-specification-store`, and `capability:guided-delivery-data-surfaces` are all ready. Tasks 1 through 8 are complete on `slice/12-project-assistant`. Task 9, the next executable task, remains blocked on `capability:project-participation-governance` (provider `specs/29-participation-completion#Task 1`, currently pending) and is deferred to a later session; Task 10's slice verification gate is blocked behind it.
+The product and technical agreements are approved. `capability:project-storage-authority`, `capability:project-participation-boundary`, `capability:ai-runtime-session`, `capability:ai-runtime-observation`, `capability:project-specification-store`, `capability:guided-delivery-data-surfaces`, and `capability:project-participation-governance` are all ready. Tasks 1 through 8 are complete on `slice/12-project-assistant`, rebased onto `main` after `specs/29-participation-completion` merged. Task 9, the next executable task, is now unblocked.
 
 ## Active Slice
 
