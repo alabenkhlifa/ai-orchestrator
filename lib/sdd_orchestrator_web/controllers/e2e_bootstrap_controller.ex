@@ -80,6 +80,135 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     def cleanup(_command), do: :ok
   end
 
+  defmodule SddOrchestratorWeb.E2EPersonalConnectionAdapter do
+    @moduledoc """
+    A deterministic personal-AI-connection adapter for the browser suite
+    (specs/12 Task 8's own e2e proof).
+
+    No worker pairing, no `SddOrchestrator.AIRuntime.PersonalWorkerRPC` round
+    trip: `link_personal_connection/4` accepts an explicit `adapter:`
+    override, so this returns the exact safe result the caller already
+    decided on through `opts[:adapter_result]` — mirroring
+    `SddOrchestrator.PersonalConnectionAdapterDouble` (test-only, unavailable
+    to a `mix phx.server` build) closely enough to prove the same contract
+    without depending on it. Exists only behind the same compile-time flag
+    as the rest of this file.
+    """
+    @behaviour SddOrchestrator.AIRuntime.PersonalConnectionAdapter
+
+    @impl true
+    def link(_account, worker, request, opts) do
+      Keyword.get_lazy(opts, :adapter_result, fn ->
+        {:ok,
+         %{
+           worker_profile_ref: "e2e-profile-#{worker.id}",
+           provider: request.provider,
+           authentication_mode: request.authentication_mode,
+           availability: "available",
+           adapter_compatibility_version: "connection/1"
+         }}
+      end)
+    end
+
+    @impl true
+    def revoke(_account, _worker, request, _opts) do
+      {:ok, %{worker_profile_ref: request.worker_profile_ref, credential_removal: "removed"}}
+    end
+  end
+
+  defmodule SddOrchestratorWeb.E2EModelCatalogAdapter do
+    @moduledoc """
+    A deterministic model-catalog adapter for the browser suite, mirroring
+    `SddOrchestratorWeb.E2EPersonalConnectionAdapter`'s reasoning: `fetch/3`
+    returns the caller's own `opts[:adapter_result]` rather than a live
+    `model/list` round trip.
+    """
+    @behaviour SddOrchestrator.AIRuntime.ModelCatalogAdapter
+
+    @impl true
+    def fetch(_account, _connection, opts), do: Keyword.fetch!(opts, :adapter_result)
+  end
+
+  defmodule SddOrchestratorWeb.E2EQuotaAdapter do
+    @moduledoc """
+    A deterministic quota adapter for the browser suite, mirroring
+    `SddOrchestratorWeb.E2EModelCatalogAdapter`. The project assistant never
+    reads exact quota (AC-22); this exists only so
+    `SddOrchestrator.AIRuntime.RuntimeSessions.pin_session/3` has a current
+    quota snapshot to evaluate policy against on the way to `:available`.
+    """
+    @behaviour SddOrchestrator.AIRuntime.QuotaAdapter
+
+    @impl true
+    def fetch(_account, _connection, opts), do: Keyword.fetch!(opts, :adapter_result)
+  end
+
+  defmodule SddOrchestratorWeb.E2EModelCompletionAdapter do
+    @moduledoc """
+    A deterministic `SddOrchestrator.ProjectAssistant.ModelCompletionAdapter`
+    for the browser suite (specs/12 Task 8's own e2e proof) — no live model
+    call. Scenarios are keyed off `question_text`'s prefix, the same
+    convention `SddOrchestrator.ProjectAssistant.FakeModelCompletionAdapter`
+    (test-only, unavailable to a `mix phx.server` build) already proved in
+    Task 7's own focused tests; this carries only the small subset the
+    browser suite actually exercises end to end:
+
+      * `"spec-valid: "` — cites the current context's first specification
+        with its exact current revision, so a real, readable citation opens.
+      * `"repository-valid: "` — cites a repository path. No worker is ever
+        bound to the seeded e2e project, so this always resolves as a
+        visible `:unavailable` uncertainty marker rather than a citation —
+        proving the source-unavailable degraded state inside a real turn.
+      * `"fails: " <> reason` — a normalized model-completion failure, so a
+        real `outcome: "failed"` turn and its retry affordance render.
+      * any other question — one plain, non-material remark.
+    """
+    @behaviour SddOrchestrator.ProjectAssistant.ModelCompletionAdapter
+
+    @impl true
+    def complete(%{question_text: "fails: " <> reason}), do: {:error, String.to_atom(reason)}
+
+    def complete(%{question_text: "spec-valid: " <> _rest, context_content: content}) do
+      [entry | _rest] = content["specifications"]
+
+      claims = [
+        %{
+          text: "The current specification is #{entry["title"]}.",
+          material: true,
+          citation: %{
+            type: :specification,
+            specification_id: entry["id"],
+            revision_id: entry["revision_id"]
+          }
+        }
+      ]
+
+      {:ok, %{claims: claims, markers: []}}
+    end
+
+    def complete(%{question_text: "repository-valid: " <> _rest}) do
+      claims = [
+        %{
+          text: "The repository shows this at lib/app.ex:1-2.",
+          material: true,
+          citation: %{type: :repository, path: "lib/app.ex", start_line: 1, end_line: 2}
+        }
+      ]
+
+      {:ok, %{claims: claims, markers: []}}
+    end
+
+    def complete(%{question_text: _other}) do
+      {:ok,
+       %{
+         claims: [
+           %{text: "This is a general, non-material remark.", material: false, citation: nil}
+         ],
+         markers: []
+       }}
+    end
+  end
+
   defmodule SddOrchestratorWeb.E2EBootstrapController do
     @moduledoc """
     Dev and test-only session and fixture bootstrap for the browser suite.
@@ -112,7 +241,14 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     alias SddOrchestrator.Accounts
     alias SddOrchestrator.Accounts.GitHubIdentity
-    alias SddOrchestrator.AIRuntime.PersonalWorkerRPC
+
+    alias SddOrchestrator.AIRuntime.{
+      ModelCatalogs,
+      PersonalConnections,
+      PersonalWorkerRPC,
+      Quotas
+    }
+
     alias SddOrchestrator.Devices
     alias SddOrchestrator.Devices.Pairing
 
@@ -157,7 +293,10 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.SpecificationStore
 
     alias SddOrchestratorWeb.{
+      E2EModelCatalogAdapter,
+      E2EPersonalConnectionAdapter,
       E2EPreviewAdapter,
+      E2EQuotaAdapter,
       E2ERepositoryMetadataAdapter,
       HostedUserAuth,
       UserAuth
@@ -592,6 +731,42 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    # One hosted project reachable from every project screen, seeded with a
+    # current specification and a feature carrying a recorded run and
+    # evidence, plus (per `state`) the owner's personal AI connection state —
+    # what specs/12 Task 8's own browser suite needs to prove the panel's
+    # ask, citation, uncertainty, failure, retry, and delete behavior through
+    # one real turn, with no live model or worker anywhere in the path
+    # (`SddOrchestratorWeb.E2EModelCompletionAdapter`, configured only under
+    # `E2E_MODE`, answers instead).
+    #
+    #   * `state=available` (default) — a linked, current connection,
+    #     catalog, and quota, so `RuntimeAvailability` reports `:available`.
+    #   * `state=unavailable` — a linked but incompatible connection.
+    #   * any other value (`state=setup_needed`, or omitted) — no connection.
+    defp run(conn, "project_assistant", params) do
+      %{project: project, owner: owner} = member_graph()
+      actor = %{account_id: owner.account.id, hosted_identity_id: nil}
+
+      current = seed_specification(owner, project)
+
+      {:ok, feature} = Features.create(project.id, actor, %{title: "Reviewed feature"})
+      feature = advance(project.id, actor, feature, "ready_for_review")
+      %{run: run} = seed_evidence(owner.personal_workspace, project, feature)
+
+      link_assistant_connection(owner.account, params["state"] || "available")
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        project_id: project.id,
+        project_name: project.name,
+        feature_id: feature.id,
+        run_id: run.id,
+        specification_title: current.specification.title
+      })
+    end
+
     defp run(conn, _unknown_scenario, _params),
       do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
@@ -785,6 +960,142 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         })
 
       worker
+    end
+
+    ## Project-assistant personal AI connection (specs/12 Task 8)
+
+    defp link_assistant_connection(_account, "setup_needed"), do: :ok
+
+    defp link_assistant_connection(account, "unavailable") do
+      worker = pair_ai_worker(assistant_device_workspace_id())
+
+      {:ok, _connection} =
+        PersonalConnections.link_personal_connection(
+          account,
+          worker,
+          %{label: "E2E Codex", provider: "openai_codex", authentication_mode: "chatgpt"},
+          adapter: E2EPersonalConnectionAdapter,
+          adapter_result:
+            {:ok,
+             %{
+               worker_profile_ref: "e2e-profile-#{worker.id}",
+               provider: "openai_codex",
+               authentication_mode: "chatgpt",
+               availability: "incompatible",
+               adapter_compatibility_version: "connection/1"
+             }}
+        )
+
+      :ok
+    end
+
+    defp link_assistant_connection(account, _available) do
+      now = DateTime.utc_now()
+      worker = pair_ai_worker(assistant_device_workspace_id())
+
+      {:ok, connection} =
+        PersonalConnections.link_personal_connection(
+          account,
+          worker,
+          %{label: "E2E Codex", provider: "openai_codex", authentication_mode: "chatgpt"},
+          adapter: E2EPersonalConnectionAdapter
+        )
+
+      {:ok, _catalog} =
+        ModelCatalogs.refresh(account, connection.id,
+          adapter: E2EModelCatalogAdapter,
+          adapter_result: {:ok, assistant_catalog_result(now)},
+          now: now,
+          ttl_seconds: 3600
+        )
+
+      {:ok, _quota} =
+        Quotas.refresh(account, connection.id,
+          adapter: E2EQuotaAdapter,
+          adapter_result: {:ok, assistant_quota_result(now)},
+          now: now,
+          ttl_seconds: 3600
+        )
+
+      :ok
+    end
+
+    defp assistant_device_workspace_id do
+      {:ok, workspace} = Devices.establish_workspace()
+      workspace.id
+    end
+
+    defp assistant_catalog_result(now) do
+      %{
+        status: "enumerated",
+        provider: "openai_codex",
+        source: "official_client",
+        source_method: "model/list",
+        source_version: "codex-cli e2e|schema:" <> String.duplicate("0", 64),
+        retrieved_at: now,
+        models: [
+          %{
+            id: "catalog-e2e-model",
+            model: "e2e-model",
+            display_name: "E2E Model",
+            current: true,
+            default: true,
+            default_reasoning_effort: "medium",
+            supported_reasoning_efforts: [
+              %{reasoning_effort: "medium", description: "Authenticated medium reasoning"}
+            ]
+          }
+        ]
+      }
+    end
+
+    defp assistant_quota_result(now) do
+      %{
+        status: "reported",
+        provider: "openai_codex",
+        authentication_mode: "chatgpt",
+        source: "official_client",
+        source_methods: ["account/rateLimits/read", "account/usage/read"],
+        source_version: "codex-cli e2e|schema:" <> String.duplicate("0", 64),
+        retrieved_at: now,
+        buckets: [
+          %{
+            id: "general",
+            scope: "general",
+            model: nil,
+            display_name: "General Codex",
+            primary_window: %{
+              used_percent: 10,
+              resets_at: DateTime.add(now, 3600, :second),
+              duration_minutes: 300,
+              unknown_fields: []
+            },
+            secondary_window: nil,
+            credits: %{has_credits: true, unlimited: false, balance: "10.00", unknown_fields: []},
+            paid_continuation: "unknown",
+            spend_control: nil,
+            spend_control_reached: nil,
+            limit_reached_reason: nil,
+            unknown_fields: [
+              "secondary_window",
+              "paid_continuation",
+              "spend_control",
+              "spend_control_reached",
+              "limit_reached_reason"
+            ]
+          }
+        ],
+        reset_credits: %{available_count: 1, unknown_fields: []},
+        token_activity: %{
+          lifetime_tokens: 0,
+          peak_daily_tokens: 0,
+          current_streak_days: 0,
+          longest_streak_days: 0,
+          longest_running_turn_seconds: 0,
+          unknown_fields: []
+        },
+        unknown_fields: ["provider_billing"]
+      }
     end
 
     # One immutable kit package version through the real publish boundary — no

@@ -78,6 +78,23 @@ config :sdd_orchestrator, :ui_preview, true
 # server, which sets E2E_MODE for both its compile and its run.
 config :sdd_orchestrator, :e2e_bootstrap, e2e_mode?
 
+# The project assistant's model-completion boundary (specs/12 Task 7) has no
+# live provider wired yet anywhere in this codebase, so its own module
+# default is a deterministic "unavailable" fallback
+# (`SddOrchestrator.ProjectAssistant.ModelCompletionAdapter.Unavailable`,
+# applied only when this key is entirely unset). specs/12 Task 8's own
+# browser suite is the first caller that needs a real, readable turn (a
+# citation, an uncertainty marker, a failure and its retry) to prove the
+# panel end to end, so only under the isolated e2e server this key is set at
+# all, pointing at the compile-time-gated
+# `SddOrchestratorWeb.E2EModelCompletionAdapter` — never reachable from an
+# ordinary `mix phx.server` or a production build.
+if e2e_mode? do
+  config :sdd_orchestrator,
+         :model_completion_adapter,
+         SddOrchestratorWeb.E2EModelCompletionAdapter
+end
+
 # Field-encryption vault. This non-production key is intentionally checked in for
 # local development only; production supplies CLOAK_KEY at runtime.
 config :sdd_orchestrator, SddOrchestrator.Vault,

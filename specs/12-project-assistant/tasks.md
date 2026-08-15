@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Blocked
 
-The product and technical agreements are approved. `capability:project-storage-authority`, `capability:project-participation-boundary`, `capability:ai-runtime-session`, `capability:ai-runtime-observation`, `capability:project-specification-store`, and `capability:guided-delivery-data-surfaces` are all ready. Tasks 1 through 8 are underway on `slice/12-project-assistant`. Task 9 remains blocked on `capability:project-participation-governance` (provider `specs/29-participation-completion#Task 1`, currently pending) and is deferred to a later session.
+The product and technical agreements are approved. `capability:project-storage-authority`, `capability:project-participation-boundary`, `capability:ai-runtime-session`, `capability:ai-runtime-observation`, `capability:project-specification-store`, and `capability:guided-delivery-data-surfaces` are all ready. Tasks 1 through 8 are complete on `slice/12-project-assistant`. Task 9, the next executable task, remains blocked on `capability:project-participation-governance` (provider `specs/29-participation-completion#Task 1`, currently pending) and is deferred to a later session; Task 10's slice verification gate is blocked behind it.
 
 ## Active Slice
 
@@ -134,7 +134,7 @@ Traceability:
   - Owns: AC-10, AC-11, AC-12, entity:ProjectAssistantCitation
   - Proof: Run focused tests for each citation type and uncertainty state, then prove a worker-offline answer contains only current stored project facts, a changed tree cannot yield a stable citation, inaccessible citations fail closed, and an uncited or fabricated material claim is rejected.
 
-- [ ] Task 8 — Deliver the assistant panel and private conversation experience.
+- [x] Task 8 — Deliver the assistant panel and private conversation experience.
   - Size: Standard
   - Depends on: Task 2, Task 7
   - Purpose: Make the approved assistant workflow reachable and understandable from every project screen without hiding degraded states or exposing account details.

@@ -43,7 +43,8 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
          |> assign_entry(entry)
          |> assign(:name, entry.project.name)
          |> assign(:name_error, nil)
-         |> assign(:rename_saved?, false)}
+         |> assign(:rename_saved?, false)
+         |> assign(:actor, %{account_id: account.id, hosted_identity_id: nil})}
     end
   end
 
@@ -134,6 +135,15 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           current={:overview}
           owner?={true}
           class="mb-6"
+        />
+
+        <.live_component
+          :if={@project.storage_mode == "hosted"}
+          module={SddOrchestratorWeb.ProjectAssistantPanel}
+          id={"project-assistant-" <> @project.id}
+          project_id={@project.id}
+          actor={@actor}
+          account={@current_account}
         />
 
         <div class="flex items-start justify-between gap-3">

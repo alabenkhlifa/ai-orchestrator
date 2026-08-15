@@ -211,7 +211,12 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          authority_kind: :hosted,
          denied_destination: ~p"/projects",
          back_destination: ~p"/projects/#{project.id}/overview",
-         repository_display: hosted_repository_display(project)
+         repository_display: hosted_repository_display(project),
+         actor: %{
+           account_id: account_id,
+           hosted_identity_id:
+             socket.assigns[:current_hosted_identity] && socket.assigns.current_hosted_identity.id
+         }
        }}
     else
       _unauthorized -> {:error, ~p"/projects"}
@@ -231,7 +236,8 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          authority_kind: :device,
          denied_destination: ~p"/onboarding/local",
          back_destination: ~p"/local/projects/#{project.id}",
-         repository_display: "Local repository for #{project.name}"
+         repository_display: "Local repository for #{project.name}",
+         actor: nil
        }}
     else
       _unauthorized -> {:error, ~p"/onboarding/local"}
@@ -369,6 +375,15 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
           current={:assessment}
           owner?={true}
           class="mb-6"
+        />
+
+        <.live_component
+          :if={@authority_kind == :hosted}
+          module={SddOrchestratorWeb.ProjectAssistantPanel}
+          id={"project-assistant-" <> @project.id}
+          project_id={@project.id}
+          actor={@actor}
+          account={@current_account}
         />
 
         <div class="max-w-2xl">

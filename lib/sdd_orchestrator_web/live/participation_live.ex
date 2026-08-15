@@ -37,7 +37,12 @@ defmodule SddOrchestratorWeb.ParticipationLive do
 
     case Participation.visible_project(project_id, account_id, identity_id) do
       {:ok, project, role} ->
-        {:ok, assign_project(socket, project, role, account_id)}
+        socket =
+          socket
+          |> assign_project(project, role, account_id)
+          |> assign(:actor, %{account_id: account_id, hosted_identity_id: identity_id})
+
+        {:ok, socket}
 
       {:error, :unauthorized} ->
         {:ok, push_navigate(socket, to: ~p"/projects")}
@@ -403,6 +408,14 @@ defmodule SddOrchestratorWeb.ParticipationLive do
           current={:people}
           owner?={@role == :owner}
           class="mb-6"
+        />
+
+        <.live_component
+          module={SddOrchestratorWeb.ProjectAssistantPanel}
+          id={"project-assistant-" <> @project.id}
+          project_id={@project.id}
+          actor={@actor}
+          account={@current_account}
         />
 
         <h1 class="text-xl font-bold text-ink">People on {@project.name}</h1>
