@@ -118,7 +118,7 @@ Traceability:
   - Owns: AC-13, AC-18, entity:RepositorySourceIndex
   - Proof: Run focused observation tests for empty, non-SDD, generated-heavy, secret-bearing, and large repositories; prove bounded calls and truncation; invalidate after source change; deny cross-project and unauthorized reuse; and verify no raw source or derived index reaches hosted persistence, caches, logs, or backups.
 
-- [ ] Task 6 — Enforce the trusted read-tool and skill-bundle runtime contract.
+- [x] Task 6 — Enforce the trusted read-tool and skill-bundle runtime contract.
   - Size: Standard
   - Depends on: Task 2, Task 3, Task 5
   - Purpose: Keep runtime autonomy inside an external, inspectable capability boundary even when project content contains hostile instructions.
