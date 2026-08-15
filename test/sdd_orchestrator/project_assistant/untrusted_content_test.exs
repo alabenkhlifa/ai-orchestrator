@@ -43,7 +43,7 @@ defmodule SddOrchestrator.ProjectAssistant.UntrustedContentTest do
 
     test "an unknown kind is rejected rather than silently tagged" do
       assert_raise FunctionClauseError, fn ->
-        apply(UntrustedContent, :tag, [:secret_override, "anything"])
+        UntrustedContent.tag(:secret_override, "anything")
       end
     end
   end

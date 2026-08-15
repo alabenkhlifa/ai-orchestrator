@@ -14,9 +14,9 @@ defmodule SddOrchestrator.ProjectAssistant.RepositoryObserverTest do
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.HostedAccessFixtures
   alias SddOrchestrator.ParticipationFixtures
-  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.ProjectAssistant.FakeRepositoryObservationAdapter
   alias SddOrchestrator.ProjectAssistant.RepositoryObserver
+  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.ProjectsFixtures
 
   # Fails the test loudly if the orchestrator ever calls the adapter after a

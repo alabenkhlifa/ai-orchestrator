@@ -15,11 +15,11 @@ defmodule SddOrchestrator.ProjectAssistant.RepositoryDiscovererTest do
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.HostedAccessFixtures
   alias SddOrchestrator.ParticipationFixtures
-  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.ProjectAssistant.FakeRepositoryObservationAdapter
   alias SddOrchestrator.ProjectAssistant.RepositoryDiscoverer
   alias SddOrchestrator.ProjectAssistant.RepositoryObserver
   alias SddOrchestrator.ProjectAssistant.RepositorySourceIndex
+  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.ProjectsFixtures
 
   # Fails the test loudly if the discoverer ever calls the adapter after a
