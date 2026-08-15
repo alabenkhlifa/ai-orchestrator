@@ -56,7 +56,8 @@ defmodule SddOrchestrator.ProjectAssistant.FakeModelCompletionAdapter do
   @behaviour SddOrchestrator.ProjectAssistant.ModelCompletionAdapter
 
   @impl true
-  def complete(%{question_text: "fails: " <> reason}), do: {:error, String.to_atom(reason)}
+  def complete(%{question_text: "fails: " <> reason}),
+    do: {:error, String.to_existing_atom(reason)}
 
   def complete(%{question_text: "echo-question: " <> _rest = received_question_text}) do
     {:ok,

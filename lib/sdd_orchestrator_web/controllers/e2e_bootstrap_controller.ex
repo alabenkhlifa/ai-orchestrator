@@ -166,7 +166,8 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     @behaviour SddOrchestrator.ProjectAssistant.ModelCompletionAdapter
 
     @impl true
-    def complete(%{question_text: "fails: " <> reason}), do: {:error, String.to_atom(reason)}
+    def complete(%{question_text: "fails: " <> reason}),
+      do: {:error, String.to_existing_atom(reason)}
 
     def complete(%{question_text: "spec-valid: " <> _rest, context_content: content}) do
       [entry | _rest] = content["specifications"]

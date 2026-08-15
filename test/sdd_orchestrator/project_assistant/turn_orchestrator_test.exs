@@ -355,10 +355,10 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
       account: account
     } do
       assert {:ok, {_conversation, turn, citations}} =
-               ask(workspace, project.id, actor, account, "fails: model_timeout")
+               ask(workspace, project.id, actor, account, "fails: timeout")
 
       assert turn.outcome == "failed"
-      assert turn.failure_reason == "model_timeout"
+      assert turn.failure_reason == "timeout"
       assert turn.answer_text == nil
       assert citations == []
       assert turn.uncertainty_markers == []
