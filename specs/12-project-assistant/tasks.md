@@ -126,7 +126,7 @@ Traceability:
   - Owns: AC-14, AC-15
   - Proof: Run focused policy tests with hostile repository instructions, specifications, comments, source and run output that request secrets, writes, shell, network, new tools, more budget, or policy override; prove the manifest cannot widen, only the pinned skill version runs, and every limit or cancellation ends without mutation.
 
-- [ ] Task 7 — Produce grounded answers, exact citations, and explicit uncertainty.
+- [x] Task 7 — Produce grounded answers, exact citations, and explicit uncertainty.
   - Size: Standard
   - Depends on: Task 6
   - Purpose: Turn bounded current context into a reviewable answer rather than an unsupported model claim.

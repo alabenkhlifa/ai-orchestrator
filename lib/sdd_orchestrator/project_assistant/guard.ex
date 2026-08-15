@@ -23,13 +23,17 @@ defmodule SddOrchestrator.ProjectAssistant.Guard do
   Task 2 adds `confirm_boundary` (reviewing and confirming the disclosed
   processing summary) and `ask` (submitting a question, layered under its
   own processing-boundary confirmation gate in
-  `SddOrchestrator.ProjectAssistant.BoundaryGate`). A later task adds
-  `open_citation` (Task 7/8) without changing this contract.
+  `SddOrchestrator.ProjectAssistant.BoundaryGate`). Task 7 adds
+  `open_citation` — the same authorization a stored citation must pass
+  again whenever it is read after creation (design.md: "A stored citation
+  does not preserve access after participation or source permission
+  ends") — without changing this contract: it is one more name in the
+  closed list, checked exactly like every other action.
   """
 
   alias SddOrchestrator.Participation.Boundary
 
-  @protected_actions ~w(open_panel read_history delete confirm_boundary ask)a
+  @protected_actions ~w(open_panel read_history delete confirm_boundary ask open_citation)a
 
   @type actor :: %{
           optional(:account_id) => Ecto.UUID.t() | nil,

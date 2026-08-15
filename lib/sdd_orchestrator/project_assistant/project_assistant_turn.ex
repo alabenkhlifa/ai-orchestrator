@@ -8,19 +8,31 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectAssistantTurn do
   nothing here updates it afterward. The question text is encrypted at rest
   through `SddOrchestrator.Vault`, the same treatment evidence content gets.
 
-  Later tasks add the answer, citations, context-version references, runtime
-  state, uncertainty markers, and cancellation or failure outcome through
-  their own migrations and changesets; this shape only proves identity and
-  order.
+  Task 7 extends this shape with the answer, the stored-context version it
+  grounded on, visible uncertainty markers, and a normalized cancellation or
+  failure outcome (AC-10, AC-11, AC-12) — all set exactly once, atomically
+  with creation, by `SddOrchestrator.ProjectAssistant.TurnAnswerStore`.
+  `answer_text` is encrypted at rest exactly like `question_text`.
+  `uncertainty_markers` is a closed, typed list (see
+  `SddOrchestrator.ProjectAssistant.UncertaintyMarker`) stored as plain
+  string-keyed maps. Every new field is optional at the changeset level so
+  Task 1's own bare question-only insert (`ProjectAssistantStore.append_turn/4`)
+  remains valid unchanged: those rows simply carry `outcome: nil` and an
+  empty `uncertainty_markers` list, never a fabricated answer.
+
+  This entity's citations (`entity:ProjectAssistantCitation`) live in their
+  own table (`has_many :citations`), keyed to this turn — see
+  `SddOrchestrator.ProjectAssistant.ProjectAssistantCitation`.
   """
   use Ecto.Schema
 
   import Ecto.Changeset
 
-  alias SddOrchestrator.ProjectAssistant.ProjectAssistantConversation
+  alias SddOrchestrator.ProjectAssistant.{ProjectAssistantCitation, ProjectAssistantConversation}
   alias SddOrchestrator.Projects.Project
 
   @max_question_bytes 4_000
+  @outcomes ~w(answered cancelled failed)
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -31,9 +43,16 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectAssistantTurn do
   schema "project_assistant_turns" do
     field :sequence, :integer
     field :question_text, SddOrchestrator.Encrypted.Binary, redact: true
+    field :answer_text, SddOrchestrator.Encrypted.Binary, redact: true
+    field :context_version, :string
+    field :uncertainty_markers, {:array, :map}, default: []
+    field :outcome, :string
+    field :failure_reason, :string
 
     belongs_to :conversation, ProjectAssistantConversation
     belongs_to :project, Project
+
+    has_many :citations, ProjectAssistantCitation, foreign_key: :turn_id
 
     timestamps()
   end
@@ -41,10 +60,23 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectAssistantTurn do
   @spec max_question_bytes() :: pos_integer()
   def max_question_bytes, do: @max_question_bytes
 
+  @spec outcomes() :: [String.t()]
+  def outcomes, do: @outcomes
+
   @spec create_changeset(t(), map()) :: Ecto.Changeset.t()
   def create_changeset(turn, attrs) do
     turn
-    |> cast(attrs, [:conversation_id, :project_id, :sequence, :question_text])
+    |> cast(attrs, [
+      :conversation_id,
+      :project_id,
+      :sequence,
+      :question_text,
+      :answer_text,
+      :context_version,
+      :uncertainty_markers,
+      :outcome,
+      :failure_reason
+    ])
     |> trim_question_text()
     |> validate_required([:conversation_id, :project_id, :sequence, :question_text])
     |> validate_number(:sequence, greater_than: 0)
@@ -54,12 +86,14 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectAssistantTurn do
         do: [question_text: "must not contain control characters"],
         else: []
     end)
+    |> validate_inclusion(:outcome, @outcomes)
     |> foreign_key_constraint(:conversation_id)
     |> foreign_key_constraint(:project_id)
     |> unique_constraint([:conversation_id, :sequence],
       name: :project_assistant_turns_conversation_id_sequence_index
     )
     |> check_constraint(:sequence, name: :project_assistant_turns_sequence_positive)
+    |> check_constraint(:outcome, name: :project_assistant_turns_outcome_check)
   end
 
   defp trim_question_text(changeset) do
