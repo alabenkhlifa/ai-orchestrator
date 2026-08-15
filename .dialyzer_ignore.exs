@@ -33,5 +33,7 @@
   {"lib/sdd_orchestrator/delivery/delivery_store/hosted.ex", :call_without_opaque},
   {"lib/sdd_orchestrator/repository_assessments/repository_execution_profile_proposal.ex",
    :call_without_opaque},
-  {"lib/sdd_orchestrator/repository_assessments/worker_repository_assessment.ex", :pattern_match}
+  {"lib/sdd_orchestrator/repository_assessments/worker_repository_assessment.ex", :pattern_match},
+  {"lib/sdd_orchestrator/project_assistant/repository_discoverer.ex", :call_with_opaque},
+  {"lib/sdd_orchestrator/project_assistant/repository_discoverer.ex", :call_without_opaque}
 ]

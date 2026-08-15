@@ -70,7 +70,7 @@ defmodule SddOrchestrator.ProjectAssistant.RuntimeAvailability do
         {:ok,
          %{
            state: :unavailable,
-           reason: safe_reason(reason),
+           reason: reason,
            provider: known.provider,
            authentication_mode: known.authentication_mode
          }}
@@ -107,7 +107,7 @@ defmodule SddOrchestrator.ProjectAssistant.RuntimeAvailability do
         {:ok,
          %{
            state: :temporarily_limited,
-           reason: safe_reason(reason),
+           reason: reason,
            provider: connection.provider,
            authentication_mode: connection.authentication_mode
          }}
@@ -116,7 +116,7 @@ defmodule SddOrchestrator.ProjectAssistant.RuntimeAvailability do
         {:ok,
          %{
            state: :unavailable,
-           reason: safe_reason(reason),
+           reason: reason,
            provider: connection.provider,
            authentication_mode: connection.authentication_mode
          }}
@@ -174,7 +174,4 @@ defmodule SddOrchestrator.ProjectAssistant.RuntimeAvailability do
       spending_ceiling: nil
     }
   end
-
-  defp safe_reason(reason) when is_atom(reason), do: reason
-  defp safe_reason(_reason), do: :unknown
 end

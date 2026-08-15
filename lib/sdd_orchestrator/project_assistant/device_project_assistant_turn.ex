@@ -78,7 +78,7 @@ defmodule SddOrchestrator.ProjectAssistant.DeviceProjectAssistantTurn do
     |> Map.merge(%{
       "answer_text" => sealed_answer_text,
       "context_version" => turn.context_version,
-      "uncertainty_markers" => turn.uncertainty_markers || [],
+      "uncertainty_markers" => turn.uncertainty_markers,
       "outcome" => turn.outcome,
       "failure_reason" => turn.failure_reason
     })
