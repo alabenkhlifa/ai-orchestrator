@@ -103,6 +103,14 @@ defmodule SddOrchestrator.Privacy.Rights do
   }
 
   alias SddOrchestrator.Privacy.DeploymentPrivacyProfile
+
+  alias SddOrchestrator.ProjectAssistant.{
+    DeviceConversationPurge,
+    ProjectAssistantCitation,
+    ProjectAssistantConversation,
+    ProjectAssistantTurn
+  }
+
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
@@ -144,6 +152,7 @@ defmodule SddOrchestrator.Privacy.Rights do
            runtime_cost_ledgers: export_runtime_cost_ledgers(account_id),
            agent_runtime_observations: export_agent_runtime_observations(account_id),
            repository_initialization_plans: export_repository_initialization_plans(account_id),
+           project_assistant_conversations: export_project_assistant_conversations(account_id),
            projects: export_projects(account_id),
            sessions: export_sessions(account_id),
            hosted_sessions: export_hosted_sessions(account_id)
@@ -401,6 +410,7 @@ defmodule SddOrchestrator.Privacy.Rights do
           {:ok, map()} | {:error, :not_found}
   def erase_portability_project(authority, project_id) do
     with {:ok, %PackageProvenance{}} <- PackageProvenances.get(authority, project_id),
+         :ok <- purge_device_project_assistant_data(authority, project_id),
          {:ok, result} <- SpecificationLifecycle.delete_project(authority, project_id) do
       boundary = if match?(%PersonalWorkspace{}, authority), do: :hosted, else: :device
 
@@ -413,6 +423,23 @@ defmodule SddOrchestrator.Privacy.Rights do
       _not_authorized_or_restored -> {:error, :not_found}
     end
   end
+
+  # Hosted project-assistant data needs no explicit purge here: every
+  # project-assistant table cascades on `project_id` through its own
+  # `on_delete: :delete_all` foreign key, so `SpecificationLifecycle.delete_project/2`'s
+  # `Repo.delete(project)` already removes it. Device-authoritative
+  # project-assistant data has no such cascade — see
+  # `SddOrchestrator.ProjectAssistant.DeviceConversationPurge`'s own
+  # moduledoc for the gap this closes and why it is scoped to only this
+  # specification's own five delivery kinds. Purging before
+  # `SpecificationLifecycle.delete_project/2` keeps every write inside the
+  # project's still-valid lifetime.
+  defp purge_device_project_assistant_data(%DeviceWorkspace{}, project_id) do
+    DeviceConversationPurge.purge(project_id)
+    :ok
+  end
+
+  defp purge_device_project_assistant_data(_authority, _project_id), do: :ok
 
   @doc """
   Retires the pinned runtime records of consumers that no longer exist.
@@ -1373,6 +1400,67 @@ defmodule SddOrchestrator.Privacy.Rights do
       provenance: export_provenance(Repo.get(PackageProvenance, project.id)),
       specifications: export_specifications(project.id)
     }
+  end
+
+  # A participant's own private project-assistant history (specs/12 Task 9's
+  # rights-handling owned surface). `question_text`, `answer_text`, and each
+  # citation's `excerpt` are `SddOrchestrator.Encrypted.Binary` fields:
+  # selecting them through the schema's own field type decrypts them the
+  # same way loading a full struct would, so the access copy is readable
+  # plaintext, not the encrypted-at-rest bytes. Carries no worker credential,
+  # no provider account identity, no raw provider event, and no hidden
+  # reasoning — none of those are stored here at all (see
+  # `ProjectAssistantTurn`'s and `ProjectAssistantCitation`'s own
+  # moduledocs).
+  defp export_project_assistant_conversations(account_id) do
+    from(c in ProjectAssistantConversation,
+      where: c.account_id == ^account_id,
+      order_by: [asc: c.inserted_at, asc: c.id],
+      select: %{
+        id: c.id,
+        project_id: c.project_id,
+        last_activity_at: c.last_activity_at,
+        inserted_at: c.inserted_at,
+        updated_at: c.updated_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&Map.put(&1, :turns, export_project_assistant_turns(&1.id)))
+  end
+
+  defp export_project_assistant_turns(conversation_id) do
+    from(t in ProjectAssistantTurn,
+      where: t.conversation_id == ^conversation_id,
+      order_by: [asc: t.sequence],
+      select: %{
+        id: t.id,
+        sequence: t.sequence,
+        question_text: t.question_text,
+        answer_text: t.answer_text,
+        context_version: t.context_version,
+        uncertainty_markers: t.uncertainty_markers,
+        outcome: t.outcome,
+        failure_reason: t.failure_reason,
+        inserted_at: t.inserted_at
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&Map.put(&1, :citations, export_project_assistant_citations(&1.id)))
+  end
+
+  defp export_project_assistant_citations(turn_id) do
+    from(citation in ProjectAssistantCitation,
+      where: citation.turn_id == ^turn_id,
+      order_by: [asc: citation.inserted_at],
+      select: %{
+        id: citation.id,
+        source_type: citation.source_type,
+        reference: citation.reference,
+        excerpt: citation.excerpt,
+        inserted_at: citation.inserted_at
+      }
+    )
+    |> Repo.all()
   end
 
   defp export_hosted_local_binding(nil), do: nil

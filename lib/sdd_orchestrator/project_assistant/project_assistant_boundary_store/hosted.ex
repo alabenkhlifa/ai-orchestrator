@@ -38,6 +38,28 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectAssistantBoundaryStore.Hosted 
     end
   end
 
+  @doc """
+  Immediately deletes the acting participant's own boundary confirmation, if
+  any (specs/12 Task 9 — the confirmation half of "immediate participant
+  deletion" AC-21 owns). Idempotent: deleting an absent confirmation still
+  succeeds.
+  """
+  @spec delete_confirmation(PersonalWorkspace.t(), String.t(), Guard.actor()) ::
+          :ok | {:error, :unauthorized}
+  def delete_confirmation(%PersonalWorkspace{}, project_id, actor) do
+    with {:ok, member} <- Guard.authorize_action(project_id, actor, :delete) do
+      do_delete(project_id, member.account_id)
+    end
+  end
+
+  defp do_delete(project_id, account_id) do
+    AssistantBoundaryConfirmation
+    |> where([c], c.project_id == ^project_id and c.account_id == ^account_id)
+    |> Repo.delete_all()
+
+    :ok
+  end
+
   defp get_by_identity(project_id, account_id) do
     AssistantBoundaryConfirmation
     |> where([c], c.project_id == ^project_id and c.account_id == ^account_id)

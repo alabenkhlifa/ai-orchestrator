@@ -126,7 +126,13 @@ defmodule SddOrchestrator.Privacy.Retention do
   require Logger
 
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
-  alias SddOrchestrator.Accounts.{HostedSession, MagicLinkAttempt}
+
+  alias SddOrchestrator.Accounts.{
+    HostedIdentity,
+    HostedSession,
+    MagicLinkAttempt,
+    PersonalWorkspace
+  }
 
   alias SddOrchestrator.AIRuntime.{
     AgentRuntimeObservation,
@@ -151,7 +157,14 @@ defmodule SddOrchestrator.Privacy.Retention do
   }
 
   alias SddOrchestrator.Portability.ImportAttempt
-  alias SddOrchestrator.Projects.ProjectOnboardingAttempt
+
+  alias SddOrchestrator.ProjectAssistant.{
+    AssistantBoundaryConfirmation,
+    DeviceProjectAssistantConversation,
+    ProjectAssistantConversation
+  }
+
+  alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt}
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryInitialization.{Plan, Result, Run}
 
@@ -219,6 +232,19 @@ defmodule SddOrchestrator.Privacy.Retention do
   # lifecycle in this module keeps for 30 days.
   @detached_runtime_session_window 30 * @day
 
+  # A private project-assistant conversation is retained no later than 30
+  # days after its own last activity (specs/12 Task 9, AC-21) — not its
+  # creation time, matching `ProjectAssistantConversation.last_activity_at`'s
+  # own touch-on-every-turn semantics. It is its own named window even
+  # though the value matches `@participation_window` above.
+  @project_assistant_conversation_window 30 * @day
+
+  # Distinct from every other sweep's key in this codebase (including
+  # `SddOrchestrator.Privacy.ParticipationPropagation`'s key, a different
+  # module), so a contended project-assistant sweep neither waits on nor
+  # silently suppresses any of them.
+  @project_assistant_advisory_lock_key 703_881_642
+
   # An observation is the operational trail of one agent's run: elapsed time,
   # token counters, an estimated cost, the quota that applied, and the status at
   # that moment. Its purpose is operating and pausing work safely and answering
@@ -282,6 +308,7 @@ defmodule SddOrchestrator.Privacy.Retention do
     |> Map.merge(runtime_counts(now))
     |> Map.merge(observation_counts(now))
     |> Map.merge(repository_initialization_run_counts(now))
+    |> Map.merge(prune_project_assistant_conversations(now))
   end
 
   @doc false
@@ -396,6 +423,232 @@ defmodule SddOrchestrator.Privacy.Retention do
         connection.revocation_state == "acknowledged" or
           not is_nil(connection.deletion_scheduled_at),
       select: connection.id
+  end
+
+  @typedoc "Rows deleted by one project-assistant conversation sweep."
+  @type project_assistant_counts :: %{
+          expired_project_assistant_conversations: non_neg_integer(),
+          expired_assistant_boundary_confirmations: non_neg_integer(),
+          expired_device_project_assistant_conversations: non_neg_integer()
+        }
+
+  @doc """
+  Deletes every project-assistant conversation whose retention boundary has
+  passed (specs/12 Task 9, AC-21).
+
+  A hosted conversation is due 30 days after its own last activity, or
+  immediately once its account is no longer a current member (owner or
+  active participant) of its project — the "participant departure triggers
+  private-history cleanup" business rule, checked directly against current
+  authoritative participation state on every sweep pass rather than through
+  `SddOrchestrator.Participation.ParticipationRevocation`'s claim/acknowledge
+  handoff. That handoff carries exactly one `acknowledged_at`/`consumer_ref`
+  pair per departure (its own schema, and `Revocations.pending/1`'s
+  `is_nil(acknowledged_at)` filter, both confirm this), so it supports
+  exactly the one registered consumer it already has
+  (`SddOrchestrator.Delivery.RevocationConsumer`); a second consumer
+  claiming and acknowledging the same row would race that consumer for the
+  single acknowledgement slot rather than running independently, and
+  `acknowledge_changeset/3` releases the very `former_account_id` a second
+  consumer would need. Re-deriving current membership directly is the same
+  fail-closed, re-asked-on-every-call authorization every other
+  project-assistant surface already uses
+  (`SddOrchestrator.ProjectAssistant.Guard`), so departure takes effect on
+  this sweep's very next pass without depending on another specification's
+  single-consumer mechanism at all.
+
+  A hosted conversation's turns and citations cascade with it through their
+  own `on_delete: :delete_all` foreign keys. A matching
+  `AssistantBoundaryConfirmation` (same project and account) is deleted in
+  the same pass once its own matching conversation is itself due, or
+  immediately once its account is no longer a current member — never
+  purely on its own `confirmed_at` age while its conversation (if any)
+  remains active, because unlike conversation history's "last activity"
+  window, a confirmation stays valid for as long as the disclosed boundary
+  has not materially changed (AC-06), however long that is; pruning it on a
+  timer regardless of ongoing activity would force a needless
+  reconfirmation on an active, ongoing conversation. A participant who
+  confirmed the boundary before ever asking a first question has no
+  conversation yet at all, so their confirmation is pruned only by the
+  departure trigger, never by a timer with nothing to measure against.
+
+  A device-authoritative conversation has no multi-participant concept (see
+  `SddOrchestrator.ProjectAssistant.Guard`'s own moduledoc: a device project
+  has no hosted owner or participant), so only the 30-day inactivity rule
+  applies there, swept through `SddOrchestrator.Devices`' already-public
+  delivery API — matching every other device-sweep clause in this module
+  (see `prune_device_import_attempts/1`) rather than a project-assistant-
+  specific addition to the device store.
+
+  Returns `:locked` (mapped to a zero count) for the hosted half when
+  another instance already holds its advisory lock; the device half is
+  unaffected since it never contends with another node, matching
+  `prune_device_import_attempts/1`'s own independence from the hosted locks.
+  """
+  @spec prune_project_assistant_conversations(DateTime.t()) :: project_assistant_counts()
+  def prune_project_assistant_conversations(now \\ DateTime.utc_now()) do
+    now = DateTime.truncate(now, :second)
+    cutoff = DateTime.add(now, -@project_assistant_conversation_window, :second)
+
+    hosted =
+      with_advisory_lock(
+        @project_assistant_advisory_lock_key,
+        "project assistant conversation sweep",
+        fn -> delete_due_project_assistant_records(cutoff) end
+      )
+
+    hosted =
+      case hosted do
+        :locked ->
+          %{
+            expired_project_assistant_conversations: 0,
+            expired_assistant_boundary_confirmations: 0
+          }
+
+        counts ->
+          counts
+      end
+
+    Map.put(
+      hosted,
+      :expired_device_project_assistant_conversations,
+      prune_device_project_assistant_conversations(cutoff)
+    )
+  end
+
+  # The confirmation delete runs first, while its own matching conversation
+  # row (if any) still exists for `due_assistant_boundary_confirmation_query/1`'s
+  # subquery to judge due against; deleting conversations first would leave
+  # nothing for that subquery to match, silently under-counting.
+  defp delete_due_project_assistant_records(cutoff) do
+    {confirmations, _} = Repo.delete_all(due_assistant_boundary_confirmation_query(cutoff))
+    {conversations, _} = Repo.delete_all(due_project_assistant_conversation_query(cutoff))
+
+    %{
+      expired_project_assistant_conversations: conversations,
+      expired_assistant_boundary_confirmations: confirmations
+    }
+  end
+
+  defp due_project_assistant_conversation_query(cutoff) do
+    from(c in ProjectAssistantConversation,
+      as: :governed,
+      join: project in Project,
+      on: project.id == c.project_id,
+      join: owner_workspace in PersonalWorkspace,
+      on: owner_workspace.id == project.workspace_id,
+      where:
+        c.last_activity_at <= ^cutoff or
+          (owner_workspace.account_id != c.account_id and
+             not exists(active_participant_exists_subquery()))
+    )
+  end
+
+  # Due when its own matching conversation (same project and account) is
+  # itself due for the 30-day-inactivity reason, so a confirmation never
+  # outlives the conversation it gates access to; or immediately once its
+  # account is no longer a current member — the same departure trigger the
+  # conversation query above uses, independent of whether a conversation
+  # exists at all (a participant may confirm before ever asking a first
+  # question). Never due purely on its own `confirmed_at` age with a still-
+  # current, still-active conversation — see this function's caller's own
+  # moduledoc paragraph for why.
+  defp due_assistant_boundary_confirmation_query(cutoff) do
+    matching_conversation_due_subquery =
+      from(c in ProjectAssistantConversation,
+        where: c.project_id == parent_as(:governed).project_id,
+        where: c.account_id == parent_as(:governed).account_id,
+        where: c.last_activity_at <= ^cutoff,
+        select: 1
+      )
+
+    from(bc in AssistantBoundaryConfirmation,
+      as: :governed,
+      join: project in Project,
+      on: project.id == bc.project_id,
+      join: owner_workspace in PersonalWorkspace,
+      on: owner_workspace.id == project.workspace_id,
+      where:
+        exists(matching_conversation_due_subquery) or
+          (owner_workspace.account_id != bc.account_id and
+             not exists(active_participant_exists_subquery()))
+    )
+  end
+
+  # Correlated to the outer `:governed` binding (the conversation or
+  # confirmation row currently being judged), mirroring
+  # `SddOrchestrator.Participation.Boundary.current_participants/1`'s exact
+  # join shape (`ProjectParticipant` to `HostedIdentity` on
+  # `hosted_identity_id`, filtered to the project and `state == "active"`)
+  # rather than re-deriving a different membership rule.
+  defp active_participant_exists_subquery do
+    from(p in ProjectParticipant,
+      join: identity in HostedIdentity,
+      on: identity.id == p.hosted_identity_id,
+      where: p.project_id == parent_as(:governed).project_id,
+      where: identity.account_id == parent_as(:governed).account_id,
+      where: p.state == "active",
+      select: 1
+    )
+  end
+
+  defp prune_device_project_assistant_conversations(cutoff) do
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_assistant_conversation(project.id, cutoff)
+    end)
+  catch
+    :exit, _unavailable_store -> 0
+  end
+
+  defp sweep_one_device_project_assistant_conversation(project_id, cutoff) do
+    project_id
+    |> Devices.list_delivery(:project_assistant_conversation)
+    |> Enum.flat_map(&decode_device_conversation/1)
+    |> Enum.filter(&(DateTime.compare(&1.last_activity_at, cutoff) != :gt))
+    |> Enum.map(&delete_device_project_assistant_conversation(project_id, &1))
+    |> Enum.count(&(&1 == :ok))
+  end
+
+  defp decode_device_conversation(value) do
+    case DeviceProjectAssistantConversation.from_value(value) do
+      {:ok, conversation} -> [conversation]
+      {:error, _reason} -> []
+    end
+  end
+
+  defp delete_device_project_assistant_conversation(project_id, conversation) do
+    result =
+      Devices.commit_delivery(project_id, [
+        {:put, :project_assistant_conversation, conversation.id, %{"deleted" => true},
+         conversation.state_version}
+      ])
+
+    delete_device_assistant_boundary_confirmation(project_id, conversation.id)
+
+    case result do
+      {:ok, _applied} -> :ok
+      {:error, _reason} -> :error
+    end
+  end
+
+  # The device conversation and its boundary confirmation share the same
+  # key (the device workspace id): there is exactly one possible participant
+  # per device-authoritative project, so no separate lookup is needed to
+  # find the matching confirmation.
+  defp delete_device_assistant_boundary_confirmation(project_id, workspace_id) do
+    case Devices.get_delivery(project_id, :assistant_boundary_confirmation, workspace_id) do
+      {:ok, value} ->
+        Devices.commit_delivery(project_id, [
+          {:put, :assistant_boundary_confirmation, workspace_id, %{"deleted" => true},
+           value["state_version"]}
+        ])
+
+        :ok
+
+      {:error, :not_found} ->
+        :ok
+    end
   end
 
   # The runtime sweep runs after the terminal-connection delete, so a session

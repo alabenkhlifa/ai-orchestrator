@@ -45,6 +45,35 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectAssistantBoundaryStore.Device 
     end
   end
 
+  @doc """
+  Immediately deletes the acting participant's own boundary confirmation, if
+  any (specs/12 Task 9). Idempotent: deleting an absent confirmation still
+  succeeds. Tombstones rather than removes a key, the same treatment every
+  other device-authoritative project-assistant record gets.
+  """
+  @spec delete_confirmation(DeviceWorkspace.t(), String.t(), Guard.actor()) ::
+          :ok | {:error, :unauthorized}
+  def delete_confirmation(%DeviceWorkspace{} = authority, project_id, _actor) do
+    with {:ok, member} <- authorize(authority, project_id, :delete) do
+      do_delete(project_id, member.workspace_id)
+    end
+  end
+
+  defp do_delete(project_id, workspace_id) do
+    case Devices.get_delivery(project_id, :assistant_boundary_confirmation, workspace_id) do
+      {:ok, value} ->
+        Devices.commit_delivery(project_id, [
+          {:put, :assistant_boundary_confirmation, workspace_id, %{"deleted" => true},
+           value["state_version"]}
+        ])
+
+        :ok
+
+      {:error, :not_found} ->
+        :ok
+    end
+  end
+
   defp authorize(%DeviceWorkspace{id: authority_id}, project_id, action) do
     with true <- action in Guard.protected_actions(),
          {:ok, %DeviceWorkspace{id: ^authority_id}} <- Devices.get_workspace(),

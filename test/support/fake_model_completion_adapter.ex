@@ -37,12 +37,49 @@ defmodule SddOrchestrator.ProjectAssistant.FakeModelCompletionAdapter do
     * `"partial: "` — one valid claim plus a candidate-declared `:partial`
       marker.
     * `"fails: " <> reason` — `{:error, String.to_existing_atom(reason)}`.
+    * `"echo-question: "` — one plain, non-material claim whose text embeds
+      the exact `question_text` this adapter received (specs/12 Task 9's
+      own fixture addition), so a caller can prove
+      `SddOrchestrator.ProjectAssistant.SecretRedactor` redacted the
+      question before it became model input: whatever secret-shaped
+      substring appears in the persisted answer is exactly (and only) what
+      the model actually received.
+    * `"repository-secret-content: "` — cites a path whose name itself
+      embeds a high-confidence secret pattern (an AWS-access-key shape),
+      lines 1..1 (specs/12 Task 9's own fixture addition). The default
+      `lines/1` clause below echoes the path into the returned content, so
+      this proves a citation excerpt is redacted even when the *path*
+      itself was never denied by `RepositoryExclusions` — content-level
+      redaction is a distinct boundary from path-level denial.
     * any other prefix — one plain, non-material claim with no citation.
   """
   @behaviour SddOrchestrator.ProjectAssistant.ModelCompletionAdapter
 
   @impl true
   def complete(%{question_text: "fails: " <> reason}), do: {:error, String.to_atom(reason)}
+
+  def complete(%{question_text: "echo-question: " <> _rest = received_question_text}) do
+    {:ok,
+     %{
+       claims: [
+         %{text: "You asked: #{received_question_text}", material: false, citation: nil}
+       ],
+       markers: []
+     }}
+  end
+
+  def complete(%{question_text: "repository-secret-content: " <> _rest}) do
+    claims = [
+      material_claim("The repository shows this at a leaked-key path.", %{
+        type: :repository,
+        path: "lib/AKIAABCDEFGHIJKLMNOP.ex",
+        start_line: 1,
+        end_line: 1
+      })
+    ]
+
+    {:ok, %{claims: claims, markers: []}}
+  end
 
   def complete(%{question_text: "spec-valid: " <> _rest, context_content: content}) do
     [entry | _rest] = content["specifications"]

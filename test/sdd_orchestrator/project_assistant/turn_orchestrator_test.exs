@@ -195,6 +195,52 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
       assert citation.excerpt =~ "line 1 of lib/app.ex"
     end
 
+    test "specs/12 Task 9: a credential pasted into the question never reaches the model or the persisted answer (AC-19)",
+         %{
+           project: project,
+           workspace: workspace,
+           owner_actor: actor,
+           account: account
+         } do
+      assert {:ok, {_conversation, turn, _citations}} =
+               ask(
+                 workspace,
+                 project.id,
+                 actor,
+                 account,
+                 "echo-question: my token is sk-aaaaaaaaaaaaaaaaaaaaaaaa"
+               )
+
+      refute turn.answer_text =~ "sk-aaaaaaaaaaaaaaaaaaaaaaaa"
+      assert turn.answer_text =~ "[redacted]"
+    end
+
+    test "specs/12 Task 9: a citation excerpt is redacted even when the path itself was never denied (AC-19)",
+         %{
+           project: project,
+           workspace: workspace,
+           owner_actor: actor,
+           account: account
+         } do
+      project = with_repository_ref(project, "clean")
+
+      assert {:ok, {_conversation, _turn, citations}} =
+               ask(
+                 workspace,
+                 project.id,
+                 actor,
+                 account,
+                 "repository-secret-content: what does the code say?",
+                 adapter: FakeRepositoryObservationAdapter,
+                 worker_available: always_available()
+               )
+
+      assert [citation] = citations
+      assert citation.source_type == "repository"
+      refute citation.excerpt =~ "AKIAABCDEFGHIJKLMNOP"
+      assert citation.excerpt =~ "[redacted]"
+    end
+
     test "a changed tree during observation never yields a stable citation", %{
       project: project,
       workspace: workspace,

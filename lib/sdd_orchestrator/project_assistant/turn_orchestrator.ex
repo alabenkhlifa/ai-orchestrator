@@ -49,6 +49,19 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestrator do
   timeout, or any other normalized reason) is `answer failure recovery`: it
   *does* persist, with `outcome: "failed"` and a normalized
   `failure_reason`, never a raw provider error or a fabricated answer.
+
+  Task 9 (AC-19) adds content-level redaction at every point content
+  crosses a boundary in this file, through
+  `SddOrchestrator.ProjectAssistant.SecretRedactor`, without changing the
+  orchestration steps above: the participant's own `question_text` is
+  redacted before it becomes model input (a pasted credential must not
+  reach the model or, from there, an echoed answer); a repository citation's
+  `excerpt` is redacted before it is kept, on top of Task 5/7's existing
+  path-denial and length-truncation (denial and truncation are pre-read and
+  size boundaries, not a content scan); and the final composed
+  `answer_text` is redacted immediately before persistence, so a
+  credential the model repeats from context it was allowed to read still
+  never reaches storage, the citation excerpt, or later presentation.
   """
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
@@ -63,6 +76,7 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestrator do
     RepositoryObservation,
     RepositoryObserver,
     RuntimeContract,
+    SecretRedactor,
     TurnAnswerStore,
     UncertaintyMarker
   }
@@ -127,7 +141,17 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestrator do
     model_adapter = Keyword.get(opts, :model_adapter, ModelCompletionAdapter.configured())
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
-    request = %{question_text: question_text, context_content: content, context_version: version}
+    # Redact only the copy of the question that becomes model input (the
+    # boundary to the configured third-party provider). The stored
+    # `question_text` below stays the participant's own literal question in
+    # their own private, encrypted, self-deletable conversation — there is
+    # no privacy benefit to mangling a participant's own input read back to
+    # themselves, only to what a provider outside this boundary receives.
+    request = %{
+      question_text: SecretRedactor.redact(question_text),
+      context_content: content,
+      context_version: version
+    }
 
     case complete(contract, model_adapter, request) do
       {:error, reason} ->
@@ -328,7 +352,10 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestrator do
          {:ok, recorded_contract} <-
            RuntimeContract.record_call(contract, operation, 0, byte_size(excerpt), env.now) do
       reference = CitationResolver.build_repository_reference(observation, claimed)
-      {kept(claim, "repository", reference, truncate_excerpt(excerpt)), recorded_contract}
+
+      redacted_excerpt = excerpt |> truncate_excerpt() |> SecretRedactor.redact()
+
+      {kept(claim, "repository", reference, redacted_excerpt), recorded_contract}
     else
       {:error, _reason} -> {{:dropped, :excluded}, contract}
     end
@@ -415,7 +442,7 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestrator do
   defp compose_answer_text(claims) do
     case claims |> Enum.map(& &1.text) |> Enum.reject(&(&1 in [nil, ""])) do
       [] -> nil
-      texts -> Enum.join(texts, " ")
+      texts -> texts |> Enum.join(" ") |> SecretRedactor.redact()
     end
   end
 

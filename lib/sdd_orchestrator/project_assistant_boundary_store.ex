@@ -92,4 +92,17 @@ defmodule SddOrchestrator.ProjectAssistantBoundaryStore do
         _confirmed_at
       ),
       do: {:error, :unauthorized}
+
+  @doc """
+  Immediately deletes the acting participant's own boundary confirmation, if
+  any (specs/12 Task 9). Idempotent.
+  """
+  @spec delete_confirmation(authority(), String.t(), actor()) :: :ok | {:error, :unauthorized}
+  def delete_confirmation(%PersonalWorkspace{} = authority, project_id, actor),
+    do: Hosted.delete_confirmation(authority, project_id, actor)
+
+  def delete_confirmation(%DeviceWorkspace{} = authority, project_id, actor),
+    do: Device.delete_confirmation(authority, project_id, actor)
+
+  def delete_confirmation(_authority, _project_id, _actor), do: {:error, :unauthorized}
 end

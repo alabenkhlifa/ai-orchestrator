@@ -78,15 +78,38 @@ defmodule SddOrchestrator.ProjectAssistantStore do
   def append_turn(_authority, _project_id, _actor, _question_text), do: {:error, :unauthorized}
 
   @doc """
-  Immediately deletes the acting participant's own conversation and its
-  turns. Idempotent: deleting an already-absent conversation still succeeds.
+  Immediately deletes the acting participant's own conversation, its turns,
+  and its boundary confirmation. Idempotent: deleting an already-absent
+  conversation still succeeds.
+
+  specs/12 Task 9 (AC-21) composes `SddOrchestrator.ProjectAssistantBoundaryStore.delete_confirmation/3`
+  here rather than editing Task 1's or Task 2's own store internals: a
+  deleted conversation leaves no reason to keep the matching
+  `AssistantBoundaryConfirmation` (Task 1's own conversation delete never
+  touched it, since the confirmation did not exist yet when Task 1 was
+  built), and every existing caller of this immediate-delete action —
+  including Task 8's panel — gets the complete cleanup automatically.
   """
   @spec delete_conversation(authority(), String.t(), actor()) :: :ok | {:error, :unauthorized}
-  def delete_conversation(%PersonalWorkspace{} = authority, project_id, actor),
-    do: Hosted.delete_conversation(authority, project_id, actor)
+  def delete_conversation(%PersonalWorkspace{} = authority, project_id, actor) do
+    with :ok <- Hosted.delete_conversation(authority, project_id, actor) do
+      SddOrchestrator.ProjectAssistantBoundaryStore.delete_confirmation(
+        authority,
+        project_id,
+        actor
+      )
+    end
+  end
 
-  def delete_conversation(%DeviceWorkspace{} = authority, project_id, actor),
-    do: Device.delete_conversation(authority, project_id, actor)
+  def delete_conversation(%DeviceWorkspace{} = authority, project_id, actor) do
+    with :ok <- Device.delete_conversation(authority, project_id, actor) do
+      SddOrchestrator.ProjectAssistantBoundaryStore.delete_confirmation(
+        authority,
+        project_id,
+        actor
+      )
+    end
+  end
 
   def delete_conversation(_authority, _project_id, _actor), do: {:error, :unauthorized}
 end

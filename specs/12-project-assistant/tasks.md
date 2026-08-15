@@ -142,8 +142,7 @@ Traceability:
   - Owns: AC-01, AC-22
   - Proof: Run focused LiveView tests and the project-assistant browser scenarios from project overview, board, feature, run, and evidence screens on desktop and mobile, proving one preserved private conversation, keyboard and focus behavior, readable citations and uncertainty, every degraded state, no mutation control, no exact quota, and no other participant history.
 
-- [ ] Task 9 — Enforce redaction, retention, deletion, rights, and prohibited-use controls.
-  - Status: Blocked until `capability:project-participation-governance` is ready.
+- [x] Task 9 — Enforce redaction, retention, deletion, rights, and prohibited-use controls.
   - Size: Standard
   - Depends on: Task 7
   - Purpose: Apply the complete project-wide privacy and security lifecycle to assistant content, source-derived results, indexes, processors, logs, and backups.
@@ -184,7 +183,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Task 9 is capability-blocked, not decision-blocked: `capability:project-participation-governance` (provider `specs/29-participation-completion#Task 1`) is still pending. Tasks 1 through 8 are unblocked and underway.
+- None. Tasks 1 through 9 are complete; Task 10's slice verification gate is the only remaining task.
 
 ## Progress Log
 
