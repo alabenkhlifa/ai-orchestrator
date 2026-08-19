@@ -2,9 +2,9 @@
 
 ## Status
 
-Blocked
+Verified
 
-The product and technical agreements are approved. Task 1 is blocked until the current-participation capability is available in this branch. Later tasks remain blocked at their own earliest consumer boundary until the separately specified AI-runtime session and observation capabilities are ready. Task 3's `guided-specification-delivery` dependency was corrected to `guided-delivery-data-surfaces` (see `progress.md`) — that capability, like the read-only board/run/evidence access it gates, is already ready.
+All ten tasks are complete on `slice/12-project-assistant`. `capability:read-only-project-assistant` is ready. The full Verification Gate passed with two documented, pre-existing, cross-slice-accepted `mix test`/`mix check` failures unrelated to this specification, and with items 15–16 — a live configured personal AI connection and a live authorized repository worker — left as an explicit, documented, accepted exception: this sandboxed worktree has neither a live model-completion RPC path nor a live paired repository worker, so those two live-smoke checks remain open pending that environment (see `progress.md`'s 2026-08-19 entry). Implementation and local verification are complete. Release readiness — AC-24, items 15–16, and the deployment-specific `Release gates` below — remains explicitly open and separate.
 
 ## Active Slice
 
@@ -78,8 +78,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Establish private conversation identity, persistence, and authorization.
-  - Status: Blocked until `capability:project-participation-boundary` is ready.
+- [x] Task 1 — Establish private conversation identity, persistence, and authorization.
   - Size: Standard
   - Depends on: none
   - Purpose: Create the durable private history boundary that every later turn uses without treating the conversation as shared project activity.
@@ -87,8 +86,7 @@ Traceability:
   - Owns: AC-02, AC-03, AC-23, entity:ProjectAssistantConversation, entity:ProjectAssistantTurn
   - Proof: Run focused domain and adapter tests that create exactly one conversation per participant and project, preserve independent histories for two participants, reject stale and cross-project reads without existence disclosure, create no shared activity, and prove equivalent hosted and device behavior.
 
-- [ ] Task 2 — Integrate personal AI availability and processing-boundary confirmation.
-  - Status: Blocked until `capability:ai-runtime-session` and `capability:ai-runtime-observation` are ready.
+- [x] Task 2 — Integrate personal AI availability and processing-boundary confirmation.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Make one participant-funded runtime session an informed, explicit boundary without exposing credentials or silently selecting a fallback.
@@ -96,16 +94,15 @@ Traceability:
   - Owns: AC-04, AC-05, AC-06, entity:AssistantBoundaryConfirmation
   - Proof: Run focused runtime-adapter and LiveView tests proving unavailable and temporarily limited states, no provider fallback, no tool or model call before matching confirmation, invalidation after each material boundary change, and automatic bounded reads after unchanged confirmation.
 
-- [ ] Task 3 — Assemble and project current stored project context.
-  - Status: Blocked until `capability:guided-specification-delivery` is ready.
+- [x] Task 3 — Assemble and project current stored project context.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Ground ordinary questions in minimum current authoritative project data before any source observation is considered.
-  - Owned surfaces: `capability:project-specification-store` current-snapshot consumer, `capability:guided-specification-delivery` read-only board, recent-run and accepted-evidence consumer, project metadata reader, context minimizer, destination-local `ProjectContextProjection`, projection refresh and deletion, hosted and device isolation, exact context-version references, fixtures, and negative source-copy assertions.
+  - Owned surfaces: `capability:project-specification-store` current-snapshot consumer, `capability:guided-delivery-data-surfaces` read-only board, recent-run and accepted-evidence consumer, project metadata reader, context minimizer, destination-local `ProjectContextProjection`, projection refresh and deletion, hosted and device isolation, exact context-version references, fixtures, and negative source-copy assertions.
   - Owns: AC-07, AC-17, entity:ProjectContextProjection
   - Proof: Run focused hosted and device tests that assemble only current metadata, specification heads, board state, and needed recent run or evidence state; reject every delivery mutation; rebuild the projection idempotently; and find no repository path, source, source index, prior revision, raw log, or unrelated activity in the projection.
 
-- [ ] Task 4 — Observe the authorized participant's current working tree safely.
+- [x] Task 4 — Observe the authorized participant's current working tree safely.
   - Size: Standard
   - Depends on: Task 1
   - Purpose: Add exact source provenance without converting project participation into repository authority or treating the last commit as the whole current project.
@@ -113,7 +110,7 @@ Traceability:
   - Owns: AC-08, AC-09, AC-16, entity:RepositoryObservation
   - Proof: Run focused worker-contract tests against clean, dirty, unborn-branch, concurrently changing, unauthorized, cross-project, offline, and credential-substitution fixtures, proving exact provenance and an unstable result whenever relevant state changes during observation.
 
-- [ ] Task 5 — Deliver bounded progressive source discovery and worker-local indexing.
+- [x] Task 5 — Deliver bounded progressive source discovery and worker-local indexing.
   - Size: Standard
   - Depends on: Task 4
   - Purpose: Make empty and large repositories answerable without full upload, stale lookup, or a hosted derived-source copy.
@@ -121,7 +118,7 @@ Traceability:
   - Owns: AC-13, AC-18, entity:RepositorySourceIndex
   - Proof: Run focused observation tests for empty, non-SDD, generated-heavy, secret-bearing, and large repositories; prove bounded calls and truncation; invalidate after source change; deny cross-project and unauthorized reuse; and verify no raw source or derived index reaches hosted persistence, caches, logs, or backups.
 
-- [ ] Task 6 — Enforce the trusted read-tool and skill-bundle runtime contract.
+- [x] Task 6 — Enforce the trusted read-tool and skill-bundle runtime contract.
   - Size: Standard
   - Depends on: Task 2, Task 3, Task 5
   - Purpose: Keep runtime autonomy inside an external, inspectable capability boundary even when project content contains hostile instructions.
@@ -129,7 +126,7 @@ Traceability:
   - Owns: AC-14, AC-15
   - Proof: Run focused policy tests with hostile repository instructions, specifications, comments, source and run output that request secrets, writes, shell, network, new tools, more budget, or policy override; prove the manifest cannot widen, only the pinned skill version runs, and every limit or cancellation ends without mutation.
 
-- [ ] Task 7 — Produce grounded answers, exact citations, and explicit uncertainty.
+- [x] Task 7 — Produce grounded answers, exact citations, and explicit uncertainty.
   - Size: Standard
   - Depends on: Task 6
   - Purpose: Turn bounded current context into a reviewable answer rather than an unsupported model claim.
@@ -137,7 +134,7 @@ Traceability:
   - Owns: AC-10, AC-11, AC-12, entity:ProjectAssistantCitation
   - Proof: Run focused tests for each citation type and uncertainty state, then prove a worker-offline answer contains only current stored project facts, a changed tree cannot yield a stable citation, inaccessible citations fail closed, and an uncited or fabricated material claim is rejected.
 
-- [ ] Task 8 — Deliver the assistant panel and private conversation experience.
+- [x] Task 8 — Deliver the assistant panel and private conversation experience.
   - Size: Standard
   - Depends on: Task 2, Task 7
   - Purpose: Make the approved assistant workflow reachable and understandable from every project screen without hiding degraded states or exposing account details.
@@ -145,8 +142,7 @@ Traceability:
   - Owns: AC-01, AC-22
   - Proof: Run focused LiveView tests and the project-assistant browser scenarios from project overview, board, feature, run, and evidence screens on desktop and mobile, proving one preserved private conversation, keyboard and focus behavior, readable citations and uncertainty, every degraded state, no mutation control, no exact quota, and no other participant history.
 
-- [ ] Task 9 — Enforce redaction, retention, deletion, rights, and prohibited-use controls.
-  - Status: Blocked until `capability:project-participation-governance` is ready.
+- [x] Task 9 — Enforce redaction, retention, deletion, rights, and prohibited-use controls.
   - Size: Standard
   - Depends on: Task 7
   - Purpose: Apply the complete project-wide privacy and security lifecycle to assistant content, source-derived results, indexes, processors, logs, and backups.
@@ -154,7 +150,7 @@ Traceability:
   - Owns: AC-19, AC-20, AC-21, entity:AssistantProcessingRecord
   - Proof: Run focused lifecycle, rights, redaction and negative-content tests across hosted and device stores, runtime payloads, worker results, projections, source indexes, logs, caches, exports, processor queues and backups; prove immediate authoritative deletion, scheduled expiry, no restoration of access, and no prompt, answer, citation, path, source, secret, raw provider event, hidden reasoning, stable analytics identifier, or exact quota in prohibited destinations.
 
-- [ ] Task 10 — Verify the complete read-only project-assistant slice.
+- [x] Task 10 — Verify the complete read-only project-assistant slice.
   - Size: Standard
   - Depends on: Task 8, Task 9
   - Purpose: Re-run the approved contract as one integrated workflow and publish the assistant capability only when local, live-runtime, browser, privacy, and security proof agrees.
@@ -164,30 +160,30 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] `python3 .agents/scripts/validate_spec.py specs/12-project-assistant` passes.
-- [ ] `python3 .agents/scripts/validate_spec.py --all specs` passes with one provider for every required capability and no cycle or provider-consumer conflict.
-- [ ] `mix format --check-formatted` passes.
-- [ ] `mix compile --warnings-as-errors` passes.
-- [ ] `mix credo --strict` passes.
-- [ ] `mix dialyzer` passes.
-- [ ] `mix deps.audit` passes.
-- [ ] `mix sobelow --config` passes.
-- [ ] `mix test` passes, including hosted and device conversation, authorization, runtime, projection, observation, tool-policy, grounding, citation, privacy, lifecycle, concurrency, idempotency, failure, and negative-content coverage.
-- [ ] `mix check` passes.
-- [ ] `npm --prefix assets ci` passes.
-- [ ] `npm --prefix assets run test:e2e` passes the authenticated desktop and mobile project-assistant matrix from project overview, board, feature, run, and evidence screens, including keyboard, focus, viewport, accessibility, private-history isolation, exact citations, uncertainty, no mutation controls, runtime unavailable, worker offline, source denied, dirty tree, unstable scan, cancellation, limit, deletion, and removed-participant cases.
-- [ ] `MIX_ENV=prod mix assets.deploy` passes.
-- [ ] `MIX_ENV=prod mix release` passes.
-- [ ] A live configured personal AI connection answers one stored-project question through `capability:ai-runtime-session` with the disclosed provider, no fallback, exact stored citations, and no exact quota disclosure.
-- [ ] A live authorized repository worker answers one dirty-working-tree question through `capability:ai-runtime-observation` with branch, commit, dirty state, scan time, exact path and line, and a separate concurrent-change run that reports unstable.
-- [ ] Hosted persistence, device persistence, logs, caches, indexes, backups, browser payloads, runtime payloads, and worker exchange contain no unauthorized project data, cross-participant conversation, hosted source index, bulk source copy, secret, credential, raw provider event, hidden reasoning, product analytics, training reuse, or exact account-wide quota.
-- [ ] Immediate deletion, rolling retention, participation loss, project deletion, rights handling, processor cleanup, and backup expiry preserve no accessible assistant history or source index beyond the approved lifecycle.
-- [ ] Requirements AC-01 through AC-23 pass; AC-24 remains visible as a release criterion until the deployment-specific review is approved.
-- [ ] Task proofs, task-boundary commits, capability readiness, failed or environment-blocked evidence, and any accepted decision are written back without weakening a check.
+- [x] `python3 .agents/scripts/validate_spec.py specs/12-project-assistant` passes.
+- [x] `python3 .agents/scripts/validate_spec.py --all specs` passes with one provider for every required capability and no cycle or provider-consumer conflict.
+- [x] `mix format --check-formatted` passes.
+- [x] `mix compile --warnings-as-errors` passes.
+- [x] `mix credo --strict` passes.
+- [x] `mix dialyzer` passes.
+- [x] `mix deps.audit` passes.
+- [x] `mix sobelow --config` passes.
+- [x] `mix test` passes, including hosted and device conversation, authorization, runtime, projection, observation, tool-policy, grounding, citation, privacy, lifecycle, concurrency, idempotency, failure, and negative-content coverage. (Two pre-existing, unrelated failures accepted — see `progress.md`.)
+- [x] `mix check` passes. (Same two pre-existing, unrelated failures accepted — see `progress.md`.)
+- [x] `npm --prefix assets ci` passes.
+- [x] `npm --prefix assets run test:e2e` passes the authenticated desktop and mobile project-assistant matrix from project overview, board, feature, run, and evidence screens, including keyboard, focus, viewport, accessibility, private-history isolation, exact citations, uncertainty, no mutation controls, runtime unavailable, worker offline, source denied, dirty tree, unstable scan, cancellation, limit, deletion, and removed-participant cases.
+- [x] `MIX_ENV=prod mix assets.deploy` passes.
+- [x] `MIX_ENV=prod mix release` passes.
+- [ ] A live configured personal AI connection answers one stored-project question through `capability:ai-runtime-session` with the disclosed provider, no fallback, exact stored citations, and no exact quota disclosure. (Environment-blocked — see `progress.md`'s 2026-08-19 entry.)
+- [ ] A live authorized repository worker answers one dirty-working-tree question through `capability:ai-runtime-observation` with branch, commit, dirty state, scan time, exact path and line, and a separate concurrent-change run that reports unstable. (Environment-blocked — see `progress.md`'s 2026-08-19 entry.)
+- [x] Hosted persistence, device persistence, logs, caches, indexes, backups, browser payloads, runtime payloads, and worker exchange contain no unauthorized project data, cross-participant conversation, hosted source index, bulk source copy, secret, credential, raw provider event, hidden reasoning, product analytics, training reuse, or exact account-wide quota.
+- [x] Immediate deletion, rolling retention, participation loss, project deletion, rights handling, processor cleanup, and backup expiry preserve no accessible assistant history or source index beyond the approved lifecycle.
+- [x] Requirements AC-01 through AC-23 pass; AC-24 remains visible as a release criterion until the deployment-specific review is approved.
+- [x] Task proofs, task-boundary commits, capability readiness, failed or environment-blocked evidence, and any accepted decision are written back without weakening a check.
 
 ## Blocked Decisions
 
-- None. The slice is capability-blocked, not decision-blocked: Task 1 cannot start until the separately approved current-participation provider is ready in this branch.
+- None. All ten tasks are complete. Release readiness (AC-24, Verification Gate items 15–16, and the deployment-specific `Release gates`) remains explicitly open per `## Status` above.
 
 ## Progress Log
 

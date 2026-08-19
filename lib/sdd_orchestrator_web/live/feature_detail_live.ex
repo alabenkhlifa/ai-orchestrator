@@ -1105,6 +1105,14 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           class="mb-6"
         />
 
+        <.live_component
+          module={SddOrchestratorWeb.ProjectAssistantPanel}
+          id={"project-assistant-" <> @project_id}
+          project_id={@project_id}
+          actor={@actor}
+          account={@current_account}
+        />
+
         <h1 class="text-xl font-bold text-ink" data-feature-title>{@feature.title}</h1>
 
         <div class="mt-3 flex flex-wrap items-center gap-2">

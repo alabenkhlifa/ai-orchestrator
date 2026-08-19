@@ -33,7 +33,8 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
          |> assign(:upgrade_path, upgrade_path(socket.assigns.live_action, project))
          |> assign(:errors, %{})
          |> assign(:generation_error, nil)
-         |> assign(:download_ready?, false)}
+         |> assign(:download_ready?, false)
+         |> assign(:actor, %{account_id: acting_account_id(socket), hosted_identity_id: nil})}
 
       {:error, redirect_path} ->
         {:ok, push_navigate(socket, to: redirect_path)}
@@ -153,6 +154,13 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
     |> push_event("backup-form-error", %{})
   end
 
+  defp acting_account_id(socket) do
+    case socket.assigns[:current_account] do
+      nil -> nil
+      account -> account.id
+    end
+  end
+
   defp load_project(%{assigns: %{live_action: :hosted, current_account: account}}, project_id) do
     workspace = Accounts.get_or_create_personal_workspace(account)
 
@@ -219,6 +227,15 @@ defmodule SddOrchestratorWeb.ProjectBackupLive do
           exact?={false}
           owner?={true}
           class="mb-6"
+        />
+
+        <.live_component
+          :if={@project.storage_mode == "hosted"}
+          module={SddOrchestratorWeb.ProjectAssistantPanel}
+          id={"project-assistant-" <> @project.id}
+          project_id={@project.id}
+          actor={@actor}
+          account={@current_account}
         />
 
         <h1 class="text-xl font-bold text-ink">Back up {@project.name}</h1>

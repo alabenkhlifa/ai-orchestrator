@@ -111,6 +111,14 @@ defmodule SddOrchestratorWeb.FeatureBoardLive do
           class="mb-6"
         />
 
+        <.live_component
+          module={SddOrchestratorWeb.ProjectAssistantPanel}
+          id={"project-assistant-" <> @project_id}
+          project_id={@project_id}
+          actor={@actor}
+          account={@current_account}
+        />
+
         <h1 class="text-xl font-bold text-ink">Features</h1>
         <p class="mt-1 text-sm text-ink-muted">
           A feature moves between columns through the workflow actions on its own screen, not by
