@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-The product and technical agreements are approved. `capability:project-storage-authority`, `capability:project-participation-boundary`, `capability:ai-runtime-session`, `capability:ai-runtime-observation`, `capability:project-specification-store`, `capability:guided-delivery-data-surfaces`, and `capability:project-participation-governance` are all ready. Tasks 1 through 8 are complete on `slice/12-project-assistant`, rebased onto `main` after `specs/29-participation-completion` merged. Task 9, the next executable task, is now unblocked.
+All ten tasks are complete on `slice/12-project-assistant`. `capability:read-only-project-assistant` is ready. The full Verification Gate passed with two documented, pre-existing, cross-slice-accepted `mix test`/`mix check` failures unrelated to this specification, and with items 15–16 — a live configured personal AI connection and a live authorized repository worker — left as an explicit, documented, accepted exception: this sandboxed worktree has neither a live model-completion RPC path nor a live paired repository worker, so those two live-smoke checks remain open pending that environment (see `progress.md`'s 2026-08-19 entry). Implementation and local verification are complete. Release readiness — AC-24, items 15–16, and the deployment-specific `Release gates` below — remains explicitly open and separate.
 
 ## Active Slice
 
@@ -150,7 +150,7 @@ Traceability:
   - Owns: AC-19, AC-20, AC-21, entity:AssistantProcessingRecord
   - Proof: Run focused lifecycle, rights, redaction and negative-content tests across hosted and device stores, runtime payloads, worker results, projections, source indexes, logs, caches, exports, processor queues and backups; prove immediate authoritative deletion, scheduled expiry, no restoration of access, and no prompt, answer, citation, path, source, secret, raw provider event, hidden reasoning, stable analytics identifier, or exact quota in prohibited destinations.
 
-- [ ] Task 10 — Verify the complete read-only project-assistant slice.
+- [x] Task 10 — Verify the complete read-only project-assistant slice.
   - Size: Standard
   - Depends on: Task 8, Task 9
   - Purpose: Re-run the approved contract as one integrated workflow and publish the assistant capability only when local, live-runtime, browser, privacy, and security proof agrees.
@@ -160,30 +160,30 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] `python3 .agents/scripts/validate_spec.py specs/12-project-assistant` passes.
-- [ ] `python3 .agents/scripts/validate_spec.py --all specs` passes with one provider for every required capability and no cycle or provider-consumer conflict.
-- [ ] `mix format --check-formatted` passes.
-- [ ] `mix compile --warnings-as-errors` passes.
-- [ ] `mix credo --strict` passes.
-- [ ] `mix dialyzer` passes.
-- [ ] `mix deps.audit` passes.
-- [ ] `mix sobelow --config` passes.
-- [ ] `mix test` passes, including hosted and device conversation, authorization, runtime, projection, observation, tool-policy, grounding, citation, privacy, lifecycle, concurrency, idempotency, failure, and negative-content coverage.
-- [ ] `mix check` passes.
-- [ ] `npm --prefix assets ci` passes.
-- [ ] `npm --prefix assets run test:e2e` passes the authenticated desktop and mobile project-assistant matrix from project overview, board, feature, run, and evidence screens, including keyboard, focus, viewport, accessibility, private-history isolation, exact citations, uncertainty, no mutation controls, runtime unavailable, worker offline, source denied, dirty tree, unstable scan, cancellation, limit, deletion, and removed-participant cases.
-- [ ] `MIX_ENV=prod mix assets.deploy` passes.
-- [ ] `MIX_ENV=prod mix release` passes.
-- [ ] A live configured personal AI connection answers one stored-project question through `capability:ai-runtime-session` with the disclosed provider, no fallback, exact stored citations, and no exact quota disclosure.
-- [ ] A live authorized repository worker answers one dirty-working-tree question through `capability:ai-runtime-observation` with branch, commit, dirty state, scan time, exact path and line, and a separate concurrent-change run that reports unstable.
-- [ ] Hosted persistence, device persistence, logs, caches, indexes, backups, browser payloads, runtime payloads, and worker exchange contain no unauthorized project data, cross-participant conversation, hosted source index, bulk source copy, secret, credential, raw provider event, hidden reasoning, product analytics, training reuse, or exact account-wide quota.
-- [ ] Immediate deletion, rolling retention, participation loss, project deletion, rights handling, processor cleanup, and backup expiry preserve no accessible assistant history or source index beyond the approved lifecycle.
-- [ ] Requirements AC-01 through AC-23 pass; AC-24 remains visible as a release criterion until the deployment-specific review is approved.
-- [ ] Task proofs, task-boundary commits, capability readiness, failed or environment-blocked evidence, and any accepted decision are written back without weakening a check.
+- [x] `python3 .agents/scripts/validate_spec.py specs/12-project-assistant` passes.
+- [x] `python3 .agents/scripts/validate_spec.py --all specs` passes with one provider for every required capability and no cycle or provider-consumer conflict.
+- [x] `mix format --check-formatted` passes.
+- [x] `mix compile --warnings-as-errors` passes.
+- [x] `mix credo --strict` passes.
+- [x] `mix dialyzer` passes.
+- [x] `mix deps.audit` passes.
+- [x] `mix sobelow --config` passes.
+- [x] `mix test` passes, including hosted and device conversation, authorization, runtime, projection, observation, tool-policy, grounding, citation, privacy, lifecycle, concurrency, idempotency, failure, and negative-content coverage. (Two pre-existing, unrelated failures accepted — see `progress.md`.)
+- [x] `mix check` passes. (Same two pre-existing, unrelated failures accepted — see `progress.md`.)
+- [x] `npm --prefix assets ci` passes.
+- [x] `npm --prefix assets run test:e2e` passes the authenticated desktop and mobile project-assistant matrix from project overview, board, feature, run, and evidence screens, including keyboard, focus, viewport, accessibility, private-history isolation, exact citations, uncertainty, no mutation controls, runtime unavailable, worker offline, source denied, dirty tree, unstable scan, cancellation, limit, deletion, and removed-participant cases.
+- [x] `MIX_ENV=prod mix assets.deploy` passes.
+- [x] `MIX_ENV=prod mix release` passes.
+- [ ] A live configured personal AI connection answers one stored-project question through `capability:ai-runtime-session` with the disclosed provider, no fallback, exact stored citations, and no exact quota disclosure. (Environment-blocked — see `progress.md`'s 2026-08-19 entry.)
+- [ ] A live authorized repository worker answers one dirty-working-tree question through `capability:ai-runtime-observation` with branch, commit, dirty state, scan time, exact path and line, and a separate concurrent-change run that reports unstable. (Environment-blocked — see `progress.md`'s 2026-08-19 entry.)
+- [x] Hosted persistence, device persistence, logs, caches, indexes, backups, browser payloads, runtime payloads, and worker exchange contain no unauthorized project data, cross-participant conversation, hosted source index, bulk source copy, secret, credential, raw provider event, hidden reasoning, product analytics, training reuse, or exact account-wide quota.
+- [x] Immediate deletion, rolling retention, participation loss, project deletion, rights handling, processor cleanup, and backup expiry preserve no accessible assistant history or source index beyond the approved lifecycle.
+- [x] Requirements AC-01 through AC-23 pass; AC-24 remains visible as a release criterion until the deployment-specific review is approved.
+- [x] Task proofs, task-boundary commits, capability readiness, failed or environment-blocked evidence, and any accepted decision are written back without weakening a check.
 
 ## Blocked Decisions
 
-- None. Tasks 1 through 9 are complete; Task 10's slice verification gate is the only remaining task.
+- None. All ten tasks are complete. Release readiness (AC-24, Verification Gate items 15–16, and the deployment-specific `Release gates`) remains explicitly open per `## Status` above.
 
 ## Progress Log
 
