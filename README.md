@@ -1,110 +1,158 @@
+<div align="center">
+
+<img src="docs/screenshots/landing.png" alt="SDD Orchestrator landing screen" width="720">
+
 # SDD Orchestrator
 
-Status: early product discovery.
+**A dashboard and control plane for spec-driven, AI-assisted software development.**
 
-## Overview
+[![Elixir](https://img.shields.io/badge/Elixir-1.20-4B275F?logo=elixir&logoColor=white)](https://elixir-lang.org)
+[![Phoenix](https://img.shields.io/badge/Phoenix-LiveView-FD4F00?logo=phoenixframework&logoColor=white)](https://www.phoenixframework.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](LICENSE)
 
-SDD Orchestrator is a dashboard and control plane for Spec-Driven AI-Assisted Development.
+</div>
 
-It is intended to help developers move work from specifications to verified implementation while keeping agent execution, stop conditions, progress, and proof visible.
+---
 
-Coding agents can run locally on the user's computer or through remote workers hosted in the cloud or on user-managed hardware such as a Raspberry Pi.
+## What this is
 
-This is a real personal project and the first project being built with the SDD workflow it is intended to support. The product must remain useful beyond the articles and book material produced from the experience.
+SDD Orchestrator turns a specification into working, verified code — with an AI coding agent doing the implementation and a human staying in control of every decision that matters.
 
-## Product Direction
+You write what a feature should do. The product tells you what's missing before an agent ever touches code. Once a feature is ready, an authorized agent works on an isolated branch, runs tests, captures evidence, and either finishes or stops with a specific, answerable question. Nothing merges without passing its own proof.
 
-The current direction includes:
+It's built for **Spec-Driven Development (SDD)**: every feature lives as an approved specification (`requirements.md` → `design.md` → `tasks.md`) before a single line of implementation code is written, and every implementation slice ends in a verification gate that has to pass for real — not a rubber stamp.
 
-- A dashboard dedicated to the SDD lifecycle rather than general task management.
-- Visible specifications, implementation slices, agent runs, blocked decisions, and verification results.
-- Local execution on the user's current computer.
-- Remote execution in cloud environments or on user-managed workers.
-- OpenAI Codex as the primary coding agent.
-- A clear provider setup experience for credentials and model selection.
-- Support for OpenAI models with room for other providers and locally hosted models.
-- GDPR data protection by design and by default across every database schema, backend path, integration, worker, agent, log, export, retention process, and deletion process.
-- Aggregate analytics that are genuinely anonymous and cannot be linked to users, devices, workspaces, projects, repositories, network identifiers, or source content.
+This repository is itself the largest real product built with that workflow: **35 feature specifications**, most fully implemented and independently verified, delivered task-by-task by Claude Code and OpenAI Codex working from the same approved contracts. It's a live example of what the workflow produces, not just a description of it.
 
-This direction is not an approved V1 specification. Product discovery is still in progress.
+## Why it's different
 
-## Core Product Loop
+- **The spec is the source of truth, not the chat log.** Requirements, design decisions, and task-level verification state live in version-controlled files under `specs/`, not in a conversation that evaporates when the context window fills up.
+- **Agents stop, not guess.** When an agent hits a real product decision, it blocks, asks one focused question, and preserves its state — instead of inventing an answer and shipping it.
+- **Local-first and accountless by default.** You can connect a repository straight from your computer through a paired local worker — no GitHub account, no uploading your source anywhere.
+- **Privacy and data protection are a first-class requirement, not an afterthought.** Every schema, backend path, and retention/deletion process is designed against GDPR principles from the specification stage forward — data minimization, purpose limitation, and genuinely anonymous analytics are enforced in the approved contract, not bolted on later.
+- **A read-only project assistant answers questions with receipts.** Ask it about your specs, board, or repository and it grounds every material claim in an exact citation — a specification revision, a repository line, a board item, a run — and says plainly when it doesn't know.
 
-In simple terms, SDD Orchestrator lets developers and non-developers use development AI agents running on their laptop or on another machine.
+## Screenshots
 
-1. A user creates a feature on a specification-focused Kanban board.
-2. The product explains the required format, identifies missing or unclear information, and shows what prevents the feature from being ready for development.
-3. When the requirements are sufficient, the feature becomes development-ready and the user can explicitly start development.
-4. An authorized AI coding agent works from an isolated branch, implements the feature, runs tests, and captures screenshots when the project and environment support them.
-5. Progress, test results, screenshots, and other evidence are attached to the feature activity and comments.
-6. If the agent needs a product decision, it marks the work blocked, tags the relevant users, asks a focused question, and preserves its current state.
-7. After an accepted answer is written back to the specification, the agent resumes until the work and verification finish.
-8. When supported, the branch is deployed to a preview environment and the user receives a test link. The product then notifies the user that the run has finished and shows its result and evidence.
+<table>
+<tr>
+<td width="50%">
+<img src="docs/screenshots/landing.png" alt="Landing screen">
+<p align="center"><em>Sign in with GitHub, or work entirely without an account</em></p>
+</td>
+<td width="50%">
+<img src="docs/screenshots/local-onboarding.png" alt="Local onboarding, connecting a repository on-device">
+<p align="center"><em>Accountless local onboarding — nothing about your code leaves your machine</em></p>
+</td>
+</tr>
+</table>
 
-The detailed product contract for this loop starts in `specs/07-guided-specification-delivery/`.
+## The core loop
 
-## Implementation Foundation
+1. A user creates a feature on a specification-focused board.
+2. The product explains the required format and shows exactly what's missing before the feature can be handed to an agent.
+3. Once requirements are sufficient, the user explicitly starts development.
+4. An authorized AI coding agent works on an isolated branch, implements the feature, runs the project's real test suite, and captures evidence (test results, screenshots, when supported).
+5. Progress and evidence attach directly to the feature's activity.
+6. If the agent needs a product decision it can't make itself, it blocks, asks a focused question, and waits.
+7. Once answered, the agent resumes and finishes verification.
+8. When supported, the branch deploys to a preview environment and the user gets notified with a link and the result.
 
-[OpenAI Symphony](https://github.com/openai/symphony) is the implementation foundation for SDD Orchestrator. Its language-independent specification and Elixir reference implementation provide a starting point for isolated workspaces, coding-agent execution, work reconciliation, retries, and operational visibility.
+The full contract for this loop lives in [`specs/07-guided-specification-delivery/`](specs/07-guided-specification-delivery/).
 
-Symphony is a foundation, not a fixed architecture or product boundary. The project may reuse, extend, replace, or reimplement any part when approved SDD Orchestrator requirements call for different behavior. SDD Orchestrator will focus specifically on specifications, approved slices, verification gates, and decision write-back.
+## What's built
 
-The first application boundary is selected in `specs/01-github-project-onboarding/`: an Elixir/Phoenix control plane with LiveView and PostgreSQL. Slice 01 does not import or fork the experimental Symphony prototype. Later agent-delivery specifications will define whether the orchestration boundary reuses or reimplements Symphony behavior behind durable control-plane commands and events.
+This isn't a prototype of the idea — most of the product surface is implemented and independently verified:
 
-## Additional Inspiration
+| Area | What it does |
+|---|---|
+| **Project onboarding** | GitHub-connected or fully local/accountless; hosted passwordless email access; identity linking |
+| **Guided specification delivery** | The full board → readiness → agent execution → evidence → review loop |
+| **Repository adoption** | Read-only assessment of an existing repository, an optional permanent SDD kit install, or bootstrapping a brand-new empty repository |
+| **AI runtime governance** | Personal AI connections, model/quota policy, session pinning — no Orchestrator-funded fallback, ever |
+| **Read-only project assistant** | Grounded Q&A over your specs, board, and repository with exact citations and visible uncertainty |
+| **Local worker execution** | A paired local worker runs agents against your own filesystem, isolated per run |
+| **Participation & collaboration** | Invite people to a project with a scoped, revocable role |
+| **Privacy & data protection** | GDPR-aligned processing inventories, retention, deletion, and rights handling across every layer above |
 
-[Hermes Agent](https://github.com/NousResearch/hermes-agent) is a reference for clear provider authentication and model configuration across API-key, OAuth, OpenAI-compatible, and local providers.
+Run `python3 .agents/scripts/slice_status.py` for the exact, current, per-specification status — it's a live report over the repository, not a snapshot that goes stale.
 
-Hermes Agent is a product and user-experience reference, not an implementation specification.
+## How it's built: Spec-Driven Development
 
-## SDD Workflow
+Every feature here goes through the same four operations, whether the implementer is Claude Code or OpenAI Codex:
 
-The initial workflow is built around four operations:
+- **`add-spec`** — define a feature's requirements, design, and task breakdown. No implementation.
+- **`update-spec`** — change the agreement (scope, design, acceptance criteria) before touching code.
+- **`implement-spec`** — implement and verify one approved slice against its own proof gate.
+- **`review-spec`** — an independent agent re-runs a slice's proofs and reports findings without touching the code or the agreement itself, keeping implementer and reviewer separate.
 
-- `add-spec`: create a specification without implementing it.
-- `update-spec`: change the agreement before changing implementation.
-- `implement-spec`: implement and verify one approved slice.
-- `review-spec`: independently review a slice's implementation against its specification, re-running its proofs and reporting findings without changing the code or the agreement.
+Specifications are the actual contract, not documentation written after the fact:
 
-The project expects to use `add-spec` frequently as Symphony capabilities are introduced as bounded SDD Orchestrator features. It expects to use `update-spec` whenever product discovery, implementation evidence, or an intentional departure from Symphony changes the agreement. Neither workflow continues into implementation; `implement-spec` handles an approved slice separately. Because Codex and Claude Code both work in this repository, `review-spec` lets one agent independently review a slice the other implemented, keeping the reviewer separate from the implementer.
+```
+specs/<feature>/
+├── requirements.md   # what it must do, and why — acceptance criteria
+├── design.md          # technical decisions and their tradeoffs
+├── tasks.md            # the approved implementation slice + verification gate
+└── progress.md        # dated, evidence-backed progress log
+```
 
-The project will adapt these workflows as its real product and operational requirements become clearer. Choosing Symphony as a foundation does not bypass the specification and approval process.
+A task isn't done because an agent says so — it's done when its scoped proof passes, and a slice isn't `Verified` until its full gate (format, compile, lint, types, security scan, full test suite, browser matrix, production build) genuinely passes. Cross-specification dependencies are an explicit, validated capability graph (`python3 .agents/scripts/capability_index.py`), not an implicit ordering by file name.
 
-## Agent Compatibility
+Both Codex and Claude Code read the same shared contract (`AGENTS.md` / `CLAUDE.md`, kept byte-identical) and the same canonical skills under `.agents/skills/`.
 
-The canonical project skills live under `.agents/skills/` and follow the Agent Skills `SKILL.md` format.
+## Tech stack
 
-- Codex discovers the canonical skills directly.
-- Claude Code uses the same directories through `.claude/skills/` links.
-- `AGENTS.md` and `CLAUDE.md` contain the same project contract.
+- **Backend:** Elixir, Phoenix, Phoenix LiveView, PostgreSQL (via Ecto), Cloak for field-level encryption
+- **Frontend:** Server-rendered LiveView + Tailwind CSS, no separate SPA build
+- **Coding agents:** OpenAI Codex as the primary agent, invoked through a versioned local worker protocol
+- **Verification:** ExUnit, Playwright (desktop + mobile browser matrix), Credo, Dialyzer, Sobelow, `mix deps.audit`
+- **Local-first storage:** an on-device store for accountless projects that never touches hosted persistence
 
-## Current State
+## Getting started
 
-- Git repository initialized on `main` with the initial project bootstrap committed locally.
-- Shared Codex and Claude Code instructions added.
-- `add-spec`, `update-spec`, `implement-spec`, and `review-spec` installed as shared Codex and Claude skills; the specification workflows now include decision ownership, small related question batches, a recommendation for every question, one write-back per answered batch, concise progress logs, and stage-specific readiness. `review-spec` provides independent cross-agent review of an implemented slice, re-running its proofs and routing findings without changing the code or the agreement.
-- OpenAI Symphony selected as the orchestration foundation; no reference code has been imported. Slice 01 selects Elixir/Phoenix, LiveView, and PostgreSQL for the product control plane.
-- Project onboarding is organized as six ordered specifications under `specs/`: GitHub onboarding, local onboarding, hosted passwordless access, GitHub identity linking, project storage lifecycle, and project portability. Slice 01 is approved and ready for implementation; its public hosted deployment remains privacy-gated. The other onboarding specifications remain draft and blocked by their recorded outstanding decisions.
-- No dashboard, service, worker runtime, provider integration, or application toolchain implemented yet.
+```bash
+# Toolchain (Elixir/Erlang/Node versions pinned in .mise.toml)
+mise install
 
-## Documentation Boundaries
+# Database
+docker compose up -d postgres
 
-- `README.md` describes the project identity and current direction.
-- `AGENTS.md` and `CLAUDE.md` define how coding agents work in this repository.
-- Files under `specs/` define product behavior, design decisions, implementation slices, verification, and their current approval status.
-- Files under `design-references/` preserve exported visual prototypes for comparison; they are not application source or a substitute for the specifications.
-- Writing and case-study notes provide book and article evidence but are not the product source of truth.
+# Dependencies, database setup, assets
+mix setup
 
-## Open Product Questions
+# Run it
+mix phx.server
+```
 
-The detailed discussion still needs to define:
+Visit `http://localhost:4000`. The local/accountless onboarding path works out of the box; GitHub-connected onboarding needs a GitHub App configured via environment variables (see `config/dev.exs`).
 
-- The unresolved product questions recorded across the ordered project specifications.
-- The feature-specific boundary for reusing or reimplementing Symphony behavior behind the selected Phoenix control plane.
-- The V1 protocol and trust boundary between the control plane and local or remote workers.
-- Repository discovery and connection behavior.
-- Local and remote worker communication and isolation.
-- User authentication and provider credential handling.
-- API-key, Codex OAuth, and other provider setup paths.
-- Model and agent selection rules.
-- Whether Raspberry Pi support belongs in V1 or a later deployment profile.
+Before pushing changes:
+
+```bash
+mix check   # format, compile --warnings-as-errors, credo --strict, test
+```
+
+## Project structure
+
+```
+lib/sdd_orchestrator/       # domain contexts — one per bounded capability
+lib/sdd_orchestrator_web/   # Phoenix web layer — LiveViews, components, controllers
+specs/                      # the actual product contract — read this first
+.agents/skills/             # canonical SDD workflow skills (add-spec, implement-spec, ...)
+assets/e2e/                 # Playwright browser proof, one spec file per feature
+priv/repo/migrations/       # database schema history
+```
+
+## Status
+
+Actively developed as a real personal project — not a tutorial repo. The `specs/` directory is the honest, current source of truth for what's approved, what's implemented, what's verified, and what's still an open product question. This README describes direction and architecture; it is not itself an approved specification.
+
+## License
+
+This project is licensed under **[CC BY-NC-ND 4.0](LICENSE)** — you're welcome to read the code, fork it to run and experiment with locally, and learn from how it's built. Redistributing it, publishing a modified version, or using it commercially requires asking first. If you build on the ideas here, a credit back to this repository is appreciated.
+
+## Acknowledgments
+
+- [OpenAI Symphony](https://github.com/openai/symphony) — the implementation foundation this project started from for isolated agent workspaces, execution, and operational visibility.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a UX reference for clear provider authentication and model configuration.
