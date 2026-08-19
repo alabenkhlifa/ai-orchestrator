@@ -159,15 +159,31 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         bound to the seeded e2e project, so this always resolves as a
         visible `:unavailable` uncertainty marker rather than a citation —
         proving the source-unavailable degraded state inside a real turn.
-      * `"fails: " <> reason` — a normalized model-completion failure, so a
-        real `outcome: "failed"` turn and its retry affordance render.
+      * `"fails: model_unavailable"` — the one normalized model-completion
+        failure the browser suite exercises, so a real `outcome: "failed"`
+        turn and its retry affordance render.
       * any other question — one plain, non-material remark.
+
+    `"fails: model_unavailable"` returns the literal `:model_unavailable`
+    atom rather than converting the question text's own suffix to an atom
+    (via `String.to_atom/1` or `String.to_existing_atom/1`): this compile-time
+    build (`mix phx.server`, never a release) loads each module into the
+    running node lazily, on first call, rather than all at once, so whether
+    an incidentally-named atom is already registered in this process's atom
+    table depends on unrelated module-loading history, not on anything this
+    module's own contract guarantees — `String.to_existing_atom/1` raised
+    `ArgumentError: not an already existing atom` here exactly when no other
+    already-invoked code path happened to have loaded a module that mentions
+    `:model_unavailable` as a literal first. A closed match on the one
+    question text this suite actually sends removes that dependency
+    entirely, and keeps the module's own "small, closed subset" contract
+    (see above) rather than reopening the `String.to_atom/1` unbounded-atom
+    Sobelow finding this file's history already resolved once.
     """
     @behaviour SddOrchestrator.ProjectAssistant.ModelCompletionAdapter
 
     @impl true
-    def complete(%{question_text: "fails: " <> reason}),
-      do: {:error, String.to_existing_atom(reason)}
+    def complete(%{question_text: "fails: model_unavailable"}), do: {:error, :model_unavailable}
 
     def complete(%{question_text: "spec-valid: " <> _rest, context_content: content}) do
       [entry | _rest] = content["specifications"]

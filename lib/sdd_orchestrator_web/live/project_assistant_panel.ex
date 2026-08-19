@@ -45,6 +45,8 @@ defmodule SddOrchestratorWeb.ProjectAssistantPanel do
   """
   use SddOrchestratorWeb, :live_component
 
+  require Logger
+
   alias Phoenix.LiveView.{AsyncResult, JS}
   alias SddOrchestrator.Accounts.PersonalWorkspace
   alias SddOrchestrator.ProjectAssistant.{BoundaryGate, Guard, RepositorySourceAuthorization}
@@ -220,9 +222,22 @@ defmodule SddOrchestratorWeb.ProjectAssistantPanel do
   defp safe_answer(authority, project_id, actor, account, text) do
     TurnOrchestrator.answer(authority, project_id, actor, account, text)
   rescue
-    _exception -> {:error, :answer_failed}
+    # Content-free by the same rule `SddOrchestrator.ProjectAssistant.SecurityLog`
+    # documents for this feature: the exception's own kind, never its message
+    # or stacktrace, which could echo a participant's question, an answer, or
+    # other project content back into an operational log. Mirrors
+    # `SddOrchestrator.Delivery.Dispatcher.safe_cycle/1`'s identical
+    # "log only `error.__struct__`" backstop for the same reason.
+    exception ->
+      Logger.error(
+        "[project_assistant_panel] answer pipeline raised: #{inspect(exception.__struct__)}"
+      )
+
+      {:error, :answer_failed}
   catch
-    _kind, _reason -> {:error, :answer_failed}
+    kind, _reason ->
+      Logger.error("[project_assistant_panel] answer pipeline #{kind}")
+      {:error, :answer_failed}
   end
 
   # --- authority and loading ------------------------------------------
