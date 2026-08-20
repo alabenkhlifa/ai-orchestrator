@@ -38,6 +38,14 @@ APPCAST_URL="${SDD_ORCHESTRATOR_APPCAST_URL:-http://localhost:4000/appcast.json}
 # exactly like the Developer ID signing certificate. Override for a build
 # signed with the real production key via SDD_ORCHESTRATOR_APPCAST_PUBLIC_KEY.
 APPCAST_PUBLIC_KEY="${SDD_ORCHESTRATOR_APPCAST_PUBLIC_KEY:-iQtBThP+7yEKC0Wy1xRPmK3vhMec2FIgDvt9dvsD3Ck=}"
+# [Task 7] The Developer ID Application identity (name or SHA-1 hash) to
+# codesign with, e.g. "Developer ID Application: Some Name (TEAMID)". Unset
+# by default — this must never default to whatever identity happens to be
+# first in the local keychain, or every build on a machine that has one
+# would silently start signing with it. The real production certificate is
+# the accountable owner's own Apple Developer account material, not
+# committed here; set SDD_ORCHESTRATOR_SIGNING_IDENTITY explicitly to sign.
+SIGNING_IDENTITY="${SDD_ORCHESTRATOR_SIGNING_IDENTITY:-}"
 
 RELEASE_REL_PATH="_build/prod/rel/$RELEASE_NAME"
 BUILD_DIR="$SCRIPT_DIR/build"
@@ -129,5 +137,66 @@ cat > "$BUNDLE_PATH/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+# [Task 7] Real Developer ID signing, opt-in only via
+# SDD_ORCHESTRATOR_SIGNING_IDENTITY. When unset, the bundle stays exactly
+# as unsigned as before Task 7 — the launcher and embedded release still
+# carry only the adhoc, linker-signed signature the Swift/Erlang toolchains
+# apply on their own.
+if [ -n "$SIGNING_IDENTITY" ]; then
+  echo "==> Signing $BUNDLE_PATH (identity: $SIGNING_IDENTITY)"
+
+  # AC-09: nothing beyond outbound networking and the embedded runtime's
+  # own JIT execution. specs/36's design.md keeps the entitlement set
+  # otherwise minimal on purpose to reduce notarization rejection risk.
+  # allow-jit is required, not optional: the embedded BEAM VM's JIT cannot
+  # allocate executable+writable memory under Hardened Runtime without it
+  # and aborts on launch (beam/jit/beam_jit_main.cpp:pick_allocator()) --
+  # see design.md's "The Entitlement Set Includes JIT Execution, Not
+  # Networking Alone" for the investigation that established this.
+  ENTITLEMENTS_PATH="$BUILD_DIR/entitlements.plist"
+  cat > "$ENTITLEMENTS_PATH" <<ENTITLEMENTS
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>
+ENTITLEMENTS
+
+  # Sign inside-out, not via `codesign --deep`: Apple's own guidance is
+  # that --deep is for verification/inspection, not primary signing — it
+  # does not reliably apply entitlements to every nested component. Find
+  # every real Mach-O binary/library under the bundle by content (`file`),
+  # not by filename convention — the embedded OTP/Elixir release mixes
+  # Mach-O executables and .so libraries among many non-Mach-O files with
+  # similar-looking names — sign deepest paths first, then the outer .app
+  # last, each with the same identity/hardened runtime/entitlements.
+  NESTED_MACHO_LIST="$BUILD_DIR/.nested-macho-list"
+  find "$BUNDLE_PATH" -type f -print0 \
+    | xargs -0 file \
+    | grep "Mach-O" \
+    | cut -d: -f1 \
+    | awk -F/ '{print NF-1, $0}' \
+    | sort -rn \
+    | cut -d' ' -f2- > "$NESTED_MACHO_LIST"
+
+  while IFS= read -r nested_binary; do
+    echo "    signing: $nested_binary"
+    codesign --force --sign "$SIGNING_IDENTITY" --options runtime \
+      --entitlements "$ENTITLEMENTS_PATH" --timestamp "$nested_binary"
+  done < "$NESTED_MACHO_LIST"
+  rm -f "$NESTED_MACHO_LIST"
+
+  echo "==> Signing outer bundle $BUNDLE_PATH"
+  codesign --force --sign "$SIGNING_IDENTITY" --options runtime \
+    --entitlements "$ENTITLEMENTS_PATH" --timestamp "$BUNDLE_PATH"
+else
+  echo "==> SDD_ORCHESTRATOR_SIGNING_IDENTITY unset; leaving $BUNDLE_PATH unsigned"
+fi
 
 echo "==> Built $BUNDLE_PATH"
