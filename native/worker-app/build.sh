@@ -200,3 +200,30 @@ else
 fi
 
 echo "==> Built $BUNDLE_PATH"
+
+# [Task 8] Package the (signed or unsigned, whichever this run just
+# produced) `.app` into an installable `.dmg`. This step is unconditional —
+# it works identically regardless of the signing branch above. No
+# notarization/stapling here (Task 9) and no signing of the .dmg itself.
+DMG_STAGING_DIR="$BUILD_DIR/dmg-staging"
+DMG_PATH="$BUILD_DIR/$APP_NAME-$VERSION.dmg"
+
+echo "==> Assembling $DMG_PATH"
+rm -rf "$DMG_STAGING_DIR"
+mkdir -p "$DMG_STAGING_DIR"
+
+# Copy (not move) the bundle so the plain .app stays in place at
+# $BUNDLE_PATH for the tasks/tests that already inspect it directly.
+cp -R "$BUNDLE_PATH" "$DMG_STAGING_DIR/$APP_NAME.app"
+
+# Standard macOS drag-to-install convention: a symlink to /Applications
+# alongside the app in the mounted volume.
+ln -s /Applications "$DMG_STAGING_DIR/Applications"
+
+rm -f "$DMG_PATH"
+hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING_DIR" \
+  -format UDZO -ov "$DMG_PATH"
+
+rm -rf "$DMG_STAGING_DIR"
+
+echo "==> Built $DMG_PATH"
