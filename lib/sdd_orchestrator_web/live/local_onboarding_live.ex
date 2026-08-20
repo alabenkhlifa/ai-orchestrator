@@ -65,6 +65,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:workspace, workspace)
      |> assign(:step, :discovery)
      |> assign(:locate_project, nil)
+     |> assign(:project_id, nil)
+     |> assign(:deep_link_code, nil)
      |> assign(:onboarding_attempt, nil)
      |> assign(:pairing_error, nil)
      |> assign(:selection_error, nil)
@@ -127,6 +129,16 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         # Unknown, cross-device, or not-yet-chosen attempt: stay put.
         {:noreply, socket}
     end
+  end
+
+  # Project-scoped device-setup entry point (`specs/36-local-worker-native-distribution`):
+  # a project's own dashboard can link in with `?project=<id>` so this generic,
+  # project-less onboarding screen can offer the "Open in App" deep link for that
+  # project. The project must resolve in the current device workspace; anything
+  # else (unknown id, or — defensively — a foreign workspace) is ignored and the
+  # screen behaves exactly as it does with no `project` param at all.
+  def handle_params(%{"project" => project_id}, _uri, socket) do
+    {:noreply, apply_project_param(socket, project_id)}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -396,6 +408,41 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     assign(socket, :worker_status, status)
   end
 
+  # ---- project-scoped device setup (`?project=<id>`) ----
+
+  defp apply_project_param(socket, project_id) do
+    case Devices.get_project(project_id) do
+      {:ok, %{workspace_id: workspace_id} = project}
+      when workspace_id == socket.assigns.workspace.id ->
+        socket
+        |> assign(:project_id, project.id)
+        |> maybe_issue_deep_link_code()
+
+      _not_found_or_foreign_workspace ->
+        socket
+    end
+  end
+
+  # The deep link needs a real single-use pairing code to hand the native app, the
+  # same code the graphical pairing form itself is built around
+  # (`Devices.Pairing.start_pairing/1`, already used by this file's worker
+  # stand-in). Issued once per mount and only when the discovery step would
+  # actually show the missing/incompatible pairing UI, so visiting with a
+  # `project` param never issues an attempt that goes unused.
+  defp maybe_issue_deep_link_code(%{assigns: %{deep_link_code: code}} = socket)
+       when is_binary(code),
+       do: socket
+
+  defp maybe_issue_deep_link_code(%{assigns: %{worker_status: status}} = socket)
+       when status in [:missing, :incompatible] do
+    case Pairing.start_pairing(socket.assigns.workspace.id) do
+      {:ok, %{code: code}} -> assign(socket, :deep_link_code, code)
+      {:error, _reason} -> socket
+    end
+  end
+
+  defp maybe_issue_deep_link_code(socket), do: socket
+
   defp create_enabled?(assigns) do
     String.trim(assigns.project_name) != "" and
       (not assigns.disclosure_required or assigns.disclosure_confirmed)
@@ -449,6 +496,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           :if={@step == :discovery}
           worker_status={@worker_status}
           pairing_error={@pairing_error}
+          project_id={@project_id}
+          deep_link_code={@deep_link_code}
         />
         <.selection_step
           :if={@step == :selection}
@@ -476,6 +525,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   attr :worker_status, :atom, required: true
   attr :pairing_error, :string, default: nil
+  attr :project_id, :string, default: nil
+  attr :deep_link_code, :string, default: nil
 
   defp discovery_step(assigns) do
     ~H"""
@@ -498,8 +549,18 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
       <.storage_explanation />
 
       <div class="mt-6" data-worker-status={@worker_status}>
-        <.worker_missing :if={@worker_status == :missing} pairing_error={@pairing_error} />
-        <.worker_incompatible :if={@worker_status == :incompatible} pairing_error={@pairing_error} />
+        <.worker_missing
+          :if={@worker_status == :missing}
+          pairing_error={@pairing_error}
+          project_id={@project_id}
+          deep_link_code={@deep_link_code}
+        />
+        <.worker_incompatible
+          :if={@worker_status == :incompatible}
+          pairing_error={@pairing_error}
+          project_id={@project_id}
+          deep_link_code={@deep_link_code}
+        />
         <.worker_unavailable :if={@worker_status == :unavailable} />
         <.worker_detected :if={@worker_status == :detected} />
       </div>
@@ -551,6 +612,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   end
 
   attr :pairing_error, :string, default: nil
+  attr :project_id, :string, default: nil
+  attr :deep_link_code, :string, default: nil
 
   defp worker_missing(assigns) do
     ~H"""
@@ -594,12 +657,19 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         </li>
       </ol>
 
-      <.pairing_form pairing_error={@pairing_error} label="Pair worker" />
+      <.pairing_form
+        pairing_error={@pairing_error}
+        label="Pair worker"
+        project_id={@project_id}
+        deep_link_code={@deep_link_code}
+      />
     </div>
     """
   end
 
   attr :pairing_error, :string, default: nil
+  attr :project_id, :string, default: nil
+  attr :deep_link_code, :string, default: nil
 
   defp worker_incompatible(assigns) do
     ~H"""
@@ -624,7 +694,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         <.lucide name="download" class="size-4" /> Download the current worker
       </.button>
 
-      <.pairing_form pairing_error={@pairing_error} label="Pair replacement worker" />
+      <.pairing_form
+        pairing_error={@pairing_error}
+        label="Pair replacement worker"
+        project_id={@project_id}
+        deep_link_code={@deep_link_code}
+      />
     </div>
     """
   end
@@ -681,6 +756,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   attr :pairing_error, :string, default: nil
   attr :label, :string, required: true
+  attr :project_id, :string, default: nil
+  attr :deep_link_code, :string, default: nil
 
   defp pairing_form(assigns) do
     ~H"""
@@ -693,11 +770,32 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         placeholder="For example, 4K7Q-2P9X"
         autocomplete="off"
       />
-      <.button type="submit" data-pair class="mt-3 w-full sm:w-auto">
-        <.lucide name="link" class="size-4" /> {@label}
-      </.button>
+      <div class="mt-3 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+        <.button type="submit" data-pair class="w-full sm:w-auto">
+          <.lucide name="link" class="size-4" /> {@label}
+        </.button>
+        <%!--
+          A plain anchor, not `.button`/`phx-click`: it must be a real link so the
+          browser hands the custom `sddworker://` scheme off to the OS instead of
+          LiveView intercepting the click. A machine with no installed app simply
+          gets no response from the OS here — the download button above (AC-06's
+          install guidance) is what covers that case, not this link.
+        --%>
+        <a
+          :if={@project_id && @deep_link_code}
+          href={deep_link_href(@project_id, @deep_link_code)}
+          data-open-in-app
+          class="inline-flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-semibold text-ink transition hover:bg-raised sm:w-auto"
+        >
+          <.lucide name="external-link" class="size-4" /> Open in App
+        </a>
+      </div>
     </form>
     """
+  end
+
+  defp deep_link_href(project_id, code) do
+    "sddworker://pair?code=#{URI.encode_www_form(code)}&project_id=#{URI.encode_www_form(project_id)}"
   end
 
   # ---- repository selection step ----

@@ -122,6 +122,43 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLiveTest do
              live(conn, ~p"/local/projects/#{Ecto.UUID.generate()}")
   end
 
+  describe "Pair a worker action" do
+    test "offers Pair a worker, navigating to project-scoped onboarding, with no worker paired",
+         %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, ~p"/local/projects/#{project.id}")
+
+      assert has_element?(view, "[data-connection-status=authorization_required]")
+
+      assert view
+             |> element("[data-pair-worker]")
+             |> render() =~ "/onboarding/local?project=#{project.id}"
+    end
+
+    test "hides Pair a worker once the worker is connected", %{
+      conn: conn,
+      workspace: ws,
+      project: project
+    } do
+      ws.id |> pair() |> seen_now()
+      {:ok, view, _html} = live(conn, ~p"/local/projects/#{project.id}")
+
+      assert has_element?(view, "[data-connection-status=connected]")
+      refute has_element?(view, "[data-pair-worker]")
+    end
+
+    test "hides Pair a worker when a worker is paired but unavailable", %{
+      conn: conn,
+      workspace: ws,
+      project: project
+    } do
+      _ = pair(ws.id)
+      {:ok, view, _html} = live(conn, ~p"/local/projects/#{project.id}")
+
+      assert has_element?(view, "[data-connection-status=unavailable]")
+      refute has_element?(view, "[data-pair-worker]")
+    end
+  end
+
   # ---- helpers ----
 
   defp pair(workspace_id) do
