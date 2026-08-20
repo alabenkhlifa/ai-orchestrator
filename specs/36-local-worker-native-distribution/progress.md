@@ -1,5 +1,14 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 2 implemented and verified: real menu-bar status shell and quit lifecycle
+
+- Completed: The placeholder launcher from Task 1 is replaced by a real Swift/AppKit menu-bar app (`native/worker-app/MenuBarApp`) that starts and supervises the embedded release, shows an `NSStatusItem`, and gates every termination path through a single active-run check. `SddOrchestrator.Worker.ConnectionStatus` (new, additive) lets the existing, unchanged `GatewayConnection` report connect/disconnect for the shell to poll. `AC-03`, `AC-04`, `AC-05` all proved — not just in unit tests but by the main thread independently launching and quitting the real built `.app` three times (idle quit, active-run quit with Cancel, active-run quit with Quit Anyway), driven through real Apple Events against the actual accessibility tree.
+- Remaining: Tasks 4–11 unimplemented.
+- Failed checks: None.
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/connection_status_test.exs test/sdd_orchestrator/worker/gateway_connection_test.exs` — exit `0`.
+- Proof receipts: 10 Elixir tests passed (including `gateway_connection_test.exs`'s pre-existing suite, unmodified, proving no regression); `mix format --check-formatted`, `mix credo`, `mix compile --warnings-as-errors` scoped to the task's Elixir files all exit `0`. Swift: `swift build` and `swift test` both independently re-run by the main thread, 39/39 tests passed. Full `native/worker-app/build.sh` independently re-run end to end, producing a real signed-launcher-free (unsigned, pre-Task-6) `.app`; `Info.plist` verified via `plutil -p`.
+- Spec updates: None — implementation matched the approved task definition exactly.
+
 ### 2026-08-20 — Task 1 implemented and verified: worker mix release target and `.app` bundle assembly
 
 - Completed: New `:worker` mix release (separate from the unchanged default `sdd_orchestrator` release) booted through a runtime env-var gate (`SDD_ORCHESTRATOR_RELEASE_MODE=worker`, set only by the worker release's own env overlay). `SddOrchestrator.Application` now starts either the full control-plane tree (unchanged) or, in worker mode, only an always-up `SddOrchestrator.Worker.Host` `DynamicSupervisor` that tolerates `Worker.Supervisor` refusing to start unpaired, attaching it immediately only when a configuration is already stored. `native/worker-app/build.sh` assembles a real, runnable `SDD Orchestrator Worker.app` with the approved `Info.plist` contract. `AC-01` proved.
