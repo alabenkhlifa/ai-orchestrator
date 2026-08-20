@@ -1,5 +1,12 @@
 import Config
 
+# Set by `rel/overlays/worker/env.sh.eex` before the `:worker` release's
+# `bin/worker start` boots the VM (see `mix.exs`'s `releases/0` and
+# `SddOrchestrator.Application`). A genuinely remote worker has no
+# database, vault, endpoint, or GitHub OAuth app, so the control-plane
+# secret checks below must not run for it.
+worker_release_mode? = System.get_env("SDD_ORCHESTRATOR_RELEASE_MODE") == "worker"
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -64,7 +71,7 @@ if config_env() == :dev do
     ]
 end
 
-if config_env() == :prod do
+if config_env() == :prod and not worker_release_mode? do
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

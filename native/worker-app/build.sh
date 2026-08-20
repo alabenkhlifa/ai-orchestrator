@@ -1,0 +1,94 @@
+#!/bin/sh
+# specs/36-local-worker-native-distribution Task 1.
+#
+# Assembles the signed-ready `.app` bundle around the `:worker` mix
+# release. Scope stops at a runnable `.app` directory:
+#   - no code signing, entitlements, or notarization (Tasks 6, 8)
+#   - no .dmg packaging (Task 7)
+#   - no menu-bar UI (Task 2 replaces Contents/MacOS/$LAUNCHER_NAME below
+#     with the real Swift menu-bar shell; this launcher just execs the
+#     embedded release's start script so the bundle is genuinely runnable
+#     end to end right now)
+set -eu
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+cd "$PROJECT_ROOT"
+
+RELEASE_NAME="worker"
+APP_NAME="SDD Orchestrator Worker"
+BUNDLE_IDENTIFIER="com.sddorchestrator.worker"
+# specs/02-local-project-onboarding's approved macOS floor.
+MIN_MACOS_VERSION="14.0"
+LAUNCHER_NAME="sdd-orchestrator-worker-launcher"
+
+RELEASE_REL_PATH="_build/prod/rel/$RELEASE_NAME"
+BUILD_DIR="$SCRIPT_DIR/build"
+BUNDLE_PATH="$BUILD_DIR/$APP_NAME.app"
+
+echo "==> Building the :$RELEASE_NAME release (MIX_ENV=prod mix release $RELEASE_NAME)"
+MIX_ENV=prod mix release "$RELEASE_NAME" --overwrite
+
+if [ ! -x "$RELEASE_REL_PATH/bin/$RELEASE_NAME" ]; then
+  echo "error: expected release start script at $RELEASE_REL_PATH/bin/$RELEASE_NAME" >&2
+  exit 1
+fi
+
+VERSION=$(mix run -e 'IO.puts(Mix.Project.config()[:version])' 2>/dev/null | tail -n 1)
+if [ -z "$VERSION" ]; then
+  echo "error: could not read the project version from mix.exs" >&2
+  exit 1
+fi
+
+echo "==> Assembling $BUNDLE_PATH (version $VERSION)"
+rm -rf "$BUNDLE_PATH"
+mkdir -p "$BUNDLE_PATH/Contents/MacOS" "$BUNDLE_PATH/Contents/Resources"
+
+# The built release is embedded under Contents/Resources/release, verbatim
+# (bin/, erts-*/, lib/, releases/ untouched) — Task 2's menu-bar shell and
+# Tasks 6/8's signing/notarization all need the release tree exactly as
+# `mix release` produced it.
+cp -R "$RELEASE_REL_PATH" "$BUNDLE_PATH/Contents/Resources/release"
+
+# Minimal launcher for this task only. Task 2 replaces this file with the
+# real Swift menu-bar shell.
+cat > "$BUNDLE_PATH/Contents/MacOS/$LAUNCHER_NAME" <<'EOF'
+#!/bin/sh
+# Placeholder launcher (specs/36 Task 1) — Task 2 replaces this with the
+# real Swift menu-bar shell. Execs the embedded release's start script.
+set -eu
+DIR=$(cd "$(dirname "$0")" && pwd)
+exec "$DIR/../Resources/release/bin/worker" start
+EOF
+chmod +x "$BUNDLE_PATH/Contents/MacOS/$LAUNCHER_NAME"
+
+cat > "$BUNDLE_PATH/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>$BUNDLE_IDENTIFIER</string>
+	<key>CFBundleName</key>
+	<string>$APP_NAME</string>
+	<key>CFBundleDisplayName</key>
+	<string>$APP_NAME</string>
+	<key>CFBundleExecutable</key>
+	<string>$LAUNCHER_NAME</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$VERSION</string>
+	<key>CFBundleVersion</key>
+	<string>$VERSION</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$MIN_MACOS_VERSION</string>
+	<key>LSUIElement</key>
+	<true/>
+</dict>
+</plist>
+PLIST
+
+echo "==> Built $BUNDLE_PATH"

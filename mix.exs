@@ -12,6 +12,8 @@ defmodule SddOrchestrator.MixProject do
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
+      releases: releases(),
+      default_release: :sdd_orchestrator,
       dialyzer: [
         plt_local_path: "priv/plts",
         plt_core_path: "priv/plts",
@@ -41,6 +43,31 @@ defmodule SddOrchestrator.MixProject do
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # `sdd_orchestrator: []` is exactly what Mix already builds for a bare
+  # `mix release` when no `:releases` key exists at all (an entry with no
+  # options is equivalent to `Mix.Release`'s own `infer_release/1` fallback),
+  # so `default_release: :sdd_orchestrator` above keeps the control-plane
+  # release's build and boot behavior unchanged.
+  #
+  # `:worker` (specs/36-local-worker-native-distribution) is a second,
+  # separate, explicitly-named release (`mix release worker`) for the
+  # native macOS `.app` assembled by `native/worker-app/build.sh`. Pointing
+  # `:rel_templates_path` at `rel/overlays/worker` scopes
+  # `rel/overlays/worker/env.sh.eex` to this release only, so only the
+  # worker release's `bin/worker start` sets
+  # `SDD_ORCHESTRATOR_RELEASE_MODE=worker` before the VM boots — the
+  # control-plane release's own (default) `rel/env.sh.eex` lookup, and its
+  # boot behavior, are untouched.
+  defp releases do
+    [
+      sdd_orchestrator: [],
+      worker: [
+        include_executables_for: [:unix],
+        rel_templates_path: "rel/overlays/worker"
+      ]
+    ]
+  end
 
   # Specifies your project dependencies.
   #
