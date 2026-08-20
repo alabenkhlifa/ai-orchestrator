@@ -39,6 +39,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // session (Task 11 owns what happens after the user acts on it).
     private var pendingUpdate: PendingUpdateArtifact?
 
+    // MARK: - Confirmed update install (Task 11, AC-13 / AC-14)
+
+    private var updateInstallCoordinator: UpdateInstallCoordinator?
+
+    // Set once `updateInstallCoordinator` hands off to the install helper
+    // and this app calls `NSApp.terminate(nil)` on itself -- checked at the
+    // top of `applicationShouldTerminate(_:)` so that termination skips the
+    // AC-05 "a run is in progress" warning: the active-run gate was already
+    // satisfied (immediately, or by waiting for a deferred run to finish)
+    // before the coordinator ever handed off to the installer, so re-asking
+    // here would be redundant, not safer.
+    private var isInstallingUpdate = false
+
+    // [AC-14] Re-checks run state on a short interval while an install is
+    // deferred (`UpdateInstallCoordinator.State.awaitingActiveRunToFinish`)
+    // -- a dedicated timer rather than piggybacking on
+    // `connectionPollTimer` (semantically unrelated: that one polls gateway
+    // connectivity and runs continuously once paired, this one only runs
+    // while an install is actually pending and stops as soon as it resolves)
+    // or `appcastCheckTimer` (a 24h interval, far too coarse for "resume an
+    // already-confirmed install promptly once the run finishes"). Only ever
+    // running while genuinely needed keeps this from becoming a third
+    // permanent background poll.
+    private var installPollTimer: Timer?
+    private let installPollInterval: TimeInterval = 15
+
     // MARK: - URL-scheme pairing handoff (Task 4, AC-07 / AC-08)
 
     private var pairingFlowController: PairingFlowController?
@@ -92,6 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setUpAppcastUpdateChecker()
         startAppcastChecking()
+
+        setUpUpdateInstallCoordinator()
     }
 
     // MARK: - Status item / menu
@@ -129,9 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // [Task 10, AC-12] Describes the verified, downloaded update — a
-        // menu-bar prompt, not an automatic install. Disabled/no action
-        // wired on purpose: Task 11 owns the "confirm and install" action
-        // this line will eventually trigger.
+        // menu-bar prompt, not an automatic install.
         if currentStatus == .updateAvailable, let pendingUpdate {
             let updateDetailItem = NSMenuItem(
                 title: "Version \(pendingUpdate.version) is available",
@@ -140,6 +166,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             updateDetailItem.isEnabled = false
             menu.addItem(updateDetailItem)
+
+            // [Task 11, AC-13/AC-14] The actionable confirm-and-install
+            // item this earlier line lacked. Its title/enabled state
+            // reflects `updateInstallCoordinator`'s own state so the
+            // operator sees the deferred-while-a-run-is-active case (AC-14)
+            // without needing to click again once the run finishes.
+            let installItem = NSMenuItem(
+                title: installMenuItemTitle,
+                action: #selector(installUpdate(_:)),
+                keyEquivalent: ""
+            )
+            switch updateInstallCoordinator?.state {
+            case .some(.awaitingActiveRunToFinish), .some(.installHandedOff):
+                installItem.isEnabled = false
+            default:
+                installItem.target = self
+            }
+            menu.addItem(installItem)
         }
 
         menu.addItem(.separator())
@@ -340,6 +384,117 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appcastUpdateChecker?.checkNow()
     }
 
+    // MARK: - Confirmed update install (Task 11, AC-13 / AC-14)
+
+    private var installMenuItemTitle: String {
+        switch updateInstallCoordinator?.state {
+        case .some(.awaitingActiveRunToFinish):
+            return "Install pending (waiting for run to finish)…"
+        case .some(.installHandedOff):
+            return "Installing…"
+        case .none, .some(.idle), .some(.aborted):
+            return "Install and Relaunch"
+        }
+    }
+
+    private func setUpUpdateInstallCoordinator() {
+        updateInstallCoordinator = UpdateInstallCoordinator(
+            commandRunner: commandRunner,
+            installExecutor: HelperScriptInstallExecutor(),
+            onStateChange: { [weak self] state in
+                DispatchQueue.main.async {
+                    self?.handleUpdateInstallStateChange(state)
+                }
+            },
+            log: { [weak self] message in
+                DispatchQueue.main.async {
+                    self?.logError("update install: \(message)")
+                }
+            }
+        )
+    }
+
+    /// [AC-13] The operator activated "Install and Relaunch". Mirrors
+    /// `applicationShouldTerminate(_:)`'s own AC-04/AC-05 shape exactly:
+    /// dispatch the blocking `RunStateQuerier.query` off the main thread,
+    /// then hop back to hand the result to the Core-side decision.
+    @objc private func installUpdate(_ sender: Any?) {
+        guard let pendingUpdate, let updateInstallCoordinator else { return }
+
+        let binaryPath = workerBinaryPath
+        let runner = commandRunner
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = RunStateQuerier.query(workerBinaryPath: binaryPath, runner: runner)
+
+            DispatchQueue.main.async {
+                guard self != nil else { return }
+                updateInstallCoordinator.confirmInstall(artifact: pendingUpdate, runStateResult: result)
+            }
+        }
+    }
+
+    private func handleUpdateInstallStateChange(_ state: UpdateInstallCoordinator.State) {
+        switch state {
+        case .idle:
+            break
+
+        case .awaitingActiveRunToFinish:
+            startInstallPollingIfNeeded()
+            rebuildMenu()
+
+        case .installHandedOff:
+            // [AC-13] The helper has actually started (confirmed by
+            // `HelperScriptInstallExecutor.beginInstall`'s own
+            // `Process.isRunning` check before this state is ever reached).
+            // Reuse the existing AC-04/AC-05 termination decision point
+            // instead of a second parallel quit path -- `isInstallingUpdate`
+            // tells `applicationShouldTerminate(_:)` to skip the redundant
+            // active-run warning, since this gate already passed.
+            stopInstallPolling()
+            isInstallingUpdate = true
+            NSApp.terminate(nil)
+
+        case .aborted(let reason):
+            stopInstallPolling()
+            logError("update install aborted: \(reason)")
+            rebuildMenu()
+        }
+    }
+
+    private func startInstallPollingIfNeeded() {
+        guard installPollTimer == nil else { return }
+
+        let timer = Timer(timeInterval: installPollInterval, repeats: true) { [weak self] _ in
+            self?.pollPendingInstall()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        installPollTimer = timer
+    }
+
+    private func stopInstallPolling() {
+        installPollTimer?.invalidate()
+        installPollTimer = nil
+    }
+
+    /// [AC-14] Re-checks run state while an install is deferred. Safe to
+    /// call unconditionally on every tick: `UpdateInstallCoordinator.runStateUpdated(_:)`
+    /// itself no-ops unless it is currently `.awaitingActiveRunToFinish`.
+    private func pollPendingInstall() {
+        guard let updateInstallCoordinator else { return }
+
+        let binaryPath = workerBinaryPath
+        let runner = commandRunner
+
+        DispatchQueue.global(qos: .utility).async {
+            let result = RunStateQuerier.query(workerBinaryPath: binaryPath, runner: runner)
+
+            DispatchQueue.main.async {
+                updateInstallCoordinator.runStateUpdated(result)
+            }
+        }
+    }
+
     // MARK: - Open Dashboard
 
     @objc private func openDashboard(_ sender: Any?) {
@@ -352,6 +507,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let workerProcessController, workerProcessController.isRunning else {
             return .terminateNow
+        }
+
+        // [Task 11] `updateInstallCoordinator` already satisfied the
+        // AC-13/AC-14 active-run gate -- immediately, or by waiting for a
+        // deferred run to reach a terminal state -- before ever handing off
+        // to the installer and calling `NSApp.terminate(nil)` on this app's
+        // own behalf. Re-querying and re-warning here would be redundant,
+        // not an extra safety check, so this path stops the embedded worker
+        // exactly like any other quit and skips straight to that.
+        if isInstallingUpdate {
+            stopEmbeddedWorkerAndReply()
+            return .terminateLater
         }
 
         let binaryPath = workerBinaryPath
