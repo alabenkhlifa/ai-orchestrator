@@ -83,7 +83,7 @@ Traceability:
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Wrap the already-verified worker runtime in a native macOS app bundle with the approved identity and window-less agent behavior.
-  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), embedded `mix release` build, build script.
+  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), the new `:worker` `mix release` target (boots only `SddOrchestrator.Worker.Supervisor`, excludes `Endpoint`/`Repo`/control-plane-only modules), build script.
   - Owns: AC-01, entity:WorkerAppRelease
   - Proof: A build script produces a `.app` whose `Info.plist` matches the approved contract (bundle identifier, `LSUIElement` true, `LSMinimumSystemVersion` at `specs/02-local-project-onboarding`'s approved floor), and the embedded release launches the existing worker supervisor locally when the app opens.
 
@@ -192,7 +192,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None.
+- Environment-blocked, not a design defect: `security find-identity -v -p codesigning` on the current implementation machine returns zero identities. Task 6 (signing) cannot complete its proof until the accountable owner's Apple Developer Program signing certificate is loaded into this build environment, which transitively blocks Task 7 (packages the signed app), Task 8 (notarization, also needs its own notary credentials), and Task 11 (depends on Task 8). Tasks 1–5, 9, and 10 do not depend on either credential and proceed independently.
 
 ## Progress Log
 
