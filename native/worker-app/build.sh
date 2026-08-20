@@ -227,3 +227,54 @@ hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING_DIR" \
 rm -rf "$DMG_STAGING_DIR"
 
 echo "==> Built $DMG_PATH"
+
+# [Task 9] Real Apple notarization + stapling, opt-in only via
+# SDD_ORCHESTRATOR_NOTARY_PROFILE (the name of an `xcrun notarytool`
+# keychain credential profile set up ahead of time with
+# `xcrun notarytool store-credentials`). When unset, the .dmg stays exactly
+# as un-notarized as before Task 9.
+#
+# Apple's notary service rejects unsigned submissions outright. If
+# NOTARY_PROFILE is set but SIGNING_IDENTITY was empty in this same run,
+# fail fast here rather than burning a real submission slot on a
+# guaranteed rejection.
+NOTARY_PROFILE="${SDD_ORCHESTRATOR_NOTARY_PROFILE:-}"
+
+if [ -n "$NOTARY_PROFILE" ]; then
+  if [ -z "$SIGNING_IDENTITY" ]; then
+    echo "error: SDD_ORCHESTRATOR_NOTARY_PROFILE is set but SDD_ORCHESTRATOR_SIGNING_IDENTITY is not -- notarization requires a signed artifact and Apple's notary service rejects unsigned submissions" >&2
+    exit 1
+  fi
+
+  echo "==> Submitting $DMG_PATH to Apple notarization (profile: $NOTARY_PROFILE); this blocks on Apple's turnaround"
+  NOTARY_LOG="$BUILD_DIR/notarytool-submit.log"
+  NOTARY_EXIT_FILE="$BUILD_DIR/.notarytool-exit"
+  rm -f "$NOTARY_LOG" "$NOTARY_EXIT_FILE"
+
+  # Capture notarytool's real exit status even though its output is piped
+  # through tee -- this shell has no `pipefail` (POSIX sh/dash), so the
+  # exit code is written to a side file by the command that actually ran
+  # notarytool, not read from the pipeline's last stage (tee).
+  { xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait; \
+    echo $? > "$NOTARY_EXIT_FILE"; } | tee "$NOTARY_LOG"
+  NOTARY_EXIT=$(cat "$NOTARY_EXIT_FILE")
+  rm -f "$NOTARY_EXIT_FILE"
+
+  SUBMISSION_ID=$(awk '/^ *id:/{print $2; exit}' "$NOTARY_LOG")
+
+  if [ "$NOTARY_EXIT" -ne 0 ] || ! grep -q "status: Accepted" "$NOTARY_LOG"; then
+    echo "error: Apple notarization did not succeed for $DMG_PATH (notarytool exit $NOTARY_EXIT)" >&2
+    if [ -n "$SUBMISSION_ID" ]; then
+      echo "==> Fetching notary log for rejected submission $SUBMISSION_ID" >&2
+      xcrun notarytool log "$SUBMISSION_ID" --keychain-profile "$NOTARY_PROFILE" >&2 || true
+    fi
+    exit 1
+  fi
+
+  echo "==> Notarization accepted (submission $SUBMISSION_ID); stapling ticket to $DMG_PATH"
+  xcrun stapler staple "$DMG_PATH"
+
+  echo "==> Notarized and stapled $DMG_PATH"
+else
+  echo "==> SDD_ORCHESTRATOR_NOTARY_PROFILE unset; leaving $DMG_PATH un-notarized"
+fi
