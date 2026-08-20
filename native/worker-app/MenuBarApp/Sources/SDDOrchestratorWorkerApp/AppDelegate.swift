@@ -202,7 +202,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             },
             httpPoster: URLSessionPairingHTTPPoster(),
-            setupCoordinator: UnimplementedPostPairingSetupCoordinator(),
+            setupCoordinator: PostPairingSetupCoordinatorImpl(
+                dashboardURL: dashboardURL,
+                workerBinaryPath: binaryPath,
+                commandRunner: runner,
+                folderPicker: NSOpenPanelWorkspaceFolderPicker(),
+                agentSelectionPrompt: AgentSelectionAlertPrompt()
+            ),
             onStateChange: { [weak self] state in
                 DispatchQueue.main.async {
                     self?.handlePairingFlowStateChange(state)
