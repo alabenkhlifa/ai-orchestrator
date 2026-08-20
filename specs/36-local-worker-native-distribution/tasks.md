@@ -150,9 +150,9 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 1
   - Purpose: Make the shipped artifact trustworthy under Gatekeeper using the operator's Apple Developer credentials.
-  - Owned surfaces: Deep code-signing of every embedded executable and the outer bundle, hardened runtime, minimal entitlements.
+  - Owned surfaces: Deep code-signing of every embedded executable and the outer bundle, hardened runtime, minimal entitlements (network client and the embedded runtime's own JIT execution — see design.md's "The Entitlement Set Includes JIT Execution, Not Networking Alone").
   - Owns: AC-09
-  - Proof: `codesign --verify --deep --strict` passes against the `.app` signed with the configured Developer ID identity, and the entitlement list contains nothing beyond outbound networking. Requires the configured signing identity in the build environment; treat as environment-blocked, not a design defect, if unavailable.
+  - Proof: `codesign --verify --deep --strict` passes against the `.app` signed with the configured Developer ID identity, the entitlement list contains nothing beyond outbound networking and JIT execution, and the signed, hardened-runtime `.app` genuinely boots and runs (not just passes static verification). Requires the configured signing identity in the build environment; treat as environment-blocked, not a design defect, if unavailable.
 
 - [ ] Task 8 — Package the signed `.app` into an installable `.dmg`.
   - Size: Standard
