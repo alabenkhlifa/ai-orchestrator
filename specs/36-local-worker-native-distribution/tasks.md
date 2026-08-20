@@ -23,13 +23,13 @@ Provides:
 
 - Slice size: Standard
 
-One coherent outcome — a real, signed, notarized, auto-updating macOS worker distribution — through one verification gate, eleven tasks total, and a longest `Depends on:` path of five tasks (for example `Task 1 → Task 2 → Task 4 → Task 5 → Task 11`, matched by `Task 1 → Task 2 → Task 9 → Task 10 → Task 11`), both within the standard limits.
+One coherent outcome — a real, signed, notarized, auto-updating macOS worker distribution — through one verification gate, eleven tasks total, and a longest `Depends on:` path of five tasks (for example `Task 1 → Task 6 → Task 7 → Task 8 → Task 11`, matched by `Task 1 → Task 2 → Task 4 → Task 5 → Task 11` and by `Task 1 → Task 2 → Task 9 → Task 10 → Task 11`), both within the standard limits.
 
 ## Task Size Gate
 
 - Every task is `Size: Standard`. Each delivers one independently provable outcome, owns at most three acceptance criteria and at most one data entity, and is expected to produce one task-boundary implementation commit.
 - The pairing-completion endpoint (Task 3) is separate from the native URL-scheme handoff (Task 4) because one is a control-plane authorization surface with its own Phoenix-controller proof and the other is native-app runtime behavior with a different failure mode — the same split `specs/33-local-worker-run-execution` already used between its gateway-credential exchange and its gateway client.
-- Signing (Task 7) and notarization (Task 8) are separate tasks because they use different credentials and fail independently: a signing misconfiguration surfaces before any call to Apple's notary service.
+- Signing (Task 6), DMG packaging (Task 7), and notarization (Task 8) are three separate tasks, in that order, because packaging must wrap an already-signed `.app` and notarization must submit an already-packaged `.dmg` — each stage fails independently and against a different tool (`codesign`, `hdiutil`/packaging, `xcrun notarytool`).
 - The appcast check (Task 9) is separate from the update-apply flow (Task 10) because one is a read-only periodic fetch and the other is a stateful install-and-relaunch action with its own active-run gate.
 - No task-size exception is used.
 
@@ -123,16 +123,7 @@ Traceability:
   - Owns: AC-06
   - Proof: LiveView tests assert the pairing screen renders the deep link carrying the current single-use code and falls back to install guidance instead of a silent no-op when the app is not installed.
 
-- [ ] Task 6 — Package the signed `.app` into an installable `.dmg`.
-  - Size: Standard
-  - Proof scope: Focused
-  - Depends on: Task 1
-  - Purpose: Give the operator the standard macOS drag-to-Applications install experience.
-  - Owned surfaces: DMG assembly (Applications shortcut, disk-image layout), disk-image build script.
-  - Owns: AC-02
-  - Proof: The build script produces a `.dmg` that mounts and presents the `.app` plus an Applications shortcut on a supported macOS version.
-
-- [ ] Task 7 — Apply real Developer ID signing.
+- [ ] Task 6 — Apply real Developer ID signing.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -141,10 +132,19 @@ Traceability:
   - Owns: AC-09
   - Proof: `codesign --verify --deep --strict` passes against the `.app` signed with the configured Developer ID identity, and the entitlement list contains nothing beyond outbound networking. Requires the configured signing identity in the build environment; treat as environment-blocked, not a design defect, if unavailable.
 
+- [ ] Task 7 — Package the signed `.app` into an installable `.dmg`.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 6
+  - Purpose: Give the operator the standard macOS drag-to-Applications install experience, packaging the app only after it is signed so the disk image never carries an unsigned binary.
+  - Owned surfaces: DMG assembly (Applications shortcut, disk-image layout), disk-image build script.
+  - Owns: AC-02
+  - Proof: The build script produces a `.dmg` that mounts and presents the signed `.app` plus an Applications shortcut on a supported macOS version.
+
 - [ ] Task 8 — Notarize and staple the release artifact.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 7, Task 6
+  - Depends on: Task 7
   - Purpose: Satisfy Gatekeeper for an artifact downloaded outside this development machine.
   - Owned surfaces: Notary submission, ticket polling, stapling, local Gatekeeper verification.
   - Owns: AC-10
