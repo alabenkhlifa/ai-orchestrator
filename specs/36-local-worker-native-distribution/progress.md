@@ -1,5 +1,13 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 3 implemented and verified: network-facing pairing-completion endpoint
+
+- Completed: `SddOrchestratorWeb.WorkerPairingController` (`POST /worker_pairings`, unauthenticated `:api` pipeline) wraps `Pairing.complete_pairing/2` unchanged for a genuinely remote worker with no local database. Generic `403 {"error": "refused"}` for every failure mode (expired, already-used, unknown, malformed code, malformed request), proved identical byte-for-byte across failure reasons. `AC-17` and `AC-18` both proved.
+- Remaining: Tasks 1, 2, 4–11 unimplemented.
+- Failed checks: None.
+- Proof receipts: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator_web/controllers/worker_pairing_controller_test.exs` — exit `0` (11 passed). Independently re-run by the main thread with the same result. `mix format --check-formatted`, `mix credo`, and `mix compile --warnings-as-errors` scoped to the task's 3 files — all exit `0`.
+- Spec updates: None — implementation matched the approved task definition exactly.
+
 ### 2026-08-20 — Implementation preflight found a missing pairing-completion transport; task plan updated before any code was written
 
 - Completed: Before dispatching implementation, confirmed `Mix.Tasks.Worker.Pair` completes pairing via a direct local Ecto call to `Pairing.complete_pairing/2`, viable only because the developer-run worker and the control plane share one repository checkout — no network-facing endpoint exists anywhere for a genuinely separate worker process to complete pairing. Ran `update-spec` to add Task 3 (a new network-facing pairing-completion endpoint consuming `Pairing.complete_pairing/2` unchanged, mirroring the precedent `specs/33-local-worker-run-execution` already set for its own gateway-credential exchange), renumbered the remaining tasks (11 total, longest path 5), added AC-17/AC-18 and a matching business rule, and updated `design.md`'s Proposed Approach, Components Affected, Data and Access Boundaries, Interfaces, Decisions, and Risks accordingly. No product-facing decision changed; the accepted outcome and every existing acceptance criterion are unchanged.

@@ -96,7 +96,7 @@ Traceability:
   - Owns: AC-03, AC-04, AC-05
   - Proof: Shell tests drive each status transition and confirm Quit stops the process immediately when idle, and shows a confirmation warning instead of stopping immediately when a run is active, using the existing run-state query.
 
-- [ ] Task 3 — Build the network-facing pairing-completion endpoint.
+- [x] Task 3 — Build the network-facing pairing-completion endpoint.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -104,6 +104,7 @@ Traceability:
   - Owned surfaces: A control-plane endpoint accepting a single-use pairing code, calling `Pairing.complete_pairing/2` unchanged, returning the issued credential and worker identity or a generic refusal that discloses no specific reason.
   - Owns: AC-17, AC-18
   - Proof: Endpoint tests cover a valid unexpired unused code (returns the same credential shape the existing local call already returns), and expired, already-used, unknown, and malformed codes (each refused generically, no credential issued, no reason disclosed in the response).
+  - Delivered: `SddOrchestratorWeb.WorkerPairingController` at `POST /worker_pairings` (unauthenticated `:api` pipeline, deliberately not under `/worker/...` since that prefix implies the already-authenticated `:worker` pipeline). Accepts `code` plus the caller's own `os_family`/`os_major`/`protocol_version`/`app_version` as request parameters — a real remote worker reports these about itself; none are derived from this application's own build or from `WorkerDiscovery.compatibility_policy/0` (that function is the control plane's supported-values policy, not any caller's real environment). Calls `Pairing.complete_pairing/2` unchanged. Every refusal (expired, already-used, unknown, malformed code, malformed request, badly-typed optional attribute) returns identical `403 {"error": "refused"}` with `cache-control: no-store`, proved by a cross-check test asserting expired/used/unknown responses are byte-identical. `pairing.ex` and `worker.pair.ex` untouched.
 
 - [ ] Task 4 — Implement the URL-scheme pairing handoff.
   - Size: Standard
