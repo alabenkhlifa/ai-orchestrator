@@ -1,0 +1,187 @@
+# Local Worker Native Distribution Tasks
+
+## Status
+
+Not Started
+
+## Active Slice
+
+Package the already-`Verified` worker runtime (`specs/33-local-worker-run-execution`) into a Developer ID–signed, notarized macOS `.app`/`.dmg` with a menu-bar status shell, a deep-link-only pairing handoff from the dashboard, and a prompted, signature-verified auto-update flow — closing the "signed native worker packaging and installation" item `specs/02-local-project-onboarding` and `specs/33-local-worker-run-execution` both list as release-gated.
+
+## Cross-Specification Dependencies
+
+Requires:
+
+- `capability:local-worker-run-execution` — provider `specs/33-local-worker-run-execution#Task 12` — required before `Task 1`.
+- `capability:workspace-bound-local-worker-authorization` — provider `specs/02-local-project-onboarding#Task 3` — required before `Task 3`.
+
+Provides:
+
+- `capability:signed-macos-worker-distribution` — ready after `Task 10`.
+
+## Slice Size Gate
+
+- Slice size: Standard
+
+One coherent outcome — a real, signed, notarized, auto-updating macOS worker distribution — through one verification gate, ten tasks total, and a longest `Depends on:` path of five tasks (`Task 1 → Task 2 → Task 3 → Task 4 → Task 10`, matched by `Task 1 → Task 2 → Task 8 → Task 9 → Task 10`), both within the standard limits.
+
+## Task Size Gate
+
+- Every task is `Size: Standard`. Each delivers one independently provable outcome, owns at most three acceptance criteria and at most one data entity, and is expected to produce one task-boundary implementation commit.
+- Signing (Task 6) and notarization (Task 7) are separate tasks because they use different credentials and fail independently: a signing misconfiguration surfaces before any call to Apple's notary service.
+- The appcast check (Task 8) is separate from the update-apply flow (Task 9) because one is a read-only periodic fetch and the other is a stateful install-and-relaunch action with its own active-run gate.
+- No task-size exception is used.
+
+## Proof Scope Gate
+
+- Applies to: all tasks.
+
+## Implementation Boundary
+
+Included:
+
+- A native macOS menu-bar shell wrapping the existing worker release: process lifecycle, status UI, Open Dashboard, and Quit with an active-run-aware warning.
+- App-bundle assembly, `.dmg` packaging, Developer ID signing, and Apple notarization/stapling of the shipped artifact.
+- A registered custom URL scheme that receives a pairing payload and invokes the existing pairing exchange unchanged.
+- The dashboard's existing pairing screen (`specs/02-local-project-onboarding`), extended with an "Open in App" deep-link action and an install-guidance fallback.
+- A signed appcast, a periodic background check, and a confirm-before-install update-apply flow that defers while a run is active and preserves the stored credential across the upgrade.
+
+Excluded:
+
+- The worker runtime's execution behavior: pairing exchange internals, gateway client, command handling, agent adapters, and evidence upload, all already delivered and `Verified` by `specs/33-local-worker-run-execution`. This slice only launches, supervises, and packages that runtime.
+- `specs/02-local-project-onboarding`'s pairing contract, credential custody, and connection-status logic; this slice only adds a UI entry point that constructs an existing pairing code into a deep link.
+- Launch-at-login or any automatic start at boot or login.
+- Manual pairing-code entry inside the app.
+- Windows and Linux packaging.
+- Production hosting, domain, and CDN for the `.dmg` download and the appcast feed.
+- Revoking or rotating a pairing credential from the menu bar.
+
+Deferred after this slice:
+
+- Windows worker packaging, followed by Linux worker packaging, matching `specs/02-local-project-onboarding`'s existing "macOS First Worker Slice" sequencing decision.
+
+Release gates:
+
+- A live install-and-pair proof on a macOS machine other than the development machine, with no prior developer configuration, confirming Gatekeeper raises no warning and the full non-technical journey completes for a genuinely fresh operator.
+- Production hosting location, domain, and transfer/security posture for the signed `.dmg` download and the appcast feed.
+- Accountable privacy and security review of the update-check outbound flow and the custom-URL-scheme pairing handoff, covering the same credential-custody and data-minimization boundary `specs/02-local-project-onboarding` and `specs/33-local-worker-run-execution` already committed to.
+- Continued operational custody of the Apple Developer signing identity and notary credentials for future releases.
+
+Traceability:
+
+- Deferred criteria: none
+- Release criteria: none
+- Deferred entities: none
+- Release entities: none
+
+## Tasks
+
+- [ ] Task 1 — Assemble the signed-ready `.app` bundle around the existing worker release.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: none
+  - Purpose: Wrap the already-verified worker runtime in a native macOS app bundle with the approved identity and window-less agent behavior.
+  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), embedded `mix release` build, build script.
+  - Owns: AC-01, entity:WorkerAppRelease
+  - Proof: A build script produces a `.app` whose `Info.plist` matches the approved contract (bundle identifier, `LSUIElement` true, `LSMinimumSystemVersion` at `specs/02-local-project-onboarding`'s approved floor), and the embedded release launches the existing worker supervisor locally when the app opens.
+
+- [ ] Task 2 — Build the menu-bar status shell and quit lifecycle.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 1
+  - Purpose: Give the operator the app's only native UI surface and a safe way to stop the worker.
+  - Owned surfaces: Menu-bar status item (not-paired, pairing, connected, disconnected, update-available states), Open Dashboard action, Quit action, active-run check consulted before quitting.
+  - Owns: AC-03, AC-04, AC-05
+  - Proof: Shell tests drive each status transition and confirm Quit stops the process immediately when idle, and shows a confirmation warning instead of stopping immediately when a run is active, using the existing run-state query.
+
+- [ ] Task 3 — Implement the URL-scheme pairing handoff.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 2
+  - Purpose: Let the app complete pairing from a dashboard-issued deep link without any typed input.
+  - Owned surfaces: Custom URL-scheme registration and payload parsing, invocation of the existing pairing exchange, typed success/failure reporting into the menu bar.
+  - Owns: AC-07, AC-08
+  - Proof: Contract tests feed valid, expired, already-used, and malformed `sddworker://pair` payloads and assert the existing pairing exchange is invoked only for the valid case, a credential is stored only on success, and every case ends in a defined menu-bar state without a crash.
+
+- [ ] Task 4 — Add the dashboard's "Open in App" deep-link action.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 3
+  - Purpose: Let the project owner hand a pairing code to the installed app with one click instead of a terminal or manual entry.
+  - Owned surfaces: `specs/02-local-project-onboarding`'s existing pairing-code screen, extended with the deep-link action and an install-guidance fallback when the scheme cannot be resolved.
+  - Owns: AC-06
+  - Proof: LiveView tests assert the pairing screen renders the deep link carrying the current single-use code and falls back to install guidance instead of a silent no-op when the app is not installed.
+
+- [ ] Task 5 — Package the signed `.app` into an installable `.dmg`.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 1
+  - Purpose: Give the operator the standard macOS drag-to-Applications install experience.
+  - Owned surfaces: DMG assembly (Applications shortcut, disk-image layout), disk-image build script.
+  - Owns: AC-02
+  - Proof: The build script produces a `.dmg` that mounts and presents the `.app` plus an Applications shortcut on a supported macOS version.
+
+- [ ] Task 6 — Apply real Developer ID signing.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 1
+  - Purpose: Make the shipped artifact trustworthy under Gatekeeper using the operator's Apple Developer credentials.
+  - Owned surfaces: Deep code-signing of every embedded executable and the outer bundle, hardened runtime, minimal entitlements.
+  - Owns: AC-09
+  - Proof: `codesign --verify --deep --strict` passes against the `.app` signed with the configured Developer ID identity, and the entitlement list contains nothing beyond outbound networking. Requires the configured signing identity in the build environment; treat as environment-blocked, not a design defect, if unavailable.
+
+- [ ] Task 7 — Notarize and staple the release artifact.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 6, Task 5
+  - Purpose: Satisfy Gatekeeper for an artifact downloaded outside this development machine.
+  - Owned surfaces: Notary submission, ticket polling, stapling, local Gatekeeper verification.
+  - Owns: AC-10
+  - Proof: `xcrun notarytool submit` succeeds and the returned ticket is stapled to the `.dmg`; `spctl --assess --type open` accepts the stapled artifact with no warning. Proof latency depends on Apple's notary service turnaround and does not change this task's scope. Requires the configured notary credentials in the build environment; treat as environment-blocked, not a design defect, if unavailable.
+
+- [ ] Task 8 — Implement the periodic signed-appcast check.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 2
+  - Purpose: Let a running app learn about a newer signed release without sending identifying data.
+  - Owned surfaces: Appcast schema (version, minimum OS, download descriptor, signature), periodic background fetch, signature verification, menu-bar update-available prompt.
+  - Owns: AC-11, AC-12, AC-15
+  - Proof: Fixture-appcast tests cover no-update, a valid newer version (prompts, does not auto-install), and a tampered or invalid signature (rejected); a request-capture test asserts only the app version and coarse OS descriptors are sent.
+
+- [ ] Task 9 — Implement the confirmed update-apply flow.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 8
+  - Purpose: Let the operator move to a newer version without losing pairing or interrupting an active run.
+  - Owned surfaces: Download and signature/notarization verification of the offered build, active-run gate reusing Task 2's run-state check, in-place install, relaunch, credential preservation across reinstall.
+  - Owns: AC-13, AC-14
+  - Proof: Tests confirm a confirmation while idle installs and relaunches on the new version with the stored credential unchanged, and a confirmation while a run is active defers the install until the run reaches a terminal state rather than applying it immediately.
+
+- [ ] Task 10 — End-to-end integration proof.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 4, Task 7, Task 9
+  - Purpose: Prove the packaged pieces work together as one operator journey using this slice's own signed, stapled artifact.
+  - Owned surfaces: `capability:signed-macos-worker-distribution`; otherwise integrates Tasks 1–9 into one observed scenario without introducing new surfaces.
+  - Owns: AC-16
+  - Proof: Mounting this slice's own signed, stapled `.dmg`, dragging the app to Applications, launching it, completing pairing through the dashboard's deep-link action, observing `Connected` in both the menu bar and the dashboard, then quitting to observe `Unavailable` — all without a terminal command.
+
+## Verification Gate
+
+- [ ] Active-slice acceptance criteria pass.
+- [ ] The build, signing, and notarization pipeline produces a stapled `.dmg` that passes Gatekeeper assessment with no warning.
+- [ ] Menu-bar status transitions and the active-run-aware quit behavior pass.
+- [ ] The URL-scheme pairing handoff succeeds for a valid code and fails safely for expired, reused, and malformed payloads.
+- [ ] The dashboard's deep-link action and install-guidance fallback render correctly on the existing pairing screen.
+- [ ] The appcast check sends only the approved coarse fields and never a device, workspace, or credential identifier.
+- [ ] A confirmed update installs and relaunches while preserving the stored credential, and defers correctly while a run is active.
+- [ ] The end-to-end integration scenario passes with zero terminal commands.
+- [ ] Build, formatting, lint, and static checks pass for every new module.
+
+## Blocked Decisions
+
+- None.
+
+## Progress Log
+
+See [progress.md](progress.md).
