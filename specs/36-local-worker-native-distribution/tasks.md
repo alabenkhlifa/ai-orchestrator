@@ -6,7 +6,7 @@ Not Started
 
 ## Active Slice
 
-Package the already-`Verified` worker runtime (`specs/33-local-worker-run-execution`) into a Developer ID–signed, notarized macOS `.app`/`.dmg` with a menu-bar status shell, a network-facing pairing-completion endpoint, a deep-link-only pairing handoff from the dashboard, and a prompted, signature-verified auto-update flow — closing the "signed native worker packaging and installation" item `specs/02-local-project-onboarding` and `specs/33-local-worker-run-execution` both list as release-gated.
+Package the already-`Verified` worker runtime (`specs/33-local-worker-run-execution`) into a Developer ID–signed, notarized macOS `.app`/`.dmg` with a menu-bar status shell, a network-facing pairing-completion endpoint, a deep-link-only pairing handoff from the dashboard, graphical post-pairing workspace and agent setup, and a prompted, signature-verified auto-update flow — closing the "signed native worker packaging and installation" item `specs/02-local-project-onboarding` and `specs/33-local-worker-run-execution` both list as release-gated.
 
 ## Cross-Specification Dependencies
 
@@ -17,20 +17,21 @@ Requires:
 
 Provides:
 
-- `capability:signed-macos-worker-distribution` — ready after `Task 11`.
+- `capability:signed-macos-worker-distribution` — ready after `Task 12`.
 
 ## Slice Size Gate
 
 - Slice size: Standard
 
-One coherent outcome — a real, signed, notarized, auto-updating macOS worker distribution — through one verification gate, eleven tasks total, and a longest `Depends on:` path of five tasks (for example `Task 1 → Task 6 → Task 7 → Task 8 → Task 11`, matched by `Task 1 → Task 2 → Task 4 → Task 5 → Task 11` and by `Task 1 → Task 2 → Task 9 → Task 10 → Task 11`), both within the standard limits.
+One coherent outcome — a real, signed, notarized, auto-updating macOS worker distribution — through one verification gate, twelve tasks total (at the standard limit), and a longest `Depends on:` path of five tasks (for example `Task 1 → Task 7 → Task 8 → Task 9 → Task 12`, matched by `Task 1 → Task 2 → Task 4 → Task 5 → Task 12` and by `Task 1 → Task 2 → Task 10 → Task 11 → Task 12`), both within the standard limits. Task count sits at the ceiling because post-pairing workspace/agent setup (Task 5) was found during implementation preflight to be a genuinely separate, independently provable outcome from the credential exchange (Task 4) — see Task 5's purpose. Any further growth would need a slice split, not a larger task.
 
 ## Task Size Gate
 
 - Every task is `Size: Standard`. Each delivers one independently provable outcome, owns at most three acceptance criteria and at most one data entity, and is expected to produce one task-boundary implementation commit.
 - The pairing-completion endpoint (Task 3) is separate from the native URL-scheme handoff (Task 4) because one is a control-plane authorization surface with its own Phoenix-controller proof and the other is native-app runtime behavior with a different failure mode — the same split `specs/33-local-worker-run-execution` already used between its gateway-credential exchange and its gateway client.
-- Signing (Task 6), DMG packaging (Task 7), and notarization (Task 8) are three separate tasks, in that order, because packaging must wrap an already-signed `.app` and notarization must submit an already-packaged `.dmg` — each stage fails independently and against a different tool (`codesign`, `hdiutil`/packaging, `xcrun notarytool`).
-- The appcast check (Task 9) is separate from the update-apply flow (Task 10) because one is a read-only periodic fetch and the other is a stateful install-and-relaunch action with its own active-run gate.
+- Post-pairing workspace and agent setup (Task 5) is separate from the URL-scheme pairing handoff (Task 4) because `Configuration` requires a repository path and a coding-agent executable that pairing alone never provides — a distinct native-UI surface (folder picker, auto-detection) and a distinct failure mode (setup can fail or be abandoned after a credential already exists) from the credential exchange itself.
+- Signing (Task 7), DMG packaging (Task 8), and notarization (Task 9) are three separate tasks, in that order, because packaging must wrap an already-signed `.app` and notarization must submit an already-packaged `.dmg` — each stage fails independently and against a different tool (`codesign`, `hdiutil`/packaging, `xcrun notarytool`).
+- The appcast check (Task 10) is separate from the update-apply flow (Task 11) because one is a read-only periodic fetch and the other is a stateful install-and-relaunch action with its own active-run gate.
 - No task-size exception is used.
 
 ## Proof Scope Gate
@@ -43,6 +44,7 @@ Included:
 
 - A native macOS menu-bar shell wrapping the existing worker release: process lifecycle, status UI, Open Dashboard, and Quit with an active-run-aware warning.
 - A network-facing pairing-completion endpoint on the control plane, consuming `specs/02-local-project-onboarding`'s existing `Pairing.complete_pairing/2` unchanged.
+- Post-pairing setup: a native folder picker for the repository workspace and coding-agent auto-detection with manual fallback, finishing and storing `Configuration` and starting the worker runtime without a relaunch.
 - App-bundle assembly, `.dmg` packaging, Developer ID signing, and Apple notarization/stapling of the shipped artifact.
 - A registered custom URL scheme that receives a pairing payload and submits it to the new pairing-completion endpoint.
 - The dashboard's existing pairing screen (`specs/02-local-project-onboarding`), extended with an "Open in App" deep-link action and an install-guidance fallback.
@@ -52,6 +54,7 @@ Excluded:
 
 - The worker runtime's execution behavior: gateway client, command handling, agent adapters, and evidence upload, all already delivered and `Verified` by `specs/33-local-worker-run-execution`. This slice only launches, supervises, and packages that runtime.
 - `specs/02-local-project-onboarding`'s pairing contract, credential custody, and connection-status logic; this slice only adds a network transport and a UI entry point that call into that existing, unchanged contract.
+- `specs/33-local-worker-run-execution`'s `Configuration` schema; this slice only adds the graphical mechanism that populates its existing required fields.
 - Launch-at-login or any automatic start at boot or login.
 - Manual pairing-code entry inside the app.
 - Windows and Linux packaging.
@@ -83,10 +86,10 @@ Traceability:
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Wrap the already-verified worker runtime in a native macOS app bundle with the approved identity and window-less agent behavior.
-  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), the new `:worker` `mix release` target and its runtime boot-mode gate (never starts `Endpoint`, `Repo`, or any control-plane process). Because `SddOrchestrator.Worker.Supervisor.start_link/1` refuses to start at all when no configuration is paired yet (`{:error, :not_paired}`), the worker-mode boot path must tolerate that: it starts a minimal always-up host (for example a `DynamicSupervisor`) rather than requiring `Worker.Supervisor` as a required static child, so the release boots successfully whether or not pairing has happened yet. Starting `Worker.Supervisor` for the first time once pairing succeeds is Task 4's job, not this task's.
+  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), the new `:worker` `mix release` target and its runtime boot-mode gate (never starts `Endpoint`, `Repo`, or any control-plane process). Because `SddOrchestrator.Worker.Supervisor.start_link/1` refuses to start at all when no configuration is paired yet (`{:error, :not_paired}`), the worker-mode boot path must tolerate that: it starts a minimal always-up host (for example a `DynamicSupervisor`) rather than requiring `Worker.Supervisor` as a required static child, so the release boots successfully whether or not pairing has happened yet. Starting `Worker.Supervisor` for the first time once pairing succeeds is Task 5's job, not this task's.
   - Owns: AC-01, entity:WorkerAppRelease
   - Proof: A build script produces a `.app` whose `Info.plist` matches the approved contract (bundle identifier, `LSUIElement` true, `LSMinimumSystemVersion` at `specs/02-local-project-onboarding`'s approved floor). The embedded release boots successfully in worker mode both with no stored configuration present (starts the always-up host, starts no control-plane process, does not crash) and with a configuration already present (also starts `Worker.Supervisor` under that host).
-  - Delivered: `mix.exs` gains a `:worker` release (`rel_templates_path: "rel/overlays/worker"`) alongside the unchanged default `sdd_orchestrator` release (`default_release: :sdd_orchestrator` preserves the bare `MIX_ENV=prod mix release` command every other slice's verification gate already uses — confirmed unchanged: still resolves to `sdd_orchestrator` and still raises on missing `DATABASE_URL`). `rel/overlays/worker/env.sh.eex` sets `SDD_ORCHESTRATOR_RELEASE_MODE=worker` before boot, scoped to that release only. `SddOrchestrator.Application.boot_mode/0` reads that var; worker mode starts only `SddOrchestrator.Worker.Host` (a `DynamicSupervisor`, `worker_host_name/0`) and never `Endpoint`/`Repo`/`Vault`/any control-plane process — confirmed by real RPC into a running built release (`Supervisor.which_children/1` shows only the host; `Process.whereis/1` for `Endpoint`/`Repo` both `nil`). Since `Worker.Supervisor.start_link/1` refuses to start with no paired configuration, it is never a static child; `attach_paired_worker/1` starts it under the host at boot only when a configuration already exists (relaunch case), and Task 4 will call the same `DynamicSupervisor.start_child(SddOrchestrator.Application.worker_host_name(), SddOrchestrator.Worker.Supervisor)` after a first-time pairing succeeds. `native/worker-app/build.sh` assembles `SDD Orchestrator Worker.app` (`Contents/Resources/release` = the built release verbatim; `Contents/MacOS/sdd-orchestrator-worker-launcher` = a placeholder exec-the-release-start-script launcher that Task 2 replaces with the real Swift menu-bar shell). `Info.plist` verified via `plutil -p`: `CFBundleIdentifier=com.sddorchestrator.worker`, `LSMinimumSystemVersion=14.0`, `LSUIElement=true`.
+  - Delivered: `mix.exs` gains a `:worker` release (`rel_templates_path: "rel/overlays/worker"`) alongside the unchanged default `sdd_orchestrator` release (`default_release: :sdd_orchestrator` preserves the bare `MIX_ENV=prod mix release` command every other slice's verification gate already uses — confirmed unchanged: still resolves to `sdd_orchestrator` and still raises on missing `DATABASE_URL`). `rel/overlays/worker/env.sh.eex` sets `SDD_ORCHESTRATOR_RELEASE_MODE=worker` before boot, scoped to that release only. `SddOrchestrator.Application.boot_mode/0` reads that var; worker mode starts only `SddOrchestrator.Worker.Host` (a `DynamicSupervisor`, `worker_host_name/0`) and never `Endpoint`/`Repo`/`Vault`/any control-plane process — confirmed by real RPC into a running built release (`Supervisor.which_children/1` shows only the host; `Process.whereis/1` for `Endpoint`/`Repo` both `nil`). Since `Worker.Supervisor.start_link/1` refuses to start with no paired configuration, it is never a static child; `attach_paired_worker/1` starts it under the host at boot only when a configuration already exists (relaunch case), and Task 5 will call the same `DynamicSupervisor.start_child(SddOrchestrator.Application.worker_host_name(), SddOrchestrator.Worker.Supervisor)` after post-pairing setup finishes. `native/worker-app/build.sh` assembles `SDD Orchestrator Worker.app` (`Contents/Resources/release` = the built release verbatim; `Contents/MacOS/sdd-orchestrator-worker-launcher` = a placeholder exec-the-release-start-script launcher that Task 2 replaces with the real Swift menu-bar shell). `Info.plist` verified via `plutil -p`: `CFBundleIdentifier=com.sddorchestrator.worker`, `LSMinimumSystemVersion=14.0`, `LSUIElement=true`.
 
 - [x] Task 2 — Build the menu-bar status shell and quit lifecycle.
   - Size: Standard
@@ -96,7 +99,7 @@ Traceability:
   - Owned surfaces: Menu-bar status item (not-paired, pairing, connected, disconnected, update-available states), Open Dashboard action, Quit action, active-run check consulted before quitting.
   - Owns: AC-03, AC-04, AC-05
   - Proof: Shell tests drive each status transition and confirm Quit stops the process immediately when idle, and shows a confirmation warning instead of stopping immediately when a run is active, using the existing run-state query.
-  - Delivered: `native/worker-app/MenuBarApp` (Swift Package: a testable `SDDOrchestratorWorkerCore` library + a thin `SDDOrchestratorWorkerApp` AppKit executable) replaces Task 1's placeholder launcher. `AppDelegate` starts/supervises the embedded release, shows an `NSStatusItem` (no Dock icon, per Task 1's `LSUIElement`), and routes every termination path through `applicationShouldTerminate` (`.terminateLater` + async decision), so AC-04/AC-05 apply regardless of what triggers quitting. Active-run detection queries the already-running release over `bin/worker rpc` calling `RunState.load/1` (read-only); a query failure fails safe to warning. `SddOrchestrator.Worker.ConnectionStatus` (new, `:persistent_term`-backed) lets `GatewayConnection`'s existing `handle_connect/1`/`handle_disconnect/2` report status as a side effect only — no existing control flow changed, confirmed by its own pre-existing test file still passing unmodified. "Open Dashboard" reads a `SDDOrchestratorDashboardURL` Info.plist key (default `http://localhost:4000` — the real hosted URL is this spec's own release-gate item). Only not-paired is functionally wired; paired-connecting/connected/disconnected/update-available exist as real enum cases with placeholder UI for Tasks 4/9/10 to drive.
+  - Delivered: `native/worker-app/MenuBarApp` (Swift Package: a testable `SDDOrchestratorWorkerCore` library + a thin `SDDOrchestratorWorkerApp` AppKit executable) replaces Task 1's placeholder launcher. `AppDelegate` starts/supervises the embedded release, shows an `NSStatusItem` (no Dock icon, per Task 1's `LSUIElement`), and routes every termination path through `applicationShouldTerminate` (`.terminateLater` + async decision), so AC-04/AC-05 apply regardless of what triggers quitting. Active-run detection queries the already-running release over `bin/worker rpc` calling `RunState.load/1` (read-only); a query failure fails safe to warning. `SddOrchestrator.Worker.ConnectionStatus` (new, `:persistent_term`-backed) lets `GatewayConnection`'s existing `handle_connect/1`/`handle_disconnect/2` report status as a side effect only — no existing control flow changed, confirmed by its own pre-existing test file still passing unmodified. "Open Dashboard" reads a `SDDOrchestratorDashboardURL` Info.plist key (default `http://localhost:4000` — the real hosted URL is this spec's own release-gate item). Only not-paired is functionally wired; paired-connecting/connected/disconnected/update-available exist as real enum cases with placeholder UI for Tasks 5/10/11 to drive.
   - Verified beyond the sub-agent's own report: main thread independently built (`swift build`, `swift test` — 39/39) and ran the real assembled `.app` end to end — launched with no configuration present, confirmed via accessibility that only "Open Dashboard"/"Quit" are offered; quit with no run active stopped both the launcher and the embedded BEAM process immediately; with a real (non-fake, written via the release's own `RunState.store/2`) active run-state entry, Quit showed the exact literal alert "A run is in progress.", Cancel left both processes running, and Quit Anyway stopped them — all three scenarios driven through real Apple Events, not simulated.
 
 - [x] Task 3 — Build the network-facing pairing-completion endpoint.
@@ -113,21 +116,30 @@ Traceability:
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2, Task 3
-  - Purpose: Let the app complete pairing from a dashboard-issued deep link without any typed input.
-  - Owned surfaces: Custom URL-scheme registration and payload parsing, submission to Task 3's pairing-completion endpoint, typed success/failure reporting into the menu bar. On success, starts `SddOrchestrator.Worker.Supervisor` for the first time under Task 1's always-up host (the release was booted without it, since pairing had not happened yet) rather than requiring the app to relaunch.
+  - Purpose: Let the app obtain a credential from a dashboard-issued deep link without any typed input.
+  - Owned surfaces: Custom URL-scheme registration and payload parsing (pairing code and project identifier), submission to Task 3's pairing-completion endpoint, typed success/failure reporting into the menu bar ("Paired, setting up…" on success). Does not itself store a complete `Configuration` or start the worker runtime — pairing alone does not provide a repository path or coding-agent executable; handing the issued credential and worker identity to Task 5's post-pairing setup is this task's terminal step.
   - Owns: AC-07, AC-08
-  - Proof: Contract tests feed valid, expired, already-used, and malformed `sddworker://pair` payloads and assert Task 3's endpoint is called only for the valid case, a credential is stored only on success and `Worker.Supervisor` is started under Task 1's host without a relaunch, and every case ends in a defined menu-bar state without a crash.
+  - Proof: Contract tests feed valid, expired, already-used, and malformed `sddworker://pair` payloads and assert Task 3's endpoint is called only for the valid case, the issued credential and worker identity are handed to post-pairing setup only on success, and every case ends in a defined menu-bar state without a crash.
 
-- [ ] Task 5 — Add the dashboard's "Open in App" deep-link action.
+- [ ] Task 5 — Implement post-pairing workspace and coding-agent setup.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 4
+  - Purpose: Finish what pairing alone cannot: `Configuration` requires a repository path and a coding-agent executable, and a real non-technical operator cannot type either.
+  - Owned surfaces: Native folder picker (`NSOpenPanel`) for the repository workspace; coding-agent auto-detection (checking common install paths and `which`) with a manual-entry fallback only when detection finds none; construction and storage of the complete `Configuration` (combining Task 4's credential/worker identity with the resolved workspace and agent); starting `SddOrchestrator.Worker.Supervisor` for the first time under Task 1's always-up host, without requiring the app to relaunch.
+  - Owns: AC-19, AC-20, AC-21
+  - Proof: UI-logic tests cover the folder-picker outcome feeding `workspace_root`, auto-detection succeeding (no manual field shown) and failing (manual field required and accepted), and the finalize step storing a valid `Configuration` and starting `Worker.Supervisor` under Task 1's host exactly once, verified against `Configuration.load/1` and the host's child count.
+
+- [ ] Task 6 — Add the dashboard's "Open in App" deep-link action.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4
   - Purpose: Let the project owner hand a pairing code to the installed app with one click instead of a terminal or manual entry.
-  - Owned surfaces: `specs/02-local-project-onboarding`'s existing pairing-code screen, extended with the deep-link action and an install-guidance fallback when the scheme cannot be resolved.
+  - Owned surfaces: `specs/02-local-project-onboarding`'s existing pairing-code screen, extended with the deep-link action (carrying the code and the project identifier) and an install-guidance fallback when the scheme cannot be resolved.
   - Owns: AC-06
-  - Proof: LiveView tests assert the pairing screen renders the deep link carrying the current single-use code and falls back to install guidance instead of a silent no-op when the app is not installed.
+  - Proof: LiveView tests assert the pairing screen renders the deep link carrying the current single-use code and the project identifier, and falls back to install guidance instead of a silent no-op when the app is not installed.
 
-- [ ] Task 6 — Apply real Developer ID signing.
+- [ ] Task 7 — Apply real Developer ID signing.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -136,25 +148,25 @@ Traceability:
   - Owns: AC-09
   - Proof: `codesign --verify --deep --strict` passes against the `.app` signed with the configured Developer ID identity, and the entitlement list contains nothing beyond outbound networking. Requires the configured signing identity in the build environment; treat as environment-blocked, not a design defect, if unavailable.
 
-- [ ] Task 7 — Package the signed `.app` into an installable `.dmg`.
+- [ ] Task 8 — Package the signed `.app` into an installable `.dmg`.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 6
+  - Depends on: Task 7
   - Purpose: Give the operator the standard macOS drag-to-Applications install experience, packaging the app only after it is signed so the disk image never carries an unsigned binary.
   - Owned surfaces: DMG assembly (Applications shortcut, disk-image layout), disk-image build script.
   - Owns: AC-02
   - Proof: The build script produces a `.dmg` that mounts and presents the signed `.app` plus an Applications shortcut on a supported macOS version.
 
-- [ ] Task 8 — Notarize and staple the release artifact.
+- [ ] Task 9 — Notarize and staple the release artifact.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 7
+  - Depends on: Task 8
   - Purpose: Satisfy Gatekeeper for an artifact downloaded outside this development machine.
   - Owned surfaces: Notary submission, ticket polling, stapling, local Gatekeeper verification.
   - Owns: AC-10
   - Proof: `xcrun notarytool submit` succeeds and the returned ticket is stapled to the `.dmg`; `spctl --assess --type open` accepts the stapled artifact with no warning. Proof latency depends on Apple's notary service turnaround and does not change this task's scope. Requires the configured notary credentials in the build environment; treat as environment-blocked, not a design defect, if unavailable.
 
-- [ ] Task 9 — Implement the periodic signed-appcast check.
+- [ ] Task 10 — Implement the periodic signed-appcast check.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -163,23 +175,23 @@ Traceability:
   - Owns: AC-11, AC-12, AC-15
   - Proof: Fixture-appcast tests cover no-update, a valid newer version (prompts, does not auto-install), and a tampered or invalid signature (rejected); a request-capture test asserts only the app version and coarse OS descriptors are sent.
 
-- [ ] Task 10 — Implement the confirmed update-apply flow.
+- [ ] Task 11 — Implement the confirmed update-apply flow.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 9
+  - Depends on: Task 10
   - Purpose: Let the operator move to a newer version without losing pairing or interrupting an active run.
   - Owned surfaces: Download and signature/notarization verification of the offered build, active-run gate reusing Task 2's run-state check, in-place install, relaunch, credential preservation across reinstall.
   - Owns: AC-13, AC-14
   - Proof: Tests confirm a confirmation while idle installs and relaunches on the new version with the stored credential unchanged, and a confirmation while a run is active defers the install until the run reaches a terminal state rather than applying it immediately.
 
-- [ ] Task 11 — End-to-end integration proof.
+- [ ] Task 12 — End-to-end integration proof.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 5, Task 8, Task 10
+  - Depends on: Task 6, Task 5, Task 9, Task 11
   - Purpose: Prove the packaged pieces work together as one operator journey using this slice's own signed, stapled artifact.
-  - Owned surfaces: `capability:signed-macos-worker-distribution`; otherwise integrates Tasks 1–10 into one observed scenario without introducing new surfaces.
+  - Owned surfaces: `capability:signed-macos-worker-distribution`; otherwise integrates Tasks 1–11 into one observed scenario without introducing new surfaces.
   - Owns: AC-16
-  - Proof: Mounting this slice's own signed, stapled `.dmg`, dragging the app to Applications, launching it, completing pairing through the dashboard's deep-link action, observing `Connected` in both the menu bar and the dashboard, then quitting to observe `Unavailable` — all without a terminal command.
+  - Proof: Mounting this slice's own signed, stapled `.dmg`, dragging the app to Applications, launching it, completing pairing through the dashboard's deep-link action, completing post-pairing workspace/agent setup, observing `Connected` in both the menu bar and the dashboard, then quitting to observe `Unavailable` — all without a terminal command.
 
 ## Verification Gate
 
@@ -188,6 +200,7 @@ Traceability:
 - [ ] Menu-bar status transitions and the active-run-aware quit behavior pass.
 - [ ] The pairing-completion endpoint accepts a valid code and refuses generically for expired, reused, unknown, and malformed codes.
 - [ ] The URL-scheme pairing handoff succeeds for a valid code and fails safely for expired, reused, and malformed payloads.
+- [ ] Post-pairing setup resolves a repository workspace and a coding-agent executable without manual path entry in the successful case, and offers a usable manual fallback when auto-detection fails.
 - [ ] The dashboard's deep-link action and install-guidance fallback render correctly on the existing pairing screen.
 - [ ] The appcast check sends only the approved coarse fields and never a device, workspace, or credential identifier.
 - [ ] A confirmed update installs and relaunches while preserving the stored credential, and defers correctly while a run is active.
@@ -196,7 +209,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- Environment-blocked, not a design defect: `security find-identity -v -p codesigning` on the current implementation machine returns zero identities. Task 6 (signing) cannot complete its proof until the accountable owner's Apple Developer Program signing certificate is loaded into this build environment, which transitively blocks Task 7 (packages the signed app), Task 8 (notarization, also needs its own notary credentials), and Task 11 (depends on Task 8). Tasks 1–5, 9, and 10 do not depend on either credential and proceed independently.
+- Environment-blocked, not a design defect: `security find-identity -v -p codesigning` on the current implementation machine returns zero identities. Task 7 (signing) cannot complete its proof until the accountable owner's Apple Developer Program signing certificate is loaded into this build environment, which transitively blocks Task 8 (packages the signed app), Task 9 (notarization, also needs its own notary credentials), and Task 12 (depends on Task 9). Tasks 1–6, 10, and 11 do not depend on either credential and proceed independently.
 
 ## Progress Log
 
