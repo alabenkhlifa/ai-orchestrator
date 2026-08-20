@@ -83,7 +83,7 @@ Traceability:
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Wrap the already-verified worker runtime in a native macOS app bundle with the approved identity and window-less agent behavior.
-  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), the new `:worker` `mix release` target (boots only `SddOrchestrator.Worker.Supervisor`, excludes `Endpoint`/`Repo`/control-plane-only modules), build script.
+  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), the new `:worker` `mix release` target and its runtime boot-mode gate (starts only `SddOrchestrator.Worker.Supervisor`; never starts `Endpoint`, `Repo`, or any control-plane process), build script.
   - Owns: AC-01, entity:WorkerAppRelease
   - Proof: A build script produces a `.app` whose `Info.plist` matches the approved contract (bundle identifier, `LSUIElement` true, `LSMinimumSystemVersion` at `specs/02-local-project-onboarding`'s approved floor), and the embedded release launches the existing worker supervisor locally when the app opens.
 
