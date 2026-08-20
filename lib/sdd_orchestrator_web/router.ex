@@ -84,6 +84,18 @@ defmodule SddOrchestratorWeb.Router do
     post "/gateway_credentials", WorkerGatewayCredentialController, :create
   end
 
+  # Pairing completion happens before any worker credential exists — it is
+  # authenticated by nothing but the single-use pairing code itself, so it
+  # deliberately does not go through the `:worker` pipeline above (which
+  # verifies an already-issued signed worker token). Reuses the plain JSON
+  # `:api` pipeline instead, with no session, cookie, or CSRF concern of its
+  # own to add.
+  scope "/", SddOrchestratorWeb do
+    pipe_through :api
+
+    post "/worker_pairings", WorkerPairingController, :create
+  end
+
   scope "/", SddOrchestratorWeb do
     pipe_through :browser
 
