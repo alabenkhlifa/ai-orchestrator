@@ -128,18 +128,18 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 4
   - Purpose: Finish what pairing alone cannot: `Configuration` requires a repository path and a coding-agent executable, and a real non-technical operator cannot type either.
-  - Owned surfaces: Native folder picker (`NSOpenPanel`) for the repository workspace; coding-agent auto-detection (checking common install paths and `which`) with a manual-entry fallback only when detection finds none; construction and storage of the complete `Configuration` (combining Task 4's credential/worker identity with the resolved workspace and agent); starting `SddOrchestrator.Worker.Supervisor` for the first time under Task 1's always-up host, without requiring the app to relaunch.
+  - Owned surfaces: Native folder picker (`NSOpenPanel`) for the repository workspace; coding-agent auto-detection (checking common install paths and `which`) with a manual-entry fallback only when detection finds none; construction and storage of the complete `Configuration` (combining Task 4's credential/worker identity/project id with the resolved workspace and agent); starting `SddOrchestrator.Worker.Supervisor` for the first time under Task 1's always-up host, without requiring the app to relaunch.
   - Owns: AC-19, AC-20, AC-21
   - Proof: UI-logic tests cover the folder-picker outcome feeding `workspace_root`, auto-detection succeeding (no manual field shown) and failing (manual field required and accepted), and the finalize step storing a valid `Configuration` and starting `Worker.Supervisor` under Task 1's host exactly once, verified against `Configuration.load/1` and the host's child count.
 
-- [ ] Task 6 — Add the dashboard's "Open in App" deep-link action.
+- [ ] Task 6 — Add a project-scoped device-setup entry point and the dashboard's "Open in App" deep-link action.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4
-  - Purpose: Let the project owner hand a pairing code to the installed app with one click instead of a terminal or manual entry.
-  - Owned surfaces: `specs/02-local-project-onboarding`'s existing pairing-code screen, extended with the deep-link action (carrying the code and the project identifier) and an install-guidance fallback when the scheme cannot be resolved.
+  - Purpose: Let the project owner hand a pairing code to the installed app with one click instead of a terminal or manual entry, from the project whose device setup they are actually configuring — `specs/02-local-project-onboarding`'s only existing pairing screen (`LocalOnboardingLive`) is reachable generically and is workspace-scoped, with no project in context, so this task adds the missing project-scoped path in. The "Open in App" deep-link action is rendered only from this new project-scoped entry point; `specs/02-local-project-onboarding`'s other, already-approved generic entry points are unchanged and never render it, so the deep link always carries a project identifier, matching Task 4's already-built parser exactly.
+  - Owned surfaces: A device-setup action on `DeviceProjectDashboardLive` that navigates to the existing pairing screen carrying this project's identifier; `specs/02-local-project-onboarding`'s existing pairing-code screen extended to accept that identifier, render the deep-link action (carrying the code and the project identifier) only when it is present, and show an install-guidance fallback when the scheme cannot be resolved.
   - Owns: AC-06
-  - Proof: LiveView tests assert the pairing screen renders the deep link carrying the current single-use code and the project identifier, and falls back to install guidance instead of a silent no-op when the app is not installed.
+  - Proof: LiveView tests assert the new dashboard action reaches the pairing screen with this project's identifier in context, the pairing screen renders the deep link carrying the current single-use code and that identifier, the deep-link action does not render when the screen is reached through an existing generic (non-project-scoped) entry point, and the screen falls back to install guidance instead of a silent no-op when the app is not installed.
 
 - [ ] Task 7 — Apply real Developer ID signing.
   - Size: Standard
