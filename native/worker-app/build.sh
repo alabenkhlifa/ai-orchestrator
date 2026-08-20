@@ -1,14 +1,12 @@
 #!/bin/sh
-# specs/36-local-worker-native-distribution Task 1.
+# specs/36-local-worker-native-distribution Tasks 1 and 2.
 #
 # Assembles the signed-ready `.app` bundle around the `:worker` mix
-# release. Scope stops at a runnable `.app` directory:
+# release, and the real Swift menu-bar shell (native/worker-app/MenuBarApp)
+# that becomes Contents/MacOS/$LAUNCHER_NAME. Scope stops at a runnable
+# `.app` directory:
 #   - no code signing, entitlements, or notarization (Tasks 6, 8)
 #   - no .dmg packaging (Task 7)
-#   - no menu-bar UI (Task 2 replaces Contents/MacOS/$LAUNCHER_NAME below
-#     with the real Swift menu-bar shell; this launcher just execs the
-#     embedded release's start script so the bundle is genuinely runnable
-#     end to end right now)
 set -eu
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -21,16 +19,32 @@ BUNDLE_IDENTIFIER="com.sddorchestrator.worker"
 # specs/02-local-project-onboarding's approved macOS floor.
 MIN_MACOS_VERSION="14.0"
 LAUNCHER_NAME="sdd-orchestrator-worker-launcher"
+# [Task 2] Placeholder until specs/36's release-gate decides real dashboard
+# hosting — see DashboardURLProvider's own doc comment in the Swift source.
+# Override for a build with a different default via
+# SDD_ORCHESTRATOR_DASHBOARD_URL.
+DASHBOARD_URL="${SDD_ORCHESTRATOR_DASHBOARD_URL:-http://localhost:4000}"
 
 RELEASE_REL_PATH="_build/prod/rel/$RELEASE_NAME"
 BUILD_DIR="$SCRIPT_DIR/build"
 BUNDLE_PATH="$BUILD_DIR/$APP_NAME.app"
+SWIFT_APP_DIR="$SCRIPT_DIR/MenuBarApp"
+SWIFT_BUILD_CONFIG="release"
 
 echo "==> Building the :$RELEASE_NAME release (MIX_ENV=prod mix release $RELEASE_NAME)"
 MIX_ENV=prod mix release "$RELEASE_NAME" --overwrite
 
 if [ ! -x "$RELEASE_REL_PATH/bin/$RELEASE_NAME" ]; then
   echo "error: expected release start script at $RELEASE_REL_PATH/bin/$RELEASE_NAME" >&2
+  exit 1
+fi
+
+echo "==> Building the menu-bar shell (swift build -c $SWIFT_BUILD_CONFIG)"
+swift build -c "$SWIFT_BUILD_CONFIG" --package-path "$SWIFT_APP_DIR"
+
+SWIFT_BINARY="$SWIFT_APP_DIR/.build/$SWIFT_BUILD_CONFIG/SDDOrchestratorWorkerApp"
+if [ ! -x "$SWIFT_BINARY" ]; then
+  echo "error: expected built menu-bar binary at $SWIFT_BINARY" >&2
   exit 1
 fi
 
@@ -50,16 +64,10 @@ mkdir -p "$BUNDLE_PATH/Contents/MacOS" "$BUNDLE_PATH/Contents/Resources"
 # `mix release` produced it.
 cp -R "$RELEASE_REL_PATH" "$BUNDLE_PATH/Contents/Resources/release"
 
-# Minimal launcher for this task only. Task 2 replaces this file with the
-# real Swift menu-bar shell.
-cat > "$BUNDLE_PATH/Contents/MacOS/$LAUNCHER_NAME" <<'EOF'
-#!/bin/sh
-# Placeholder launcher (specs/36 Task 1) — Task 2 replaces this with the
-# real Swift menu-bar shell. Execs the embedded release's start script.
-set -eu
-DIR=$(cd "$(dirname "$0")" && pwd)
-exec "$DIR/../Resources/release/bin/worker" start
-EOF
+# The real Swift menu-bar shell (built above). It launches and supervises
+# Contents/Resources/release/bin/worker itself — see
+# native/worker-app/MenuBarApp/Sources/SDDOrchestratorWorkerApp.
+cp "$SWIFT_BINARY" "$BUNDLE_PATH/Contents/MacOS/$LAUNCHER_NAME"
 chmod +x "$BUNDLE_PATH/Contents/MacOS/$LAUNCHER_NAME"
 
 cat > "$BUNDLE_PATH/Contents/Info.plist" <<PLIST
@@ -87,6 +95,8 @@ cat > "$BUNDLE_PATH/Contents/Info.plist" <<PLIST
 	<string>$MIN_MACOS_VERSION</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>SDDOrchestratorDashboardURL</key>
+	<string>$DASHBOARD_URL</string>
 </dict>
 </plist>
 PLIST
