@@ -1,5 +1,14 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 5 implemented and verified: post-pairing workspace and coding-agent setup
+
+- Completed: The real `PostPairingSetupCoordinator` presents a native folder picker, auto-detects a coding-agent executable (falling back to a disambiguation/manual-entry alert only when needed), and constructs, stores, and starts the complete worker `Configuration` and `Worker.Supervisor` under the app's already-running process. `AC-19`, `AC-20`, `AC-21` all proved — the sub-agent's own report stopped short of the interactive GUI click-through after correctly identifying this session's desktop as live and shared with other concurrent work, a sound safety call. The main thread completed that portion itself using accessibility actions scoped to the named process (never global/unscoped input), confirmed frontmost by screenshot before each step. On a real click-through: auto-detection genuinely found both Claude Code and Codex actually installed on this machine and showed the real disambiguation alert; the resulting `worker.json` had all eight fields correct with `0700`/`0600` permissions; `Worker.Supervisor` was confirmed running via live `bin/worker rpc`; and its `GatewayConnection` automatically attempted (and was correctly refused, on a deliberately fake test `project_id`) the specs/33 gateway-credential exchange — incidental confirmation that Task 5's output correctly drives already-verified downstream behavior.
+- Remaining: Tasks 7–12 unimplemented (7/8/9/12 environment-blocked pending signing credentials).
+- Failed checks: None.
+- Proof receipt: `Task 5` — scope `Focused` — command `swift test` — exit `0`.
+- Proof receipts: 100 Swift tests passed (76 pre-existing + 24 new), independently re-run by the main thread. No Elixir file touched. Full interactive manual proof independently completed by the main thread (see Completed above) against a live `mix phx.server` + dev Postgres; all test artifacts cleaned up afterward.
+- Spec updates: None — implementation matched the approved task definition exactly.
+
 ### 2026-08-20 — Task 6 implemented and verified: project-scoped device-setup entry point and deep-link action
 
 - Completed: `DeviceProjectDashboardLive` gained a "Pair a worker" action (shown only when no worker is currently authorized) linking into `LocalOnboardingLive` with a `project` query param; that screen now validates the id against the current device workspace and, only in that case, issues a real single-use pairing code (via the existing `Pairing.start_pairing/1`, previously only ever called by the dev stub) and renders a genuine HTML anchor deep link (`sddworker://...`) next to the existing pairing UI. `AC-06` proved, including a test that round-trips the extracted code through `Pairing.complete_pairing/2` to confirm it is real and single-use.
