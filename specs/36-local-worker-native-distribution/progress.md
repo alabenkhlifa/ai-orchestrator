@@ -1,5 +1,14 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 1 implemented and verified: worker mix release target and `.app` bundle assembly
+
+- Completed: New `:worker` mix release (separate from the unchanged default `sdd_orchestrator` release) booted through a runtime env-var gate (`SDD_ORCHESTRATOR_RELEASE_MODE=worker`, set only by the worker release's own env overlay). `SddOrchestrator.Application` now starts either the full control-plane tree (unchanged) or, in worker mode, only an always-up `SddOrchestrator.Worker.Host` `DynamicSupervisor` that tolerates `Worker.Supervisor` refusing to start unpaired, attaching it immediately only when a configuration is already stored. `native/worker-app/build.sh` assembles a real, runnable `SDD Orchestrator Worker.app` with the approved `Info.plist` contract. `AC-01` proved.
+- Remaining: Tasks 2, 4–11 unimplemented.
+- Failed checks: None.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/application_test.exs` — exit `0`.
+- Proof receipts: 5 tests passed. Independently re-run by the main thread with the same result, plus independent regression checks: `MIX_ENV=prod mix release` still resolves to `sdd_orchestrator` unnamed, and a real built `sdd_orchestrator` release still raises on missing `DATABASE_URL`; a real built `worker` release's env correctly reports `SDD_ORCHESTRATOR_RELEASE_MODE=worker`. `mix format --check-formatted`, `mix credo`, and `mix compile --warnings-as-errors` scoped to the task's files — all exit `0`.
+- Spec updates: None — implementation matched the approved task definition exactly.
+
 ### 2026-08-20 — Task 3 implemented and verified: network-facing pairing-completion endpoint
 
 - Completed: `SddOrchestratorWeb.WorkerPairingController` (`POST /worker_pairings`, unauthenticated `:api` pipeline) wraps `Pairing.complete_pairing/2` unchanged for a genuinely remote worker with no local database. Generic `403 {"error": "refused"}` for every failure mode (expired, already-used, unknown, malformed code, malformed request), proved identical byte-for-byte across failure reasons. `AC-17` and `AC-18` both proved.
