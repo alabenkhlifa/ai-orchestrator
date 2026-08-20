@@ -1,5 +1,14 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 11 implemented and verified: confirmed update-apply flow
+
+- Completed: `UpdateInstallCoordinator` gates a confirmed install on the existing active-run check (reused, not duplicated), a Gatekeeper `spctl` assessment on top of Task 10's checksum, then hands off to a detached shell helper that safely swaps the `.app` bundle (bounded parent-exit wait, staged same-volume `mv` with automatic rollback, EXIT-trap cleanup) and relaunches. `AC-13`/`AC-14` both proved via a pure, fully fake-tested state machine; credential preservation is proved structurally (neither collaborator is ever handed the config file's path), not by a copy/restore step, since that file lives outside the `.app` bundle entirely. Reuses `applicationShouldTerminate(_:)` for the quit-to-install transition rather than a second parallel quit path.
+- Remaining: Task 12 blocked (depends on Task 9, environment-blocked). All 8 other tasks complete; Tasks 7, 8, 9 remain the only unimplemented, environment-blocked work.
+- Failed checks: None.
+- Proof receipt: `Task 11` — scope `Focused` — command `swift test` — exit `0`.
+- Proof receipts: 182 Swift tests passed (155 pre-existing + 27 new), independently re-run by the main thread. No Elixir file touched. Main thread independently reviewed the generated install helper script and the coordinator's state machine in full; one minor, non-blocking finding noted (the helper's final `open` call for relaunch is unchecked — a failed relaunch after a successful bundle swap would leave the update installed but not auto-opened; not a correctness or data-loss defect). Real Gatekeeper assessment and a full production self-relaunch remain genuinely unverifiable pending Tasks 7-9 (no signing identity in this environment); the sub-agent's manual proof correctly scoped itself to the mount/copy/relaunch mechanics only, against a throwaway fixture, with `open` shadowed.
+- Spec updates: None — implementation matched the approved task definition exactly.
+
 ### 2026-08-20 — Task 10 implemented and verified: periodic signed-appcast check
 
 - Completed: `AppcastUpdateChecker` periodically fetches a JSON appcast, verifies its Ed25519 signature (`CryptoKit`, hand-built canonical payload — deliberately not `JSONSerialization`, whose byte output isn't a stable signing contract), short-circuits before any download when not newer, and — only for a signature-valid newer version — downloads the artifact, verifies its SHA-256 against the signed entry, and transitions the menu bar to "Update available" (no auto-install). `AC-11`, `AC-12`, `AC-15` all proved, including a real end-to-end run: main thread independently signed its own fixture appcast with the documented test keypair, served it locally, rebuilt the app with the fixture URL baked in, launched it for real, and confirmed via direct filesystem inspection that the downloaded artifact's checksum matched exactly.
