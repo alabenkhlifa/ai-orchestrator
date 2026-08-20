@@ -52,6 +52,7 @@ A device operator who is not comfortable running a terminal command can still ge
 - The shipped `.app` and `.dmg` are Developer ID–signed and notarized; an unsigned or ad-hoc build is never distributed to an operator.
 - The app's only native UI is the menu-bar status item: no Dock icon, no app-switcher entry, no separate window.
 - Pairing-code entry happens exclusively through the dashboard's deep-link handoff; the app never accepts a manually typed code.
+- The app completes pairing over the network against the control plane's pairing-completion endpoint, authenticated by nothing beyond the single-use code itself; it never requires or assumes local database access. A refusal (expired, already-used, unknown, or malformed code) is generic and does not disclose which specific reason applied.
 - The app never registers itself to start automatically at login or boot.
 - Quitting stops the worker process without revoking its stored credential. Quitting while a run is active on that worker warns the operator before stopping it.
 - The app checks for updates on a periodic background schedule, verifies an offered update's signature before showing it, and never installs an update without the operator's explicit confirmation.
@@ -77,6 +78,8 @@ A device operator who is not comfortable running a terminal command can still ge
 - [AC-14] Given an offered update and a run active on this worker, when the operator confirms it, then the install is deferred until the run reaches a terminal state rather than interrupting it.
 - [AC-15] Given the periodic update check runs, when it contacts the appcast, then only the app version and the coarse OS descriptors already approved for outbound worker metadata are sent, with no device, workspace, project, or credential identifier included.
 - [AC-16] Given the slice's own signed, stapled `.dmg`, when the operator mounts it, drags the app to Applications, launches it, pairs through the dashboard's deep link, and later quits, then every transition — not paired, connected, unavailable — is visible in both the menu bar and the dashboard, with no terminal command used at any step.
+- [AC-17] Given a valid, unexpired, unused pairing code, when the control plane's network-facing pairing-completion endpoint receives it, then it completes the same pairing exchange `specs/02-local-project-onboarding`'s pairing contract already defines and returns the issued worker credential and identity, authenticated by nothing beyond that single-use code.
+- [AC-18] Given an expired, already-used, unknown, or malformed pairing code, when that endpoint receives it, then the request is refused with a generic failure that does not disclose which specific reason applied, and no credential is issued.
 
 ## Open Questions
 

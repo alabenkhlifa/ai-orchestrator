@@ -6,12 +6,17 @@
 
 ## Proposed Approach
 
-Wrap the existing worker release in a minimal native macOS shell rather than reimplementing any execution logic. The shell owns exactly four things: process lifecycle (launch the embedded `mix release` build, supervise it, stop it on Quit), the menu-bar status UI, the custom-URL-scheme pairing handoff, and the update check/apply flow. It never reimplements pairing, gateway, or run-execution logic — those stay owned by `specs/02-local-project-onboarding` and `specs/33-local-worker-run-execution` and are only invoked or observed. Pairing-code entry is deep-link-only: the dashboard's existing pairing screen gains an "Open in App" action using a registered custom URL scheme, so the app needs no manual-entry UI at all. The appcast is a public, unauthenticated, versioned feed; the app's periodic check sends nothing beyond the app version and the coarse OS descriptors `specs/02-local-project-onboarding`'s outbound connection contract already approves.
+Wrap the existing worker release in a minimal native macOS shell rather than reimplementing any execution logic. The shell owns exactly four things: process lifecycle (launch the embedded `mix release` build, supervise it, stop it on Quit), the menu-bar status UI, the custom-URL-scheme pairing handoff, and the update check/apply flow. It never reimplements pairing, gateway, or run-execution logic — those stay owned by `specs/02-local-project-onboarding` and `specs/33-local-worker-run-execution` and are only invoked, over the network where the shell is a genuinely separate process from the control plane, or observed.
+
+`specs/02-local-project-onboarding`'s `Pairing.complete_pairing/2` has so far only ever been called in-process — by the developer-run `mix worker.pair` task (which starts the whole control-plane application, including its database, alongside the worker: viable only because that task and the control plane share one repository checkout) and by `LocalOnboardingLive` through the `:device_worker_stub` dev/test stand-in. A packaged worker distributed to an operator's Mac is a genuinely separate process with no local database and no access to the control plane's, so this slice adds the network-facing endpoint that lets it complete pairing remotely, calling that same existing function unchanged — the same pattern `specs/33-local-worker-run-execution` already used for its own post-pairing gateway-credential exchange.
+
+Pairing-code entry itself is still deep-link-only: the dashboard's existing pairing screen gains an "Open in App" action using a registered custom URL scheme, so the app needs no manual-entry UI at all — it hands the code to the new network endpoint instead of a local function call. The appcast is a public, unauthenticated, versioned feed; the app's periodic check sends nothing beyond the app version and the coarse OS descriptors `specs/02-local-project-onboarding`'s outbound connection contract already approves.
 
 ## Components Affected
 
 - A new native macOS shell (menu-bar app) wrapping the existing worker release.
 - Build tooling: `.app` assembly, `.dmg` packaging, code signing, notarization/stapling.
+- A new network-facing pairing-completion endpoint on the control plane, consuming `specs/02-local-project-onboarding`'s existing `Pairing` context unchanged.
 - The signed appcast feed and the shell's periodic update check and apply flow.
 - `specs/02-local-project-onboarding`'s existing pairing-code screen, extended (not redefined) with the deep-link action and an install-guidance fallback.
 - The custom URL-scheme registration consumed by that dashboard screen.
@@ -23,7 +28,8 @@ Wrap the existing worker release in a minimal native macOS shell rather than rei
 Required boundaries:
 
 - The periodic appcast check is unauthenticated and public. It carries only the app version and the coarse OS descriptors (`os_family`, `os_major`) `specs/02-local-project-onboarding`'s Minimum Outbound Connection Contract already approves for outbound worker metadata — never a device, workspace, project, or credential identifier. It introduces no new personal-data field: the fields it sends are the same coarse compatibility descriptors that contract already treats as non-identifying.
-- The URL-scheme pairing payload carries only the single-use pairing code `specs/02-local-project-onboarding`'s pairing contract already defines. Activation is local OS inter-process communication, not a network transmission, so the code never crosses the network a second time by this path.
+- The URL-scheme pairing payload carries only the single-use pairing code `specs/02-local-project-onboarding`'s pairing contract already defines. Activation is local OS inter-process communication, not a network transmission.
+- The new pairing-completion endpoint accepts and returns nothing beyond what `Pairing.complete_pairing/2` already accepts and returns today; it introduces no new personal-data field and no new authorization mechanism beyond the single-use code itself, matching the existing local-call contract exactly. A refusal never discloses which specific reason applied (expired, already-used, unknown, or malformed), matching this project's established non-disclosure convention for authorization refusals (for example `specs/33-local-worker-run-execution` AC-02).
 - Code-signing and notarization credentials (Apple Developer Team ID, signing certificate, notary API key) are build-time secrets held outside the repository and outside any committed configuration; they are never embedded in the shipped binary, logged, or included in a proof receipt.
 - The stored worker credential's custody (worker-local keychain, `specs/33-local-worker-run-execution` AC-03) is unchanged by this slice. Packaging and the update-apply flow must preserve that credential across an in-place reinstall, never duplicate or relocate it.
 
@@ -33,12 +39,19 @@ Required boundaries:
 - DMG packaging interface: produces the drag-to-Applications disk image from the signed `.app`.
 - Notarization interface: submits the `.dmg`, polls for the notary ticket, and staples it.
 - Menu-bar status interface: renders not-paired, pairing, connected, disconnected, and update-available states; exposes Open Dashboard and Quit.
-- URL-scheme pairing interface: receives and validates a pairing payload, invokes the existing pairing exchange unchanged, and reports a typed outcome.
+- Pairing-completion interface: a network-facing endpoint that accepts a single-use pairing code and calls `Pairing.complete_pairing/2` unchanged, returning the issued credential and worker identity or a generic refusal.
+- URL-scheme pairing interface: receives and validates a pairing payload, submits it to the pairing-completion interface, and reports a typed outcome.
 - Dashboard deep-link interface: renders the "Open in App" action and the install-guidance fallback on the existing pairing screen without changing that screen's own contract.
 - Appcast interface: publishes and fetches the signed release feed.
 - Update-apply interface: downloads, verifies, and installs a newer signed build, deferring while a run is active on that worker.
 
 ## Decisions and Tradeoffs
+
+### Network-Facing Pairing-Completion Endpoint, Owned By This Slice
+
+- Choice: Add a new, unauthenticated-except-by-code network endpoint that calls `specs/02-local-project-onboarding`'s existing `Pairing.complete_pairing/2` unchanged, rather than assuming the packaged app can reach that function some other way.
+- Reason: Preflight found that pairing completion has only ever been called in-process — by the developer-run `mix worker.pair` task (which starts the whole control-plane application, including its database, alongside the worker) and by the dashboard's own dev/test worker stand-in. A packaged worker on an operator's Mac is a genuinely separate process with no local database and must never be given one, so it needs a real network path. `specs/33-local-worker-run-execution` already established the precedent for this shape: it built its own network-facing endpoint (`worker_gateway_credential_controller.ex`) consuming `specs/02-local-project-onboarding`'s existing authorization functions rather than requiring that slice to have pre-built one. This does not redefine `specs/02-local-project-onboarding`'s pairing schema, interface, or lifecycle — it only adds a transport that calls it.
+- Consequence: This slice owns a new Phoenix controller action and its focused proof, in addition to the native-side URL-scheme handler. The endpoint accepts and returns exactly what the existing local call already does and refuses generically (no reason disclosure) on any failure, matching this project's established authorization-refusal convention.
 
 ### Real Signing And Notarization In This Slice
 
@@ -89,6 +102,7 @@ Required boundaries:
 - An update applied mid-run despite the defer rule could corrupt run state. Gate the install action itself on the same run-state check Quit uses, not merely a UI warning that the operator can dismiss.
 - Losing custody of the signing certificate or notary credentials blocks future releases entirely; their ongoing operational custody is outside this slice's boundary.
 - Signing and notarization tasks require the accountable owner's Apple Developer credentials in the build environment; if unavailable in a given implementation session, treat those tasks as environment-blocked rather than reworking their design.
+- Exposing pairing completion over the network for the first time is a new public attack surface. The pairing secret itself is already a 32-byte cryptographically random value compared in constant time (`specs/02-local-project-onboarding`'s `Pairing` implementation), so brute-forcing it within its short expiry is not practical; this slice does not need to strengthen that entropy, only avoid weakening it (no reason disclosure on refusal, no logging of raw codes).
 
 ## Open Questions
 
