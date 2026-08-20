@@ -5,7 +5,8 @@
 - Completed: `SddOrchestratorWeb.WorkerPairingController` (`POST /worker_pairings`, unauthenticated `:api` pipeline) wraps `Pairing.complete_pairing/2` unchanged for a genuinely remote worker with no local database. Generic `403 {"error": "refused"}` for every failure mode (expired, already-used, unknown, malformed code, malformed request), proved identical byte-for-byte across failure reasons. `AC-17` and `AC-18` both proved.
 - Remaining: Tasks 1, 2, 4–11 unimplemented.
 - Failed checks: None.
-- Proof receipts: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator_web/controllers/worker_pairing_controller_test.exs` — exit `0` (11 passed). Independently re-run by the main thread with the same result. `mix format --check-formatted`, `mix credo`, and `mix compile --warnings-as-errors` scoped to the task's 3 files — all exit `0`.
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator_web/controllers/worker_pairing_controller_test.exs` — exit `0`.
+- Proof receipts: 11 tests passed. Independently re-run by the main thread with the same result. `mix format --check-formatted`, `mix credo`, and `mix compile --warnings-as-errors` scoped to the task's 3 files — all exit `0`.
 - Spec updates: None — implementation matched the approved task definition exactly.
 
 ### 2026-08-20 — Implementation preflight found a missing pairing-completion transport; task plan updated before any code was written
