@@ -1,5 +1,14 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 8 implemented and verified: DMG packaging
+
+- Completed: `build.sh` now assembles the `.app` into a drag-to-install, version-named `.dmg` (standard `Applications` symlink alongside the app, `hdiutil create -format UDZO`), unconditionally after the existing app-assembly and conditional-signing steps. `AC-02` proved against both an unsigned build and, as an extra check, a real signed one.
+- Remaining: Task 9 (notarization) next, blocked on separate notary credentials (App Store Connect API key or app-specific password) not yet available in this environment. Task 12 remains blocked transitively.
+- Failed checks: None.
+- Proof receipt: `Task 8` — scope `Focused` — command `hdiutil verify 'native/worker-app/build/SDD Orchestrator Worker-0.1.0.dmg'` — exit `0`.
+- Proof receipts: Independently rebuilt from a clean `build/` directory, mounted, confirmed the volume contains exactly the `.app` and an `Applications` symlink pointing to `/Applications`, detached cleanly; confirmed the plain `.app` bundle is left untouched (copy, not move) and the staging directory is removed after every run.
+- Spec updates: None — implementation matched the approved task definition exactly.
+
 ### 2026-08-20 — Task 7 implemented and verified: real Developer ID signing, with an AC-09 correction
 
 - Completed: `build.sh` now performs real Developer ID signing (opt-in via `SDD_ORCHESTRATOR_SIGNING_IDENTITY`, unset by default so the existing unsigned local-dev path is unaffected), deep-signing every real Mach-O file in the bundle (found by content, 24 files) inside-out plus the outer `.app`, with hardened runtime. Implementation discovery required an `update-spec` correction: hardened runtime with only the originally-scoped `network.client` entitlement crashes the embedded BEAM VM's JIT on launch — `com.apple.security.cs.allow-jit` (Apple's standard entitlement for any JIT-compiling runtime under Hardened Runtime) is genuinely required for the worker to run at all, confirmed both necessary and sufficient. `AC-09`, `requirements.md`, `design.md`, and `tasks.md` were corrected to state exactly two required entitlements before this task was marked complete.
