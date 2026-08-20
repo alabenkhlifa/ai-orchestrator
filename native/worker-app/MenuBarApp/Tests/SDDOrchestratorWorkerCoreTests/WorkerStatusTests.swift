@@ -21,7 +21,18 @@ final class WorkerStatusTests: XCTestCase {
         XCTAssertEqual(WorkerStatus.from(pairing: .unknown, connection: .connected), .notPaired)
     }
 
-    // MARK: - Paired cases (Task 4/9 placeholders — real UI text only)
+    // MARK: - AC-07: pairing succeeded, post-pairing setup is still pending
+
+    func test_pairedSettingUp_showsPairedSettingUpStatusLine() {
+        XCTAssertEqual(WorkerStatus.pairedSettingUp.menuStatusLine, "Paired, setting up…")
+    }
+
+    func test_pairedSettingUp_isDistinctFromNotPairedAndConnected() {
+        XCTAssertNotEqual(WorkerStatus.pairedSettingUp, .notPaired)
+        XCTAssertNotEqual(WorkerStatus.pairedSettingUp, .connected)
+    }
+
+    // MARK: - Paired cases (Task 9 placeholders — real UI text only)
 
     func test_from_paired_mapsConnectionStateThroughDirectly() {
         XCTAssertEqual(WorkerStatus.from(pairing: .paired, connection: .connected), .connected)
@@ -30,7 +41,9 @@ final class WorkerStatusTests: XCTestCase {
     }
 
     func test_allCasesHaveNonEmptyMenuStatusLines() {
-        let allCases: [WorkerStatus] = [.notPaired, .pairedConnecting, .connected, .disconnected, .updateAvailable]
+        let allCases: [WorkerStatus] = [
+            .notPaired, .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
+        ]
 
         for status in allCases {
             XCTAssertFalse(status.menuStatusLine.isEmpty, "\(status) must have a non-empty menu status line")
@@ -38,7 +51,9 @@ final class WorkerStatusTests: XCTestCase {
     }
 
     func test_menuStatusLines_areDistinctPerCase() {
-        let allCases: [WorkerStatus] = [.notPaired, .pairedConnecting, .connected, .disconnected, .updateAvailable]
+        let allCases: [WorkerStatus] = [
+            .notPaired, .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
+        ]
         let lines = Set(allCases.map(\.menuStatusLine))
 
         XCTAssertEqual(lines.count, allCases.count, "each WorkerStatus case must render distinct menu text")

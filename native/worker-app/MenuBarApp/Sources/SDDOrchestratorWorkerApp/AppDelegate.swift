@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import SDDOrchestratorWorkerCore
 
 /// Wires `SDDOrchestratorWorkerCore`'s testable decisions to an
@@ -24,7 +25,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var connectionPollTimer: Timer?
     private let connectionPollInterval: TimeInterval = 5
 
+    // MARK: - URL-scheme pairing handoff (Task 4, AC-07 / AC-08)
+
+    private var pairingFlowController: PairingFlowController?
+
+    // Overrides the disk-based `WorkerStatus.from(pairing:connection:)`
+    // derivation once a URL-scheme pairing attempt succeeds this session —
+    // `pairingStatus` itself stays disk-derived (see `PairingStatusChecker`)
+    // and never becomes `.paired` in this task's scope, so without this
+    // override `refreshStatus()` could never show "Paired, setting up…".
+    private var urlPairingOverrideStatus: WorkerStatus?
+
+    // The most recent URL-scheme pairing failure's reason, shown as an
+    // extra disabled menu line under "Not paired" (AC-08). Cleared once a
+    // new attempt starts or succeeds.
+    private var pairingFailureDetail: String?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Registered before anything else: a GetURL Apple Event sent at
+        // launch time (the user opened a sddworker:// link and that launched
+        // this app) can arrive before this method returns, and AppKit only
+        // redelivers it once a handler is registered — see
+        // `registerURLSchemeHandler()`'s own doc comment.
+        registerURLSchemeHandler()
+
         setUpStatusItem()
         rebuildMenu()
 
@@ -49,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logError("failed to start the embedded release: \(error)")
         }
 
+        setUpPairingFlowController()
         refreshPairingStatus()
     }
 
@@ -70,6 +95,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let statusLineItem = NSMenuItem(title: currentStatus.menuStatusLine, action: nil, keyEquivalent: "")
         statusLineItem.isEnabled = false
         menu.addItem(statusLineItem)
+
+        // [AC-08] The specific reason the last URL-scheme pairing attempt
+        // failed, surfaced as its own disabled line rather than folded into
+        // `currentStatus.menuStatusLine` — keeps `WorkerStatus` a small,
+        // fixed set of display strings while still reporting the real
+        // reason (never the raw pairing code or credential) in the menu.
+        if currentStatus == .notPaired, let pairingFailureDetail {
+            let detailItem = NSMenuItem(
+                title: "Pairing failed: \(pairingFailureDetail)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            detailItem.isEnabled = false
+            menu.addItem(detailItem)
+        }
+
         menu.addItem(.separator())
 
         // AC-03: not-paired offers only these two items — no manual
@@ -96,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refreshStatus() {
-        currentStatus = WorkerStatus.from(pairing: pairingStatus, connection: connectionState)
+        currentStatus = urlPairingOverrideStatus ?? WorkerStatus.from(pairing: pairingStatus, connection: connectionState)
         rebuildMenu()
     }
 
@@ -118,6 +159,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.startConnectionPolling()
                 }
             }
+        }
+    }
+
+    // MARK: - URL-scheme pairing handoff (Task 4, AC-07 / AC-08)
+
+    /// Registers an Apple Event handler for `kInternetEventClass`/
+    /// `kAEGetURL` — the correct AppKit mechanism for receiving a custom
+    /// URL-scheme open (`sddworker://...`). There is no
+    /// `application(_:open:)` on macOS; that is UIKit. LaunchServices
+    /// delivers a registered custom URL scheme as this Apple Event instead,
+    /// and if this app was launched *by* opening the link, AppKit holds the
+    /// event and redelivers it once a handler is registered here — which is
+    /// why this call happens first in `applicationDidFinishLaunching`.
+    private func registerURLSchemeHandler() {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+
+    @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
+        let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue
+        pairingFlowController?.handle(urlString: urlString)
+    }
+
+    private func setUpPairingFlowController() {
+        let dashboardURL = DashboardURLProvider.dashboardURL(infoDictionary: Bundle.main.infoDictionary)
+        let binaryPath = workerBinaryPath
+        let runner = commandRunner
+
+        pairingFlowController = PairingFlowController(
+            dashboardURL: dashboardURL,
+            selfReportProvider: {
+                WorkerSelfReport(
+                    osFamily: "macos",
+                    osMajor: String(ProcessInfo.processInfo.operatingSystemVersion.majorVersion),
+                    protocolVersion: ProtocolVersionQuerier.query(workerBinaryPath: binaryPath, runner: runner),
+                    appVersion: WorkerAppVersionReader.appVersion(infoDictionary: Bundle.main.infoDictionary)
+                )
+            },
+            httpPoster: URLSessionPairingHTTPPoster(),
+            setupCoordinator: UnimplementedPostPairingSetupCoordinator(),
+            onStateChange: { [weak self] state in
+                DispatchQueue.main.async {
+                    self?.handlePairingFlowStateChange(state)
+                }
+            }
+        )
+    }
+
+    private func handlePairingFlowStateChange(_ state: PairingFlowController.State) {
+        switch state {
+        case .inFlight:
+            pairingFailureDetail = nil
+            rebuildMenu()
+
+        case .succeeded:
+            pairingFailureDetail = nil
+            urlPairingOverrideStatus = .pairedSettingUp
+            refreshStatus()
+
+        case .failed(let detail):
+            pairingFailureDetail = detail
+            refreshStatus()
         }
     }
 

@@ -97,6 +97,17 @@ cat > "$BUNDLE_PATH/Contents/Info.plist" <<PLIST
 	<true/>
 	<key>SDDOrchestratorDashboardURL</key>
 	<string>$DASHBOARD_URL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.sddorchestrator.worker.pairing</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>sddworker</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
 PLIST

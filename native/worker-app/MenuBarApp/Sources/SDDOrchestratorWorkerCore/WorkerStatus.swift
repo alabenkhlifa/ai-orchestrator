@@ -1,15 +1,27 @@
 /// The menu-bar app's own top-level status, shown as the disabled header
 /// line of the status-item menu.
 ///
-/// Only `.notPaired` is required to be fully correct by this task's owned
-/// ACs (AC-03/04/05 — see the specs/36 Task 2 brief); the other cases are
-/// real members with placeholder menu text so Task 4 (pairing) and Task 9
-/// (appcast/updates) can drive them later without widening this enum.
+/// `.notPaired` and `.pairedSettingUp` are fully correct as of Task 4
+/// (AC-03/04/05 from Task 2; AC-07/AC-08 from Task 4). `.pairedConnecting`,
+/// `.connected`, and `.disconnected` become real once Task 5 stores a
+/// `Configuration`; `.updateAvailable` is a placeholder for Task 9
+/// (appcast/updates).
 public enum WorkerStatus: Equatable, Sendable {
     case notPaired
+    /// [Task 4, AC-07] The URL-scheme pairing handoff succeeded — a
+    /// credential and worker identity were obtained from
+    /// `POST /worker_pairings` — but post-pairing setup (Task 5: repository
+    /// path, coding-agent selection, `Configuration.store`, starting
+    /// `Worker.Supervisor`) has not run, because Task 5 does not exist yet.
+    /// Distinct from both `.notPaired` (no credential at all) and
+    /// `.pairedConnecting`/`.connected` (a stored configuration whose
+    /// gateway connection this app is polling) — see
+    /// `PostPairingSetupCoordinator`.
+    case pairedSettingUp
     /// Paired, but no connect or disconnect has been observed yet in this
-    /// launch (`GatewayConnectionState.unknown`) — placeholder until Task 4
-    /// wires up a real pairing-to-connect handoff.
+    /// launch (`GatewayConnectionState.unknown`) — reached once Task 5
+    /// stores a real `Configuration` and a later pairing check reports
+    /// `.paired` from disk.
     case pairedConnecting
     case connected
     case disconnected
@@ -21,6 +33,7 @@ public enum WorkerStatus: Equatable, Sendable {
     public var menuStatusLine: String {
         switch self {
         case .notPaired: return "Not paired"
+        case .pairedSettingUp: return "Paired, setting up…"
         case .pairedConnecting: return "Connecting…"
         case .connected: return "Connected"
         case .disconnected: return "Disconnected"
