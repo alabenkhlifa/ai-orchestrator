@@ -83,9 +83,9 @@ Traceability:
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Wrap the already-verified worker runtime in a native macOS app bundle with the approved identity and window-less agent behavior.
-  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), the new `:worker` `mix release` target and its runtime boot-mode gate (starts only `SddOrchestrator.Worker.Supervisor`; never starts `Endpoint`, `Repo`, or any control-plane process), build script.
+  - Owned surfaces: `.app` bundle structure, `Info.plist` contract (bundle identifier, semantic version, `LSMinimumSystemVersion`, `LSUIElement`), the new `:worker` `mix release` target and its runtime boot-mode gate (never starts `Endpoint`, `Repo`, or any control-plane process). Because `SddOrchestrator.Worker.Supervisor.start_link/1` refuses to start at all when no configuration is paired yet (`{:error, :not_paired}`), the worker-mode boot path must tolerate that: it starts a minimal always-up host (for example a `DynamicSupervisor`) rather than requiring `Worker.Supervisor` as a required static child, so the release boots successfully whether or not pairing has happened yet. Starting `Worker.Supervisor` for the first time once pairing succeeds is Task 4's job, not this task's.
   - Owns: AC-01, entity:WorkerAppRelease
-  - Proof: A build script produces a `.app` whose `Info.plist` matches the approved contract (bundle identifier, `LSUIElement` true, `LSMinimumSystemVersion` at `specs/02-local-project-onboarding`'s approved floor), and the embedded release launches the existing worker supervisor locally when the app opens.
+  - Proof: A build script produces a `.app` whose `Info.plist` matches the approved contract (bundle identifier, `LSUIElement` true, `LSMinimumSystemVersion` at `specs/02-local-project-onboarding`'s approved floor). The embedded release boots successfully in worker mode both with no stored configuration present (starts the always-up host, starts no control-plane process, does not crash) and with a configuration already present (also starts `Worker.Supervisor` under that host).
 
 - [ ] Task 2 — Build the menu-bar status shell and quit lifecycle.
   - Size: Standard
@@ -110,9 +110,9 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 2, Task 3
   - Purpose: Let the app complete pairing from a dashboard-issued deep link without any typed input.
-  - Owned surfaces: Custom URL-scheme registration and payload parsing, submission to Task 3's pairing-completion endpoint, typed success/failure reporting into the menu bar.
+  - Owned surfaces: Custom URL-scheme registration and payload parsing, submission to Task 3's pairing-completion endpoint, typed success/failure reporting into the menu bar. On success, starts `SddOrchestrator.Worker.Supervisor` for the first time under Task 1's always-up host (the release was booted without it, since pairing had not happened yet) rather than requiring the app to relaunch.
   - Owns: AC-07, AC-08
-  - Proof: Contract tests feed valid, expired, already-used, and malformed `sddworker://pair` payloads and assert Task 3's endpoint is called only for the valid case, a credential is stored only on success, and every case ends in a defined menu-bar state without a crash.
+  - Proof: Contract tests feed valid, expired, already-used, and malformed `sddworker://pair` payloads and assert Task 3's endpoint is called only for the valid case, a credential is stored only on success and `Worker.Supervisor` is started under Task 1's host without a relaunch, and every case ends in a defined menu-bar state without a crash.
 
 - [ ] Task 5 — Add the dashboard's "Open in App" deep-link action.
   - Size: Standard
