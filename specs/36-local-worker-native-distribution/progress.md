@@ -1,5 +1,14 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 6 implemented and verified: project-scoped device-setup entry point and deep-link action
+
+- Completed: `DeviceProjectDashboardLive` gained a "Pair a worker" action (shown only when no worker is currently authorized) linking into `LocalOnboardingLive` with a `project` query param; that screen now validates the id against the current device workspace and, only in that case, issues a real single-use pairing code (via the existing `Pairing.start_pairing/1`, previously only ever called by the dev stub) and renders a genuine HTML anchor deep link (`sddworker://...`) next to the existing pairing UI. `AC-06` proved, including a test that round-trips the extracted code through `Pairing.complete_pairing/2` to confirm it is real and single-use.
+- Remaining: Task 5 in progress concurrently (disjoint files). Tasks 7–12 unimplemented.
+- Failed checks: None.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/local_onboarding_live_test.exs test/sdd_orchestrator_web/live/device_project_dashboard_live_test.exs` — exit `0`.
+- Proof receipts: 23 tests passed, independently re-run by the main thread with the same result. `mix format --check-formatted`, `mix credo`, `mix compile --warnings-as-errors` scoped to the task's 4 files — all exit `0`.
+- Spec updates: None — implementation matched the approved (corrected) task definition exactly.
+
 ### 2026-08-20 — Task 4 implemented and verified: URL-scheme pairing handoff
 
 - Completed: The app now registers and handles `sddworker://pair?code=...&project_id=...` via the correct AppKit `NSAppleEventManager` mechanism, posts to Task 3's `/worker_pairings` endpoint with genuinely self-reported worker attributes, and transitions the menu bar to "Paired, setting up…" on success or a specific failure reason on refusal — without ever storing a credential or starting the worker runtime itself. `AC-07` and `AC-08` both proved, including a real live pairing (real DB insert, real `201`) and a real replay refusal (`403`, no crash), driven end to end against a real `mix phx.server` instance, not simulated.
