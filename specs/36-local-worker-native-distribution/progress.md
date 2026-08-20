@@ -1,5 +1,14 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-20 — Task 4 implemented and verified: URL-scheme pairing handoff
+
+- Completed: The app now registers and handles `sddworker://pair?code=...&project_id=...` via the correct AppKit `NSAppleEventManager` mechanism, posts to Task 3's `/worker_pairings` endpoint with genuinely self-reported worker attributes, and transitions the menu bar to "Paired, setting up…" on success or a specific failure reason on refusal — without ever storing a credential or starting the worker runtime itself. `AC-07` and `AC-08` both proved, including a real live pairing (real DB insert, real `201`) and a real replay refusal (`403`, no crash), driven end to end against a real `mix phx.server` instance, not simulated.
+- Remaining: Tasks 5, 6, 7–12 unimplemented.
+- Failed checks: None.
+- Proof receipt: `Task 4` — scope `Focused` — command `swift test` — exit `0`.
+- Proof receipts: 77 Swift tests passed (run via `run_proof.py task --task 4 -- swift test` from `native/worker-app/MenuBarApp`, since no `mix`/Elixir command applies to this task), independently re-run by the main thread. No Elixir file touched. Manual end-to-end proof independently reproduced by the main thread with its own separately generated pairing code, against a live `mix phx.server` + dev Postgres: real `POST /worker_pairings` → `201` on first use, `403` on replay after relaunch, app process alive throughout.
+- Spec updates: None — implementation matched the approved (corrected) task definition exactly.
+
 ### 2026-08-20 — Task 2 implemented and verified: real menu-bar status shell and quit lifecycle
 
 - Completed: The placeholder launcher from Task 1 is replaced by a real Swift/AppKit menu-bar app (`native/worker-app/MenuBarApp`) that starts and supervises the embedded release, shows an `NSStatusItem`, and gates every termination path through a single active-run check. `SddOrchestrator.Worker.ConnectionStatus` (new, additive) lets the existing, unchanged `GatewayConnection` report connect/disconnect for the shell to poll. `AC-03`, `AC-04`, `AC-05` all proved — not just in unit tests but by the main thread independently launching and quitting the real built `.app` three times (idle quit, active-run quit with Cancel, active-run quit with Quit Anyway), driven through real Apple Events against the actual accessibility tree.
