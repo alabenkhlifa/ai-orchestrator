@@ -24,6 +24,20 @@ LAUNCHER_NAME="sdd-orchestrator-worker-launcher"
 # Override for a build with a different default via
 # SDD_ORCHESTRATOR_DASHBOARD_URL.
 DASHBOARD_URL="${SDD_ORCHESTRATOR_DASHBOARD_URL:-http://localhost:4000}"
+# [Task 10] Same placeholder pattern for the periodic signed-appcast check —
+# see AppcastURLProvider's own doc comment. Override via
+# SDD_ORCHESTRATOR_APPCAST_URL.
+APPCAST_URL="${SDD_ORCHESTRATOR_APPCAST_URL:-http://localhost:4000/appcast.json}"
+# [Task 10] The Ed25519 public key AppcastSignatureVerifier checks every
+# appcast entry's signature against, base64-encoded raw 32-byte key
+# material. This default is a throwaway development/test keypair generated
+# for this task (see AppcastTestSigning in the Swift test target for the
+# matching private key and the generation method) — NOT a production
+# secret and NOT safe to sign a real release with. Real production key
+# custody and rotation are this specification's own release-gate item,
+# exactly like the Developer ID signing certificate. Override for a build
+# signed with the real production key via SDD_ORCHESTRATOR_APPCAST_PUBLIC_KEY.
+APPCAST_PUBLIC_KEY="${SDD_ORCHESTRATOR_APPCAST_PUBLIC_KEY:-iQtBThP+7yEKC0Wy1xRPmK3vhMec2FIgDvt9dvsD3Ck=}"
 
 RELEASE_REL_PATH="_build/prod/rel/$RELEASE_NAME"
 BUILD_DIR="$SCRIPT_DIR/build"
@@ -97,6 +111,10 @@ cat > "$BUNDLE_PATH/Contents/Info.plist" <<PLIST
 	<true/>
 	<key>SDDOrchestratorDashboardURL</key>
 	<string>$DASHBOARD_URL</string>
+	<key>SDDOrchestratorAppcastURL</key>
+	<string>$APPCAST_URL</string>
+	<key>SDDOrchestratorAppcastPublicKey</key>
+	<string>$APPCAST_PUBLIC_KEY</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

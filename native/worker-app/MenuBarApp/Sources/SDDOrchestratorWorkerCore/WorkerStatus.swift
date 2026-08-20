@@ -4,8 +4,8 @@
 /// `.notPaired` and `.pairedSettingUp` are fully correct as of Task 4
 /// (AC-03/04/05 from Task 2; AC-07/AC-08 from Task 4). `.pairedConnecting`,
 /// `.connected`, and `.disconnected` become real once Task 5 stores a
-/// `Configuration`; `.updateAvailable` is a placeholder for Task 9
-/// (appcast/updates).
+/// `Configuration`; `.updateAvailable` becomes reachable as of Task 10
+/// (appcast/updates — see `AppcastUpdateChecker`).
 public enum WorkerStatus: Equatable, Sendable {
     case notPaired
     /// [Task 4, AC-07] The URL-scheme pairing handoff succeeded — a
@@ -25,8 +25,11 @@ public enum WorkerStatus: Equatable, Sendable {
     case pairedConnecting
     case connected
     case disconnected
-    /// Never produced by this task's code — Task 9 owns setting it once an
-    /// appcast check exists.
+    /// [Task 10, AC-11/AC-12] Set once `AppcastUpdateChecker` has fetched a
+    /// signed appcast entry, verified its signature, confirmed it reports a
+    /// newer version than this running app, downloaded the artifact, and
+    /// verified its checksum — see `AppDelegate`'s `AppcastUpdateChecker`
+    /// wiring. Never set on an unverified or not-newer entry.
     case updateAvailable
 
     /// The status line shown at the top of the menu.

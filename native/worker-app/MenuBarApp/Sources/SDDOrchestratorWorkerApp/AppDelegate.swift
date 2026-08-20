@@ -25,6 +25,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var connectionPollTimer: Timer?
     private let connectionPollInterval: TimeInterval = 5
 
+    // MARK: - Periodic signed-appcast check (Task 10, AC-11 / AC-12)
+
+    private var appcastUpdateChecker: AppcastUpdateChecker?
+    private var appcastCheckTimer: Timer?
+    private let appcastCheckInterval: TimeInterval = AppcastUpdateChecker.defaultInterval
+
+    // Set once AppcastUpdateChecker has verified a newer signed appcast
+    // entry, downloaded its artifact, and confirmed the artifact's
+    // checksum — see setUpAppcastUpdateChecker(). Overrides
+    // WorkerStatus.from(pairing:connection:) in refreshStatus() exactly like
+    // urlPairingOverrideStatus does, and is never cleared once set this
+    // session (Task 11 owns what happens after the user acts on it).
+    private var pendingUpdate: PendingUpdateArtifact?
+
     // MARK: - URL-scheme pairing handoff (Task 4, AC-07 / AC-08)
 
     private var pairingFlowController: PairingFlowController?
@@ -75,6 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setUpPairingFlowController()
         refreshPairingStatus()
+
+        setUpAppcastUpdateChecker()
+        startAppcastChecking()
     }
 
     // MARK: - Status item / menu
@@ -111,12 +128,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(detailItem)
         }
 
+        // [Task 10, AC-12] Describes the verified, downloaded update — a
+        // menu-bar prompt, not an automatic install. Disabled/no action
+        // wired on purpose: Task 11 owns the "confirm and install" action
+        // this line will eventually trigger.
+        if currentStatus == .updateAvailable, let pendingUpdate {
+            let updateDetailItem = NSMenuItem(
+                title: "Version \(pendingUpdate.version) is available",
+                action: nil,
+                keyEquivalent: ""
+            )
+            updateDetailItem.isEnabled = false
+            menu.addItem(updateDetailItem)
+        }
+
         menu.addItem(.separator())
 
         // AC-03: not-paired offers only these two items — no manual
-        // pairing-code entry field or any other action. Tasks 4/9 add
-        // status-specific items later; nothing else exists to add yet, so
-        // every status currently shares this same two-item menu.
+        // pairing-code entry field or any other action. Tasks 4/10 add
+        // status-specific lines above; nothing adds a new actionable menu
+        // item yet, so every status currently shares this same two-item
+        // action set.
         let openDashboardItem = NSMenuItem(
             title: "Open Dashboard",
             action: #selector(openDashboard(_:)),
@@ -137,7 +169,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refreshStatus() {
-        currentStatus = urlPairingOverrideStatus ?? WorkerStatus.from(pairing: pairingStatus, connection: connectionState)
+        // [Task 10, AC-12] A verified pending update takes priority over
+        // every other status — once set this session it stays shown (Task
+        // 11 owns clearing it, as part of actually acting on it).
+        if pendingUpdate != nil {
+            currentStatus = .updateAvailable
+        } else {
+            currentStatus = urlPairingOverrideStatus ?? WorkerStatus.from(pairing: pairingStatus, connection: connectionState)
+        }
         rebuildMenu()
     }
 
@@ -234,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Connection status polling (plumbing for Tasks 9/10)
+    // MARK: - Connection status polling
 
     private func startConnectionPolling() {
         guard connectionPollTimer == nil else { return }
@@ -260,6 +299,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.refreshStatus()
             }
         }
+    }
+
+    // MARK: - Periodic signed-appcast check (Task 10, AC-11 / AC-12)
+
+    private func setUpAppcastUpdateChecker() {
+        let infoDictionary = Bundle.main.infoDictionary
+        let appcastURL = AppcastURLProvider.appcastURL(infoDictionary: infoDictionary)
+        let publicKeyBase64 = AppcastPublicKeyProvider.publicKeyBase64(infoDictionary: infoDictionary)
+        let currentAppVersion = WorkerAppVersionReader.appVersion(infoDictionary: infoDictionary)
+
+        appcastUpdateChecker = AppcastUpdateChecker(
+            appcastURL: appcastURL,
+            currentAppVersion: currentAppVersion,
+            publicKeyBase64: publicKeyBase64,
+            httpFetcher: URLSessionAppcastHTTPFetcher(),
+            onUpdateAvailable: { [weak self] artifact in
+                DispatchQueue.main.async {
+                    self?.pendingUpdate = artifact
+                    self?.refreshStatus()
+                }
+            },
+            logError: { [weak self] message in
+                DispatchQueue.main.async {
+                    self?.logError("appcast: \(message)")
+                }
+            }
+        )
+    }
+
+    private func startAppcastChecking() {
+        guard appcastCheckTimer == nil else { return }
+
+        let timer = Timer(timeInterval: appcastCheckInterval, repeats: true) { [weak self] _ in
+            self?.appcastUpdateChecker?.checkNow()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        appcastCheckTimer = timer
+
+        appcastUpdateChecker?.checkNow()
     }
 
     // MARK: - Open Dashboard
