@@ -39,6 +39,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   alias SddOrchestrator.Worker.AgentObserver
   alias SddOrchestrator.Worker.CommandHandler
   alias SddOrchestrator.Worker.Configuration
+  alias SddOrchestrator.Worker.ConnectionStatus
   alias SddOrchestrator.Worker.ExecutionPreparer
   alias SddOrchestrator.Worker.RequiredCheckRunner
   alias SddOrchestrator.Worker.RunState
@@ -137,6 +138,11 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
         "joining #{socket.assigns.topic}"
     )
 
+    # specs/36-local-worker-native-distribution Task 2: reported into
+    # `ConnectionStatus` as a side effect only — does not influence this
+    # callback's own control flow or return value. See its moduledoc.
+    ConnectionStatus.set_connected()
+
     {:ok, join(socket, socket.assigns.topic, socket.assigns.join_params)}
   end
 
@@ -182,6 +188,10 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   @impl Slipstream
   def handle_disconnect(reason, socket) do
     Logger.warning("worker gateway connection dropped: #{inspect(reason)}; reconnecting")
+
+    # specs/36-local-worker-native-distribution Task 2: see the matching
+    # note in `handle_connect/1` above — side effect only.
+    ConnectionStatus.set_disconnected(reason)
 
     case reconnect(socket) do
       {:ok, reconnecting_socket} -> {:ok, reconnecting_socket}

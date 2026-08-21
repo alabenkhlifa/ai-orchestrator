@@ -83,7 +83,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       workspace: workspace
     } do
       # Compatible worker that has never reported in (never seen) is unavailable.
-      pair(workspace.id, %{os_major: "15"})
+      pair(workspace.id, %{os_major: "26"})
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
 
@@ -101,7 +101,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       conn: conn,
       workspace: workspace
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
 
@@ -112,7 +112,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     end
 
     test "re-checks worker status on demand", %{conn: conn, workspace: workspace} do
-      pair(workspace.id, %{os_major: "15"})
+      pair(workspace.id, %{os_major: "26"})
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
       assert has_element?(view, "[data-worker-status=unavailable]")
 
@@ -164,7 +164,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       workspace: workspace,
       repo: repo
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
       stub_folder(repo)
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
@@ -183,7 +183,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       conn: conn,
       workspace: workspace
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
       plain = plain_dir_fixture()
       on_exit(fn -> File.rm_rf!(plain) end)
       stub_folder(plain)
@@ -200,7 +200,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       conn: conn,
       workspace: workspace
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
       stub_folder("/no/such/path/#{System.unique_integer([:positive])}")
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
@@ -212,6 +212,62 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     end
   end
 
+  describe "project-scoped device setup entry point (?project=<id>)" do
+    setup do
+      {:ok, project} =
+        Devices.register_project(%{
+          name: "Ledger",
+          repository_fingerprint: "fingerprint-#{System.unique_integer([:positive])}",
+          status: "connected"
+        })
+
+      %{project: project}
+    end
+
+    test "a valid project param issues a pairing code and renders its Open in App deep link", %{
+      conn: conn,
+      workspace: workspace,
+      project: project
+    } do
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[project: project.id]}")
+
+      assert has_element?(view, "[data-worker-status=missing]")
+
+      link_html = view |> element("[data-open-in-app]") |> render()
+      assert link_html =~ ~s(href="sddworker://pair?code=)
+      assert link_html =~ "project_id=#{project.id}"
+
+      [_, encoded_code] = Regex.run(~r/code=([^&"]+)/, link_html)
+      code = URI.decode_www_form(encoded_code)
+
+      assert {:ok, %{worker: worker}} =
+               Pairing.complete_pairing(code, %{
+                 os_family: "macos",
+                 os_major: "26",
+                 protocol_version: "1"
+               })
+
+      assert worker.device_workspace_id == workspace.id
+
+      # Single-use: the same code can't complete a second pairing.
+      assert {:error, _reason} = Pairing.complete_pairing(code, %{})
+    end
+
+    test "an unknown project param is ignored, behaving like no param at all", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[project: Ecto.UUID.generate()]}")
+
+      assert has_element?(view, "[data-worker-status=missing]")
+      refute has_element?(view, "[data-open-in-app]")
+    end
+
+    test "no project param renders no Open in App deep link", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local")
+
+      assert has_element?(view, "[data-worker-status=missing]")
+      refute has_element?(view, "[data-open-in-app]")
+    end
+  end
+
   # ---- helpers ----
 
   defp pair(workspace_id, worker_attrs) do
@@ -220,7 +276,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     {:ok, %{worker: worker}} =
       Pairing.complete_pairing(
         code,
-        Map.merge(%{os_family: "macos", os_major: "15", protocol_version: "1"}, worker_attrs)
+        Map.merge(%{os_family: "macos", os_major: "26", protocol_version: "1"}, worker_attrs)
       )
 
     worker

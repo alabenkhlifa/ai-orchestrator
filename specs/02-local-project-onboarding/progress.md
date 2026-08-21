@@ -1,5 +1,13 @@
 # Local Project Onboarding Progress Log
 
+### 2026-08-21 - Corrected the stale macOS compatibility window (design data currency, not a decision change)
+
+- Completed: `WorkerDiscovery.@supported_os_majors` was hardcoded to `~w(14 15)` and never updated as new macOS majors shipped, even though the approved design has always been a two-version sliding window (current major plus the immediately previous one). Discovered when `specs/36-local-worker-native-distribution` Task 12's real end-to-end proof ran the actual signed worker on a real current-OS machine (macOS 26.6) and was refused as incompatible. Reworded `design.md`'s macOS Worker Packaging decision to state the sliding-window rule without implying a permanent floor, recorded current values (25, 26), and added a Risk noting the constant needs manual upkeep as new majors ship since nothing renews it automatically. No product or business-rule change; the approved decision is unchanged, only its stale concrete data.
+- Remaining: Update `lib/sdd_orchestrator/devices/worker_discovery.ex`'s `@supported_os_majors` constant and any test fixtures hardcoding "14"/"15" as the compatible boundary to match, as a small follow-up code change (not part of this specification update).
+- Failed checks: None — a documentation/data correction, not a behavior change.
+- Proof receipts: None required; no acceptance criterion or task boundary changed.
+- Spec updates: `design.md` (macOS Worker Packaging decision reworded; new Risk bullet added).
+
 ### 2026-07-28 - Slice 02 implementation complete and local verification passed
 
 - Completed: Finished every implementation task and reran the slice proof against the committed portable-identity integration. The full desktop and mobile browser matrix passed against an isolated database and device store, production assets compiled and digested, and the production release assembled successfully.

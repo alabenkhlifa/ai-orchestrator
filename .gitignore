@@ -1,6 +1,15 @@
 # The directory Mix will write compiled artifacts to.
 /_build/
 
+# specs/36-local-worker-native-distribution: assembled .app output of
+# native/worker-app/build.sh — a build artifact, never committed.
+/native/worker-app/build/
+
+# specs/36-local-worker-native-distribution Task 2: Swift Package Manager
+# build output for native/worker-app/MenuBarApp — never committed.
+/native/worker-app/MenuBarApp/.build/
+/native/worker-app/MenuBarApp/.swiftpm/
+
 # If you run "mix test --cover", coverage assets end up here.
 /cover/
 

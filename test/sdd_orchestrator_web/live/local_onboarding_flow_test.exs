@@ -310,7 +310,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
 
   defp seed_detected_and_select(conn, repo) do
     {:ok, workspace} = Devices.get_workspace()
-    workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+    workspace.id |> pair(%{os_major: "26"}) |> seen_now()
     stub_folder(repo)
 
     {:ok, view, html} = live(conn, ~p"/onboarding/local")
@@ -327,7 +327,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
     {:ok, %{worker: worker}} =
       Pairing.complete_pairing(
         code,
-        Map.merge(%{os_family: "macos", os_major: "15", protocol_version: "1"}, worker_attrs)
+        Map.merge(%{os_family: "macos", os_major: "26", protocol_version: "1"}, worker_attrs)
       )
 
     worker

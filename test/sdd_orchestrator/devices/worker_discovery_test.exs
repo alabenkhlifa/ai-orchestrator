@@ -15,7 +15,7 @@ defmodule SddOrchestrator.Devices.WorkerDiscoveryTest do
     struct(
       %LocalWorker{
         os_family: "macos",
-        os_major: "15",
+        os_major: "26",
         protocol_version: "1",
         state: "active",
         last_seen_at: @now
@@ -34,8 +34,8 @@ defmodule SddOrchestrator.Devices.WorkerDiscoveryTest do
     end
 
     test "accepts both supported macOS majors" do
-      assert WorkerDiscovery.status([worker(%{os_major: "14"})], now: @now) == :detected
-      assert WorkerDiscovery.status([worker(%{os_major: "15"})], now: @now) == :detected
+      assert WorkerDiscovery.status([worker(%{os_major: "25"})], now: @now) == :detected
+      assert WorkerDiscovery.status([worker(%{os_major: "26"})], now: @now) == :detected
     end
 
     test "is :incompatible for an unsupported operating-system family" do
@@ -71,7 +71,7 @@ defmodule SddOrchestrator.Devices.WorkerDiscoveryTest do
     end
 
     test "is :detected when any compatible worker is reachable despite an incompatible one" do
-      workers = [worker(%{os_family: "windows"}), worker(%{os_major: "14"})]
+      workers = [worker(%{os_family: "windows"}), worker(%{os_major: "25"})]
       assert WorkerDiscovery.status(workers, now: @now) == :detected
     end
 
@@ -97,7 +97,7 @@ defmodule SddOrchestrator.Devices.WorkerDiscoveryTest do
     test "compatibility_policy/0 reports the supported macOS majors and protocol" do
       policy = WorkerDiscovery.compatibility_policy()
       assert policy.os_family == "macos"
-      assert "14" in policy.os_majors and "15" in policy.os_majors
+      assert "25" in policy.os_majors and "26" in policy.os_majors
       assert policy.protocol_versions == ["1"]
     end
   end

@@ -63,6 +63,15 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
     <Layouts.flash_group flash={@flash} />
     <.app_shell max_width="max-w-2xl">
       <:actions>
+        <.button
+          :if={@connection_status == "authorization_required"}
+          variant="secondary"
+          size="sm"
+          navigate={~p"/onboarding/local?#{[project: @project.id]}"}
+          data-pair-worker
+        >
+          <.lucide name="link" class="size-4" /> Pair a worker
+        </.button>
         <.button variant="secondary" size="sm" navigate={~p"/onboarding/local"}>
           <.lucide name="arrow-left" class="size-4" /> Local onboarding
         </.button>
