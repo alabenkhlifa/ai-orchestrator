@@ -36,6 +36,7 @@ A device operator who is not comfortable running a terminal command can still ge
 - Revoking or rotating a pairing credential from the menu bar; that remains the dashboard's existing capability.
 - Crash reporting, telemetry, or diagnostics beyond the status states this slice defines.
 - Running more than one installed worker instance on one machine.
+- Building the capability that lets an existing, normal hosted project connect to a worker for the first time (creating its `HostedLocalRepositoryBinding`, the record `specs/33-local-worker-run-execution`'s gateway-credential exchange requires to ever reach a connected run-execution state). Implementation preflight for Task 12 found this does not exist anywhere in the product today: the only function that creates that binding is `specs/06-project-portability`'s restore-from-backup flow, and it has no other real caller anywhere in `lib/`. This slice depends on that capability existing to demonstrate a fully organic, UI-only "Connected" journey, but does not provide it — building it is a separate, slice-sized specification's job, most likely belonging to `specs/33-local-worker-run-execution` or a new specification, not this one.
 
 ## Primary Workflow
 
