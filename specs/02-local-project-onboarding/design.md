@@ -158,7 +158,7 @@ Required boundaries:
 
 ### macOS Worker Packaging
 
-- Choice: The first worker targets the current macOS major and the immediately previous major (floor macOS 14). It ships as a Developer ID-signed, notarized `.app` delivered in a `.dmg`, updated through a signed in-app update check (appcast), with no App Store dependency and no terminal step.
+- Choice: The worker targets the current macOS major and the immediately previous major, a two-version sliding window kept current as new majors ship rather than a fixed floor (currently macOS 25 and 26). It ships as a Developer ID-signed, notarized `.app` delivered in a `.dmg`, updated through a signed in-app update check (appcast), with no App Store dependency and no terminal step.
 - Reason: Signing plus notarization satisfies Gatekeeper for non-technical graphical installation and updates.
 - Consequence: The worker contract stays OS-portable for later Windows and Linux slices. Real signing, notarization, and update-channel proof need an Apple signing identity and the notarization service and are release-gate items; worker protocol behavior is locally verifiable through a contract test double.
 
@@ -210,6 +210,7 @@ Required boundaries:
 - A failed or partial legacy upgrade could detach a project or weaken uniqueness. Require exact legacy proof and one atomic identity replacement guarded by the workspace's repository constraint.
 - A replacement worker or moved path could be accepted too broadly. Require explicit pairing and canonical-identity confirmation before access or reconnection.
 - macOS-only delivery limits the first slice's reach. Keep the worker contract portable and specify Windows and Linux in later slices.
+- The current-plus-previous-major compatibility window is implemented as a literal constant (`WorkerDiscovery.@supported_os_majors`) that does not update itself as new macOS majors ship, so it silently drifts stale and can misclassify a genuinely current, compatible worker as incompatible. Discovered when `specs/36-local-worker-native-distribution` Task 12's real end-to-end proof ran on a real current-OS machine and was refused. No automatic renewal mechanism is specified; keeping the constant current remains a manual maintenance step tied to macOS releases.
 - Users may confuse worker location with later agent location. Use distinct labels and recovery messages.
 - Accountless data can be accessed by another person sharing the same OS boundary. State this boundary without implying product-level isolation.
 - Repository-based deduplication can hide an independent project or imply an unsafe merge. Use stable project identity and preserve separate entries when identities differ.
