@@ -83,7 +83,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       workspace: workspace
     } do
       # Compatible worker that has never reported in (never seen) is unavailable.
-      pair(workspace.id, %{os_major: "15"})
+      pair(workspace.id, %{os_major: "26"})
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
 
@@ -101,7 +101,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       conn: conn,
       workspace: workspace
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
 
@@ -112,7 +112,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     end
 
     test "re-checks worker status on demand", %{conn: conn, workspace: workspace} do
-      pair(workspace.id, %{os_major: "15"})
+      pair(workspace.id, %{os_major: "26"})
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
       assert has_element?(view, "[data-worker-status=unavailable]")
 
@@ -164,7 +164,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       workspace: workspace,
       repo: repo
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
       stub_folder(repo)
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
@@ -183,7 +183,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       conn: conn,
       workspace: workspace
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
       plain = plain_dir_fixture()
       on_exit(fn -> File.rm_rf!(plain) end)
       stub_folder(plain)
@@ -200,7 +200,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       conn: conn,
       workspace: workspace
     } do
-      workspace.id |> pair(%{os_major: "15"}) |> seen_now()
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
       stub_folder("/no/such/path/#{System.unique_integer([:positive])}")
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local")
@@ -243,7 +243,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       assert {:ok, %{worker: worker}} =
                Pairing.complete_pairing(code, %{
                  os_family: "macos",
-                 os_major: "15",
+                 os_major: "26",
                  protocol_version: "1"
                })
 
@@ -276,7 +276,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     {:ok, %{worker: worker}} =
       Pairing.complete_pairing(
         code,
-        Map.merge(%{os_family: "macos", os_major: "15", protocol_version: "1"}, worker_attrs)
+        Map.merge(%{os_family: "macos", os_major: "26", protocol_version: "1"}, worker_attrs)
       )
 
     worker

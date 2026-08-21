@@ -16,7 +16,7 @@ defmodule SddOrchestrator.Devices.WorkerStatusTest do
       Pairing.complete_pairing(
         code,
         Map.merge(
-          %{os_family: "macos", os_major: "15", protocol_version: "1"},
+          %{os_family: "macos", os_major: "26", protocol_version: "1"},
           worker_attrs
         )
       )

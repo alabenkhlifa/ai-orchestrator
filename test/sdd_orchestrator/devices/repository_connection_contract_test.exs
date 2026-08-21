@@ -21,7 +21,7 @@ defmodule SddOrchestrator.Devices.RepositoryConnectionContractTest do
           app_version: "1.2.3",
           protocol_version: "1",
           os_family: "macos",
-          os_major: "14"
+          os_major: "25"
         }
       },
       overrides

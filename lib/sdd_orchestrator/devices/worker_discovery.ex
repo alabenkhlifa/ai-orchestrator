@@ -15,15 +15,17 @@ defmodule SddOrchestrator.Devices.WorkerDiscovery do
     * `:detected` — a compatible worker has reported in recently and can open the
       folder picker and validate a repository.
 
-  The first executable slice supports macOS majors 14 and 15 over worker protocol
-  version 1. Reachability is modeled through `LocalWorker.last_seen_at`; the real
-  native worker updates it over its outbound transport (release-gated).
+  Supports the current macOS major and the immediately previous one (currently
+  25 and 26) over worker protocol version 1 — a sliding window that must be
+  updated here as new macOS majors ship. Reachability is modeled through
+  `LocalWorker.last_seen_at`; the real native worker updates it over its
+  outbound transport (release-gated).
   """
 
   alias SddOrchestrator.Devices.LocalWorker
 
   @supported_os_family "macos"
-  @supported_os_majors ~w(14 15)
+  @supported_os_majors ~w(25 26)
   @supported_protocol_versions ~w(1)
 
   # A compatible worker that has not reported within this window is treated as

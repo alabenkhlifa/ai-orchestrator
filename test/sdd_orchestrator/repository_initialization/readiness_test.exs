@@ -79,7 +79,7 @@ defmodule SddOrchestrator.RepositoryInitialization.ReadinessTest do
     {:ok, %{worker: worker}} =
       Pairing.complete_pairing(code, %{
         os_family: "macos",
-        os_major: "15",
+        os_major: "26",
         protocol_version: "1",
         app_version: "1.0.0"
       })

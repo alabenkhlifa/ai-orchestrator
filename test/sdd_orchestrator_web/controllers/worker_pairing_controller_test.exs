@@ -35,7 +35,7 @@ defmodule SddOrchestratorWeb.WorkerPairingControllerTest do
         request(context.conn, %{
           "code" => code,
           "os_family" => "macos",
-          "os_major" => "15",
+          "os_major" => "26",
           "protocol_version" => "1",
           "app_version" => "1.2.3"
         })
@@ -47,7 +47,7 @@ defmodule SddOrchestratorWeb.WorkerPairingControllerTest do
       assert is_binary(credential)
       assert worker["device_workspace_id"] == ws
       assert worker["os_family"] == "macos"
-      assert worker["os_major"] == "15"
+      assert worker["os_major"] == "26"
       assert worker["protocol_version"] == "1"
       assert worker["app_version"] == "1.2.3"
       assert worker["state"] == "active"

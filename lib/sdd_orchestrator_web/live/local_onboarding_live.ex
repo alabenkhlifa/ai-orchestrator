@@ -631,7 +631,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           <div class="min-w-0 flex-1">
             <p class="text-sm font-semibold text-ink">Download the worker for macOS</p>
             <p class="mt-0.5 text-[13px] leading-relaxed text-ink-muted">
-              A signed app you install by dragging it to Applications. Supports macOS 14 and 15.
+              A signed app you install by dragging it to Applications. Supports macOS 25 and 26.
             </p>
             <.button
               variant="secondary"

@@ -165,7 +165,7 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLiveTest do
     {:ok, %{code: code}} = Pairing.start_pairing(workspace_id)
 
     {:ok, %{worker: worker}} =
-      Pairing.complete_pairing(code, %{os_family: "macos", os_major: "15", protocol_version: "1"})
+      Pairing.complete_pairing(code, %{os_family: "macos", os_major: "26", protocol_version: "1"})
 
     worker
   end
