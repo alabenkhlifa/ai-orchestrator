@@ -1,5 +1,16 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Task 3 worker connection state on the hosted project page
+
+- Completed: the hosted project page (`lib/sdd_orchestrator_web/live/project_dashboard_live.ex`, `/projects/:id/overview`) now shows a worker connection region for a hosted local-repository project — the surface `specs/36-local-worker-native-distribution` Task 12 had to bypass because none existed. It renders `data-worker-connection` as `connected`, `temporarily_unavailable`, or `disconnected`.
+- State is derived on read through `HostedLocalRepositoryBindings.connection_state/3` and is reduced to the state atom before it reaches an assign. The binding itself is dropped in the same expression, so the worker id and `last_validated_at` are structurally unable to reach the template; the proof asserts the rendered page contains no repository path, no repository identity, no worker id, no device workspace id, no credential digest, no app version, and no validation time.
+- The region is absent, not empty, for anything that is not a hosted local-repository project: the assign is `nil` for a GitHub-backed project and the whole block is `:if`-guarded, so `data-worker-connection` does not appear in the markup at all.
+- Copy follows the recorded risk that an owner may read "not connected" as project loss. Every state names the machine link, never the project: the not-connected state ends "Your project and its specifications are already saved", and the unavailable state says the project, specifications, and repository are unaffected and that it reappears as connected once the machine is back. No action buttons are added here — connect is Task 4, disconnect and replace are Task 5.
+- Failed checks: None. The existing `ProjectDashboardLive` proof was re-run alongside the new one because this task edited that page, and both pass.
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/project_worker_connection_live_test.exs test/sdd_orchestrator_web/live/project_dashboard_live_test.exs` — exit `0`.
+- 16 tests passed. Confirmed on the main thread by real exit status. `mix format --check-formatted` and `mix credo --strict` pass on the changed page.
+- Spec updates: `tasks.md` Task 3 checked complete.
+
 ### 2026-08-24 - Task 7 repository folder selection on the chosen machine
 
 - Completed: `SddOrchestrator.Portability.HostedLocalRepositoryFolder` at `lib/sdd_orchestrator/portability/hosted_local_repository_folder.ex`. `select/1` opens the machine's folder picker, confirms the chosen folder is a Git repository, and returns a proof function; `picker_available?/0` reports whether this machine can open one at all.

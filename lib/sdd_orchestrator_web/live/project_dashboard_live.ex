@@ -17,12 +17,23 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
   Mount is workspace-scoped: an unknown, malformed, or cross-workspace project id
   routes back to the catalog so a foreign project is never rendered.
+
+  A project whose repository is a local Git repository also shows its worker
+  connection state (specs/37 Task 3): connected, temporarily unavailable, or not
+  connected. That state is derived on read through
+  `HostedLocalRepositoryBindings.connection_state/3` and is deliberately reduced
+  to the state atom alone, so no repository path, credential, worker id, device
+  label, compatibility descriptor, or last validation time can be rendered. A
+  GitHub-backed project has no such region at all, and the region never claims the
+  project itself is missing or broken — it is a machine link that can be
+  established or moved.
   """
   use SddOrchestratorWeb, :live_view
 
   import SddOrchestratorWeb.ConnectionStatus
 
   alias SddOrchestrator.Accounts
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBindings
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Connections
   alias SddOrchestrator.ProjectStorage
@@ -44,7 +55,8 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
          |> assign(:name, entry.project.name)
          |> assign(:name_error, nil)
          |> assign(:rename_saved?, false)
-         |> assign(:actor, %{account_id: account.id, hosted_identity_id: nil})}
+         |> assign(:actor, %{account_id: account.id, hosted_identity_id: nil})
+         |> assign_worker_connection()}
     end
   end
 
@@ -100,6 +112,47 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
       nil -> "is invalid"
     end
   end
+
+  # Only the derived state is kept. The binding itself carries the worker id and
+  # the last validation time, and neither may reach the page.
+  defp assign_worker_connection(socket) do
+    project = socket.assigns.project
+
+    if project.storage_mode == "hosted" and project.repository_provider == "local" do
+      case HostedLocalRepositoryBindings.connection_state(socket.assigns.workspace, project.id) do
+        {:ok, %{state: state}} -> assign(socket, :worker_connection, state)
+        {:error, _reason} -> assign(socket, :worker_connection, nil)
+      end
+    else
+      assign(socket, :worker_connection, nil)
+    end
+  end
+
+  defp worker_icon(:connected), do: "link"
+  defp worker_icon(:temporarily_unavailable), do: "wifi"
+  defp worker_icon(:disconnected), do: "unplug"
+
+  defp worker_tone(:connected), do: "text-ok-fg"
+  defp worker_tone(:temporarily_unavailable), do: "text-warn-fg"
+  defp worker_tone(:disconnected), do: "text-ink-muted"
+
+  defp worker_title(:connected), do: "Connected to your machine"
+  defp worker_title(:temporarily_unavailable), do: "Your machine isn't reachable right now"
+  defp worker_title(:disconnected), do: "No machine connected yet"
+
+  defp worker_detail(:connected),
+    do:
+      "This project's repository is on a machine you connected. Development runs use that machine."
+
+  defp worker_detail(:temporarily_unavailable),
+    do:
+      "The connected machine hasn't checked in recently. Your project, its specifications, and " <>
+        "your repository are unaffected — it reappears as connected once the machine is back."
+
+  defp worker_detail(:disconnected),
+    do:
+      "This project's repository lives on your own machine. Connect that machine to run " <>
+        "development here. Your project and its specifications are already saved."
 
   defp storage_icon("device"), do: "hard-drive"
   defp storage_icon(_), do: "cloud"
@@ -191,6 +244,30 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
               </.button>
             </div>
           </.notice>
+        </div>
+
+        <div
+          :if={@worker_connection}
+          data-worker-connection={@worker_connection}
+          class="mt-4 rounded-lg border border-line bg-surface p-4"
+        >
+          <div class="flex items-start gap-3">
+            <.lucide
+              name={worker_icon(@worker_connection)}
+              class={["size-5 flex-none mt-px", worker_tone(@worker_connection)]}
+            />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-ink" data-worker-connection-title>
+                {worker_title(@worker_connection)}
+              </p>
+              <p
+                class="mt-1 text-[13px] leading-relaxed text-ink-muted"
+                data-worker-connection-detail
+              >
+                {worker_detail(@worker_connection)}
+              </p>
+            </div>
+          </div>
         </div>
 
         <dl class="mt-6 flex flex-col gap-3">

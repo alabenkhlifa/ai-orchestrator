@@ -111,7 +111,7 @@ Traceability:
   - Owns: AC-10
   - Proof: Focused tests cover a selected folder yielding only a portable identity, a cancelled selection attempting no connection, a folder that is not a Git repository refused with an actionable reason, and assertions that no path, remote URL, filename, or Git object reaches the control plane in any result.
 
-- [ ] Task 3 - Show worker connection state on the hosted project page.
+- [x] Task 3 - Show worker connection state on the hosted project page.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
