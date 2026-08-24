@@ -1,5 +1,13 @@
 # Local Project Onboarding Progress Log
 
+### 2026-08-24 - Repo-wide `mix check` after Task 11: only the two long-standing pre-existing failures remain
+
+- Completed: Ran the repository-wide gate after Task 11 (`MIX_TEST_PARTITION=383073 python3 .agents/scripts/run_proof.py slice -- mix check`, backgrounded). Real exit `2`: `Result: 4359/4361 passed (6/6 properties, 4353/4355 tests), 1 excluded`, `Failed: 2 tests`.
+- The only two failures are the long-standing pre-existing pair already accepted across many specifications: `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` (`specs/34`) and `SddOrchestrator.Delivery.RevocationConsumerTest` (`specs/29`). No repository-initialization or device test appears at all, and nothing this task touched failed.
+- The five `specs/16-empty-repository-initialization` staging failures recorded in this log's 2026-08-24 exception entry are gone, confirming that fix rather than assuming it: the same command on the same worktree reported 7 failures before it and 2 after. That exception is now closed for those five; only the two named above remain outstanding, owned by `specs/34` and `specs/29`.
+- Failed checks: `mix check` (repo-wide) — 2 of 4355 tests failed, both pre-existing, unrelated, and already accepted elsewhere. Every check specific to this task's own surface passed.
+- Spec updates: This entry only; no requirements, design, or task-boundary change. The slice `Status` stays `In Progress` — its two open Verification Gate items remain release-boundary work.
+
 ### 2026-08-24 - Task 11 implemented and verified: worker liveness is refreshed from the attached-worker registry
 
 - Completed: Added `Devices.WorkerLivenessRefresher`. Its `refresh/0` enumerates `Delivery.CommandTransport.Channel`'s attached-worker registry through that module's public `registry/0` accessor, loads those workers in one query, and marks each active one seen through the existing `Pairing.mark_seen/1`. A registration whose worker row is revoked, inactive, or already deleted is skipped rather than failing the pass. The tick interval is derived as a third of `WorkerDiscovery.staleness_seconds/0`, so an attached worker is refreshed several times before discovery would call it stale and the interval cannot drift from the policy it serves. Registered in the control-plane supervision tree behind `:start_worker_liveness_refresher`, set false in `config/test.exs` so tests drive `refresh/0` directly and no timer races the Ecto sandbox — the shape `Privacy.RetentionPruner` and `Delivery.Dispatcher` already established.
