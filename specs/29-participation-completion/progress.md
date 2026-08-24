@@ -1,5 +1,17 @@
 # Participation Completion Progress Log
 
+### 2026-08-24 - Reconciled the AC-30 consumer proof with the identity release specs/25 made intentional
+
+- Defect: `test/sdd_orchestrator/delivery/revocation_consumer_test.exs` failed on `[AC-30]`'s "a full consumer pass mutates no participation record". It was reported as a pre-existing unrelated failure by `specs/36-local-worker-native-distribution` and again by `specs/37-hosted-local-repository-connection`, and was still unowned; this slice owns the test, so the fix belongs here.
+- Root cause, traced rather than guessed: the proof compared every handoff field except the four delivery markers and required them byte-identical across a consumer pass. `former_account_id` and `former_hosted_identity_id` were non-nil before the pass and `nil` after. `ParticipationRevocation.acknowledge_changeset/3` pipes through `identity_release_changeset/1`, which nils both on acknowledgement, and `Revocations.ensure_identity_released/1` re-asserts it as an invariant on a repeated acknowledgement. `Privacy.Retention` documents the same rule, noting that acknowledgement "releases the very `former_account_id` a second consumer would need".
+- That behaviour arrived with `specs/25-participation-identity-lifecycle` (commit `6dd7979`, 2026-08-02), which added its own proofs but did not reconcile this consumer test written earlier. So the assertion, not the code, was stale: acknowledging a handoff is allowed to release the two identity links, because an applied departure must stop naming a person.
+- No production defect. Nothing in `lib/` changed.
+- Fix: `handoff_shape/1` now also excludes the two released identity links, and the release is asserted explicitly instead of merely excluded — the proof captures both links before the pass, asserts they were genuinely set, and asserts both are `nil` afterwards. The assertion is stronger than before: removing the release would now fail this test, where previously it was the release itself that failed it.
+- Failed checks: None after the fix.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/revocation_consumer_test.exs` — exit `0`.
+- 16 tests passed. Confirmed on the main thread by real exit status. This slice's `Verified` status is unchanged.
+- Spec updates: this entry only; no requirement, design decision, acceptance criterion, or task boundary changed.
+
 ### 2026-08-14 - Verification gate: one Dialyzer fix, accepted exception, clean otherwise
 
 - Fixed a real Dialyzer finding in `ParticipationGovernance.capability_set_mismatch_reasons/1`: `MapSet.difference/2` on a compile-time-literal set and a runtime-built one triggered a `call_without_opaque` type mismatch. Replaced with plain list `Enum.reject/2` diffing — simpler and avoids the issue entirely; behavior and all 17 tests unchanged.

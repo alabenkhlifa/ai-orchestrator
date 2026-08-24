@@ -475,6 +475,12 @@ defmodule SddOrchestrator.Delivery.RevocationConsumerTest do
       profiles = ordered(ProjectMemberProfile)
       handoffs = Enum.map(ordered(ParticipationRevocation), &handoff_shape/1)
 
+      identity_links =
+        Enum.map(
+          ordered(ParticipationRevocation),
+          &{&1.former_account_id, &1.former_hosted_identity_id}
+        )
+
       {:ok, applied} = RevocationConsumer.claim_and_apply(authority)
 
       assert length(applied) == 2
@@ -487,6 +493,19 @@ defmodule SddOrchestrator.Delivery.RevocationConsumerTest do
       # The handoff's own delivery markers are the only participation fields an
       # approved consumer may move, and it moves them through the boundary.
       assert Enum.map(ordered(ParticipationRevocation), &handoff_shape/1) == handoffs
+
+      # Acknowledging through the boundary also releases the two identity links,
+      # which is `specs/25-participation-identity-lifecycle`'s minimization rule
+      # rather than this consumer writing participation data of its own. They
+      # were set before the pass, so this proves the release, not an empty field.
+      assert Enum.all?(identity_links, fn {former, identity} ->
+               former != nil and identity != nil
+             end)
+
+      for revocation <- ordered(ParticipationRevocation) do
+        assert revocation.former_account_id == nil
+        assert revocation.former_hosted_identity_id == nil
+      end
     end
 
     test "a rejected apply acknowledges nothing", %{
@@ -584,12 +603,23 @@ defmodule SddOrchestrator.Delivery.RevocationConsumerTest do
 
   defp ordered(schema), do: schema |> order_by([r], asc: r.id) |> Repo.all()
 
-  # Everything about a handoff except the delivery markers the consumer contract
-  # explicitly owns.
+  # Everything about a handoff except the fields acknowledging it is allowed to
+  # move: the delivery markers this consumer contract owns, and the two identity
+  # links `specs/25-participation-identity-lifecycle` releases on acknowledgement
+  # so an applied departure stops naming a person. Those are asserted separately
+  # rather than simply excluded.
   defp handoff_shape(%ParticipationRevocation{} = revocation) do
     revocation
     |> Map.from_struct()
-    |> Map.drop([:__meta__, :claimed_at, :acknowledged_at, :consumer_ref, :updated_at])
+    |> Map.drop([
+      :__meta__,
+      :claimed_at,
+      :acknowledged_at,
+      :consumer_ref,
+      :updated_at,
+      :former_account_id,
+      :former_hosted_identity_id
+    ])
   end
 
   defp entries(type) do
