@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: Task 1 in progress; every required capability is ready. Verification readiness: not started. Release readiness: blocked on this slice's own release gates.
+Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: complete; all seven tasks delivered and `capability:hosted-local-repository-connection` is ready. Verification readiness: `Verified`, with one recorded exception for two pre-existing failures outside this slice. Release readiness: blocked on this slice's own release gates — the fresh-machine live proof and the accountable privacy and security review, including its decision on whether the connect, disconnect, and replace actions need their own minimized operational-security event.
 
 ## Active Slice
 
@@ -149,16 +149,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Ownership, cross-workspace denial, and invalid-provider refusal tests pass for the first-connection gate.
-- [ ] Exact-match, legacy-identifier, mismatch, and preserve-on-failure tests pass for connection and replacement.
-- [ ] Repository content, branch, remote, and Git-configuration non-mutation is proved against a real fixture repository.
-- [ ] Minimization checks confirm no path, credential, remote URL, device label, or compatibility metadata is stored, rendered, or returned from folder selection.
-- [ ] A hosted local-repository project connected through this slice reaches a running development run.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass.
-- [ ] New decisions are written back.
-- [ ] Deferred work is recorded.
+- [x] Active-slice acceptance criteria pass.
+- [x] Ownership, cross-workspace denial, and invalid-provider refusal tests pass for the first-connection gate.
+- [x] Exact-match, legacy-identifier, mismatch, and preserve-on-failure tests pass for connection and replacement.
+- [x] Repository content, branch, remote, and Git-configuration non-mutation is proved against a real fixture repository.
+- [x] Minimization checks confirm no path, credential, remote URL, device label, or compatibility metadata is stored, rendered, or returned from folder selection.
+- [x] A hosted local-repository project connected through this slice reaches a running development run.
+- [x] Build, formatting, lint, static checks, and logs review pass. Recorded exception: two pre-existing, unrelated test failures outside this slice, evidenced in `progress.md`.
+- [x] Required browser scenarios pass.
+- [x] New decisions are written back.
+- [x] Deferred work is recorded.
 
 ## Blocked Decisions
 
