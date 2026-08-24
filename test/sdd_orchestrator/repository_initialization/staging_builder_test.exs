@@ -11,7 +11,14 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingBuilderTest do
   everything below exercises real temp-directory filesystem behavior, the
   same idiom `Delivery.Worker.Workspace`'s own tests already use.
   """
-  use SddOrchestrator.DataCase, async: true
+  # Not `async: true`: `setup` points the global
+  # `:initialization_staging_root` application key at this test's own temp
+  # root and restores it in `on_exit`. Run concurrently, this file and
+  # `staging_workspace_test.exs` read each other's root and fail with
+  # `:workspace_root_unconfigured`, `:staging_write_failed`, or a
+  # `:workspace_escape` guard that never fires. The other four files that set
+  # this key are already synchronous for the same reason.
+  use SddOrchestrator.DataCase, async: false
 
   import SddOrchestrator.RepositoryKitFixtures
 

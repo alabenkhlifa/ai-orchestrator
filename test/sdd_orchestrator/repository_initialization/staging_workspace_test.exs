@@ -10,7 +10,14 @@ defmodule SddOrchestrator.RepositoryInitialization.StagingWorkspaceTest do
   No database is needed: `StagingWorkspace` only ever reads a bare `Run`
   struct's `id`.
   """
-  use ExUnit.Case, async: true
+  # Not `async: true`: `setup` points the global
+  # `:initialization_staging_root` application key at this test's own temp
+  # root and restores it in `on_exit`. Run concurrently, this file and
+  # `staging_builder_test.exs` read each other's root and fail with
+  # `:workspace_root_unconfigured`, `:staging_write_failed`, or a
+  # `:workspace_escape` guard that never fires. The other four files that set
+  # this key are already synchronous for the same reason.
+  use ExUnit.Case, async: false
 
   alias SddOrchestrator.RepositoryInitialization.{Run, StagingWorkspace}
 
