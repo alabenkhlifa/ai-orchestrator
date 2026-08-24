@@ -155,7 +155,7 @@ Traceability:
 - [x] Repository content, branch, remote, and Git-configuration non-mutation is proved against a real fixture repository.
 - [x] Minimization checks confirm no path, credential, remote URL, device label, or compatibility metadata is stored, rendered, or returned from folder selection.
 - [x] A hosted local-repository project connected through this slice reaches a running development run.
-- [x] Build, formatting, lint, static checks, and logs review pass. Recorded exception: two pre-existing, unrelated test failures outside this slice, evidenced in `progress.md`.
+- [x] Build, formatting, lint, static checks, and logs review pass. The two pre-existing failures this slice recorded as an exception were afterwards fixed by their owning specifications, and the repository-wide gate now passes with no exception.
 - [x] Required browser scenarios pass.
 - [x] New decisions are written back.
 - [x] Deferred work is recorded.

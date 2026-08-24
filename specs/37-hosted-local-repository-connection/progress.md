@@ -1,5 +1,14 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - The recorded gate exception no longer applies
+
+- The two pre-existing failures this slice accepted as an evidenced exception were traced to their owning specifications and fixed there: `specs/34-local-worker-runtime-governance` (a Task 4 proof anchored to a frozen clock while the projection reads quota through the live one, so it expired five minutes after it was written) and `specs/29-participation-completion` (an `AC-30` assertion never reconciled with the identity release `specs/25-participation-identity-lifecycle` made intentional). Neither was a production defect and no `lib/` code changed for either.
+- `mix check` now passes repository-wide with no exception: `Result: 4408 passed (6 properties, 4402 tests), 1 excluded`, exit `0`. The Verification Gate line that recorded the exception has been updated to say so.
+- Failed checks: None.
+- Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
+- Confirmed on the main thread by real exit status. This slice's `Verified` status is unchanged; only its recorded exception was resolved.
+- Spec updates: `tasks.md` (one Verification Gate line); this entry.
+
 ### 2026-08-24 - Slice verification gate passed; status Verified
 
 - Browser proof: the first full-matrix run failed all four of this slice's own new scenarios, and investigation showed the product was right and the test's assumption was wrong. The device workspace is this machine's own and is shared with every other browser scenario that pairs a worker, so by the time this spec ran the owner was correctly offered an explicit machine choice instead of the single-machine collapse — `AC-04` working. Two defects in the new spec were fixed: it assumed exactly one machine, and it branched on the chooser before the click's own re-render had landed, so it read "no choice offered" and silently skipped the selection. The helper now waits for the settled state and handles both shapes.
