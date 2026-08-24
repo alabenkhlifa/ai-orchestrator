@@ -120,7 +120,7 @@ Traceability:
   - Owns: AC-06
   - Proof: Focused page tests cover a never-connected project, a connected project, a connected project whose worker heartbeat is stale, and a GitHub-backed project showing no worker connection region, asserting no path, credential, or device label is rendered in any state.
 
-- [ ] Task 4 - Connect this machine from the hosted project page.
+- [x] Task 4 - Connect this machine from the hosted project page.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3, Task 7

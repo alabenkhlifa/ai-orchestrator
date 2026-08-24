@@ -101,6 +101,17 @@ defmodule SddOrchestratorWeb.ProjectWorkerConnectionLiveTest do
     refute html =~ worker.id
   end
 
+  test "a legacy-identity local project still shows a not-connected state", context do
+    legacy_id = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+    legacy = local_project_fixture(context.workspace, legacy_id, "Legacy Roadmap")
+
+    {:ok, _view, html} = live(context.conn, ~p"/projects/#{legacy.id}/overview")
+
+    assert html =~ ~s(data-worker-connection="disconnected")
+    assert html =~ "No machine connected yet"
+    refute html =~ legacy_id
+  end
+
   test "a GitHub-backed project shows no worker connection region", context do
     github_project = ProjectsFixtures.registered_project(context.workspace, name: "Roadmap")
 

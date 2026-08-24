@@ -1,5 +1,18 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Task 4 connect this machine from the hosted project page
+
+- Completed: the connect action on `/projects/:id/overview`. It resolves the device workspace, asks `HostedLocalRepositoryMachines.offer/2` which machines can be chosen, confirms the choice at submit through `confirm/3`, points the chosen machine at a folder through `HostedLocalRepositoryFolder.select/1`, and calls `HostedLocalRepositoryConnection.connect/6`. One paired machine connects in a single click; two or more present an explicit choice first; none shows the install-and-pair guidance in place of a failure.
+- `AC-01` is proved end to end against a project with no `PackageProvenance` row: the page moves from `disconnected` to `connected` with no backup package and no restore anywhere in the flow.
+- Defect found and fixed while wiring this task, in Task 3's own derivation: `HostedLocalRepositoryBindings.connection_state/3` returns `{:error, :invalid_repository_identity}` for a local project whose identity is legacy or malformed, and the page was treating every error as "no region". A legacy-identity project therefore rendered no worker connection region at all, so `AC-06` was violated for it and `AC-02`'s legacy refusal was unreachable from the page. Such a project has no binding and cannot be given one, so it now renders as not connected and the connect action explains why. Task 3's proof gained a legacy-identity case and was re-run with this task's.
+- Refusal copy is mapped per reason and asserted in the proof: mismatch names the folder, legacy names the identity tied to its original device workspace and the upgrade needed, unreachable says to open the worker app on that machine, unauthorized says to pair it again, and a cancelled or unavailable folder picker changes nothing. Every refusal path asserts no binding row exists afterwards.
+- A machine revoked between rendering the choice and clicking it is refused as unauthorized rather than substituted, which is the submit-time confirmation rule proved end to end through the page.
+- Discovered limitation, recorded rather than invented around: `LocalWorker` carries no device label, so the picker distinguishes machines by the order offered plus whether each is reachable ("Machine 1 — ready"). This is the minimization decision this slice already deferred; no new worker data was disclosed to improve the label.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on the changed page.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/project_connect_machine_live_test.exs test/sdd_orchestrator_web/live/project_worker_connection_live_test.exs test/sdd_orchestrator_web/live/project_dashboard_live_test.exs` — exit `0`.
+- 26 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 4 checked complete.
+
 ### 2026-08-24 - Task 3 worker connection state on the hosted project page
 
 - Completed: the hosted project page (`lib/sdd_orchestrator_web/live/project_dashboard_live.ex`, `/projects/:id/overview`) now shows a worker connection region for a hosted local-repository project — the surface `specs/36-local-worker-native-distribution` Task 12 had to bypass because none existed. It renders `data-worker-connection` as `connected`, `temporarily_unavailable`, or `disconnected`.

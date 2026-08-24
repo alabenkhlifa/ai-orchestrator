@@ -27,13 +27,27 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   GitHub-backed project has no such region at all, and the region never claims the
   project itself is missing or broken — it is a machine link that can be
   established or moved.
+
+  The connect action (specs/37 Task 4) is wired here: it resolves the device
+  workspace, asks `HostedLocalRepositoryMachines` which machines can be chosen,
+  points the chosen machine at a folder through `HostedLocalRepositoryFolder`,
+  and calls `HostedLocalRepositoryConnection.connect/6`. Every refusal keeps the
+  project exactly as it was and names what the owner can do next.
   """
   use SddOrchestratorWeb, :live_view
 
   import SddOrchestratorWeb.ConnectionStatus
 
   alias SddOrchestrator.Accounts
-  alias SddOrchestrator.Portability.HostedLocalRepositoryBindings
+  alias SddOrchestrator.Devices
+
+  alias SddOrchestrator.Portability.{
+    HostedLocalRepositoryBindings,
+    HostedLocalRepositoryConnection,
+    HostedLocalRepositoryFolder,
+    HostedLocalRepositoryMachines
+  }
+
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Connections
   alias SddOrchestrator.ProjectStorage
@@ -56,11 +70,43 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
          |> assign(:name_error, nil)
          |> assign(:rename_saved?, false)
          |> assign(:actor, %{account_id: account.id, hosted_identity_id: nil})
+         |> reset_connect()
          |> assign_worker_connection()}
     end
   end
 
+  # Starting the action re-reads the paired set rather than trusting anything the
+  # page rendered earlier. One machine connects straight away; more than one is a
+  # question only the owner can answer.
   @impl true
+  def handle_event("connect_machine", _params, socket) do
+    case HostedLocalRepositoryMachines.offer(device_workspace()) do
+      {:ok, %{selection: :single, preselected_worker_id: worker_id}} ->
+        {:noreply, connect_machine(socket, worker_id)}
+
+      {:ok, %{selection: :explicit, machines: machines}} ->
+        {:noreply,
+         socket
+         |> reset_connect()
+         |> assign(:connect_step, :choosing_machine)
+         |> assign(:connect_machines, machines)}
+
+      {:error, :no_worker_paired} ->
+        {:noreply,
+         socket
+         |> reset_connect()
+         |> assign(:connect_step, :no_worker_paired)}
+    end
+  end
+
+  def handle_event("connect_selected_machine", %{"worker_id" => worker_id}, socket) do
+    {:noreply, connect_machine(socket, worker_id)}
+  end
+
+  def handle_event("cancel_connect", _params, socket) do
+    {:noreply, reset_connect(socket)}
+  end
+
   def handle_event("recheck", _params, socket) do
     entry =
       Connections.project(
@@ -113,6 +159,97 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
     end
   end
 
+  # The chosen machine is confirmed against the paired set as it is now, the
+  # machine is pointed at a folder, and only then is the authority gate called.
+  # A cancelled folder selection attempts nothing and says nothing.
+  defp connect_machine(socket, worker_id) do
+    device_workspace = device_workspace()
+
+    with {:ok, confirmed_worker_id} <-
+           HostedLocalRepositoryMachines.confirm(device_workspace, worker_id),
+         {:ok, proof} <- HostedLocalRepositoryFolder.select(),
+         {:ok, _connected} <-
+           HostedLocalRepositoryConnection.connect(
+             socket.assigns.workspace,
+             socket.assigns.project.id,
+             device_workspace,
+             confirmed_worker_id,
+             proof
+           ) do
+      socket |> reset_connect() |> assign_worker_connection()
+    else
+      {:error, :cancelled} ->
+        socket |> reset_connect() |> assign_worker_connection()
+
+      {:error, :no_worker_paired} ->
+        socket |> reset_connect() |> assign(:connect_step, :no_worker_paired)
+
+      {:error, reason} ->
+        socket
+        |> reset_connect()
+        |> assign(:connect_error, connect_message(reason))
+        |> assign_worker_connection()
+    end
+  end
+
+  defp reset_connect(socket) do
+    socket
+    |> assign(:connect_step, nil)
+    |> assign(:connect_machines, [])
+    |> assign(:connect_error, nil)
+  end
+
+  # The device store is the worker's own boundary. A machine with no worker
+  # running at all answers the same as a machine with no paired worker — install
+  # and pair — rather than failing the page.
+  defp device_workspace do
+    case Devices.get_workspace() do
+      {:ok, workspace} -> workspace
+      {:error, :not_found} -> nil
+    end
+  catch
+    :exit, _reason -> nil
+  end
+
+  defp connect_message(:repository_mismatch),
+    do:
+      "That folder isn't this project's repository. Choose the folder that holds this project's " <>
+        "repository and try again."
+
+  defp connect_message(:legacy_repository_identity),
+    do:
+      "This project still uses a repository identity tied to its original device workspace, " <>
+        "which can't be matched exactly. Upgrade that identity by locating the source " <>
+        "repository first, then connect a machine."
+
+  defp connect_message(:invalid_repository_identity),
+    do:
+      "This project's repository identity can't be read, so no machine can prove it. Restore " <>
+        "the project from a backup package to re-establish its identity."
+
+  defp connect_message(:worker_unavailable),
+    do: "That machine isn't reachable right now. Open the worker app on it, then try again."
+
+  defp connect_message(:unauthorized_worker),
+    do:
+      "That machine isn't paired with your account any more. Pair it again, then connect this " <>
+        "project."
+
+  defp connect_message(:selection_required),
+    do: "Another machine was paired just now. Choose which machine to connect."
+
+  defp connect_message(:not_a_git_repository),
+    do: "That folder isn't a Git repository. Choose a folder that contains a Git repository."
+
+  defp connect_message(:repository_unavailable),
+    do: "That folder couldn't be read. Check it still exists on that machine, then try again."
+
+  defp connect_message(:picker_unavailable),
+    do: "Connect the worker on that machine to open its folder picker."
+
+  defp connect_message(_reason),
+    do: "That machine couldn't check the folder. Try again."
+
   # Only the derived state is kept. The binding itself carries the worker id and
   # the last validation time, and neither may reach the page.
   defp assign_worker_connection(socket) do
@@ -120,13 +257,29 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
     if project.storage_mode == "hosted" and project.repository_provider == "local" do
       case HostedLocalRepositoryBindings.connection_state(socket.assigns.workspace, project.id) do
-        {:ok, %{state: state}} -> assign(socket, :worker_connection, state)
-        {:error, _reason} -> assign(socket, :worker_connection, nil)
+        {:ok, %{state: state}} ->
+          assign(socket, :worker_connection, state)
+
+        # A local project whose repository identity cannot be parsed — a legacy
+        # workspace-scoped value, or a malformed one — has no binding and cannot
+        # be given one. It is still a local-repository project and still not
+        # connected, so it keeps its region; the connect action explains why.
+        {:error, :invalid_repository_identity} ->
+          assign(socket, :worker_connection, :disconnected)
+
+        {:error, _reason} ->
+          assign(socket, :worker_connection, nil)
       end
     else
       assign(socket, :worker_connection, nil)
     end
   end
+
+  # A worker carries no device label, so machines are distinguished by the order
+  # they are offered plus whether they can be reached right now. Presenting more
+  # worker data is the deferred minimization decision this slice records.
+  defp machine_label(%{available?: true}, index), do: "Machine #{index} — ready"
+  defp machine_label(%{available?: false}, index), do: "Machine #{index} — not reachable"
 
   defp worker_icon(:connected), do: "link"
   defp worker_icon(:temporarily_unavailable), do: "wifi"
@@ -266,6 +419,72 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
               >
                 {worker_detail(@worker_connection)}
               </p>
+
+              <.button
+                :if={@worker_connection == :disconnected and @connect_step != :choosing_machine}
+                variant="secondary"
+                size="sm"
+                phx-click="connect_machine"
+                data-connect-machine
+                class="mt-3 w-full sm:w-auto"
+              >
+                <.lucide name="link" class="size-4" /> Connect this machine
+              </.button>
+
+              <div :if={@connect_step == :choosing_machine} class="mt-3" data-choose-machine>
+                <p class="text-[13px] font-semibold text-ink">
+                  Choose which machine holds this repository
+                </p>
+                <div class="mt-2 flex flex-col gap-2">
+                  <.button
+                    :for={{machine, index} <- Enum.with_index(@connect_machines, 1)}
+                    variant="secondary"
+                    size="sm"
+                    phx-click="connect_selected_machine"
+                    phx-value-worker_id={machine.worker_id}
+                    data-machine-option={machine.worker_id}
+                    class="w-full sm:w-auto"
+                  >
+                    <.lucide name="hard-drive" class="size-4" />
+                    {machine_label(machine, index)}
+                  </.button>
+                </div>
+                <.button
+                  variant="ghost"
+                  size="sm"
+                  phx-click="cancel_connect"
+                  data-cancel-connect
+                  class="mt-2 w-full sm:w-auto"
+                >
+                  Not now
+                </.button>
+              </div>
+
+              <div :if={@connect_step == :no_worker_paired} class="mt-3" data-no-worker-paired>
+                <p class="text-[13px] leading-relaxed text-ink-muted">
+                  {HostedLocalRepositoryMachines.guidance().headline}
+                </p>
+                <ol class="mt-2 flex flex-col gap-2">
+                  <li
+                    :for={step <- HostedLocalRepositoryMachines.guidance().steps}
+                    class="text-[13px] leading-relaxed text-ink-muted"
+                  >
+                    <span class="font-semibold text-ink">{step.title}</span> — {step.detail}
+                  </li>
+                </ol>
+                <.button
+                  variant="secondary"
+                  size="sm"
+                  href="/downloads/worker"
+                  class="mt-3 w-full sm:w-auto"
+                >
+                  <.lucide name="download" class="size-4" /> Download worker app
+                </.button>
+              </div>
+
+              <div :if={@connect_error} class="mt-3" role="alert" data-connect-error>
+                <.notice variant="warn" icon="triangle-alert">{@connect_error}</.notice>
+              </div>
             </div>
           </div>
         </div>
