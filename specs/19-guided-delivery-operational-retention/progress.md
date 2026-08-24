@@ -1,5 +1,17 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-24 — Task 1 hosted temporary execution-data expiry
+
+- Completed: two rules registered in `Retention.prune_all/1` — `expired_delivery_commands` deletes terminal `run_commands` rows 30 days past `COALESCE(acknowledged_at, updated_at)`, and `expired_delivery_checkpoints` deletes resolved `blocking_questions` rows 30 days past `updated_at`. Both exclude any row whose run is still non-terminal, through one shared correlated `exists/1` subquery, so current recovery material survives regardless of age. State lists are read from `RunCommand.terminal_states/0`, `BlockingQuestion.resolved_states/0`, and `AgentRun.terminal_states/0` rather than duplicated as literals.
+- Scope corrected during implementation, before any code was written. The brief first said to keep the `blocking_questions` row and clear `checkpoint`, `branch`, and `workspace_path`. That is unimplementable — `branch` and `workspace_path` are `NOT NULL` with non-empty `CHECK` constraints (`priv/repo/migrations/20260729210000_create_blocking_questions.exs:32-33,66-72`), verified against the running database, not only the migration file.
+- The correction ran the other way, and the authoritative classification is why: `delivery_processing_inventory.ex:191-194` records that a blocking question's human-readable question and answer are duplicated into `activity_entry` as the retained history, `ActivityEntry` carries `question_asked` and `question_answered` types (`lib/sdd_orchestrator/delivery/activity_entry.ex:33-34`), and the only reader of `blocking_questions` anywhere filters `state == "open"` (`lib/sdd_orchestrator/delivery/delivery_store/hosted.ex:111-113`). A resolved row is purely the worker's resume aid, so the entity-level 30-day classification means what it says and the row is deleted. Deleting it also removes `workspace_path`, a filesystem path from the developer's own machine, which the field-clearing version would have retained indefinitely.
+- Proof asserts the history survives rather than assuming it: after the sweep, the corresponding `activity_entries` rows are compared by full struct equality, and nothing holds a foreign key to `blocking_questions`, so the delete cascades nowhere.
+- Mechanism recorded for later tasks: `DateTime.truncate/2` only lowers precision, so a second-precision fixture time cannot be inserted into the microsecond-precision `run_commands` columns. Use `DateTime.add(value, 0, :microsecond)`. `run_attempts` has the same precision and Task 9 will hit it.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on the changed file, and a forced recompile of every touched module emits no warnings.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_temporary_retention_test.exs` — exit `0`.
+- 12 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 1 checked complete and its owned-surfaces line corrected to record row deletion and why it preserves participant-visible history.
+
 ### 2026-08-24 — Task plan reconciled with the authoritative processing inventory; slice unblocked
 
 - Status transition: `Blocked` to `Not Started`. All three required capabilities are ready — `project-storage-governance`, `guided-delivery-data-surfaces`, and `guided-delivery-processing-controls` — so the recorded blocker and Task 1's `Blocked until` line no longer applied and were cleared.

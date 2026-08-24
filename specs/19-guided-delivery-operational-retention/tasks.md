@@ -76,12 +76,12 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Enforce hosted temporary execution-data expiry.
+- [x] Task 1 — Enforce hosted temporary execution-data expiry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Delete inactive command payloads and checkpoints from the hosted store once their recovery and diagnostic purpose has ended, together with the transient result and failure detail they carry.
-  - Owned surfaces: The purpose-ended signal for `run_commands` and `blocking_questions`, the shared 30-day window constant, the hosted eligibility selectors, the active-run and current-recovery exclusion, registration of the rule in the shared prune pass, and hosted fixtures.
+  - Owned surfaces: The purpose-ended signal for `run_commands` and `blocking_questions`, the shared 30-day window constant, the hosted eligibility selectors, the active-run and current-recovery exclusion, registration of the rule in the shared prune pass, and hosted fixtures. Both a `run_commands` row and a resolved `blocking_questions` row are deleted outright. Neither is participant-visible history: `run_commands` carries only execution mechanics, and a blocking question is the worker's resume aid whose human-readable question and answer are duplicated into `activity_entries`, which `specs/21-guided-delivery-deletion-and-recovery` owns and this slice does not touch. The only reader of `blocking_questions` filters `state == "open"`, so an expired resolved row is invisible to every surface.
   - Owns: AC-01
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/delivery_temporary_retention_test.exs` passes focused day-29 and day-30 boundary, acknowledged and failed command, resolved checkpoint, active-run exclusion, current-recovery exclusion, transient result and failure-code removal, and idempotent-repeat cases.
 
@@ -122,6 +122,7 @@ Traceability:
   - Proof: `python3 .agents/scripts/run_proof.py task --task 9 -- mix test test/sdd_orchestrator/privacy/delivery_attempt_lease_retention_test.exs` passes focused terminal, non-terminal exclusion, day-29, day-30, row-preservation, outcome-preservation, and idempotent-repeat cases.
 
 - [ ] Task 7 — Expire the worker-local provider-thread reference.
+  - Status: In Progress
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -140,6 +141,7 @@ Traceability:
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/privacy/delivery_retention_runner_test.exs` passes focused duplicate, lock-contention, injected-failure, attempt-count, restart-discovery, retry, reconciliation, minimized-diagnostic, and non-restoration cases.
 
 - [ ] Task 4 — Enforce minimized Slice 07 security logs.
+  - Status: In Progress
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none

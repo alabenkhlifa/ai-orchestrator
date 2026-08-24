@@ -108,6 +108,21 @@ defmodule SddOrchestrator.Privacy.Retention do
       operational-security log ceiling `AIRuntime.SecurityLog` documents.
       Emitting or pruning a security event never reads or changes any
       invitation, participant, profile, revocation, or account row.
+    * Guided-delivery temporary execution data — an inactive `RunCommand` is
+      deleted 30 days after its purpose ended (`acknowledged_at` when present,
+      otherwise `updated_at`), and a resolved `BlockingQuestion` is deleted 30
+      days after the resolution that bumped its `updated_at`. Both rows carry
+      only execution mechanics: the command's operation, manifest digest,
+      claim, result, and failure code, and the question's opaque checkpoint,
+      branch, and worker-local workspace path. Neither is selected while its
+      own run is still active — a command or question belonging to a run that
+      has not reached `"failed"`, `"canceled"`, or `"completed"` is current
+      recovery material whatever its age, because that run can still be
+      resumed, retried, or reconciled from it. The participant-visible
+      question and its answer are not deleted here: they are duplicated into
+      `activity_entries` as `"question_asked"` and `"question_answered"`,
+      which is the retained authoritative history and is governed by its own
+      lifecycle rather than by this window.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -144,6 +159,7 @@ defmodule SddOrchestrator.Privacy.Retention do
     RuntimeCostLedger
   }
 
+  alias SddOrchestrator.Delivery.{AgentRun, BlockingQuestion, RunCommand}
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Notifications.AccountNotification
@@ -261,6 +277,15 @@ defmodule SddOrchestrator.Privacy.Retention do
   # reason the two session windows above are stated here.
   @runtime_observation_window 30 * @day
 
+  # Guided-delivery temporary execution data — an inactive command and a
+  # resolved blocking question — serves recovery, not history: it exists so a
+  # dispatcher can redeliver an instruction and a later attempt can resume
+  # accepted work. Once the run that could use it is no longer active and 30
+  # days have passed since that purpose ended, nothing can still read it. It is
+  # its own named window even though the value matches `@participation_window`
+  # above, because it governs a different feature's lifecycle.
+  @delivery_temporary_window 30 * @day
+
   @typedoc "Rows deleted by one catalog and quota snapshot sweep."
   @type snapshot_counts :: %{
           expired_model_catalog_snapshots: non_neg_integer(),
@@ -302,7 +327,9 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_participation_email_delivery_diagnostics:
         prune_participation_email_delivery_diagnostics(now),
       expired_participation_notifications: prune_participation_notifications(now),
-      expired_participation_security_events: prune_participation_security_events(now)
+      expired_participation_security_events: prune_participation_security_events(now),
+      expired_delivery_commands: prune_delivery_commands(now),
+      expired_delivery_checkpoints: prune_delivery_checkpoints(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -843,6 +870,72 @@ defmodule SddOrchestrator.Privacy.Retention do
       )
 
     count
+  end
+
+  # An acknowledged or failed command has already done the only thing it exists
+  # to do. Its purpose ended when the worker answered (`acknowledged_at`, set by
+  # both the acknowledgement and the terminal-failure transition) or, for a row
+  # that reached a terminal state without one, when it was last written
+  # (`updated_at`). Thirty days later the whole row goes: it carries only
+  # execution mechanics — the operation, the manifest digest, the claim, the
+  # result, and the failure code — and no participant-visible text, so there is
+  # nothing in it to keep once redelivery and replay can no longer be asked for.
+  defp prune_delivery_commands(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from command in RunCommand,
+          as: :governed,
+          where:
+            command.state in ^RunCommand.terminal_states() and
+              fragment("COALESCE(?, ?)", command.acknowledged_at, command.updated_at) <= ^cutoff and
+              not exists(active_delivery_run_subquery())
+      )
+
+    count
+  end
+
+  # A resolved blocking question is the worker's resume aid and nothing else:
+  # the checkpoint, the branch, and the worker-local workspace path a later
+  # attempt would continue accepted work from. `updated_at` is the resolution
+  # time because resolving is the transition that bumps `state_version`, and
+  # there is deliberately no separate `resolved_at` column. Thirty days after
+  # that resolution the whole row is deleted rather than emptied, because the
+  # participant-visible question and its answer are not stored here at all —
+  # they are duplicated into `activity_entries` as `"question_asked"` and
+  # `"question_answered"`, which survive this delete untouched and are governed
+  # by their own lifecycle. Keeping the row would leave a path from the
+  # developer's own machine stored indefinitely for no remaining purpose.
+  defp prune_delivery_checkpoints(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from question in BlockingQuestion,
+          as: :governed,
+          where:
+            question.state in ^BlockingQuestion.resolved_states() and
+              question.updated_at <= ^cutoff and
+              not exists(active_delivery_run_subquery())
+      )
+
+    count
+  end
+
+  # Correlated to the outer `:governed` binding (the command or question
+  # currently being judged). Age alone is not enough to release either row: a
+  # run that has not reached `"failed"`, `"canceled"`, or `"completed"` can
+  # still be resumed, retried, or reconciled, and both rows are exactly what
+  # that recovery reads. So an old terminal command or resolved question of a
+  # still-`"running"` or `"blocked"` run is kept, and becomes due only once its
+  # run itself ends.
+  defp active_delivery_run_subquery do
+    from(run in AgentRun,
+      where: run.id == parent_as(:governed).run_id,
+      where: run.state not in ^AgentRun.terminal_states(),
+      select: 1
+    )
   end
 
   # Departure ends authorization immediately; the row stays as governed project
