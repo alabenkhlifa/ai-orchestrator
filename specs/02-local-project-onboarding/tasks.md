@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 1–9 are complete. The local implementation and slice-scoped verification pass; coordinated first-release browser proof and the final privacy review remain open at the release boundary.
+Tasks 1–10 are complete. The local implementation and slice-scoped verification pass; coordinated first-release browser proof and the final privacy review remain open at the release boundary. Task 10 replaced the hardcoded macOS compatibility window with a computed one, per the Computed macOS Compatibility Window decision in `design.md`, closing the staleness defect `specs/36-local-worker-native-distribution` Task 12 found.
 
 ## Active Slice
 
@@ -26,6 +26,10 @@ Provides:
 - Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof expected to run in about ten minutes.
 - Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
 - Completed task labels and proof history are preserved; the portability correction is split into a pure identity boundary and one source-side integration workflow.
+
+## Proof Scope Gate
+
+- Applies to: Task 10.
 
 ## Implementation Boundary
 
@@ -150,6 +154,16 @@ Release boundary:
   - Depends on: Task 7, Task 8
   - Proof: Focused device-store, onboarding, privacy, and desktop and mobile LiveView tests cover new identity creation, same-workspace duplicate detection, independent-workspace unlinkability, exact portable Locate matching, successful legacy upgrade, mismatch, unavailable worker, uniqueness race, rollback, unchanged repository state, and backup-ready versus upgrade-required results.
   - Delivered: `Devices.select_repository/2` compares only the current device workspace's authorized portable and legacy identities before allocating a fresh portable identity, and local onboarding blocks a match at selection without a global equality query. `RepositoryConnectionContract` now rejects legacy and malformed onboarding identities. `Devices.locate_repository/3` performs exact portable reconnection or exact original-workspace legacy proof, then atomically replaces only the legacy identity through `DeviceStore.replace_repository_identity/4`; the store rechecks the expected project identity, every other identity compared by the worker, portable replacement validity, and repository uniqueness so mismatches, unavailable sources, concurrent changes, and uniqueness races preserve the original project. The privacy disclosure explains independent identifiers and deliberate same-project transfer, while the device dashboard reports `backup_ready` or an actionable `upgrade_required` handoff.
+
+- [x] Task 10 - Compute the macOS compatibility window instead of hardcoding it.
+  - Size: Standard
+  - Proof scope: Focused
+  - Purpose: Stop the supported macOS major window from silently drifting stale between Apple releases — the failure `specs/36-local-worker-native-distribution` Task 12 hit against a real current-OS machine.
+  - Owned surfaces: `WorkerDiscovery.compatibility_policy/0`'s macOS-major computation, the macOS-major/GA-release-date reference table, and the one-major forward-tolerance boundary for a released major not yet added to that table.
+  - Owns: none (compatibility-window correctness fix already covered by Task 2's AC-03; owns no unique acceptance criterion or data entity).
+  - Depends on: Task 2
+  - Proof: Focused tests cover the computed window at each tabulated release-date boundary (the day before and the day of), continued rejection below the computed floor and two or more majors above the highest tabulated entry, and acceptance of exactly one major above the highest tabulated entry.
+  - Delivered: `WorkerDiscovery` now computes its supported macOS majors from `@macos_releases`, a maintained ascending major/GA-release-date table, evaluated against the instant under test: the current major is the highest tabulated major already released, and the window is that row plus the tabulated row immediately before it. Because Apple's numbering is not contiguous (15 was followed by 26), "the previous major" resolves to the previous tabulated row rather than `major - 1`, which corrects the window from the nonexistent `25`/`26` pair to the real `15`/`26`. `compatible?/2` and `compatibility_policy/1` accept `now:` (a `DateTime` or a `Date`) so the window is provable at any instant, and `status/2` threads it through. A worker reporting exactly one major above the highest tabulated entry is tolerated as compatible; two or more above, anything below the computed floor, and any non-numeric or missing major stay incompatible. `LocalOnboardingLive`'s install-guidance copy now renders the computed window instead of a hardcoded "macOS 25 and 26", so the guidance cannot drift from the policy it describes.
 
 ## Verification Gate
 
