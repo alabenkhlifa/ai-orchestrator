@@ -4,7 +4,7 @@
 
 In Progress
 
-Tasks 1–10 are complete. The local implementation and slice-scoped verification pass; coordinated first-release browser proof and the final privacy review remain open at the release boundary. Task 10 replaced the hardcoded macOS compatibility window with a computed one, closing the staleness defect `specs/36-local-worker-native-distribution` Task 12 found. Task 11 is new and unstarted: it refreshes a paired worker's liveness from the control plane's own attached-worker registry, per the Registry-Derived Worker Liveness decision in `design.md`, closing the second defect that same proof found.
+Tasks 1–11 are complete. The local implementation and slice-scoped verification pass; coordinated first-release browser proof and the final privacy review remain open at the release boundary. Tasks 10 and 11 closed both defects `specs/36-local-worker-native-distribution` Task 12 found against a real signed worker: the macOS compatibility window is now computed rather than hardcoded, and a paired worker's liveness is refreshed from the control plane's own attached-worker registry.
 
 ## Active Slice
 
@@ -165,7 +165,7 @@ Release boundary:
   - Proof: Focused tests cover the computed window at each tabulated release-date boundary (the day before and the day of), continued rejection below the computed floor and two or more majors above the highest tabulated entry, and acceptance of exactly one major above the highest tabulated entry.
   - Delivered: `WorkerDiscovery` now computes its supported macOS majors from `@macos_releases`, a maintained ascending major/GA-release-date table, evaluated against the instant under test: the current major is the highest tabulated major already released, and the window is that row plus the tabulated row immediately before it. Because Apple's numbering is not contiguous (15 was followed by 26), "the previous major" resolves to the previous tabulated row rather than `major - 1`, which corrects the window from the nonexistent `25`/`26` pair to the real `15`/`26`. `compatible?/2` and `compatibility_policy/1` accept `now:` (a `DateTime` or a `Date`) so the window is provable at any instant, and `status/2` threads it through. A worker reporting exactly one major above the highest tabulated entry is tolerated as compatible; two or more above, anything below the computed floor, and any non-numeric or missing major stay incompatible. `LocalOnboardingLive`'s install-guidance copy now renders the computed window instead of a hardcoded "macOS 25 and 26", so the guidance cannot drift from the policy it describes.
 
-- [ ] Task 11 - Refresh worker liveness from the attached-worker registry.
+- [x] Task 11 - Refresh worker liveness from the attached-worker registry.
   - Size: Standard
   - Proof scope: Focused
   - Purpose: Keep a genuinely connected worker reported connected instead of going stale about ninety seconds after the last dev stand-in refresh — the defect `specs/36-local-worker-native-distribution` Task 12 found running the real signed worker.
@@ -173,6 +173,7 @@ Release boundary:
   - Owns: none (AC-15 and AC-18 already own the observable connection-state behavior; this task makes them truthful against a real worker and introduces no new acceptance criterion or data entity).
   - Depends on: Task 2
   - Proof: Focused tests cover one refresher pass marking every attached worker seen, leaving a paired but unattached worker untouched, tolerating a revoked or inactive worker without failing the pass, and moving `WorkerDiscovery.status/2` from `:unavailable` to `:detected` across a pass without any worker-initiated call.
+  - Delivered: `Devices.WorkerLivenessRefresher` is a supervised `GenServer` whose `refresh/0` enumerates `Delivery.CommandTransport.Channel`'s attached-worker registry through its public `registry/0` accessor, loads those workers in one query, and marks each active one seen through the existing `Pairing.mark_seen/1`. A registration whose row is revoked, inactive, or already deleted is skipped rather than failing the pass, so one stale entry never costs the other attached workers their refresh. The interval is derived as a third of `WorkerDiscovery.staleness_seconds/0` instead of a second constant that could drift from the policy it exists to satisfy. It is started in the control-plane supervision tree behind `:start_worker_liveness_refresher`, which `config/test.exs` sets to false so tests call `refresh/0` directly and no timer races the Ecto sandbox — the same shape `Privacy.RetentionPruner` and `Delivery.Dispatcher` already use. No protocol, worker, or channel file changed.
 
 ## Verification Gate
 

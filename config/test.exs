@@ -46,6 +46,10 @@ config :sdd_orchestrator, start_retention_pruner: false
 # timer must never race the Ecto sandbox or claim another test's rows.
 config :sdd_orchestrator, start_command_dispatcher: false
 
+# The worker-liveness refresher is driven directly in tests for the same reason:
+# a timer must never race the Ecto sandbox or stamp another test's worker rows.
+config :sdd_orchestrator, start_worker_liveness_refresher: false
+
 # Exercise the local worker stand-in (pairing completion and folder selection) so
 # the local-onboarding LiveView flow is driveable without the signed native worker.
 config :sdd_orchestrator, :device_worker_stub, true
