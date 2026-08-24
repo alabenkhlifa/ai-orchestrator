@@ -1,5 +1,13 @@
 # Project Backup And Restoration Progress Log
 
+### 2026-08-24 - Named two already-delivered contracts as capabilities for a downstream consumer (reference only)
+
+- Completed: `specs/37-hosted-local-repository-connection` needs the smallest stable contracts this slice already delivers, rather than a whole-slice edge on `capability:project-portability`. Named Task 21's shared exact local-worker validation boundary and Task 26's hosted binding foundation as capabilities, and recorded them in each provider task's `Owned surfaces`. Both provider tasks were already complete and verified; nothing about their scope, proof, delivered behavior, or this slice's `Verified` status changed, and no new work was added here.
+- Capability readiness: `capability:local-repository-worker-validation` — ready after `Task 21`.
+- Capability readiness: `capability:hosted-local-repository-binding` — ready after `Task 26`.
+- Failed checks: None — capability naming only, no code and no task boundary touched.
+- Spec updates: `tasks.md` (two new `Provides:` entries; `Owned surfaces` of Tasks 21 and 26 name their capability).
+
 ### 2026-07-28 - Task 7 complete: project portability verified
 
 - Completed: Added the consolidated privacy and security review for all six active portability processing boundaries, confirming their purposes, lawful bases, necessity, access restrictions, processors and transfers, minimized persistent fields, rights behavior, and immediate, 24-hour, 30-day, and 35-day lifecycle controls. The review proves coding-agent and model-provider exclusion, keeps unresolved deployment facts in the public release gate, and records `capability:project-portability` as ready. Static-analysis cleanup removed unreachable catch-all branches from the restore and reconnection paths and added one narrow Ecto transaction opaque-type suppression consistent with the repository's existing transaction-boundary suppressions.

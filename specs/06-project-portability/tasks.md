@@ -24,6 +24,8 @@ Requires:
 Provides:
 
 - `capability:project-portability` — ready after `Task 7`.
+- `capability:local-repository-worker-validation` — ready after `Task 21`.
+- `capability:hosted-local-repository-binding` — ready after `Task 26`.
 
 ## Task Size Gate
 
@@ -206,7 +208,7 @@ Release boundary:
 - [x] Task 26 - Establish the hosted local-worker binding foundation.
   - Size: Standard
   - Purpose: Represent one approved hosted-project-to-worker link without reusing GitHub connection fields or making device project data hosted-authoritative.
-  - Owned surfaces: `HostedLocalRepositoryBinding`, hosted migration and schema, project and worker references, one-binding-per-project constraint, exact project-provider validation, minimum project ID, worker ID, and last-validation-time fields, personal-workspace project access, selected device-workspace worker authorization, idempotent same-binding result, atomic replacement contract, explicit disconnect, worker-revocation deletion, project-erasure cascade, service-termination handling, temporary-unavailability derivation, processing-inventory registration, and credential, path, duplicate workspace, duplicate repository-identity, device-label, and compatibility-field exclusion.
+  - Owned surfaces: `capability:hosted-local-repository-binding`, `HostedLocalRepositoryBinding`, hosted migration and schema, project and worker references, one-binding-per-project constraint, exact project-provider validation, minimum project ID, worker ID, and last-validation-time fields, personal-workspace project access, selected device-workspace worker authorization, idempotent same-binding result, atomic replacement contract, explicit disconnect, worker-revocation deletion, project-erasure cascade, service-termination handling, temporary-unavailability derivation, processing-inventory registration, and credential, path, duplicate workspace, duplicate repository-identity, device-label, and compatibility-field exclusion.
   - Owns: entity:HostedLocalRepositoryBinding
   - Depends on: Task 13, Task 25
   - Proof: Focused migration, constraint, authorization, field-minimization, access, idempotency, replacement, disconnect, worker-revocation, project-erasure, service-termination, unavailable-state, inventory, and forbidden-field tests prove one revocable hosted binding without device project data or repository mutation.
@@ -215,7 +217,7 @@ Release boundary:
 - [x] Task 21 - Integrate explicit device local-repository reconnection.
   - Size: Standard
   - Purpose: Reuse normal worker validation for a device-authoritative restored project without treating package control as local repository authority.
-  - Owned surfaces: Shared exact local-worker validation boundary, device reconnection action, existing device-workspace worker authorization and portable repository-validation reuse, project-held identifier handoff, exact device-store canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no hosted binding, packaged path, or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
+  - Owned surfaces: `capability:local-repository-worker-validation`, shared exact local-worker validation boundary, device reconnection action, existing device-workspace worker authorization and portable repository-validation reuse, project-held identifier handoff, exact device-store canonical local repository identity binding without source workspace identity, success, unavailable, malformed, legacy, mismatch, and failed-authorization results, no hosted binding, packaged path, or credential acceptance, and repository content, branch, remote, setting, and Git-configuration non-mutation.
   - Owns: AC-22
   - Depends on: Task 13, Task 25
   - Proof: Focused shared worker-contract and device-store tests cover unavailable, failed, and successful validation, exact portable match, canonical identity mismatch, malformed and legacy identifiers, source-workspace independence, absence of hosted records, packaged paths, and credentials, and fixture-level proof that repository content and configuration remain unchanged.
