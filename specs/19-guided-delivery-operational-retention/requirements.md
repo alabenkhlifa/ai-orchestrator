@@ -64,6 +64,7 @@ Inactive guided-delivery execution mechanics and operational-security logs are r
 - [AC-07] Given a run reaches a terminal lifecycle and 30 days pass, when the worker prunes its own run state, then the provider-thread reference is removed from the device while the run's participant-visible history is unchanged.
 - [AC-08] Given a preview deployment is expired or superseded and reaches 30 days, when retention runs, then its deployment record and cleanup state are removed without deleting the feature, run, or accepted evidence it belonged to.
 - [AC-09] Given a run attempt is terminal and reaches 30 days, when retention runs, then its lease owner, lease expiry, and fence token are cleared while the attempt row and its participant-visible outcome remain intact.
+- [AC-10] Given a device-authoritative project holds a superseded artifact that reaches 30 days, when retention runs against the device authority, then its bytes are removed there without creating any hosted copy and without rewriting the evidence record that names it.
 
 ## Open Questions
 

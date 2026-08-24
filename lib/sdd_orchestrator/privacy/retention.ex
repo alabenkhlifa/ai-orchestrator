@@ -129,6 +129,28 @@ defmodule SddOrchestrator.Privacy.Retention do
       applies puts and nothing else). Nothing about a device project is read
       from or written to the hosted store to make that decision, and an
       unreachable worker pauses only this rule.
+    * Superseded guided-delivery evidence artifacts — the stored *bytes* a
+      superseded `Evidence` row names are removed from the project's artifact
+      store 30 days after that row was superseded. Nothing about the row
+      itself changes: `superseded_by_id`, `artifact_ref`, `digest`, and
+      `recorded_at` are provenance, the database refuses to rewrite them
+      (`evidence_reject_rewrite`), and this rule never issues a delete or an
+      update against `evidence` at all. What is released is only the screenshot
+      or log the superseded result captured, which no longer proves anything
+      once a later result replaced it; the row keeps naming a reference whose
+      bytes are gone, and `ArtifactStore.fetch/3` answers for it exactly as it
+      answers for content that was never stored. The supersession instant is
+      the *replacement* row's `inserted_at`: `evidence` deliberately has no
+      `updated_at` and no `superseded_at`, and the replacement is inserted in
+      the same atomic commit as the supersession link
+      (`SddOrchestrator.Delivery.EvidenceIngestion`), so a server-written
+      timestamp no worker can backdate already records exactly when the older
+      result stopped being current. Artifacts are digest-addressed, so one
+      stored object can be named by several rows; a reference is released only
+      when *no* evidence row of the same project still needs it — a current
+      row, or one superseded more recently than the window — which is what
+      keeps accepted evidence's bytes from being destroyed by an unrelated
+      row's expiry.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -165,7 +187,14 @@ defmodule SddOrchestrator.Privacy.Retention do
     RuntimeCostLedger
   }
 
-  alias SddOrchestrator.Delivery.{AgentRun, BlockingQuestion, RunCommand}
+  alias SddOrchestrator.Delivery.{
+    AgentRun,
+    ArtifactStore,
+    BlockingQuestion,
+    Evidence,
+    RunCommand
+  }
+
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Notifications.AccountNotification
@@ -289,7 +318,10 @@ defmodule SddOrchestrator.Privacy.Retention do
   # accepted work. Once the run that could use it is no longer active and 30
   # days have passed since that purpose ended, nothing can still read it. It is
   # its own named window even though the value matches `@participation_window`
-  # above, because it governs a different feature's lifecycle.
+  # above, because it governs a different feature's lifecycle. A superseded
+  # evidence artifact's stored bytes are released on this same window and for
+  # the same reason: once a later result replaced it, the captured screenshot or
+  # log proves nothing, and only the immutable provenance row is still history.
   @delivery_temporary_window 30 * @day
 
   @typedoc "Rows deleted by one catalog and quota snapshot sweep."
@@ -336,6 +368,7 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_participation_security_events: prune_participation_security_events(now),
       expired_delivery_commands: prune_delivery_commands(now),
       expired_delivery_checkpoints: prune_delivery_checkpoints(now),
+      expired_delivery_artifacts: prune_delivery_artifacts(now),
       expired_device_delivery_commands: prune_device_delivery_commands(now),
       expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now)
     }
@@ -944,6 +977,100 @@ defmodule SddOrchestrator.Privacy.Retention do
       where: run.state not in ^AgentRun.terminal_states(),
       select: 1
     )
+  end
+
+  # Releases the stored bytes of superseded evidence, and nothing else. No
+  # `evidence` row is deleted or updated here, by this function or anything it
+  # calls: the supersession link, the reference, the digest, and the recorded
+  # time are the provenance a reader follows, the database itself refuses to
+  # rewrite them, and the intended end state is a row that still names a
+  # reference whose content is gone. What expires is the captured screenshot or
+  # log, which stopped being proof of anything the moment a later result
+  # replaced it.
+  #
+  # The count is what the store actually still held, not how many references
+  # were judged due, because `ArtifactStore.delete/3` answers `:ok` for content
+  # that is already absent. Two rows superseded a month apart can name the same
+  # digest, so the second sweep must report nothing rather than re-counting a
+  # deletion the first one already made.
+  defp prune_delivery_artifacts(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    cutoff
+    |> released_artifact_refs()
+    |> Enum.reduce(0, fn {workspace_id, project_id, refs}, count ->
+      count + delete_released_artifacts(%PersonalWorkspace{id: workspace_id}, project_id, refs)
+    end)
+  end
+
+  # The supersession instant is the replacement row's `inserted_at`, reached
+  # through `superseded_by_id`. `evidence` has no `updated_at` and no
+  # `superseded_at` — its create migration says so deliberately, and the
+  # `evidence_reject_rewrite` trigger freezes every column but the supersession
+  # link — so there is no timestamp on the superseded row itself that moved when
+  # it was superseded. The replacement is inserted in the same atomic commit as
+  # that link (`EvidenceIngestion`'s `:evidence` and `:superseded` steps, the
+  # second referencing the first), which makes its server-written `inserted_at`
+  # the exact moment the older result stopped being current, and one no worker
+  # can backdate the way it can choose its own `recorded_at`. The join is inner,
+  # so a row that was never superseded is not a candidate at all.
+  defp released_artifact_refs(cutoff) do
+    from(evidence in Evidence,
+      as: :governed,
+      join: replacement in Evidence,
+      on: replacement.id == evidence.superseded_by_id,
+      join: project in Project,
+      on: project.id == evidence.project_id,
+      where: not is_nil(evidence.artifact_ref),
+      where: replacement.inserted_at <= ^cutoff,
+      where: not exists(still_needed_evidence_subquery(cutoff)),
+      distinct: true,
+      select: {project.workspace_id, evidence.project_id, evidence.artifact_ref}
+    )
+    |> Repo.all()
+    |> Enum.group_by(
+      fn {workspace_id, project_id, _ref} -> {workspace_id, project_id} end,
+      fn {_workspace_id, _project_id, ref} -> ref end
+    )
+    |> Enum.map(fn {{workspace_id, project_id}, refs} -> {workspace_id, project_id, refs} end)
+  end
+
+  # The check that keeps this rule from destroying accepted evidence. An
+  # artifact is addressed by the digest of its own content within its own
+  # project, so a rerun that produced byte-identical output, and a current row
+  # and a superseded row describing the same capture, all name one stored
+  # object. Deleting on the strength of the expired row alone would take the
+  # bytes out from under every other row naming it.
+  #
+  # Correlated to the outer `:governed` binding: it asks whether any row of the
+  # same project names the same reference while still needing it — either
+  # current, or superseded too recently for its own window to have passed. One
+  # such row anywhere keeps the content. Same-project is the whole question:
+  # both adapters key an artifact by `(project, digest)` and every read is
+  # scoped to the project that owns it, so a matching digest under another
+  # project is a different stored object this delete cannot reach.
+  defp still_needed_evidence_subquery(cutoff) do
+    from(other in Evidence,
+      left_join: other_replacement in Evidence,
+      on: other_replacement.id == other.superseded_by_id,
+      where: other.project_id == parent_as(:governed).project_id,
+      where: other.artifact_ref == parent_as(:governed).artifact_ref,
+      where: is_nil(other.superseded_by_id) or other_replacement.inserted_at > ^cutoff,
+      select: 1
+    )
+  end
+
+  # One `list_refs/2` per project rather than a `stat/3` per reference: it reads
+  # no bytes, and it answers for every candidate at once what a repeat sweep
+  # needs to know — that the content is already gone, so this pass removed
+  # nothing and must say so.
+  defp delete_released_artifacts(authority, project_id, refs) do
+    held = MapSet.new(ArtifactStore.list_refs(authority, project_id))
+
+    refs
+    |> Enum.filter(&MapSet.member?(held, &1))
+    |> Enum.map(&ArtifactStore.delete(authority, project_id, &1))
+    |> Enum.count(&(&1 == :ok))
   end
 
   # The device-authoritative half of the same lifecycle, on the same window and

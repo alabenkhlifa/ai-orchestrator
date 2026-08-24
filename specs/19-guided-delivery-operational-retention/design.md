@@ -62,6 +62,12 @@ Required boundaries:
 - Reason: The umbrella wording named "transient logs" and "provider-thread references" as if each were a stored record. Neither is. Creating one so retention has something to delete would add personal-data storage in the name of minimization, and leaving the names unattached would make an approved criterion unprovable.
 - Consequence: The privacy commitment is unchanged and every category is enforced, but the hosted, device, and worker-local rules fail independently and are proved separately.
 
+### The Supersession Instant Is The Replacement's Timestamp
+
+- Choice: Measure the artifact window from the replacement evidence row, not the superseded one. Hosted uses the replacement's server-written `inserted_at`; device uses its worker-declared `recorded_at`.
+- Reason: An evidence row has no `updated_at` at all — it is declared `updated_at: false` and a database trigger freezes every column except the supersession link and state version, because a proof is not something that gets modified. The replacement is inserted in the same atomic commit as the supersession link, so its timestamp is the supersession instant. Hosted prefers the server-written value because it cannot be backdated by a worker; the device value shapes do not carry `inserted_at`, so the declared time is the only instant that survives there, and on a device the worker is the authority anyway.
+- Consequence: The two authorities read different columns for the same meaning, exactly as the temporary-data rules already do. The superseded row's own `recorded_at` is deliberately not used: it always precedes the supersession and would delete bytes before the approved window elapsed.
+
 ### Preserve Evidence Provenance When Bytes Expire
 
 - Choice: Delete superseded temporary artifact bytes without rewriting immutable evidence rows.

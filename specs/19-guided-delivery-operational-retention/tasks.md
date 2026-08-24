@@ -28,13 +28,14 @@ Provides:
 
 - Slice size: Standard
 
-One coherent outcome — inactive guided-delivery execution mechanics and operational-security logs are gone within 30 days — through one verification gate, nine tasks total, and a longest `Depends on:` path of four tasks (`Task 1 → Task 2 → Task 3 → Task 5`). Both are inside the standard limits.
+One coherent outcome — inactive guided-delivery execution mechanics and operational-security logs are gone within 30 days — through one verification gate, ten tasks total, and a longest `Depends on:` path of five tasks (`Task 1 → Task 2 → Task 10 → Task 3 → Task 5`). Both are inside the standard limits.
 
 ## Task Size Gate
 
 - Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof.
 - Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
 - The hosted rule (Task 1), the device rule (Task 6), and the worker-local rule (Task 7) are separate tasks because they are three different mechanisms — a row delete, a tombstone commit through the device seam, and a local file rewrite — that fail independently and are proved independently. Combining them would hide a device or worker failure behind a passing hosted assertion.
+- Artifact expiry splits hosted (Task 2) from device (Task 10) for the same reason: the hosted half queries the `evidence` table while the device half enumerates the device store, so the two enumerations fail independently even though they share one deletion seam.
 - Each remaining lifecycle owns its own task because its eligibility signal is different: supersession for artifacts (Task 2), expiry and cleanup state for preview deployments (Task 8), and attempt terminality for lease material (Task 9).
 - No task-size exception is used.
 
@@ -94,14 +95,23 @@ Traceability:
   - Owns: AC-06
   - Proof: `python3 .agents/scripts/run_proof.py task --task 6 -- mix test test/sdd_orchestrator/privacy/delivery_device_temporary_retention_test.exs` passes focused device day-29 and day-30, tombstone-not-delete, unreachable-device pause, no-hosted-copy assertion, and repeat cases.
 
-- [ ] Task 2 — Enforce superseded-artifact expiry.
+- [x] Task 2 — Enforce hosted superseded-artifact expiry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
-  - Purpose: Remove unnecessary superseded artifact bytes without rewriting accepted evidence or immutable proof history.
-  - Owned surfaces: Superseded-artifact eligibility from the evidence supersession signal, the 30-day purpose-ended boundary, the private artifact delete operation, accepted and current artifact preservation, immutable evidence-row preservation, the unavailable-artifact presentation seam, hosted and device fixtures, and digest-safe deletion.
+  - Purpose: Remove unnecessary superseded artifact bytes from the hosted store without rewriting accepted evidence or immutable proof history.
+  - Owned surfaces: Superseded-artifact eligibility from the replacement row's `inserted_at`, the 30-day boundary, the private artifact delete operation, accepted and current artifact preservation, immutable evidence-row preservation, the unavailable-artifact presentation seam, digest-safe deletion where two evidence rows share one artifact, and hosted fixtures.
   - Owns: AC-02
-  - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/privacy/delivery_artifact_retention_test.exs` passes focused superseded, accepted, current, day-29, day-30, hosted, device, byte-deletion, provenance-preservation, and unavailable-presentation cases.
+  - Proof: `python3 .agents/scripts/run_proof.py task --task 2 -- mix test test/sdd_orchestrator/privacy/delivery_artifact_retention_test.exs` passes focused superseded, accepted, current, day-29, day-30, shared-digest survival, byte-deletion, provenance-preservation, and unavailable-presentation cases.
+
+- [ ] Task 10 — Enforce device superseded-artifact expiry.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 2
+  - Purpose: Apply the same artifact boundary inside a device-authoritative project, where evidence lives in the device store rather than the hosted table.
+  - Owned surfaces: Device evidence enumeration, eligibility from the replacement record's `recorded_at`, the device artifact tombstone, the same digest-safe check within the project, the no-hosted-copy guarantee, and device fixtures.
+  - Owns: AC-10
+  - Proof: `python3 .agents/scripts/run_proof.py task --task 10 -- mix test test/sdd_orchestrator/privacy/delivery_device_artifact_retention_test.exs` passes focused device superseded, day-29, day-30, shared-digest survival, tombstone-not-delete, no-hosted-copy, unreachable-device pause, and repeat cases.
 
 - [ ] Task 8 — Enforce preview-deployment expiry.
   - Size: Standard
@@ -133,7 +143,7 @@ Traceability:
 - [ ] Task 3 — Deliver locked retention execution, durable rule outcome, and reconciliation.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 1, Task 2, Task 6, Task 8, Task 9
+  - Depends on: Task 1, Task 2, Task 6, Task 8, Task 9, Task 10
   - Purpose: Apply this slice's retention rules safely under repeats, concurrent schedulers, process restart, and partial failure, and make a failed or interrupted rule discoverable instead of silent.
   - Owned surfaces: The `RetentionRuleOutcome` record and its migration, shared retention-rule registration, the per-rule advisory lock, the idempotent prune result, rule-level failure state and attempt count, restart discovery, hosted and device reconciliation, retry, minimized retention diagnostics, fixtures, and deleted-data non-restoration.
   - Owns: AC-03, entity:RetentionRuleOutcome
@@ -159,7 +169,7 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All nine acceptance criteria pass against hosted, device, and worker-local authority where applicable.
+- [ ] All ten acceptance criteria pass against hosted, device, and worker-local authority where applicable.
 - [ ] Active recovery state, accepted evidence, attempt rows, and participant-visible history remain available after every retention rule.
 - [ ] Security-log field allowlists and content, credential, and email negative scans pass.
 - [ ] Retention lock, restart, partial-failure, retry, and reconciliation scenarios pass, and a failed rule is discoverable through its durable outcome record.
