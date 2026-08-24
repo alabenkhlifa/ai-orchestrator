@@ -1,5 +1,16 @@
 # Local Worker Runtime Governance Progress Log
 
+### 2026-08-24 - Fixed a time-dependent Task 4 proof that rotted after verification
+
+- Defect: `test/sdd_orchestrator/delivery/local_worker_runtime_projection_test.exs` failed on `refute projection.quota == %{state: :unknown}`. It was reported as a pre-existing unrelated failure by `specs/36-local-worker-native-distribution` and again by `specs/37-hosted-local-repository-connection`, and was still unowned; this slice owns the test, so the fix belongs here.
+- Root cause, traced rather than guessed: `governed_context/0` built its quota snapshot with a frozen `@now` of `2026-08-09 12:00:00Z`, but `LocalWorkerRuntimeProjection.for_run/5` takes no clock and reads the quota through `Quotas.current_quota/3`, which uses `DateTime.utc_now()`. A quota snapshot's default TTL is 300 seconds and `Quotas.project/3` deliberately refuses an expired snapshot as stale rather than reading it as zero or unlimited. The proof could therefore only pass within five minutes of that frozen instant — which is why it passed at this slice's own verification gate on 2026-08-09 and has failed on every run since.
+- No production defect. The refusal of a stale quota is this codebase's documented, intended contract, and nothing in `lib/` changed.
+- Fix: the fixture is anchored to the live clock through a `live_now/0` helper, so the snapshot is genuinely fresh when the projection reads it. The frozen `@now` attribute had exactly one use and was removed.
+- Failed checks: None after the fix.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/local_worker_runtime_projection_test.exs` — exit `0`.
+- 5 tests passed. Confirmed on the main thread by real exit status. This slice's `Verified` status is unchanged; its gate evidence is now reproducible on any date rather than only on the day it was recorded.
+- Spec updates: this entry only; no requirement, design decision, acceptance criterion, or task boundary changed.
+
 ### 2026-08-09 - Slice verification gate: Verified
 
 - Completed: the full slice gate, each command run and confirmed by this thread with a real, unmasked exit code.

@@ -10,8 +10,6 @@ defmodule SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest do
   alias SddOrchestrator.Delivery.{LocalWorkerRunGovernance, LocalWorkerRuntimeProjection}
   alias SddOrchestrator.ParticipationFixtures
 
-  @now ~U[2026-08-09 12:00:00Z]
-
   describe "for_run/5" do
     test "an ungoverned run returns :ungoverned" do
       %{project: project, account: owner_account, owner_actor: owner_actor} =
@@ -125,6 +123,13 @@ defmodule SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest do
   # owner-exact/participant-safe split proves the fix directly rather than
   # coincidentally: the project owner must fall through to
   # `participant_projection/4` exactly like any other non-initiator.
+  # The projection reads the quota through the live clock, and a quota snapshot
+  # is deliberately refused once its short TTL has passed rather than read as
+  # zero or unlimited. Anchoring this fixture to a frozen past instant therefore
+  # made the owner-projection proof pass only in the few minutes after it was
+  # written, and report an unknown quota forever after.
+  defp live_now, do: DateTime.utc_now() |> DateTime.truncate(:second)
+
   defp governed_context do
     %{
       project: project,
@@ -157,7 +162,7 @@ defmodule SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest do
     session_context =
       runtime_observation_context_fixture(%{
         account: initiator_account,
-        now: @now,
+        now: live_now(),
         consumer_ref: "local_worker_run:" <> run.id
       })
 
