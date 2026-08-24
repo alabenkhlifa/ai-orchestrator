@@ -1,5 +1,13 @@
 # Project Backup And Restoration Progress Log
 
+### 2026-08-24 - Resolved: an unparseable repository identity is an error, not a connection state
+
+- The entry below left one question open after correcting the two `connection_state/3` specs: whether an unparseable stored identity *should* be an error at all, rather than a reported `:disconnected` state. Resolved by the user in favour of the error, confirming the behaviour that already shipped.
+- Recorded in `design.md` as `Unparseable Repository Identity Is An Error, Not A State`, with the reasoning that `:disconnected` means "no machine is linked yet, link one" while an unprovable identity has a different remedy — upgrade the identity first — and no binding can ever exist for it. The hosted local-worker binding interface line now states the same contract.
+- No code change follows from the resolution: the boundary already returns `:invalid_repository_identity`, and the two `@spec` corrections in the entry below already made that contract truthful. This slice's delivered behavior, proof, and `Verified` status are unchanged.
+- Failed checks: None — specification write-back only.
+- Spec updates: `design.md` (one new decision, one interface line extended); this entry. No requirement, acceptance criterion, task boundary, or capability edge changed.
+
 ### 2026-08-24 - Corrected two understated `connection_state/3` error specs (annotation only, no behavior change)
 
 - Found by `specs/37-hosted-local-repository-connection`'s verification gate: `mix dialyzer` rejected that slice's page clause for `{:error, :invalid_repository_identity}` as unreachable. It is reachable. `HostedLocalRepositoryBindings.connection_state/3` declared `{:error, :not_found | :invalid_project_provider}`, but its own `validate_local_project/1` returns `{:error, :invalid_repository_identity}` for a hosted local-repository project whose stored identity does not parse — a legacy workspace-scoped value or a malformed one — and that flows straight out through the `else`. The declaration was simply untrue.
