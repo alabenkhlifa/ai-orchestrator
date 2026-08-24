@@ -25,6 +25,8 @@ defmodule SddOrchestrator.Worker.RunState do
 
   @file_name "run_state.json"
   @lifecycle_states ~w(accepted blocked canceled failed stopped verification_completed)
+  @in_flight_lifecycle_states ~w(accepted)
+  @terminal_lifecycle_states @lifecycle_states -- @in_flight_lifecycle_states
 
   @enforce_keys [
     :command_id,
@@ -70,6 +72,23 @@ defmodule SddOrchestrator.Worker.RunState do
   @doc "The lifecycle values a stored entry may carry."
   @spec lifecycle_states() :: [String.t()]
   def lifecycle_states, do: @lifecycle_states
+
+  @doc """
+  The lifecycle values that mean the attempt is finished — no agent runs
+  under that entry anymore.
+
+  Every stored value except `"accepted"`:
+  `SddOrchestrator.Worker.AgentObserver.finish/3` records `"blocked"`,
+  `"canceled"`, `"failed"`, and `"verification_completed"` after releasing
+  the attempt's process lock, and `"stopped"` is the superseded-attempt
+  fact `SddOrchestrator.Worker.CommandHandler` writes for the same reason.
+
+  This is deliberately wider than that module's own private
+  `@terminal_lifecycles`, which answers a different question — whether a
+  `cancel` may still be accepted — and so keeps `"blocked"` cancellable.
+  """
+  @spec terminal_lifecycle_states() :: [String.t()]
+  def terminal_lifecycle_states, do: @terminal_lifecycle_states
 
   @doc "An empty record for a worker that has never accepted a command."
   @spec empty() :: snapshot()

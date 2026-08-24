@@ -1,5 +1,18 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-24 — Task 7 worker-local provider-thread reference expiry
+
+- Completed: `SddOrchestrator.Worker.RunStateRetention.prune/2` nils `agent_thread_ref` in each independently eligible slot of the worker's own run state and rewrites through `RunState.store/2` only when something was removed. Nothing is registered in `Retention.prune_all/1`: the hosted pruner cannot reach a device-local file, and this rule deliberately does not go through it.
+- Terminal lifecycles are every `RunState` state except `accepted`, exposed as `RunState.terminal_lifecycle_states/0` so the vocabulary stays owned by the module that defines it. This is deliberately wider than `CommandHandler`'s private `@terminal_lifecycles`, which excludes `blocked` because it answers a different question — whether a `cancel` may still be accepted. Treating `blocked` as non-terminal for retention would keep a provider thread alive forever on any run that ends blocked. The divergence and its reason are documented at the new function.
+- Accepted limitation, recorded rather than hidden. `%RunState{}` carries no timestamp, so eligibility age comes from the run-state file's mtime. One file holds both the `current` and `previous` slots, so they share a clock that any write resets. For a settled record the mtime is the moment of its last transition, and the two-slot snapshot evicts older entries on its own, so the normal case is correct. The gap is a run that stays `accepted` for more than 30 days: its repeated writes would keep a terminal `previous` reference from ageing out. The alternative was adding a timestamp to the stored schema that every already-deployed worker reads back, which is a larger change than this task owns and would still need an mtime fallback for existing files. Follow-up belongs to whichever task next revises the stored run-state schema.
+- A pruning write also resets the mtime, which is harmless: it only ever removes references, so nothing survivable is delayed and a second sweep returns `{:ok, 0}` with identical bytes.
+- Proof covers the boundary at day 30 and day 29, every terminal lifecycle value in a loop, a non-terminal entry at forty times the window keeping its reference, `previous` pruned while an `accepted` `current` keeps its own, the whole decoded map compared before and after with only the two reference keys changed, `0700`/`0600` re-asserted after the rewrite, and missing, corrupt, and never-launched files all succeeding as no-ops.
+- The test's temporary home is keyed by `System.pid()` as well as `System.unique_integer([:positive])`, because that counter restarts per virtual machine and two concurrent suites would otherwise collide on the same directory name.
+- Failed checks: None. `mix format` and `mix credo --strict` pass on all three files, and a forced recompile of every touched module emits no warnings.
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/run_state_retention_test.exs` — exit `0`.
+- 12 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 7 checked complete.
+
 ### 2026-08-24 — Task 4 minimized guided-delivery security log
 
 - Completed: `SddOrchestrator.Privacy.DeliverySecurityLog` and its `DeliverySecurityEvent` schema, table `delivery_security_events`. Until now guided-delivery security events reached `Logger` only, through `DeliveryContentBoundaryAudit`, which accepts any atom as an event type, carries no correlation reference, and persists nothing — so there was no record to minimize and nothing that could ever be pruned. Task 5 now has a sink to expire.

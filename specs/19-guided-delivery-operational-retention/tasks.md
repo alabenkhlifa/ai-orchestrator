@@ -121,8 +121,7 @@ Traceability:
   - Owns: AC-09
   - Proof: `python3 .agents/scripts/run_proof.py task --task 9 -- mix test test/sdd_orchestrator/privacy/delivery_attempt_lease_retention_test.exs` passes focused terminal, non-terminal exclusion, day-29, day-30, row-preservation, outcome-preservation, and idempotent-repeat cases.
 
-- [ ] Task 7 — Expire the worker-local provider-thread reference.
-  - Status: In Progress
+- [x] Task 7 — Expire the worker-local provider-thread reference.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
