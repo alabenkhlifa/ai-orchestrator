@@ -102,7 +102,7 @@ Traceability:
   - Owns: AC-04, AC-05
   - Proof: Focused tests cover multiple active workers presented for explicit choice, exactly one used without a choice, a worker paired between listing and submit not silently substituted, an inactive or revoked worker excluded from selection, and the no-worker-paired result carrying no terminal command.
 
-- [ ] Task 7 - Point the selected machine at the repository folder.
+- [x] Task 7 - Point the selected machine at the repository folder.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2

@@ -1,5 +1,17 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Task 7 repository folder selection on the chosen machine
+
+- Completed: `SddOrchestrator.Portability.HostedLocalRepositoryFolder` at `lib/sdd_orchestrator/portability/hosted_local_repository_folder.ex`. `select/1` opens the machine's folder picker, confirms the chosen folder is a Git repository, and returns a proof function; `picker_available?/0` reports whether this machine can open one at all.
+- Mechanism decided here and worth recording: the chosen path is returned as a *closure*, never as a field. `select/1` yields `fn repository_id -> ... end` capturing the path in its own environment, so no returned, rendered, or stored value can carry a path, remote URL, filename, or Git object. The proof answers only `{:ok, boolean()}`, or the repository's own availability if the folder stopped being usable. The proof's shape is exactly the matcher `HostedLocalRepositoryConnection.connect/6` already takes, so Task 4 composes the two without either learning the other's secret.
+- Not-a-Git-repository is refused at selection time rather than surfacing later as a generic connection failure, because the owner's next action is to pick a different folder. `:cancelled`, `:not_a_git_repository`, `:repository_unavailable` (inaccessible or commitless), and `:picker_unavailable` are distinct, so `AC-10`'s cancel case is never conflated with a machine that cannot open a picker.
+- Seam: the default picker reads the same `:device_worker_stub` and `:device_worker_stub_folder` configuration accountless onboarding already uses, and `select/1` accepts an injected `picker:` so the cancel, plain-folder, missing-folder, and commitless-repository branches are provable. The real native handoff remains the worker's own release-gated transport, exactly as `local_onboarding_live` already treats it; nothing in those existing LiveViews was changed or duplicated in markup.
+- Non-mutation: the proof snapshots `HEAD`, branches, remotes, working-tree status, and local config of a real Git fixture before selecting and after both a matching and a non-matching proof, and asserts they are identical.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on the new module.
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator/portability/hosted_local_repository_folder_test.exs` — exit `0`.
+- 7 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 7 checked complete.
+
 ### 2026-08-24 - Task 2 paired-machine selection
 
 - Completed: `SddOrchestrator.Portability.HostedLocalRepositoryMachines` at `lib/sdd_orchestrator/portability/hosted_local_repository_machines.ex`. `offer/2` describes what the page presents; `confirm/3` decides what is actually connected; `guidance/0` carries the no-worker-paired steps as data.
