@@ -46,6 +46,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
 
   alias SddOrchestrator.Portability.{
     HostedLocalRepositoryBindings,
@@ -272,25 +273,38 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   defp assign_worker_connection(socket) do
     project = socket.assigns.project
 
-    if project.storage_mode == "hosted" and project.repository_provider == "local" do
-      case HostedLocalRepositoryBindings.connection_state(socket.assigns.workspace, project.id) do
-        {:ok, %{state: state}} ->
-          assign(socket, :worker_connection, state)
+    cond do
+      not local_repository_project?(project) ->
+        assign(socket, :worker_connection, nil)
 
-        # A local project whose repository identity cannot be parsed — a legacy
-        # workspace-scoped value, or a malformed one — has no binding and cannot
-        # be given one. It is still a local-repository project and still not
-        # connected, so it keeps its region; the connect action explains why.
-        {:error, :invalid_repository_identity} ->
-          assign(socket, :worker_connection, :disconnected)
+      # A local project whose repository identity cannot be parsed — a legacy
+      # workspace-scoped value, or a malformed one — has no binding and cannot be
+      # given one. It is still a local-repository project and still not
+      # connected, so it keeps its region and the connect action explains why.
+      # That case is decided here rather than read from the binding boundary's
+      # error, which does not promise it in its own contract.
+      not portable_identity?(project.canonical_repository_id) ->
+        assign(socket, :worker_connection, :disconnected)
 
-        {:error, _reason} ->
-          assign(socket, :worker_connection, nil)
-      end
-    else
-      assign(socket, :worker_connection, nil)
+      true ->
+        assign_derived_worker_connection(socket, project)
     end
   end
+
+  defp assign_derived_worker_connection(socket, project) do
+    case HostedLocalRepositoryBindings.connection_state(socket.assigns.workspace, project.id) do
+      {:ok, %{state: state}} -> assign(socket, :worker_connection, state)
+      {:error, _reason} -> assign(socket, :worker_connection, nil)
+    end
+  end
+
+  defp local_repository_project?(%{storage_mode: "hosted", repository_provider: "local"}),
+    do: true
+
+  defp local_repository_project?(_project), do: false
+
+  defp portable_identity?(repository_id),
+    do: match?({:ok, _identity}, PortableRepositoryIdentity.parse(repository_id))
 
   defp connect_label(:disconnected), do: "Connect this machine"
   defp connect_label(_connected), do: "Connect a different machine"

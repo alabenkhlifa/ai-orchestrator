@@ -1,5 +1,15 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Verification gate: static analysis corrected a page dependency on an undeclared error
+
+- Dialyzer rejected the page's `{:error, :invalid_repository_identity}` clause as unreachable. It is not unreachable at runtime — the Task 3 and Task 4 proofs both exercise it — but `specs/06-project-portability`'s `HostedLocalRepositoryBindings.connection_state/3` declares only `{:error, :not_found | :invalid_project_provider}` while its own `validate_local_project/1` can return `{:error, :invalid_repository_identity}` straight out through the `else`. The page was therefore depending on behaviour the provider's contract does not promise.
+- Corrected inside this slice's own boundary rather than by editing the provider: the page now decides the unparseable-identity case from the project it already holds, through `PortableRepositoryIdentity.parse/1`, and calls `connection_state/3` only for a project whose identity parses. Behaviour is unchanged and all 36 page tests still pass; the undeclared-atom dependency is gone.
+- Finding recorded for its owner, not fixed here: `HostedLocalRepositoryBindings.connection_state/3`'s `@spec` understates its error type. `specs/06-project-portability` owns that module, and this slice's Implementation Boundary excludes changing it, so the correction belongs to that specification rather than to an ad hoc edit from here.
+- Failed checks: `mix check` (repo-wide) — 4406/4408 passed, 2 failed. Both failures are the already-known, still-unowned pre-existing defects: `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` (`specs/34`) and `SddOrchestrator.Delivery.RevocationConsumerTest` (`specs/29`). Neither file, nor anything either reads, is touched by this slice. `specs/36-local-worker-native-distribution` recorded the same two as an evidenced exception on 2026-08-21.
+- Proof receipt: slice — scope `Broad` — command `sh -c 'mix format --check-formatted && MIX_ENV=test mix compile --warnings-as-errors && MIX_ENV=test mix credo --strict && mix dialyzer && mix deps.audit && mix sobelow --config'` — exit `0`.
+- Dialyzer is back to its pre-existing baseline of 25 errors, all 25 skipped by the project's own ignore file, with no unnecessary skips. Credo `--strict` reports no issues across 10730 mods/funs. `mix deps.audit` reports no vulnerabilities. Confirmed on the main thread by real exit status.
+- Spec updates: none yet; the gate write-back follows the browser and production proofs.
+
 ### 2026-08-24 - Task 6 a connected project reaches a running development run
 
 - Completed: the end-to-end proof this slice exists for. The test drives a normal hosted local-repository project — asserted to have no `PackageProvenance` row before and after — through this slice's own connect action on `/projects/:id/overview`, and asserts the order that matters: the gateway credential exchange is refused `403` before connection, succeeds `200` after it, and its token verifies to exactly this project and this worker.
