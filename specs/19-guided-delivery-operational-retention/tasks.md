@@ -85,7 +85,7 @@ Traceability:
   - Owns: AC-01
   - Proof: `python3 .agents/scripts/run_proof.py task --task 1 -- mix test test/sdd_orchestrator/privacy/delivery_temporary_retention_test.exs` passes focused day-29 and day-30 boundary, acknowledged and failed command, resolved checkpoint, active-run exclusion, current-recovery exclusion, transient result and failure-code removal, and idempotent-repeat cases.
 
-- [ ] Task 6 — Enforce device temporary execution-data expiry.
+- [x] Task 6 — Enforce device temporary execution-data expiry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1

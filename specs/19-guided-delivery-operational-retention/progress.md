@@ -1,5 +1,16 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-24 — Task 6 device temporary execution-data expiry
+
+- Completed: `expired_device_delivery_commands` and `expired_device_delivery_checkpoints` registered in `Retention.prune_all/1`, reusing Task 1's `@delivery_temporary_window`. The sweep iterates `Devices.list_projects/0`, lists each project's `:command` and `:question` records, and writes a `%{"deleted" => true}` tombstone through `Devices.commit_delivery/2`. Device deletion is never a key delete.
+- The run-still-active exclusion is a per-project `MapSet` of non-terminal device run ids, the device equivalent of the hosted correlated `exists` subquery. Task 1's hosted rules and their test are untouched.
+- Discovery that qualifies a recorded design decision, now written into `design.md`: no device record carries a purpose-ended instant at all. `RunCommand.to_value/1` and `BlockingQuestion.to_value/1` are deliberately Ecto-timestamp-free, so neither `acknowledged_at`, `updated_at`, nor any resolution time survives the device serialization. The rules use a command's `due_at` and a question's `asked_at`, both at or before the hosted purpose-ended time, so device data is never retained longer than hosted data and may be released marginally earlier. Eligibility still requires a terminal or resolved record whose run is finished, so the earlier instant changes only when a spent record goes. Exact parity would require the device value shapes to start carrying a resolution timestamp, which is a change to `to_value`/`from_value` outside this task's ownership and is not needed to satisfy the approved contract.
+- The unreachable-device case is proved by consequence, not by absence of a crash: the test stops the device store process, then asserts one `prune_all/1` call returns zero for both device keys and still deletes the hosted due command, so the pass demonstrably continued.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on both files.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_device_temporary_retention_test.exs` — exit `0`.
+- 10 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 6 checked complete; `design.md` eligibility decision gains its device qualification.
+
 ### 2026-08-24 — Task 7 worker-local provider-thread reference expiry
 
 - Completed: `SddOrchestrator.Worker.RunStateRetention.prune/2` nils `agent_thread_ref` in each independently eligible slot of the worker's own run state and rewrites through `RunState.store/2` only when something was removed. Nothing is registered in `Retention.prune_all/1`: the hosted pruner cannot reach a device-local file, and this rule deliberately does not go through it.

@@ -54,6 +54,7 @@ Required boundaries:
 - Choice: Calculate the 30-day period from inactive or superseded state, not record creation.
 - Reason: A long-running attempt may legitimately need an old checkpoint, while a newly superseded artifact no longer has an active purpose.
 - Consequence: Each temporary record needs an authoritative purpose-ended signal or conservative ineligibility.
+- Device qualification: the device value shapes carry no Ecto timestamps, so no device record has a purpose-ended instant. The device rules use the only instant each record does carry — a command's scheduled delivery time and a question's asked time — both of which are at or before the hosted purpose-ended time. The device half therefore never retains a record longer than the hosted half would and can release marginally earlier. Eligibility still requires the record to be terminal or resolved and its run to be finished, so the earlier instant changes only when a spent record goes, never whether something still in use is taken.
 
 ### Retention Follows The Records That Exist, Not The Category Names
 

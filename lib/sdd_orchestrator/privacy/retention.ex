@@ -122,7 +122,13 @@ defmodule SddOrchestrator.Privacy.Retention do
       question and its answer are not deleted here: they are duplicated into
       `activity_entries` as `"question_asked"` and `"question_answered"`,
       which is the retained authoritative history and is governed by its own
-      lifecycle rather than by this window.
+      lifecycle rather than by this window. A device-authoritative project gets
+      the same window and the same run-still-active exclusion, decided inside
+      the device authority through `SddOrchestrator.Devices`' delivery API and
+      applied as a tombstone put rather than a key delete (the delivery seam
+      applies puts and nothing else). Nothing about a device project is read
+      from or written to the hosted store to make that decision, and an
+      unreachable worker pauses only this rule.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -329,7 +335,9 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_participation_notifications: prune_participation_notifications(now),
       expired_participation_security_events: prune_participation_security_events(now),
       expired_delivery_commands: prune_delivery_commands(now),
-      expired_delivery_checkpoints: prune_delivery_checkpoints(now)
+      expired_delivery_checkpoints: prune_delivery_checkpoints(now),
+      expired_device_delivery_commands: prune_device_delivery_commands(now),
+      expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -936,6 +944,122 @@ defmodule SddOrchestrator.Privacy.Retention do
       where: run.state not in ^AgentRun.terminal_states(),
       select: 1
     )
+  end
+
+  # The device-authoritative half of the same lifecycle, on the same window and
+  # the same eligibility rule: a terminal command whose purpose ended more than
+  # 30 days ago and whose run is no longer active. Eligibility is decided inside
+  # the device authority — the records are read from `SddOrchestrator.Devices`'
+  # already-public delivery API and judged there — because a device project has
+  # no hosted row at all, and copying one out to decide what to prune would
+  # create exactly the hosted copy this authority exists to avoid.
+  defp prune_device_delivery_commands(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_delivery(project.id, :command, cutoff)
+    end)
+  catch
+    # An offline, unpaired, or unreachable worker pauses this rule instead of
+    # aborting the pass: nothing on that device is due until it can be asked
+    # again, and every hosted rule in `prune_all/1` still runs.
+    :exit, _unavailable_store -> 0
+  end
+
+  # The device-authoritative resolved checkpoint, on the same window and the
+  # same run-still-active exclusion as its hosted counterpart, resolved inside
+  # the device authority for the same reason as the command sweep above.
+  defp prune_device_delivery_checkpoints(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_delivery(project.id, :question, cutoff)
+    end)
+  catch
+    :exit, _unavailable_store -> 0
+  end
+
+  defp sweep_one_device_project_delivery(project_id, kind, cutoff) do
+    active_run_ids = active_device_run_ids(project_id)
+
+    project_id
+    |> Devices.list_delivery(kind)
+    |> Enum.filter(&due_device_delivery_record?(kind, &1, cutoff, active_run_ids))
+    |> Enum.map(&tombstone_device_delivery_record(project_id, kind, &1))
+    |> Enum.count(&(&1 == :ok))
+  end
+
+  # The device value shape carries no Ecto timestamps at all — `to_value/1`
+  # deliberately exposes no `acknowledged_at`, `updated_at`, or `resolved_at`
+  # — so each record is measured by the only instant it does carry. For a
+  # command that is `due_at`, the last time the instruction was scheduled for
+  # delivery, which for a terminal command is the delivery it answered; for a
+  # question it is `asked_at`, and a resolution can only have happened at or
+  # after it. Both are at or before the hosted rule's own purpose-ended time,
+  # so the device half never retains a record longer than the hosted half
+  # would, which is the direction data minimisation must err in.
+  defp due_device_delivery_record?(:command, value, cutoff, active_run_ids) do
+    case RunCommand.from_value(value) do
+      {:ok, command} ->
+        command.state in RunCommand.terminal_states() and
+          DateTime.compare(command.due_at, cutoff) != :gt and
+          command.run_id not in active_run_ids
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  defp due_device_delivery_record?(:question, value, cutoff, active_run_ids) do
+    case BlockingQuestion.from_value(value) do
+      {:ok, question} ->
+        question.state in BlockingQuestion.resolved_states() and
+          DateTime.compare(question.asked_at, cutoff) != :gt and
+          question.run_id not in active_run_ids
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  # The device equivalent of the hosted `not exists(active_delivery_run_subquery())`:
+  # a command or question whose run has not reached `"failed"`, `"canceled"`, or
+  # `"completed"` is current recovery material whatever its age. A record whose
+  # run is absent from the store has no active run and is released by age alone,
+  # exactly as the hosted `not exists` clause decides it.
+  defp active_device_run_ids(project_id) do
+    project_id
+    |> Devices.list_delivery(:run)
+    |> Enum.flat_map(fn value ->
+      case AgentRun.from_value(value) do
+        {:ok, run} -> [run]
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.reject(&AgentRun.terminal?/1)
+    |> MapSet.new(& &1.id)
+  end
+
+  # A tombstone put, never a key delete: the delivery seam applies puts and
+  # nothing else (see `SddOrchestrator.Delivery.ArtifactStore.Device`), so the
+  # record is replaced by the bare fact that this key is no longer a command or
+  # a question. The tombstone carries no operation, result, checkpoint, branch,
+  # or workspace path — nothing of the expired record survives it, and every
+  # decode treats it as absent. The expected version is the one the record
+  # itself carries (`nil` for a command, which has no `state_version` in its
+  # value shape), so a record rewritten since this sweep read it is refused
+  # rather than overwritten, and is judged again on the next pass.
+  defp tombstone_device_delivery_record(project_id, kind, value) do
+    project_id
+    |> Devices.commit_delivery([
+      {:put, kind, value["id"], %{"deleted" => true}, value["state_version"]}
+    ])
+    |> case do
+      {:ok, _applied} -> :ok
+      {:error, _reason} -> :error
+    end
   end
 
   # Departure ends authorization immediately; the row stays as governed project
