@@ -1,5 +1,19 @@
 # Local Worker Native Distribution Progress Log
 
+### 2026-08-24 - Task 12's missing-binding finding assigned to a new specification (reference correction, slice unchanged)
+
+- Completed: This slice's Out of Scope bullet for the missing hosted-project-to-worker binding capability recorded the gap without an owner, guessing at `specs/33-local-worker-run-execution` or a new specification. It now names `specs/37-hosted-local-repository-connection#Task 6`. That new specification adds the first-connection entry from the hosted project's own page and consumes `specs/06-project-portability`'s exact worker validation and binding transaction unchanged, rather than weakening the restore gate that currently owns the only path to a binding. Its Task 6 exists specifically to prove the `403` this slice's Task 12 hit no longer occurs.
+- Nothing about this slice's own delivered scope, proof, or status changed. `## Status` stays `Verified`; the finding was already Out of Scope here and remains so, now with a real owner.
+- Failed checks: None — reference correction only, no code and no task boundary touched.
+- Spec updates: `requirements.md` (Out of Scope owner assigned).
+
+### 2026-08-24 - Task 12's worker-liveness finding repointed to its correct owner (reference correction, slice unchanged)
+
+- Completed: This slice's Out of Scope bullet for the stale `last_seen_at` heartbeat named `specs/33-local-worker-run-execution` as the owner. Re-justified against the repository rather than followed: `specs/33`'s Implementation Boundary explicitly excludes `Devices.Pairing` and excludes changing the worker socket and channel, so it cannot own a fix that must reach `Pairing.mark_seen/1`; and the failing case is a connected but *idle* worker, which emits no run heartbeat for `GatewayConnection` to piggyback on. `specs/02-local-project-onboarding` owns `LocalWorker.last_seen_at`, its staleness window, and the reachability policy that reads them, and had already recorded the real outbound transport as release-gated. The bullet now names `specs/02-local-project-onboarding#Task 11`, which was added in the same change with its `Registry-Derived Worker Liveness` decision.
+- Nothing about this slice's own delivered scope, proof, or status changed. `## Status` stays `Verified`; the finding was already Out of Scope here and remains so, only its owner is now correct.
+- Failed checks: None — reference correction only, no code and no task boundary touched.
+- Spec updates: `requirements.md` (Out of Scope owner corrected, with the reason recorded inline).
+
 ### 2026-08-21 — Repo-wide `mix check` exception recorded before merge (pre-existing, unrelated failures)
 
 - Completed: Ran the full repository-wide `mix check` as this slice's final verification gate (`python3 .agents/scripts/run_proof.py slice -- mix check`, backgrounded — full run: 4343/4348 tests passed, 1 excluded, 5 failed). Investigated every failure before treating any as a regression, per this project's evidence requirement.
