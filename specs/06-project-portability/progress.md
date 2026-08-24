@@ -1,5 +1,13 @@
 # Project Backup And Restoration Progress Log
 
+### 2026-08-24 - Withdrew `capability:local-repository-worker-validation`; it has no consumer after all
+
+- Completed: The entry below named two capabilities for `specs/37-hosted-local-repository-connection`. That specification's own implementation preflight then found it cannot consume Task 21's `LocalRepositoryValidation.validate/5`: the function authenticates a raw worker credential through `Pairing.authenticate_worker/1`, and the control plane never holds that secret — `specs/02-local-project-onboarding` stores only a salted digest and the raw value lives in the worker's keychain. `validate/5` is shaped for a proof the worker itself initiates, which is why its only caller takes the credential and matcher as arguments from a caller that does not exist. Removed `capability:local-repository-worker-validation` from `Provides:` and from Task 21's `Owned surfaces` rather than leave a named contract with no consumer.
+- `capability:hosted-local-repository-binding` (Task 26) stands and is genuinely consumed: `specs/37` calls `put_validated_binding/6` with an identity already proved on the device.
+- Nothing about Task 21's delivered behavior, proof, or this slice's `Verified` status changed. A future worker-initiated hosted connection is the natural consumer, and the capability can be named again then.
+- Failed checks: None — capability naming only.
+- Spec updates: `tasks.md` (removed one `Provides:` entry and its `Owned surfaces` mention).
+
 ### 2026-08-24 - Named two already-delivered contracts as capabilities for a downstream consumer (reference only)
 
 - Completed: `specs/37-hosted-local-repository-connection` needs the smallest stable contracts this slice already delivers, rather than a whole-slice edge on `capability:project-portability`. Named Task 21's shared exact local-worker validation boundary and Task 26's hosted binding foundation as capabilities, and recorded them in each provider task's `Owned surfaces`. Both provider tasks were already complete and verified; nothing about their scope, proof, delivered behavior, or this slice's `Verified` status changed, and no new work was added here.
