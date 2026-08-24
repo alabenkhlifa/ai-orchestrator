@@ -129,7 +129,7 @@ Traceability:
   - Owns: AC-01
   - Proof: Focused page tests cover a successful connection moving the page to connected, each refusal keeping the page unconnected with actionable copy and no binding, and a repeated submit resolving to the same binding rather than a second one.
 
-- [ ] Task 5 - Disconnect and move the project to a different machine.
+- [x] Task 5 - Disconnect and move the project to a different machine.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4

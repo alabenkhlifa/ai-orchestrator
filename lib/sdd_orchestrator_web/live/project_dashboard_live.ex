@@ -33,6 +33,12 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   points the chosen machine at a folder through `HostedLocalRepositoryFolder`,
   and calls `HostedLocalRepositoryConnection.connect/6`. Every refusal keeps the
   project exactly as it was and names what the owner can do next.
+
+  The same action moves a connected project to a different machine (specs/37
+  Task 5): replacement runs through the identical gate, so it is atomic and a
+  failed replacement leaves the previous machine authoritative. Disconnect
+  removes the routing only and is idempotent; the project, its specifications,
+  and its repository are untouched.
   """
   use SddOrchestratorWeb, :live_view
 
@@ -105,6 +111,17 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
   def handle_event("cancel_connect", _params, socket) do
     {:noreply, reset_connect(socket)}
+  end
+
+  # Disconnect removes the routing and nothing else. Repeating it succeeds, so a
+  # double submit cannot turn into an error the owner has to interpret.
+  def handle_event("disconnect_machine", _params, socket) do
+    HostedLocalRepositoryBindings.disconnect(
+      socket.assigns.workspace,
+      socket.assigns.project.id
+    )
+
+    {:noreply, socket |> reset_connect() |> assign_worker_connection()}
   end
 
   def handle_event("recheck", _params, socket) do
@@ -275,6 +292,9 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
     end
   end
 
+  defp connect_label(:disconnected), do: "Connect this machine"
+  defp connect_label(_connected), do: "Connect a different machine"
+
   # A worker carries no device label, so machines are distinguished by the order
   # they are offered plus whether they can be reached right now. Presenting more
   # worker data is the deferred minimization decision this slice records.
@@ -420,16 +440,31 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
                 {worker_detail(@worker_connection)}
               </p>
 
-              <.button
-                :if={@worker_connection == :disconnected and @connect_step != :choosing_machine}
-                variant="secondary"
-                size="sm"
-                phx-click="connect_machine"
-                data-connect-machine
-                class="mt-3 w-full sm:w-auto"
+              <div
+                :if={@connect_step != :choosing_machine}
+                class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"
               >
-                <.lucide name="link" class="size-4" /> Connect this machine
-              </.button>
+                <.button
+                  variant="secondary"
+                  size="sm"
+                  phx-click="connect_machine"
+                  data-connect-machine
+                  class="w-full sm:w-auto"
+                >
+                  <.lucide name="link" class="size-4" /> {connect_label(@worker_connection)}
+                </.button>
+
+                <.button
+                  :if={@worker_connection != :disconnected}
+                  variant="ghost"
+                  size="sm"
+                  phx-click="disconnect_machine"
+                  data-disconnect-machine
+                  class="w-full sm:w-auto"
+                >
+                  <.lucide name="unplug" class="size-4" /> Disconnect
+                </.button>
+              </div>
 
               <div :if={@connect_step == :choosing_machine} class="mt-3" data-choose-machine>
                 <p class="text-[13px] font-semibold text-ink">

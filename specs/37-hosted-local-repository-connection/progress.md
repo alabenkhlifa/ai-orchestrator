@@ -1,5 +1,18 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Task 5 disconnect and move the project to a different machine
+
+- Completed: the connected project page now offers `Connect a different machine` and `Disconnect`. Disconnect calls `HostedLocalRepositoryBindings.disconnect/2` and re-derives the state, so the page returns to not connected and the disconnect control disappears with it.
+- Replacement runs through the same connect path rather than a second mechanism, so `specs/06-project-portability`'s `put_validated_binding/6` transaction remains the single place that decides atomicity. Replacement is therefore atomic and the preserve-on-failure invariant is the transaction's own, not a rule re-implemented on the page.
+- `AC-08`'s failure half is proved two ways from the page: a replacement machine pointed at a different repository, and a replacement machine that is paired but unreachable. In both the previous binding row is byte-identical afterwards, the previous machine stays authoritative, exactly one binding row exists, and the page still reads connected.
+- `AC-07`'s "unchanged" claim is proved concretely rather than asserted: the project row, the full hosted specification snapshot from `SpecificationStore.current_snapshot/2`, and a real Git fixture's `HEAD`, branches, remotes, working-tree status, and local config are all compared before and after disconnect.
+- Repeated disconnect succeeds rather than erroring, so a double submit cannot produce a failure the owner has to interpret.
+- The connect control is now present in every state with a state-dependent label, because moving a machine and making a first connection are the same action on different starting states; the disconnect control appears only when there is a binding to remove.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on the changed page.
+- Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/project_machine_lifecycle_live_test.exs test/sdd_orchestrator_web/live/project_connect_machine_live_test.exs test/sdd_orchestrator_web/live/project_worker_connection_live_test.exs` — exit `0`.
+- 21 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 5 checked complete.
+
 ### 2026-08-24 - Task 4 connect this machine from the hosted project page
 
 - Completed: the connect action on `/projects/:id/overview`. It resolves the device workspace, asks `HostedLocalRepositoryMachines.offer/2` which machines can be chosen, confirms the choice at submit through `confirm/3`, points the chosen machine at a folder through `HostedLocalRepositoryFolder.select/1`, and calls `HostedLocalRepositoryConnection.connect/6`. One paired machine connects in a single click; two or more present an explicit choice first; none shows the install-and-pair guidance in place of a failure.
