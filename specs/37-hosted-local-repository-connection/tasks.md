@@ -138,7 +138,7 @@ Traceability:
   - Owns: AC-07, AC-08
   - Proof: Focused page and domain tests cover disconnect removing only the routing, a repeated disconnect succeeding, replacement by a machine that proves the same repository, a failed replacement leaving the previous binding and machine authoritative, and the project, its specifications, and its repository fixture unchanged throughout.
 
-- [ ] Task 6 - Prove a connected project reaches a running development run.
+- [x] Task 6 - Prove a connected project reaches a running development run.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5

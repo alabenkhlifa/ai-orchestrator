@@ -1,5 +1,17 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Task 6 a connected project reaches a running development run
+
+- Completed: the end-to-end proof this slice exists for. The test drives a normal hosted local-repository project — asserted to have no `PackageProvenance` row before and after — through this slice's own connect action on `/projects/:id/overview`, and asserts the order that matters: the gateway credential exchange is refused `403` before connection, succeeds `200` after it, and its token verifies to exactly this project and this worker.
+- Execution reachability is proved on the real transport, not inferred: the issued credential opens a real `WorkerSocket` connection and joins the project's own `worker:` run channel scoped to that project id with a negotiated contract. `ProjectAssistant.RepositoryWorkerAvailability.available?/2` also flips from false to true, which is the same signal the assistant's processing summary already reads.
+- The refusal half is proved twice, because a binding that is never removed would pass the success half by accident: disconnecting from the page returns the exchange to `403`, and a second hosted local-repository project that was never connected is refused identically while the first stays connected.
+- This closes `specs/36-local-worker-native-distribution` Task 12's recorded defect. That task had to construct the binding directly through `put_validated_binding/6` and read the dashboard side through `connection_state/3` because neither a creation path nor a page existed; both now exist and are driven through their real surfaces here.
+- Failed checks: None.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/hosted_local_repository_run_reachability_test.exs` — exit `0`.
+- 4 tests passed. Confirmed on the main thread by real exit status.
+- Capability readiness: `capability:hosted-local-repository-connection` — ready after `Task 6`.
+- Spec updates: `tasks.md` Task 6 checked complete.
+
 ### 2026-08-24 - Task 5 disconnect and move the project to a different machine
 
 - Completed: the connected project page now offers `Connect a different machine` and `Disconnect`. Disconnect calls `HostedLocalRepositoryBindings.disconnect/2` and re-derives the state, so the page returns to not connected and the disconnect control disappears with it.
