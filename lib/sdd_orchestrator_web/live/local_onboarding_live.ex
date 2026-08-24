@@ -462,6 +462,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     end
   end
 
+  # The install guidance names the same window `WorkerDiscovery` computes, so the
+  # copy cannot drift from the policy it describes.
+  defp supported_macos_copy do
+    WorkerDiscovery.compatibility_policy().os_majors |> Enum.join(" and ")
+  end
+
   defp stub_worker_attrs do
     policy = WorkerDiscovery.compatibility_policy()
 
@@ -631,7 +637,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           <div class="min-w-0 flex-1">
             <p class="text-sm font-semibold text-ink">Download the worker for macOS</p>
             <p class="mt-0.5 text-[13px] leading-relaxed text-ink-muted">
-              A signed app you install by dragging it to Applications. Supports macOS 25 and 26.
+              A signed app you install by dragging it to Applications. Supports macOS {supported_macos_copy()}.
             </p>
             <.button
               variant="secondary"
