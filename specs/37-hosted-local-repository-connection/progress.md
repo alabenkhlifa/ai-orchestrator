@@ -1,5 +1,18 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Task 2 paired-machine selection
+
+- Completed: `SddOrchestrator.Portability.HostedLocalRepositoryMachines` at `lib/sdd_orchestrator/portability/hosted_local_repository_machines.ex`. `offer/2` describes what the page presents; `confirm/3` decides what is actually connected; `guidance/0` carries the no-worker-paired steps as data.
+- The collapse rule is counted over active paired workers, matching `AC-04`: exactly one gives `selection: :single` with that worker preselected, two or more give `selection: :explicit` with no preselection. A revoked worker leaves the active set, so revoking one of two machines correctly collapses the offer back to one.
+- Submit-time confirmation is the recorded race fix and is enforced in `confirm/3`, which re-reads the active set rather than trusting the rendered count. A `nil` choice is honoured only while exactly one active worker still exists; if another was paired in between the answer is `:selection_required`, never a silent substitution. An explicit choice is confirmed by membership in the current active set, so a revoked or foreign worker id is `:unauthorized_worker`.
+- No paired worker, and no device workspace at all, both resolve to `:no_worker_paired`, distinct from any connection failure, because the owner's next step is identical.
+- Minimization: a machine is exactly `worker_id` and `available?`. Reachability is derived through `WorkerDiscovery.status/2` rather than exposing `os_family`, `os_major`, `app_version`, `protocol_version`, `last_seen_at`, or the device workspace id; the proof asserts none of those names appear in the rendered offer.
+- Guidance is data, not markup, so the no-terminal rule in `AC-05` is provable: the proof asserts the copy contains no terminal marker. Rendering stays with the page in Task 4, and the existing graphical install and pairing components in `local_onboarding_live` are not duplicated here.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on the new module.
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/portability/hosted_local_repository_machines_test.exs` — exit `0`.
+- 7 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 2 checked complete.
+
 ### 2026-08-24 - Task 1 first-connection authority gate
 
 - Completed: `SddOrchestrator.Portability.HostedLocalRepositoryConnection.connect/6` at `lib/sdd_orchestrator/portability/hosted_local_repository_connection.ex`. It authorizes the owning `PersonalWorkspace`, requires a hosted local-repository project that already holds a portable identity, takes an explicitly selected worker from the owner's device workspace, asks that worker for an exact proof through an injected matcher, and hands the result to `specs/06-project-portability`'s `HostedLocalRepositoryBindings.put_validated_binding/6`.

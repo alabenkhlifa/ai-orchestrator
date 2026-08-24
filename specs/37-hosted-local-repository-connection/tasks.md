@@ -93,7 +93,7 @@ Traceability:
   - Owns: AC-02, AC-03
   - Proof: Focused tests cover a first connection for a project with no package provenance, cross-workspace denial, invalid provider refusal, exact-match success, mismatch and legacy-identifier refusal, unauthorized, revoked, inactive, and unreachable worker refusal, and that every refusal leaves the binding set and the repository fixture unchanged.
 
-- [ ] Task 2 - Present the owner's paired machines for selection.
+- [x] Task 2 - Present the owner's paired machines for selection.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
