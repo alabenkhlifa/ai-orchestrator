@@ -442,17 +442,19 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     end
 
     # One hosted project whose repository is a local Git repository, plus one
-    # active paired worker on this machine. `paired=false` leaves the machine
-    # unpaired so the browser can drive the install-and-pair result instead.
-    # The project's identity is generated from the folder the worker stand-in's
-    # picker actually opens, so the connection is proved against a real
-    # repository rather than a fixture that only looks like one.
-    defp run(conn, "hosted_local_repository_project", params) do
+    # active paired worker on this machine. The project's identity is generated
+    # from the folder the worker stand-in's picker actually opens, so the
+    # connection is proved against a real repository rather than a fixture that
+    # only looks like one.
+    #
+    # The device workspace is this machine's own and is shared with every other
+    # scenario that pairs a worker, so this seeds one reachable machine rather
+    # than asserting it is the only one.
+    defp run(conn, "hosted_local_repository_project", _params) do
       owner = new_owner()
       {:ok, repository_id} = PortableRepositoryIdentity.generate(stub_repository())
       project = new_local_repository_project(owner, repository_id)
-
-      if params["paired"] != "false", do: pair_available_worker()
+      pair_available_worker()
 
       conn
       |> sign_in_account(owner.account)
