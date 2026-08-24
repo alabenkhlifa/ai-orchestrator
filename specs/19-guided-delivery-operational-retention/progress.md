@@ -1,5 +1,20 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-24 — Task 4 minimized guided-delivery security log
+
+- Completed: `SddOrchestrator.Privacy.DeliverySecurityLog` and its `DeliverySecurityEvent` schema, table `delivery_security_events`. Until now guided-delivery security events reached `Logger` only, through `DeliveryContentBoundaryAudit`, which accepts any atom as an event type, carries no correlation reference, and persists nothing — so there was no record to minimize and nothing that could ever be pruned. Task 5 now has a sink to expire.
+- Closed vocabularies: `@event_types` is `~w(worker_command_rejected agent_adapter_rejected delivery_access_denied evidence_artifact_rejected retention_sweep_failed)a`, one per required category; `@outcomes` is `~w(rejected denied failed)a`; and every reason atom in `@reasons_by_outcome` is one a real call site already produces, drawn from `DeliveryContentBoundary`'s three refusals, `SecretBoundary`'s two, `ParticipantGuard`'s `:unauthorized`, and `ArtifactStore`'s `:not_found`. Reasons are unique across outcomes, so classification needs no per-event-type table.
+- Minimization is enforced three times over: `Map.take/2` on the readable `allowed_opt_keys/0`, then a fixed five-key attribute map, then the changeset's own `cast/3`. The proof passes `project_id`, `email`, `token`, `prompt`, `question`, and `artifact` and asserts none reaches the row, and asserts the schema has no column capable of holding project content.
+- The correlation identifier is a fresh non-secret UUID per event, never derived from a project, participant, run, or worker identifier. A derived value would be a stable pseudonymous identifier and therefore personal data, not an anonymous operational reference. The proof asserts two emits differ and that a correlation id never equals an identifier passed in opts.
+- Deliberate divergence from the `ParticipationSecurityLog` precedent, recorded rather than left implicit: that module guards `emit/3` and raises `FunctionClauseError` on an unapproved value. Here the guarded happy path is kept but fallback clauses return `{:error, :unapproved_event_type | :unapproved_outcome | :unapproved_reason}`, and reason validation therefore goes through `Repo.insert/1` rather than `Repo.insert!/1`. A refusal logs its class without interpolating the offending value, so it is neither silent nor a leak vector.
+- `DeliveryProcessingInventory` needed no change and is byte-identical to `main`: its `@schemas` map is closed and iterates only its own listed delivery modules, so a new `SddOrchestrator.Privacy` schema is outside its classification. Confirmed by running that specification's own inventory test, 44 passed.
+- Existing `DeliveryContentBoundaryAudit` call sites were deliberately not rewired to the new sink. That crosses into files other tasks own and is not this task's outcome.
+- Failed checks: None. A forced recompile of every touched module emits no warnings.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_security_log_test.exs` — exit `0`.
+- 13 tests passed. Confirmed on the main thread by real exit status.
+- Environment note: only the test database was migrated by the `mix test` alias. Run `mix ecto.migrate` before the next development server start.
+- Spec updates: `tasks.md` Task 4 checked complete.
+
 ### 2026-08-24 — Task 1 hosted temporary execution-data expiry
 
 - Completed: two rules registered in `Retention.prune_all/1` — `expired_delivery_commands` deletes terminal `run_commands` rows 30 days past `COALESCE(acknowledged_at, updated_at)`, and `expired_delivery_checkpoints` deletes resolved `blocking_questions` rows 30 days past `updated_at`. Both exclude any row whose run is still non-terminal, through one shared correlated `exists/1` subquery, so current recovery material survives regardless of age. State lists are read from `RunCommand.terminal_states/0`, `BlockingQuestion.resolved_states/0`, and `AgentRun.terminal_states/0` rather than duplicated as literals.

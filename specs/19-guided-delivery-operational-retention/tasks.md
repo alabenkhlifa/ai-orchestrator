@@ -140,8 +140,7 @@ Traceability:
   - Owns: AC-03, entity:RetentionRuleOutcome
   - Proof: `python3 .agents/scripts/run_proof.py task --task 3 -- mix test test/sdd_orchestrator/privacy/delivery_retention_runner_test.exs` passes focused duplicate, lock-contention, injected-failure, attempt-count, restart-discovery, retry, reconciliation, minimized-diagnostic, and non-restoration cases.
 
-- [ ] Task 4 — Enforce minimized Slice 07 security logs.
-  - Status: In Progress
+- [x] Task 4 — Enforce minimized Slice 07 security logs.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
