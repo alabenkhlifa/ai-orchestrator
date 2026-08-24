@@ -1,5 +1,18 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-24 - Task 1 first-connection authority gate
+
+- Completed: `SddOrchestrator.Portability.HostedLocalRepositoryConnection.connect/6` at `lib/sdd_orchestrator/portability/hosted_local_repository_connection.ex`. It authorizes the owning `PersonalWorkspace`, requires a hosted local-repository project that already holds a portable identity, takes an explicitly selected worker from the owner's device workspace, asks that worker for an exact proof through an injected matcher, and hands the result to `specs/06-project-portability`'s `HostedLocalRepositoryBindings.put_validated_binding/6`.
+- Authority order is deliberate: project scope, provider, held identity, worker authorization, and worker availability are all decided before the matcher is invoked, so an unauthorized caller never reaches the device. The proof asserts the matcher is never called for any of those refusals.
+- Refusal vocabulary reuses the existing shared names so the two entry points cannot drift: `:not_found`, `:invalid_project_provider`, `:legacy_repository_identity`, `:invalid_repository_identity`, `:unauthorized_worker`, `:worker_unavailable`, `:repository_mismatch`, `:repository_unavailable`, `:worker_validation_failed`. A legacy workspace-scoped identifier is refused as `:legacy_repository_identity` rather than being flattened into the binding transaction's `:invalid_repository_identity`, so `AC-02`'s distinction is visible to the caller.
+- `LocalRepositoryValidation.validate/5` is not used, as recorded at preflight. `RepositoryReconnection.required/2` is untouched; the proof asserts it still returns `{:error, :not_found}` for the same project, which is the gap this gate exists to close.
+- Minimization: the success result is exactly `project_id`, `state`, `outcome`, and `last_validated_at`. The proof asserts the rendered result contains no repository path, no repository identity, and no worker id. No `Portability.SecurityLog` event is emitted, per the recorded decision.
+- Non-mutation: the proof snapshots `HEAD`, branches, remotes, working-tree status, and local config of a real Git fixture repository, runs every refusal against it, and asserts the snapshot and the binding row are byte-identical afterwards.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on the new module.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/portability/hosted_local_repository_connection_test.exs` — exit `0`.
+- 8 tests passed. Confirmed on the main thread by real exit status, not by piped output.
+- Spec updates: `tasks.md` status `Not Started` to `In Progress`, Task 1 checked complete.
+
 ### 2026-08-24 - Implementation preflight corrected the repository-proof mechanism before any code
 
 - Completed: Before starting Task 1, traced how the proof would actually run and found the specification as first written could not be implemented. `specs/06-project-portability`'s `LocalRepositoryValidation.validate/5` — named as this slice's validation composition point — authenticates a raw worker credential through `Pairing.authenticate_worker/1`. The control plane never holds that secret: `specs/02-local-project-onboarding` persists only a salted digest and the raw value lives in the worker's OS keychain. `validate/5` is shaped for a proof the worker itself initiates, which is exactly why its only caller, `HostedLocalRepositoryReconnection.connect/6`, takes the credential and the matcher as arguments from a caller that has never existed.

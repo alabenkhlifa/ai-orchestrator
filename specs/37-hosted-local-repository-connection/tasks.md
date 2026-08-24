@@ -2,9 +2,9 @@
 
 ## Status
 
-Not Started
+In Progress
 
-Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: not started; every required capability is ready. Verification readiness: not started. Release readiness: blocked on this slice's own release gates.
+Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: Task 1 in progress; every required capability is ready. Verification readiness: not started. Release readiness: blocked on this slice's own release gates.
 
 ## Active Slice
 
@@ -84,7 +84,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 - Add the first-connection authority gate for a hosted local-repository project.
+- [x] Task 1 - Add the first-connection authority gate for a hosted local-repository project.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
