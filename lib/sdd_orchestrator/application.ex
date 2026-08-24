@@ -131,6 +131,7 @@ defmodule SddOrchestrator.Application do
       retention_children() ++
       dispatcher_children() ++
       device_store_children() ++
+      worker_liveness_children() ++
       [
         # Start to serve requests, typically the last entry
         SddOrchestratorWeb.Endpoint
@@ -153,6 +154,18 @@ defmodule SddOrchestrator.Application do
   defp dispatcher_children do
     if Application.get_env(:sdd_orchestrator, :start_command_dispatcher, true) do
       [SddOrchestrator.Delivery.Dispatcher]
+    else
+      []
+    end
+  end
+
+  # The worker-liveness refresher keeps an attached worker's `last_seen_at`
+  # current in dev and prod. Tests call
+  # SddOrchestrator.Devices.WorkerLivenessRefresher.refresh/0 directly so a timer
+  # never races the Ecto sandbox.
+  defp worker_liveness_children do
+    if Application.get_env(:sdd_orchestrator, :start_worker_liveness_refresher, true) do
+      [SddOrchestrator.Devices.WorkerLivenessRefresher]
     else
       []
     end
