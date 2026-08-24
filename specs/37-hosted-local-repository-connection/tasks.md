@@ -4,7 +4,7 @@
 
 Verified
 
-Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: complete; all seven tasks delivered and `capability:hosted-local-repository-connection` is ready. Verification readiness: `Verified`, with one recorded exception for two pre-existing failures outside this slice. Release readiness: blocked on this slice's own release gates — the fresh-machine live proof and the accountable privacy and security review, including its decision on whether the connect, disconnect, and replace actions need their own minimized operational-security event.
+Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: complete; all seven tasks delivered and `capability:hosted-local-repository-connection` is ready. Verification readiness: `Verified`, with no outstanding exception; the two pre-existing failures it had recorded were fixed by their owning specifications and the repository-wide gate was re-confirmed passing on `main`. Release readiness: blocked on this slice's own release gates — the fresh-machine live proof and the accountable privacy and security review, including its decision on whether the connect, disconnect, and replace actions need their own minimized operational-security event.
 
 ## Active Slice
 
