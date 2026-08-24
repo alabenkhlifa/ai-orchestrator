@@ -70,6 +70,12 @@ Required boundaries:
 - Reason: The binding boundary already requires an explicitly selected device workspace and worker, so an automatic pick would contradict a recorded authority boundary. Presenting a one-item choice asks the owner a question with no alternative answer.
 - Consequence: A second machine paired between listing and confirming could make the collapsed case race the explicit case. The selection is therefore confirmed against the worker actually chosen at submit time, not against the count observed when the page rendered.
 
+### No New Event In Another Specification's Fixed Security Log
+
+- Choice: The first-connection action emits no `Portability.SecurityLog` event. That module's event list is fixed and scoped to backup and restoration, and it belongs to `specs/06-project-portability`; a first connection is neither, and a consumer may not extend a provider's closed list. Auditability for this action rests on the binding's existing lifecycle record, which `specs/06-project-portability` Task 26 already registered in `Privacy.ProcessingInventory`.
+- Reason: The alternatives were both wrong. Reusing `:repository_reconnection` would misreport a first connection as a restore-time reconnection in the operational-security log, and adding a new event type would widen a fixed contract this slice does not own.
+- Consequence: This slice ships without its own operational-security event for the connect, disconnect, and replace actions. Whether that action needs its own minimized audit event is carried into the release-gate privacy and security review, which already covers this authorization surface, rather than being settled by inventing a log here.
+
 ### The Project Page Is The Only Entry
 
 - Choice: Connecting, showing state, disconnecting, and switching machines all live on the hosted project's own page. Hosted onboarding is not extended to connect at creation time.

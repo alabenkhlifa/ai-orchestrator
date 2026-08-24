@@ -73,6 +73,7 @@ Release gates:
 
 - A live proof on a machine other than the development machine that a freshly created hosted local-repository project connects and runs, with no prior developer configuration.
 - Accountable privacy and security review of the first-connection authorization surface, covering the same credential-custody and data-minimization boundary `specs/02-local-project-onboarding` and `specs/06-project-portability` already committed to.
+- A decision, in that same review, on whether the connect, disconnect, and replace actions need their own minimized operational-security event. This slice deliberately adds none, because `specs/06-project-portability`'s `SecurityLog` list is fixed and scoped to backup and restoration.
 
 Traceability:
 
