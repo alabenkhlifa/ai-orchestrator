@@ -2,7 +2,7 @@
 
 ## Context
 
-The guided-delivery core persists durable workflow state and also creates temporary execution mechanics needed for retry, resume, reconciliation, artifact handling, and short-lived diagnosis. The approved privacy contract gives inactive command payloads, checkpoints, provider-thread references, transient logs, superseded artifacts, and operational-security logs a 30-day limit. Accepted evidence and active recovery state have different purposes and must survive temporary-data pruning.
+The guided-delivery core persists durable workflow state and also creates temporary execution mechanics needed for retry, resume, reconciliation, artifact handling, and short-lived diagnosis. The approved privacy contract gives inactive command payloads, checkpoints, superseded artifacts, expired preview deployments, spent attempt-lease material, the worker-local provider-thread reference, and operational-security logs a 30-day limit. Accepted evidence and active recovery state have different purposes and must survive temporary-data pruning.
 
 The project already has a shared privacy-retention runner and project-storage governance. This child specification extends those mechanisms without redefining authoritative storage or implementing notification, relay, cache, backup, rights, or project-deletion lifecycles.
 
@@ -16,13 +16,16 @@ Create a fixed structured security-log contract for Slice 07 event categories. T
 
 - Shared privacy-retention runner, lock, scheduler, and reconciliation path.
 - Hosted and device delivery-store temporary-data operations.
-- Command, checkpoint, provider-thread, transient-log, and artifact lifecycle selectors.
+- Command, checkpoint, artifact, preview-deployment, and attempt-lease lifecycle selectors.
+- The worker's own run state on the device, which holds the provider-thread reference.
 - Authoritative private artifact deletion seam.
 - Slice 07 structured operational-security logger and diagnostic scans.
 
 ## Data and Access Boundaries
 
-This slice introduces no new product or analytics entity. Temporary execution records remain owned by their existing guided-delivery stores, and security logs remain operational records under the approved security purpose.
+This slice introduces no new product or analytics entity. Temporary execution records remain owned by their existing guided-delivery stores, and security logs remain operational records under the approved security purpose. It does introduce one operational record of its own, so that a rule that fails or is interrupted is discoverable rather than silent:
+
+- `RetentionRuleOutcome`: the durable per-rule result of one retention pass — rule name, outcome, attempt count, last attempt time, and a non-secret correlation reference. It carries no participant, project content, or deleted-record identifier, exists only for the approved operational purpose, and is itself pruned on the same 30-day boundary it enforces.
 
 Required boundaries:
 
@@ -35,7 +38,10 @@ Required boundaries:
 
 ## Interfaces
 
-- Temporary-data selector: identify inactive command payloads, checkpoints, provider-thread references, and transient logs whose purpose ended at least 30 days earlier.
+- Temporary-data selector: identify inactive command payloads and checkpoints whose purpose ended at least 30 days earlier, together with the transient result and failure detail they carry.
+- Preview-deployment selector: identify expired or superseded deployments and their cleanup state past the same boundary.
+- Attempt-lease clearing: blank spent lease owner, lease expiry, and fence token on a terminal attempt without deleting the attempt.
+- Worker run-state pruning: remove the provider-thread reference from the worker's local run state once its run is terminal and past the boundary.
 - Artifact-retention interface: delete eligible superseded artifact bytes while preserving immutable evidence provenance and accepted artifacts.
 - Retention-runner interface: claim one rule under a lock, prune through the correct authority, persist minimized completion or failure state, and resume safely after restart.
 - Security-log interface: accept only approved event types and fixed minimum fields, returning a typed refusal for forbidden content.
@@ -49,6 +55,12 @@ Required boundaries:
 - Reason: A long-running attempt may legitimately need an old checkpoint, while a newly superseded artifact no longer has an active purpose.
 - Consequence: Each temporary record needs an authoritative purpose-ended signal or conservative ineligibility.
 
+### Retention Follows The Records That Exist, Not The Category Names
+
+- Choice: Express every rule against an entity the approved processing inventory already classifies. Transient diagnostic output expires with the command result or `text/plain` artifact that carries it, and the provider-thread reference is pruned where it actually lives, in the worker's local run state.
+- Reason: The umbrella wording named "transient logs" and "provider-thread references" as if each were a stored record. Neither is. Creating one so retention has something to delete would add personal-data storage in the name of minimization, and leaving the names unattached would make an approved criterion unprovable.
+- Consequence: The privacy commitment is unchanged and every category is enforced, but the hosted, device, and worker-local rules fail independently and are proved separately.
+
 ### Preserve Evidence Provenance When Bytes Expire
 
 - Choice: Delete superseded temporary artifact bytes without rewriting immutable evidence rows.
@@ -60,6 +72,12 @@ Required boundaries:
 - Choice: Reuse scheduling, locking, restart, and reconciliation while keeping execution, artifact, and security-log selectors independent.
 - Reason: Shared operational mechanics avoid competing pruners, while separate selectors keep proof and lifecycle ownership clear.
 - Consequence: A failure in one rule is visible and retryable without skipping or weakening another rule.
+
+### Rule-Level Failure State Is Persisted, Not Re-Derived
+
+- Choice: Give the retention runner a durable per-rule outcome record, following the existing participation cleanup-request precedent, rather than returning in-memory counts alone.
+- Reason: The current shared pruner reports counts and forgets them, so an interrupted or failing rule is invisible until someone notices data past its limit. Restart discovery and reconciliation cannot be proved against a value that only exists inside one pass.
+- Consequence: This slice adds an operational record of its own. It holds rule name, outcome, attempt count, and non-secret correlation only, and is itself subject to the minimization rules applied to retention diagnostics.
 
 ### Structured Security Logs Only
 
@@ -74,6 +92,8 @@ Required boundaries:
 - Artifact cleanup could erase accepted proof. The selector excludes accepted current evidence and tests immutable provenance separately from bytes.
 - Failure logs could include the content being deleted. Diagnostics use fixed rule and error categories and scan emitted fields.
 - A stopped pruner could extend retention indefinitely. Restart and reconciliation proof makes overdue eligible records discoverable and retryable.
+- The worker-local rule runs on a device that may be offline for longer than the boundary. Eligibility is re-derived from the run's terminal lifecycle on the next start rather than from a schedule the device may have missed, and an unreachable device pauses only that rule.
+- Clearing lease fields in place could be mistaken for deleting an attempt. The rule updates named columns and its proof asserts the attempt row and its participant-visible outcome are untouched.
 
 ## Open Questions
 

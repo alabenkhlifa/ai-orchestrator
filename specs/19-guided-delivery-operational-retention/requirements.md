@@ -16,7 +16,8 @@ Inactive guided-delivery execution mechanics and operational-security logs are r
 
 ## In Scope
 
-- Thirty-day cleanup of inactive command payloads, checkpoints, provider-thread references, transient logs, and superseded artifacts.
+- Thirty-day cleanup of inactive command payloads, checkpoints, superseded artifacts, expired preview deployments, and spent attempt-lease material.
+- Thirty-day removal of the worker-local provider-thread reference once a run reaches a terminal lifecycle.
 - Preservation of active execution state and accepted evidence.
 - Idempotent, locked, restart-safe retention enforcement and reconciliation.
 - A fixed minimized Slice 07 operational-security log field allowlist.
@@ -40,7 +41,10 @@ Inactive guided-delivery execution mechanics and operational-security logs are r
 
 ## Business Rules
 
-- Temporary command payloads, checkpoints, provider-thread references, transient logs, and superseded artifacts are deleted within 30 days after they are no longer active.
+- Temporary command payloads, checkpoints, superseded artifacts, expired preview deployments, and spent attempt-lease material are deleted within 30 days after they are no longer active.
+- Transient diagnostic output is not a record of its own. It is carried by a command's result and failure code and by `text/plain` evidence artifacts, and it expires with the record that holds it rather than through a separate rule.
+- The provider-thread reference is worker-local. It exists only in the worker's own run state on the device, is never stored hosted, and is removed there once its run is terminal and 30 days have passed.
+- Clearing spent lease material never deletes the attempt row, because attempt history is participant-visible and belongs to a different lifecycle.
 - Active run state, current recovery material still required by the run, accepted evidence, and immutable participant-visible history are not temporary data.
 - Superseded artifact deletion removes bytes and unnecessary temporary references without rewriting immutable evidence provenance.
 - Retention is idempotent, lock-protected, restart-safe, and reconcilable across the authoritative hosted or device boundary.
@@ -51,11 +55,15 @@ Inactive guided-delivery execution mechanics and operational-security logs are r
 
 ## Acceptance Criteria
 
-- [AC-01] Given an inactive command payload, checkpoint, provider-thread reference, or transient log reaches 30 days after its active purpose ends, when retention runs, then it is deleted while active execution and current recovery state remain intact.
+- [AC-01] Given an inactive command payload or checkpoint reaches 30 days after its active purpose ends, when hosted retention runs, then it is deleted with the transient result and failure detail it carries, while active execution and current recovery state remain intact.
 - [AC-02] Given a superseded artifact reaches 30 days after it is no longer active, when retention runs, then its temporary bytes and unnecessary reference are removed without deleting accepted evidence or rewriting immutable provenance.
 - [AC-03] Given operational retention is repeated, interrupted, or restarted across hosted or device authority, when reconciliation runs, then eligible records are deleted once and active or accepted records remain available.
 - [AC-04] Given a guided-delivery security event is logged, when the record is inspected, then it contains only the approved structured fields and non-secret correlation identifier with no credential, participant email, or project content.
 - [AC-05] Given a Slice 07 operational-security log reaches 30 days, when retention runs, then the log is deleted without changing project authorization, feature state, run state, or accepted evidence.
+- [AC-06] Given a device-authoritative project holds an inactive command payload or checkpoint that reaches 30 days, when retention runs against the device authority, then it is removed there without creating any hosted copy of device-authoritative data.
+- [AC-07] Given a run reaches a terminal lifecycle and 30 days pass, when the worker prunes its own run state, then the provider-thread reference is removed from the device while the run's participant-visible history is unchanged.
+- [AC-08] Given a preview deployment is expired or superseded and reaches 30 days, when retention runs, then its deployment record and cleanup state are removed without deleting the feature, run, or accepted evidence it belonged to.
+- [AC-09] Given a run attempt is terminal and reaches 30 days, when retention runs, then its lease owner, lease expiry, and fence token are cleared while the attempt row and its participant-visible outcome remain intact.
 
 ## Open Questions
 
