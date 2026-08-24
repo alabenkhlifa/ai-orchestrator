@@ -108,10 +108,15 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryBindings do
   Worker heartbeat or compatibility changes never mutate the binding. A missing
   binding is reported as disconnected; any bound worker that is not currently
   active, compatible, and reachable is temporarily unavailable.
+
+  A hosted local-repository project whose stored identity does not parse — a
+  legacy workspace-scoped value, or a malformed one — is reported as
+  `:invalid_repository_identity` rather than as a state, because no binding can
+  exist for an identity no worker can prove.
   """
   @spec connection_state(PersonalWorkspace.t(), String.t(), keyword()) ::
           {:ok, %{binding: HostedLocalRepositoryBinding.t() | nil, state: state()}}
-          | {:error, :not_found | :invalid_project_provider}
+          | {:error, :not_found | :invalid_project_provider | :invalid_repository_identity}
   def connection_state(personal_workspace, project_id, opts \\ [])
 
   def connection_state(

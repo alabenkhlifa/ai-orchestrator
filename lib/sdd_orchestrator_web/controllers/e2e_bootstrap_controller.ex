@@ -284,6 +284,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     alias SddOrchestrator.Devices
     alias SddOrchestrator.Devices.Pairing
+    alias SddOrchestrator.Devices.PortableRepositoryIdentity
     alias SddOrchestrator.HostedAccess
     alias SddOrchestrator.HostedAccess.Sessions
     alias SddOrchestrator.Notifications
@@ -438,6 +439,26 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         participant_email: email_of(participant),
         pending_email: pending
       })
+    end
+
+    # One hosted project whose repository is a local Git repository, plus one
+    # active paired worker on this machine. The project's identity is generated
+    # from the folder the worker stand-in's picker actually opens, so the
+    # connection is proved against a real repository rather than a fixture that
+    # only looks like one.
+    #
+    # The device workspace is this machine's own and is shared with every other
+    # scenario that pairs a worker, so this seeds one reachable machine rather
+    # than asserting it is the only one.
+    defp run(conn, "hosted_local_repository_project", _params) do
+      owner = new_owner()
+      {:ok, repository_id} = PortableRepositoryIdentity.generate(stub_repository())
+      project = new_local_repository_project(owner, repository_id)
+      pair_available_worker()
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{project_id: project.id, project_name: project.name})
     end
 
     # One pending invitation, reachable through the credential that was actually
@@ -1238,6 +1259,44 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       {:ok, project} = Projects.register_project(workspace, attempt, name: @project_name)
 
       project
+    end
+
+    # A hosted project whose repository provider is local, holding the portable
+    # identity the selected machine must prove exactly.
+    defp new_local_repository_project(owner, repository_id) do
+      %Project{}
+      |> Project.changeset(%{
+        name: @project_name,
+        workspace_id: owner.personal_workspace.id,
+        storage_mode: "hosted",
+        repository_provider: "local",
+        canonical_repository_id: repository_id
+      })
+      |> Repo.insert!()
+    end
+
+    # The folder the worker stand-in's picker opens, which is this server's own
+    # working copy unless the environment names another.
+    defp stub_repository do
+      Application.get_env(:sdd_orchestrator, :device_worker_stub_folder) || File.cwd!()
+    end
+
+    # One active, reachable worker paired to this machine's device workspace.
+    defp pair_available_worker do
+      {:ok, workspace} = Devices.establish_workspace()
+      {:ok, %{code: code}} = Pairing.start_pairing(workspace.id)
+      policy = SddOrchestrator.Devices.WorkerDiscovery.compatibility_policy()
+
+      {:ok, %{worker: worker}} =
+        Pairing.complete_pairing(code, %{
+          os_family: policy.os_family,
+          os_major: List.last(policy.os_majors),
+          protocol_version: List.first(policy.protocol_versions),
+          app_version: "0.0.0-e2e"
+        })
+
+      {:ok, worker} = Pairing.mark_seen(worker)
+      worker
     end
 
     defp save_owner_profile(project, owner) do

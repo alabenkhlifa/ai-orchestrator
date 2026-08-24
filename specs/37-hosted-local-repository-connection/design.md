@@ -8,11 +8,15 @@ What is missing is a way in. `HostedLocalRepositoryReconnection.connect/6` gates
 
 The consequence is concrete and was proved on a real machine: `specs/36-local-worker-native-distribution` Task 12 ran the real signed worker against a real hosted project and its gateway credential exchange was correctly refused with `403`, because `WorkerGatewayCredentialController` requires a binding that nothing could create. That proof had to construct the binding directly through `HostedLocalRepositoryBindings.put_validated_binding/6` and read the dashboard side through `connection_state/3` instead of a page, both documented as deliberate substitutions. `specs/06`'s own restore page already tells the user to "use the normal flow to reconnect", naming a flow that does not exist.
 
+One further constraint was confirmed at implementation preflight rather than assumed. `LocalRepositoryValidation.validate/5`, the shared exact-match boundary, takes a raw worker credential and authenticates it through `Pairing.authenticate_worker/1`. The control plane never holds that secret — `specs/02-local-project-onboarding` stores only a salted digest and the raw value lives in the worker's OS keychain — so that function is shaped for a call the worker itself initiates, which is why its only caller, `HostedLocalRepositoryReconnection`, takes the credential and the matcher as arguments from a caller that does not exist yet. A dashboard-initiated connection cannot use it.
+
 ## Proposed Approach
 
 Add the missing entry: a first-connection action for a normal hosted local-repository project, and the project-page surface that starts it and shows its result.
 
-The authority model is unchanged. Connection still requires the owning `PersonalWorkspace` for the project and a separately authorized `DeviceWorkspace` worker for the repository proof, and still ends in the same `HostedLocalRepositoryBindings.put_validated_binding/6` transaction. The only thing replaced is the entry gate: instead of `RepositoryReconnection.required/2`'s package-provenance requirement, a first-connection gate authorizes the owner's own hosted project when its repository provider is local and it already holds a portable repository identity. Everything downstream — exact match, atomic replacement, idempotent retry, disconnect, revocation cascade, derived unavailability, and field minimization — is consumed unchanged from `specs/06`.
+The authority model is unchanged. Connection still requires the owning `PersonalWorkspace` for the project and a separately authorized `DeviceWorkspace` worker for the repository proof, and still ends in the same `HostedLocalRepositoryBindings.put_validated_binding/6` transaction, which independently rechecks project ownership, worker authorization, worker availability, and the exact repository match before it writes. Everything downstream — exact match, atomic replacement, idempotent retry, disconnect, revocation cascade, derived unavailability, and field minimization — is consumed unchanged from `specs/06`.
+
+The repository proof is control-plane-initiated. The owner selects a paired machine and then points it at the repository through the same native folder-picker seam accountless onboarding already uses; the machine computes the portable identity locally through `specs/02-local-project-onboarding`'s `PortableRepositoryIdentity`, and only that identity is compared. The folder step is not an extra convenience: a machine that has never held this project has no way to locate its repository, and the restore flow avoided the question only because a restored project's worker already knew where the repository was.
 
 Worker selection is explicit by default because the binding boundary already requires an explicitly selected device workspace and worker. The picker lists the active paired workers for the current device workspace through `specs/02-local-project-onboarding`'s existing pairing surface, and collapses to the single available worker when there is exactly one, so the common single-machine case adds no step it cannot answer.
 
@@ -43,7 +47,8 @@ Required boundaries:
 - Paired-machine interface: list the active paired workers available for selection, and report the no-worker-paired case distinctly from a failed connection.
 - Connection-state interface: report connected, temporarily unavailable, or not connected for a hosted local-repository project without disclosing worker or device data.
 - Disconnect interface: remove the routing idempotently, leaving project, specifications, and repository unchanged.
-- Consumed unchanged: `specs/06-project-portability`'s `LocalRepositoryValidation`, `HostedLocalRepositoryBindings.put_validated_binding/6`, `connection_state/3`, and `disconnect/2`; `specs/02-local-project-onboarding`'s pairing authorization and worker reachability policy; `specs/33-local-worker-run-execution`'s gateway credential exchange.
+- Repository-selection interface: open the machine's native folder picker, compute the repository identity on the device, and return only that identity — never a path, remote URL, filename, Git history, or source.
+- Consumed unchanged: `specs/06-project-portability`'s `HostedLocalRepositoryBindings.put_validated_binding/6`, `connection_state/3`, and `disconnect/2`; `specs/02-local-project-onboarding`'s `PortableRepositoryIdentity`, pairing authorization, and worker reachability policy; `specs/33-local-worker-run-execution`'s gateway credential exchange.
 
 ## Decisions and Tradeoffs
 
@@ -53,11 +58,23 @@ Required boundaries:
 - Reason: The restore gate's package-provenance requirement is not an accident to be loosened; it is what makes restore-time reconnection provably about a restored project. Weakening it would silently widen a `specs/06` contract this slice does not own, and would make one function answer two different authority questions.
 - Consequence: Two entry points exist for the same binding, so the shared exact-match, replacement, and minimization rules must stay in the shared boundary rather than being duplicated in either entry. That is already how `specs/06` is built.
 
+### Control-Plane-Initiated Proof, Not `LocalRepositoryValidation`
+
+- Choice: The connect flow gathers the machine and the repository folder, computes the portable identity on the device through `specs/02-local-project-onboarding`'s `PortableRepositoryIdentity`, and calls `HostedLocalRepositoryBindings.put_validated_binding/6` with the result. It does not route through `specs/06-project-portability`'s `LocalRepositoryValidation.validate/5`.
+- Reason: `validate/5` authenticates a raw worker credential the control plane never holds — only a salted digest is stored, and the secret lives in the worker's keychain — because it is shaped for a proof the worker itself initiates. Using it from the dashboard would require either handling a secret that must not reach the control plane or widening a `specs/06` interface this slice does not own. `put_validated_binding/6` already rechecks project ownership, selected-worker authorization, worker availability, and the exact repository match inside its own transaction, so the authority boundary is enforced where it always was.
+- Consequence: Two proof shapes now exist for the same binding — worker-initiated for restore, control-plane-initiated for first connection. They must not drift, so both keep the exact-match and refusal rules in the shared `specs/06` transaction rather than in either caller. A genuinely remote worker, where the control plane cannot open a folder picker on the user's machine, will need the worker-initiated shape instead; that is the same release-gated outbound-transport boundary `specs/02-local-project-onboarding` already records.
+
 ### Explicit Machine Selection, Collapsed When There Is Only One
 
 - Choice: The owner explicitly selects which paired machine to connect. When exactly one active paired worker is available, that worker is used without presenting a choice.
 - Reason: The binding boundary already requires an explicitly selected device workspace and worker, so an automatic pick would contradict a recorded authority boundary. Presenting a one-item choice asks the owner a question with no alternative answer.
 - Consequence: A second machine paired between listing and confirming could make the collapsed case race the explicit case. The selection is therefore confirmed against the worker actually chosen at submit time, not against the count observed when the page rendered.
+
+### No New Event In Another Specification's Fixed Security Log
+
+- Choice: The first-connection action emits no `Portability.SecurityLog` event. That module's event list is fixed and scoped to backup and restoration, and it belongs to `specs/06-project-portability`; a first connection is neither, and a consumer may not extend a provider's closed list. Auditability for this action rests on the binding's existing lifecycle record, which `specs/06-project-portability` Task 26 already registered in `Privacy.ProcessingInventory`.
+- Reason: The alternatives were both wrong. Reusing `:repository_reconnection` would misreport a first connection as a restore-time reconnection in the operational-security log, and adding a new event type would widen a fixed contract this slice does not own.
+- Consequence: This slice ships without its own operational-security event for the connect, disconnect, and replace actions. Whether that action needs its own minimized audit event is carried into the release-gate privacy and security review, which already covers this authorization surface, rather than being settled by inventing a log here.
 
 ### The Project Page Is The Only Entry
 
@@ -73,7 +90,8 @@ Required boundaries:
 
 ## Risks
 
-- Two entry points to one binding could drift apart. Keep every rule in the shared `specs/06` boundary and prove both entries against the same exact-match, replacement, and refusal behavior.
+- Two entry points to one binding could drift apart. Keep every rule in the shared `specs/06` transaction and prove this entry against the same exact-match, replacement, and refusal behavior the restore entry already proves.
+- The control-plane-initiated proof assumes the control plane can reach the user's machine to open a folder picker, which is true for the current local-first deployment and not for a genuinely remote control plane. Do not compensate by handling a worker credential in the control plane; that boundary belongs to the release-gated outbound transport.
 - A first-connection gate is a new authorization surface on hosted project data. Prove ownership scoping, cross-workspace denial, and invalid-provider refusal explicitly rather than assuming the reused transaction covers them.
 - An owner may read "not connected" as project loss. Present it as a machine link that can be established or moved, never as a missing or broken project.
 - The single-worker collapse could bind a machine the owner did not intend if their worker set changed mid-flow. Confirm against the worker chosen at submit time.

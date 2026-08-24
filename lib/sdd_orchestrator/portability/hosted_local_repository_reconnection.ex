@@ -136,9 +136,15 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryReconnection do
        ),
        do: {:error, :invalid_request}
 
-  @doc "Returns a minimized owner-scoped connection state without worker or device data."
+  @doc """
+  Returns a minimized owner-scoped connection state without worker or device data.
+
+  An unparseable stored repository identity passes through as
+  `:invalid_repository_identity`, matching the shared binding boundary.
+  """
   @spec connection_state(PersonalWorkspace.t(), String.t(), keyword()) ::
-          {:ok, state()} | {:error, :not_found | :invalid_request}
+          {:ok, state()}
+          | {:error, :not_found | :invalid_request | :invalid_repository_identity}
   def connection_state(personal_workspace, project_id, opts \\ [])
 
   def connection_state(%PersonalWorkspace{} = personal_workspace, project_id, opts)
