@@ -16,7 +16,7 @@ Inactive guided-delivery execution mechanics and operational-security logs are r
 
 ## In Scope
 
-- Thirty-day cleanup of inactive command payloads, checkpoints, superseded artifacts, expired preview deployments, and spent attempt-lease material.
+- Thirty-day cleanup of inactive command payloads, checkpoints, superseded artifacts, terminal preview deployments whose remote counterpart is confirmed released, and spent attempt-lease material.
 - Thirty-day removal of the worker-local provider-thread reference once a run reaches a terminal lifecycle.
 - Preservation of active execution state and accepted evidence.
 - Idempotent, locked, restart-safe retention enforcement and reconciliation.
@@ -45,6 +45,8 @@ Inactive guided-delivery execution mechanics and operational-security logs are r
 - Transient diagnostic output is not a record of its own. It is carried by a command's result and failure code and by `text/plain` evidence artifacts, and it expires with the record that holds it rather than through a separate rule.
 - The provider-thread reference is worker-local. It exists only in the worker's own run state on the device, is never stored hosted, and is removed there once its run is terminal and 30 days have passed.
 - Clearing spent lease material never deletes the attempt row, because attempt history is participant-visible and belongs to a different lifecycle.
+- A preview deployment record is released only once its remote counterpart is confirmed released. A record whose provider-side deployment was never requested, is still awaited, or failed to release is retained regardless of age, because deleting it would orphan a remote deployment that may keep serving the project's content with nothing left to identify it. Retaining a database row is the lesser harm.
+- Retention never asks a preview provider to release anything. It reads the confirmed outcome of a release another workflow performed.
 - Active run state, current recovery material still required by the run, accepted evidence, and immutable participant-visible history are not temporary data.
 - Superseded artifact deletion removes bytes and unnecessary temporary references without rewriting immutable evidence provenance.
 - Retention is idempotent, lock-protected, restart-safe, and reconcilable across the authoritative hosted or device boundary.
@@ -62,9 +64,10 @@ Inactive guided-delivery execution mechanics and operational-security logs are r
 - [AC-05] Given a Slice 07 operational-security log reaches 30 days, when retention runs, then the log is deleted without changing project authorization, feature state, run state, or accepted evidence.
 - [AC-06] Given a device-authoritative project holds an inactive command payload or checkpoint that reaches 30 days, when retention runs against the device authority, then it is removed there without creating any hosted copy of device-authoritative data.
 - [AC-07] Given a run reaches a terminal lifecycle and 30 days pass, when the worker prunes its own run state, then the provider-thread reference is removed from the device while the run's participant-visible history is unchanged.
-- [AC-08] Given a preview deployment is expired or superseded and reaches 30 days, when retention runs, then its deployment record and cleanup state are removed without deleting the feature, run, or accepted evidence it belonged to.
+- [AC-08] Given a preview deployment reaches a terminal status and 30 days pass, and its remote counterpart is confirmed released, when retention runs, then its deployment record is removed without deleting the feature, run, or accepted evidence it belonged to; a record whose remote release is unrequested, pending, or failed is retained at any age.
 - [AC-09] Given a run attempt is terminal and reaches 30 days, when retention runs, then its lease owner, lease expiry, and fence token are cleared while the attempt row and its participant-visible outcome remain intact.
 - [AC-10] Given a device-authoritative project holds a superseded artifact that reaches 30 days, when retention runs against the device authority, then its bytes are removed there without creating any hosted copy and without rewriting the evidence record that names it.
+- [AC-11] Given a device-authoritative project holds a terminal preview deployment whose remote counterpart is confirmed released and which reaches 30 days, when retention runs against the device authority, then its record is removed there without creating any hosted copy.
 
 ## Open Questions
 

@@ -28,13 +28,14 @@ Provides:
 
 - Slice size: Standard
 
-One coherent outcome — inactive guided-delivery execution mechanics and operational-security logs are gone within 30 days — through one verification gate, ten tasks total, and a longest `Depends on:` path of five tasks (`Task 1 → Task 2 → Task 10 → Task 3 → Task 5`). Both are inside the standard limits.
+One coherent outcome — inactive guided-delivery execution mechanics and operational-security logs are gone within 30 days — through one verification gate, eleven tasks total, and a longest `Depends on:` path of five tasks (`Task 1 → Task 8 → Task 11 → Task 3 → Task 5`). Both are inside the standard limits.
 
 ## Task Size Gate
 
 - Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof.
 - Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
 - The hosted rule (Task 1), the device rule (Task 6), and the worker-local rule (Task 7) are separate tasks because they are three different mechanisms — a row delete, a tombstone commit through the device seam, and a local file rewrite — that fail independently and are proved independently. Combining them would hide a device or worker failure behind a passing hosted assertion.
+- Preview expiry splits hosted (Task 8) from device (Task 11) on the same enumeration boundary as artifacts.
 - Artifact expiry splits hosted (Task 2) from device (Task 10) for the same reason: the hosted half queries the `evidence` table while the device half enumerates the device store, so the two enumerations fail independently even though they share one deletion seam.
 - Each remaining lifecycle owns its own task because its eligibility signal is different: supersession for artifacts (Task 2), expiry and cleanup state for preview deployments (Task 8), and attempt terminality for lease material (Task 9).
 - No task-size exception is used.
@@ -63,6 +64,7 @@ Excluded:
 Deferred after this slice:
 
 - Notification retention, device relay and cache retention, project deletion and recovery, rights, anonymization, and deployment governance in their focused specifications.
+- Triggering a preview's remote release when it merely expires. The release seam is implemented and tested but has no production caller, so this slice's preview rules are correct and currently inert. `specs/21-guided-delivery-deletion-and-recovery` Task 4 already owns the project-deletion path; the expiry path needs an owner and is raised against the preview lifecycle, not resolved here. This blocks the preview rules' real-world effect, not this slice's implementation or verification.
 
 Release gates:
 
@@ -113,14 +115,23 @@ Traceability:
   - Owns: AC-10
   - Proof: `python3 .agents/scripts/run_proof.py task --task 10 -- mix test test/sdd_orchestrator/privacy/delivery_device_artifact_retention_test.exs` passes focused device superseded, day-29, day-30, shared-digest survival, tombstone-not-delete, no-hosted-copy, unreachable-device pause, and repeat cases.
 
-- [ ] Task 8 — Enforce preview-deployment expiry.
+- [ ] Task 8 — Enforce hosted preview-deployment expiry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
-  - Purpose: Remove expired and superseded preview deployments, which already carry their own expiry and cleanup state, once they are 30 days past use.
-  - Owned surfaces: Preview-deployment eligibility from expiry, supersession, and cleanup state, the 30-day boundary, deletion of the deployment record, preservation of the feature, run, and evidence it belonged to, and preview fixtures.
+  - Purpose: Remove hosted preview-deployment records at every terminal status once they are 30 days past use and their remote counterpart is confirmed released.
+  - Owned surfaces: Hosted eligibility for every terminal status — expired, superseded, failed, and timed out — the per-status instant, the confirmed-remote-release guard, the 30-day boundary, deletion of the deployment record, the hold-back that prevents a retained referring record from breaking the paired supersession constraint, preservation of the feature, run, and evidence it belonged to, and hosted preview fixtures.
   - Owns: AC-08
-  - Proof: `python3 .agents/scripts/run_proof.py task --task 8 -- mix test test/sdd_orchestrator/privacy/delivery_preview_retention_test.exs` passes focused expired, superseded, still-ready exclusion, day-29, day-30, cleanup-state, and owning-record preservation cases.
+  - Proof: `python3 .agents/scripts/run_proof.py task --task 8 -- mix test test/sdd_orchestrator/privacy/delivery_preview_retention_test.exs` passes focused expired, superseded, failed, timed-out, still-pending and still-ready exclusion, day-29, day-30, each unconfirmed cleanup state retained, referring-record hold-back, and owning-record preservation cases.
+
+- [ ] Task 11 — Enforce device preview-deployment expiry.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 8
+  - Purpose: Apply the same preview boundary inside a device-authoritative project, where the deployment lives in the device store.
+  - Owned surfaces: Device preview enumeration under the `:preview` delivery kind, eligibility from the record's own `expires_at` with `requested_at` as the fallback the device value shape still carries, the same confirmed-remote-release guard, the device tombstone, the no-hosted-copy guarantee, and device preview fixtures.
+  - Owns: AC-11
+  - Proof: `python3 .agents/scripts/run_proof.py task --task 11 -- mix test test/sdd_orchestrator/privacy/delivery_device_preview_retention_test.exs` passes focused device terminal-status, day-29, day-30, unconfirmed-cleanup retention, tombstone-not-delete, no-hosted-copy, unreachable-device pause, and repeat cases.
 
 - [ ] Task 9 — Clear spent attempt-lease material.
   - Size: Standard
@@ -143,7 +154,7 @@ Traceability:
 - [ ] Task 3 — Deliver locked retention execution, durable rule outcome, and reconciliation.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 1, Task 2, Task 6, Task 8, Task 9, Task 10
+  - Depends on: Task 1, Task 2, Task 6, Task 8, Task 9, Task 10, Task 11
   - Purpose: Apply this slice's retention rules safely under repeats, concurrent schedulers, process restart, and partial failure, and make a failed or interrupted rule discoverable instead of silent.
   - Owned surfaces: The `RetentionRuleOutcome` record and its migration, shared retention-rule registration, the per-rule advisory lock, the idempotent prune result, rule-level failure state and attempt count, restart discovery, hosted and device reconciliation, retry, minimized retention diagnostics, fixtures, and deleted-data non-restoration.
   - Owns: AC-03, entity:RetentionRuleOutcome
@@ -169,7 +180,7 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All ten acceptance criteria pass against hosted, device, and worker-local authority where applicable.
+- [ ] All eleven acceptance criteria pass against hosted, device, and worker-local authority where applicable.
 - [ ] Active recovery state, accepted evidence, attempt rows, and participant-visible history remain available after every retention rule.
 - [ ] Security-log field allowlists and content, credential, and email negative scans pass.
 - [ ] Retention lock, restart, partial-failure, retry, and reconciliation scenarios pass, and a failed rule is discoverable through its durable outcome record.

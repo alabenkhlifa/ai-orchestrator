@@ -39,7 +39,7 @@ Required boundaries:
 ## Interfaces
 
 - Temporary-data selector: identify inactive command payloads and checkpoints whose purpose ended at least 30 days earlier, together with the transient result and failure detail they carry.
-- Preview-deployment selector: identify expired or superseded deployments and their cleanup state past the same boundary.
+- Preview-deployment selector: identify terminal deployments past the same boundary whose remote counterpart is confirmed released, on both the hosted and device authority.
 - Attempt-lease clearing: blank spent lease owner, lease expiry, and fence token on a terminal attempt without deleting the attempt.
 - Worker run-state pruning: remove the provider-thread reference from the worker's local run state once its run is terminal and past the boundary.
 - Artifact-retention interface: delete eligible superseded artifact bytes while preserving immutable evidence provenance and accepted artifacts.
@@ -86,6 +86,12 @@ Required boundaries:
 - Reason: The current shared pruner reports counts and forgets them, so an interrupted or failing rule is invisible until someone notices data past its limit. Restart discovery and reconciliation cannot be proved against a value that only exists inside one pass.
 - Consequence: This slice adds an operational record of its own. It holds rule name, outcome, attempt count, and non-secret correlation only, and is itself subject to the minimization rules applied to retention diagnostics.
 
+### A Preview Record May Only Outlive Its Remote Counterpart, Never The Reverse
+
+- Choice: Release a preview-deployment record only when its cleanup state records a confirmed provider-side release. Anything else — never requested, requested and still awaited, or failed — retains the record at any age. Retention itself never calls a preview provider.
+- Reason: A preview has a counterpart at a third-party provider. The record is the only thing that identifies it. Deleting the record while the remote deployment is still live orphans it permanently, and it may keep serving the project's content with nothing left that could ever find it again. That is a worse data-protection outcome than keeping an internal row past its window, so the ordering is one-directional: the remote copy goes first, then the record.
+- Consequence: This rule is only as effective as the workflow that triggers the release. No such trigger exists today for a preview that merely expires — the release seam is implemented and tested but is called from nowhere in production — so the rule is correct and currently inert. That gap belongs to the preview lifecycle, not to retention; `specs/21-guided-delivery-deletion-and-recovery` Task 4 already owns the project-deletion path, and the expiry path has no owner yet.
+
 ### Structured Security Logs Only
 
 - Choice: Log fixed typed outcomes rather than free-form provider or project text.
@@ -100,6 +106,7 @@ Required boundaries:
 - Failure logs could include the content being deleted. Diagnostics use fixed rule and error categories and scan emitted fields.
 - A stopped pruner could extend retention indefinitely. Restart and reconciliation proof makes overdue eligible records discoverable and retryable.
 - The worker-local rule runs on a device that may be offline for longer than the boundary. Eligibility is re-derived from the run's terminal lifecycle on the next start rather than from a schedule the device may have missed, and an unreachable device pauses only that rule.
+- Deleting a preview record that a retained sibling still names would null that link and violate the paired supersession constraint, aborting the whole retention pass rather than one rule. A due record is held back until the record referring to it is due as well.
 - Clearing lease fields in place could be mistaken for deleting an attempt. The rule updates named columns and its proof asserts the attempt row and its participant-visible outcome are untouched.
 
 ## Open Questions
