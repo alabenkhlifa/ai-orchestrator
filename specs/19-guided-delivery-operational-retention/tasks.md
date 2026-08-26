@@ -133,7 +133,7 @@ Traceability:
   - Owns: AC-11
   - Proof: `python3 .agents/scripts/run_proof.py task --task 11 -- mix test test/sdd_orchestrator/privacy/delivery_device_preview_retention_test.exs` passes focused device terminal-status, day-29, day-30, unconfirmed-cleanup retention, tombstone-not-delete, no-hosted-copy, unreachable-device pause, and repeat cases.
 
-- [ ] Task 9 — Clear spent attempt-lease claims.
+- [x] Task 9 — Clear spent attempt-lease claims.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1

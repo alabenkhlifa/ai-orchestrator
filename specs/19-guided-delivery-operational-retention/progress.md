@@ -1,5 +1,17 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-26 — Task 9 spent attempt-lease claims released
+
+- Completed: `released_delivery_attempt_leases` registered in `Retention.prune_all/1`, one `Repo.update_all` setting `lease_owner` and `lease_expires_at` to null together on a terminal attempt whose last write is at or before the cutoff and which still holds a lease. The key is named `released_` rather than `expired_` because it is an update; every other key in the map counts deleted rows.
+- The fence token is not touched, as `AC-09` now requires, and the proof asserts it unchanged along with full struct equality across every other column.
+- Instant: `updated_at`, and the reason is structural rather than incidental. `RunAttempt.transitions/0` gives every terminal state an empty target list, so the write that made the attempt terminal is by construction the last write the row can take. The rule also deliberately does not bump `updated_at` while clearing, unlike `prune_departed_participant_links/1`, which measures from a dedicated `departed_at`: here `updated_at` is the measured column, so bumping it would erase when the attempt ended and make a released row look freshly written. The test asserts it is unchanged.
+- A brief error was caught and corrected by the sub-agent rather than followed: the brief asserted `run_attempts` uses microsecond precision and told it to widen the cutoff, generalising wrongly from `run_commands`. `RunAttempt` declares `@timestamps_opts [type: :utc_datetime]` and the migration renders `timestamp(0)`, verified live against the test database, and Ecto raises rather than compares when a microsecond value meets that column — the exact inverse of the `preview_deployments` hazard Task 8 hit. A plain second-precision cutoff is correct here. The precision split is per table and must be read from the schema each time, not carried across tasks.
+- Recorded scope note, no action taken: a terminal attempt holding a lease is unreachable through the current writers, because `transition_changeset/3` clears the lease entering a terminal state and `claim_lease_changeset/4` refuses a terminal attempt. This rule is therefore a backstop for rows left by an interrupted transition, an older writer, or a restore, and the proof plants such rows directly. Unlike the preview rules, it is reachable in production — a crash between transition and lease release produces exactly the row it clears.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on both files.
+- Proof receipt: `Task 9` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_attempt_lease_retention_test.exs` — exit `0`.
+- 6 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 9 checked complete.
+
 ### 2026-08-26 — AC-09 corrected: the fence token cannot be cleared
 
 - Found during Task 9's preflight, before any brief was dispatched: `AC-09` promised to clear the lease owner, lease expiry, and fence token, and the third is impossible. `fence_token` is `null: false`, constrained by `run_attempts_fence_token_positive`, and carries `unique_index(:run_attempts, [:run_id, :fence_token])`, so clearing it would mean dropping an index that execution-ordering correctness depends on.

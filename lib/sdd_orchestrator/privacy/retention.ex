@@ -185,6 +185,24 @@ defmodule SddOrchestrator.Privacy.Retention do
       a worse outcome than retaining the row, and that guard is not
       status-specific. The feature, run, attempt, activity history, and
       evidence the preview belonged to are never touched.
+    * Spent attempt-lease claims — the `lease_owner` and `lease_expires_at` a
+      terminal `RunAttempt` is still carrying are cleared 30 days after it
+      finished. Terminal is exactly `RunAttempt.terminal_states/0`, and
+      "finished" is `updated_at`: an attempt has no `finished_at` column, and
+      reaching a terminal state is by construction the last write it can take,
+      because every transition out of one is illegal. This is an update, never
+      a delete — the attempt, its outcome, its ordering, and its fence token
+      are participant-visible history owned by the delivery lifecycle, and the
+      row is removed with its run and not by time. Only a claim actually still
+      held is selected, so the reported count describes work this pass did and
+      a repeat pass reports nothing. Both lease columns are cleared in the same
+      statement because `run_attempts_lease_pairing` requires them to be null
+      or non-null together; clearing one alone would abort the whole pass, and
+      the constraint exists because an owner without an expiry lets a stale
+      claim look current forever. `fence_token` is deliberately untouched: it
+      is the ordering that keeps a superseded worker's late events rejected,
+      it is `null: false` and must stay positive and unique within its run, and
+      it expires with the attempt row rather than on this window.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -227,6 +245,7 @@ defmodule SddOrchestrator.Privacy.Retention do
     BlockingQuestion,
     Evidence,
     PreviewDeployment,
+    RunAttempt,
     RunCommand
   }
 
@@ -405,6 +424,7 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_delivery_checkpoints: prune_delivery_checkpoints(now),
       expired_delivery_artifacts: prune_delivery_artifacts(now),
       expired_delivery_previews: prune_delivery_previews(now),
+      released_delivery_attempt_leases: prune_delivery_attempt_leases(now),
       expired_device_delivery_commands: prune_device_delivery_commands(now),
       expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now)
     }
@@ -1216,6 +1236,55 @@ defmodule SddOrchestrator.Privacy.Retention do
       where: other.id not in subquery(due),
       select: 1
     )
+  end
+
+  # A lease claim is operational data with a short purpose: it names the one
+  # worker allowed to execute an attempt and until when. Once the attempt is
+  # terminal that purpose is over — a terminal attempt can take no further
+  # transition, so no worker can ever act under the claim again — and what the
+  # row still carries is the worker's identity string. Thirty days after the
+  # attempt finished the claim goes, on the same window and for the same reason
+  # as the temporary execution data above.
+  #
+  # This is an update and never a delete. The attempt itself, its outcome, its
+  # number, and its fence are the participant-visible account of what the run
+  # did; they belong to the delivery lifecycle and are removed with the run,
+  # not by this rule. Nothing here touches `state`, `state_version`,
+  # `last_sequence`, `required_checks`, or any revision or manifest digest.
+  #
+  # "Finished" is `updated_at` because `run_attempts` has no `finished_at`
+  # column and needs none: `RunAttempt.transitions/0` gives every terminal
+  # state an empty target list, so the write that made the attempt terminal is
+  # by construction the last write it can take. `updated_at` is deliberately
+  # left alone by the update as well — it is the very instant this rule
+  # measures, and overwriting it would erase when the attempt ended and make a
+  # released row look freshly written.
+  #
+  # Both columns are cleared in one statement because
+  # `run_attempts_lease_pairing` requires them null together or non-null
+  # together; setting one alone raises the check violation and aborts the whole
+  # `prune_all/1` pass. `fence_token` is not part of the release: it is
+  # `null: false`, constrained positive, and unique within its run, and it is
+  # what keeps a superseded worker's late events rejected, so it expires with
+  # the attempt row under the delivery lifecycle rather than on this window.
+  defp prune_delivery_attempt_leases(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    {count, _} =
+      Repo.update_all(
+        from(attempt in RunAttempt,
+          where: attempt.state in ^RunAttempt.terminal_states(),
+          where: attempt.updated_at <= ^cutoff,
+          # Only a claim still held is counted, so the number describes rows
+          # this pass actually released and a repeat pass reports nothing. The
+          # pairing constraint makes testing the owner alone sufficient: a row
+          # with an expiry and no owner cannot exist.
+          where: not is_nil(attempt.lease_owner)
+        ),
+        set: [lease_owner: nil, lease_expires_at: nil]
+      )
+
+    count
   end
 
   # The device-authoritative half of the same lifecycle, on the same window and
