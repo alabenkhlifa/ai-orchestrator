@@ -30,6 +30,9 @@ Canonical project skills live under `.agents/skills/` and follow the shared Agen
 
 Write every message to the user short and straight to the point.
 
+- Use simple English. Prefer short common words over precise rare ones.
+- Keep each point to one sentence. Split a long sentence instead of joining clauses with commas, dashes, or semicolons.
+- This applies to every message, including plans, `AskUserQuestion` questions, option labels, and option descriptions.
 - Lead with the answer. Do not restate the question or narrate the steps taken to reach it.
 - Prefer a few lines over paragraphs, and paths with line numbers over quoted file contents.
 - Cut preamble, summaries of work already visible, and offers of unrequested next steps.
