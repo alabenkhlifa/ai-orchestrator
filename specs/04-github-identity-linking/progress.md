@@ -1,5 +1,24 @@
 # GitHub Identity Linking Progress Log
 
+### 2026-08-26 - Verification gate re-run and slice marked Verified
+
+- Every implementation task and every verification-gate item was already recorded complete, but the gate last ran before `specs/25-` through `specs/37-` landed. Re-ran the full gate on `main` to confirm no regression before changing the status.
+- Proof receipts, all confirmed on the main thread by real exit status:
+  - `python3 .agents/scripts/run_proof.py slice -- mix check` — exit `0` (4541 passed, 6 properties, 1 excluded `:live` tag; `MIX_TEST_PARTITION=463620` passed explicitly because the runner injects it only for a bare `mix test`).
+  - `python3 .agents/scripts/run_proof.py slice -- mix dialyzer` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- mix deps.audit` — exit `0` (no vulnerabilities).
+  - `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` — exit `0` (148 passed, 2 skipped, `chromium` and `mobile-chromium`).
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release --overwrite` — exit `0`.
+- Validators: `python3 .agents/scripts/validate_spec.py specs/04-github-identity-linking`, `python3 .agents/scripts/validate_spec.py --all specs` (37 specifications), and `python3 .agents/scripts/split_progress_log.py --check` all pass.
+- The three exceptions `specs/29-participation-completion` accepted at its own gate no longer reproduce and were not needed: `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` and `SddOrchestrator.Delivery.RevocationConsumerTest` pass, and `e2e/repository-kits.spec.js` passes after dropping the stale `sdd_orchestrator_e2e_desktop` and `sdd_orchestrator_e2e_mobile` databases, which is the known non-idempotent fixed-digest kit-package seed, not a product defect.
+- Failed checks: None.
+- Status: `In Progress` to `Verified`. The status block previously carried no explanation at all; it now records the gate evidence and names the release gate separately.
+- Release readiness is unchanged and remains blocked: final legal confirmation of the lawful basis and exact retention for the minimal merge record and the unlink-suppression policy, the required privacy review, and governed provider-normalization registry changes beyond the Gmail launch entry. The tagged live-GitHub email smoke stays staging-only and is covered deterministically by the `ReqProvider` `Req.Test` contract tests.
+- Spec updates: `tasks.md` status only. No requirement, design decision, acceptance criterion, task boundary, or verification expectation changed.
+
 ### 2026-07-23 - Extracted from project onboarding
 
 - Completed: Kept automatic matching as non-mutating candidate detection and required fresh proof of both sign-in methods, complete preflight, and explicit confirmation before the initial atomic merge.

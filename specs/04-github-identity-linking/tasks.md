@@ -2,7 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
+
+Every implementation task is complete and the full local verification gate passes: `mix check` (4541 passed, 1 excluded `:live` tag), `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `npm --prefix assets ci` and the full `npm --prefix assets run test:e2e` (148 passed, 2 skipped, desktop and mobile), and `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release`. See the 2026-08-26 verification-gate progress entry. Public release readiness remains separately gated on the Release Gate below: final legal confirmation of the lawful basis and exact retention for the minimal merge record and the unlink-suppression policy, the required privacy review, and governed provider-normalization registry changes beyond the Gmail launch entry. The tagged live-GitHub email smoke remains staging-only and is covered deterministically by the `ReqProvider` `Req.Test` contract tests.
 
 ## Active Slice
 
