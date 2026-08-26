@@ -290,6 +290,14 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     alias SddOrchestrator.Notifications
     alias SddOrchestrator.Participation
     alias SddOrchestrator.Participation.{Acceptance, Invitations}
+
+    alias SddOrchestrator.Portability.{
+      DeviceRestore,
+      PackageSection,
+      ProjectPackage,
+      RestoreDecision
+    }
+
     alias SddOrchestrator.Projects
     alias SddOrchestrator.Projects.Project
     alias SddOrchestrator.Repo
@@ -402,6 +410,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     end
 
     defp enabled?, do: Application.get_env(:sdd_orchestrator, :e2e_bootstrap, false) == true
+    end
 
     # One hosted project whose owner is signed in through the application
     # session. `owner_profile=false` leaves the owner label unset so the browser
@@ -459,6 +468,49 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       conn
       |> sign_in_account(owner.account)
       |> json(%{project_id: project.id, project_name: project.name})
+    end
+
+    # One signed-in catalog composed from both authorities at once: a hosted
+    # project registered through the real onboarding transaction, one project
+    # that exists only on this device, and — unless `conflict=false` — the
+    # hosted project's own stable id restored onto the device as well.
+    #
+    # That last record is seeded through the `specs/06-project-portability/`
+    # restore path rather than written directly, because a visibility-bounded
+    # restore is the only way two separately authoritative records come to share
+    # one stable project id. The restored twin carries its own repository
+    # identity: the device store enforces repository and name uniqueness of its
+    # own, and the collision under proof here is the stable project id, which is
+    # what the catalog's conflict detection actually reads.
+    defp run(conn, "mixed_catalog", params) do
+      suffix = unique_suffix()
+      owner = new_owner()
+      hosted = registered_project(owner, "#{@project_name} #{suffix}")
+
+      # The combined catalog lives behind the application session, which only the
+      # GitHub sign-in issues, so the signed-in reader here is a GitHub-linked
+      # account exactly as the product produces one.
+      seed_github_identity(owner.account)
+
+      {:ok, authority} = Devices.establish_workspace()
+      pair_available_worker()
+
+      device_only = restore_onto_device(authority, Ecto.UUID.generate(), "Local Only #{suffix}")
+
+      twin =
+        if params["conflict"] == "false",
+          do: nil,
+          else: restore_onto_device(authority, hosted.id, hosted.name)
+
+      conn
+      |> sign_in_account(owner.account)
+      |> json(%{
+        hosted_project_id: hosted.id,
+        hosted_project_name: hosted.name,
+        device_project_id: device_only.id,
+        device_project_name: device_only.name,
+        conflicting_project_id: twin && twin.id
+      })
     end
 
     # One pending invitation, reachable through the credential that was actually
@@ -1250,13 +1302,61 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # confirmed through the real registration transaction, so the repository
     # connection and hosted storage exist because they were created the way they
     # normally are rather than asserted into place here.
-    defp registered_project(owner) do
+    defp registered_project(owner, name \\ @project_name) do
       workspace = owner.personal_workspace
 
       {:ok, attempt} = Projects.start_onboarding_attempt(workspace)
       {:ok, attempt} = Projects.select_repository(workspace, attempt.id, @repository)
       {:ok, attempt} = Projects.select_storage_mode(workspace, attempt.id, "hosted")
-      {:ok, project} = Projects.register_project(workspace, attempt, name: @project_name)
+      {:ok, project} = Projects.register_project(workspace, attempt, name: name)
+
+      project
+    end
+
+    # Restores one project onto this device the way `specs/06-project-portability/`
+    # does, which is the only supported way a device-authoritative project comes
+    # to exist here holding a chosen stable id.
+    defp restore_onto_device(authority, project_id, name) do
+      repository_id = "e2e-" <> unique_suffix()
+
+      package = %ProjectPackage{
+        project: %PackageSection{
+          name: :project,
+          version: 1,
+          content: %{"id" => project_id, "name" => name}
+        },
+        repository: %PackageSection{
+          name: :repository,
+          version: 1,
+          content: %{"provider" => "github", "repository_id" => repository_id}
+        },
+        specifications: %PackageSection{
+          name: :specifications,
+          version: 1,
+          content: [
+            %{
+              "id" => Ecto.UUID.generate(),
+              "title" => name,
+              "requirements" => "# Requirements",
+              "design" => "# Design",
+              "tasks" => "# Tasks"
+            }
+          ]
+        }
+      }
+
+      decision = %RestoreDecision{
+        project_id: project_id,
+        display_name: name,
+        repository_provider: "github",
+        repository_id: repository_id,
+        checked_boundaries: [:device]
+      }
+
+      {:ok, %{project: project}} =
+        DeviceRestore.restore(authority, package, decision,
+          idempotency_key: "e2e-mixed-catalog-" <> project_id
+        )
 
       project
     end

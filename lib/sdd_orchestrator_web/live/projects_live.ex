@@ -14,6 +14,12 @@ defmodule SddOrchestratorWeb.ProjectsLive do
   the last confirmed state; the connected mount revalidates access and updates
   connected/disconnected transitions, and `Check again` re-runs the revalidation so
   a project that lost access can reconnect without being replaced.
+
+  A row is keyed by storage mode and project id together, not by project id alone.
+  Two separately authoritative records may share one stable project id, and the
+  catalog deliberately keeps both as their own row; keying on the id alone would
+  give those rows one DOM id, which collapses them into a single node for LiveView
+  patching and for assistive technology.
   """
   use SddOrchestratorWeb, :live_view
 
@@ -116,7 +122,13 @@ defmodule SddOrchestratorWeb.ProjectsLive do
       </div>
 
       <ul id="project-catalog" class="mt-6 flex flex-col gap-2.5">
-        <li :for={entry <- @entries} id={"project-#{entry.id}"} data-storage-mode={entry.storage_mode}>
+        <li
+          :for={entry <- @entries}
+          id={"project-#{entry.storage_mode}-#{entry.id}"}
+          data-project-row
+          data-id={entry.id}
+          data-storage-mode={entry.storage_mode}
+        >
           <%!-- A hosted row opens the project's landing decision, which is a
           plain request rather than a LiveView, and a device row crosses into
           another live session. Both are a full page load either way, so this
