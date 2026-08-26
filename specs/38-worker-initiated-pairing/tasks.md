@@ -81,7 +81,8 @@ Traceability:
   - Owns: AC-03, entity:PairingAttempt
   - Proof: Migration and schema tests prove an unbound attempt inserts, a bound attempt inserts, the mixed invalid state is rejected by the database, every pre-existing attempt remains valid and bound, and no existing workspace-scoped caller changed behavior.
 
-- [ ] Task 2 — Implement authorized bind-and-complete redemption.
+- [x] Task 2 — Implement authorized bind-and-complete redemption.
+  - Status: Complete.
   - Size: Exception — binding the workspace and authorizing the worker are one transaction; an attempt that is bound but not completed is a workspace-attached credential with no holder.
   - Proof scope: Focused
   - Depends on: Task 1
