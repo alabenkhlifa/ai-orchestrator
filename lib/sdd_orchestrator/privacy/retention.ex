@@ -195,7 +195,26 @@ defmodule SddOrchestrator.Privacy.Retention do
       the project's content at a provider nothing can name any more, which is
       a worse outcome than retaining the row, and that guard is not
       status-specific. The feature, run, attempt, activity history, and
-      evidence the preview belonged to are never touched.
+      evidence the preview belonged to are never touched. A device-authoritative
+      project gets the same window, the same terminal-status boundary, and the
+      same confirmed-remote guard, resolved entirely inside the device authority
+      through `SddOrchestrator.Devices`' delivery API and applied as a tombstone
+      put rather than a key delete. What differs is what it can be dated by:
+      `PreviewDeployment.to_value/1` emits no `inserted_at` and no
+      `updated_at`, so `"expired"` is measured by `expires_at` alone with no
+      last-write fallback, `"superseded"` by the replacement record's
+      `requested_at` — written in the same atomic commit as the supersession
+      link, which is the device-visible instant of the write the hosted half
+      measures as `inserted_at` — and `"timed_out"` by `timeout_at`, which
+      every decodable record carries. A `"failed"` preview, and an `"expired"`
+      one whose provider never stated an expiry, carry no instant of their own
+      across that seam and are retained rather than released against an instant
+      that answers a different question. A releasable record that a retained
+      one still names through `superseded_by_id` is held back until that one is
+      releasable too, so the sweep never leaves a retained record naming a
+      replacement that is gone. Nothing about a device project is read from or
+      written to the hosted store to make that decision, and an unreachable
+      worker pauses only this rule.
     * Spent attempt-lease claims — the `lease_owner` and `lease_expires_at` a
       terminal `RunAttempt` is still carrying are cleared 30 days after it
       finished. Terminal is exactly `RunAttempt.terminal_states/0`, and
@@ -439,7 +458,8 @@ defmodule SddOrchestrator.Privacy.Retention do
       released_delivery_attempt_leases: prune_delivery_attempt_leases(now),
       expired_device_delivery_commands: prune_device_delivery_commands(now),
       expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now),
-      expired_device_delivery_artifacts: prune_device_delivery_artifacts(now)
+      expired_device_delivery_artifacts: prune_device_delivery_artifacts(now),
+      expired_device_delivery_previews: prune_device_delivery_previews(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -1546,6 +1566,188 @@ defmodule SddOrchestrator.Privacy.Retention do
       {:ok, replacement} -> {:superseded_at, replacement.recorded_at}
       :error -> :undatable
     end
+  end
+
+  # The device-authoritative half of the terminal-preview rule, on the same
+  # window, the same terminal-status boundary, and the same confirmed-remote
+  # guard. Eligibility is resolved inside the device authority — the records are
+  # read from `SddOrchestrator.Devices`' delivery API and judged there — because
+  # a device project has no hosted `preview_deployments` row at all, and copying
+  # one out to decide what to prune would create exactly the hosted copy this
+  # authority exists to avoid.
+  #
+  # The hazard the rule is shaped around does not soften on a device. A worker's
+  # preview is still served by a provider, `cleanup_state` is still the only
+  # record of whether that counterpart was torn down, and removing the record
+  # while its release is owed, unconfirmed, or refused still leaves a deployment
+  # nothing can ever name again.
+  defp prune_device_delivery_previews(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_previews(project.id, cutoff)
+    end)
+  catch
+    # An offline, unpaired, or unreachable worker pauses this rule instead of
+    # aborting the pass: nothing on that device is due until it can be asked
+    # again, and every hosted rule in `prune_all/1` still runs.
+    :exit, _unavailable_store -> 0
+  end
+
+  # One listing per project, decoded once and indexed by id. Both questions this
+  # rule asks beyond a single record — which replacement dates a superseded one,
+  # and which records name a record that is about to go — are answered from that
+  # same read rather than from a second trip to the worker.
+  defp sweep_one_device_project_previews(project_id, cutoff) do
+    records = decoded_device_previews(project_id)
+    by_id = Map.new(records, &{&1.id, &1})
+
+    due =
+      records
+      |> Enum.filter(&device_preview_due?(&1, by_id, cutoff))
+      |> MapSet.new(& &1.id)
+
+    releasable = releasable_device_preview_ids(records, due)
+
+    records
+    |> Enum.filter(&MapSet.member?(releasable, &1.id))
+    |> Enum.map(&tombstone_device_preview(project_id, &1))
+    |> Enum.count(&(&1 == :ok))
+  end
+
+  defp decoded_device_previews(project_id) do
+    project_id
+    |> Devices.list_delivery(:preview)
+    |> Enum.flat_map(fn value ->
+      case PreviewDeployment.from_value(value) do
+        {:ok, deployment} -> [deployment]
+        {:error, _reason} -> []
+      end
+    end)
+  end
+
+  # The same tombstone put every device rule above applies, through the same
+  # helper. `to_value/1` round-trips the id and the state version the record was
+  # read with unchanged, which is all the tombstone reads, so a record rewritten
+  # since this sweep listed it is refused rather than overwritten and is judged
+  # again on the next pass.
+  defp tombstone_device_preview(project_id, %PreviewDeployment{} = record) do
+    tombstone_device_delivery_record(project_id, :preview, PreviewDeployment.to_value(record))
+  end
+
+  # `"done"` and nothing else, stated once ahead of every status exactly as the
+  # hosted `where` clause states it: `"none"` means the release was never asked
+  # for rather than that nothing is owed, `"requested"` is a command made
+  # durable that the provider never confirmed, and `"failed"` is a refusal. The
+  # guard is about the remote, not about how the preview stopped.
+  defp device_preview_due?(%PreviewDeployment{cleanup_state: "done"} = record, by_id, cutoff) do
+    not PreviewDeployment.open?(record) and
+      past_device_preview_window?(record, by_id, cutoff)
+  end
+
+  defp device_preview_due?(_unconfirmed_remote, _by_id, _cutoff), do: false
+
+  defp past_device_preview_window?(record, by_id, cutoff) do
+    case device_preview_stopped_at(record, by_id) do
+      {:stopped_at, at} -> DateTime.compare(at, cutoff) != :gt
+      :undatable -> false
+    end
+  end
+
+  # What each terminal status can actually be dated by once it has crossed the
+  # device seam. `PreviewDeployment.to_value/1` emits `requested_at`,
+  # `ready_at`, `timeout_at`, and `expires_at` and no Ecto timestamp at all, so
+  # neither the hosted rule's `COALESCE(expires_at, updated_at)` fallback nor
+  # its `replacement.inserted_at` exists here, and nothing is invented to stand
+  # in for them:
+  #
+  #   * `"expired"` — `expires_at`, the moment it stopped being reachable, the
+  #     same instant the hosted rule prefers. A provider can report the status
+  #     without ever stating a time, and `Previews` only invents one for a
+  #     deployment it saw become ready, so such a record has no expiry and no
+  #     last write to fall back to: it is `:undatable`.
+  #   * `"timed_out"` — `timeout_at`, the deadline the request policy set and
+  #     the value `Previews` compares against to declare the timeout, so the
+  #     record is measured from when the preview stopped being useful rather
+  #     than from when a later poll noticed. `from_value/1` refuses a record
+  #     without one, so every decodable timed-out record carries it.
+  #   * `"superseded"` — the *replacement* record's `requested_at`, found by id
+  #     in the same listing. That is the device-visible instant of the write the
+  #     hosted half measures as `inserted_at`: `Previews.start/4` writes
+  #     `requested_at: now` on the replacement in the same atomic commit as the
+  #     supersession link. This record's own `expires_at` is deliberately not
+  #     consulted, for the reason the hosted rule states — it answers when this
+  #     preview stopped being reachable, not when a later attempt made it the
+  #     wrong one to look at. A replacement the store no longer holds leaves it
+  #     `:undatable`, as the device evidence rule above decides the same case.
+  #   * `"failed"` — `:undatable`. A provider refusal records no expiry, never
+  #     became ready, and reached no deadline of its own, so `updated_at` was
+  #     the only instant the hosted rule had for it and that is precisely what
+  #     `to_value/1` does not carry. `requested_at` and `timeout_at` both belong
+  #     to the request rather than to the refusal and can precede it by any
+  #     amount, so measuring the window from either would release the record
+  #     before the thirty days it is owed have run. Retaining a record whose
+  #     remote is already confirmed torn down is the conservative side of that
+  #     trade, and the one this seam takes.
+  defp device_preview_stopped_at(
+         %PreviewDeployment{status: "expired", expires_at: %DateTime{} = at},
+         _by_id
+       ),
+       do: {:stopped_at, at}
+
+  defp device_preview_stopped_at(
+         %PreviewDeployment{status: "timed_out", timeout_at: %DateTime{} = at},
+         _by_id
+       ),
+       do: {:stopped_at, at}
+
+  defp device_preview_stopped_at(
+         %PreviewDeployment{status: "superseded", superseded_by_id: replacement_id},
+         by_id
+       )
+       when is_binary(replacement_id) do
+    case Map.fetch(by_id, replacement_id) do
+      {:ok, replacement} -> {:stopped_at, replacement.requested_at}
+      :error -> :undatable
+    end
+  end
+
+  defp device_preview_stopped_at(_undatable, _by_id), do: :undatable
+
+  # The hosted rule holds back a due row that a *retained* row still names,
+  # because `superseded_by_id` is `on_delete: :nilify_all` and clearing the link
+  # of a row still marked `"superseded"` violates that table's pairing
+  # constraint, aborting the whole pass. The device store has neither foreign
+  # keys nor check constraints, so nothing here can abort — but the same removal
+  # does real damage in its own way, so the hold-back is mirrored rather than
+  # dropped. A retained record's supersession instant *is* its replacement's
+  # `requested_at`, read out of this same listing, so tombstoning the
+  # replacement first turns the record naming it `:undatable` permanently: the
+  # moment its own provider cleanup is finally confirmed, the instant that would
+  # have released it is gone and the sweep would retain it forever. That is
+  # reachable exactly when the replacement's remote is settled and the
+  # referrer's is not, which is an ordinary outcome rather than a corner case.
+  #
+  # The set is closed rather than filtered once, because holding one record back
+  # makes it a retained referrer in its own right and a chain of supersessions
+  # would otherwise strand its middle. Each pass drops at least one id, so the
+  # recursion terminates.
+  defp releasable_device_preview_ids(records, due) do
+    strandable = MapSet.intersection(due, ids_named_by_retained_previews(records, due))
+
+    if MapSet.size(strandable) == 0 do
+      due
+    else
+      releasable_device_preview_ids(records, MapSet.difference(due, strandable))
+    end
+  end
+
+  defp ids_named_by_retained_previews(records, due) do
+    records
+    |> Enum.reject(&MapSet.member?(due, &1.id))
+    |> Enum.flat_map(&List.wrap(&1.superseded_by_id))
+    |> MapSet.new()
   end
 
   # Departure ends authorization immediately; the row stays as governed project

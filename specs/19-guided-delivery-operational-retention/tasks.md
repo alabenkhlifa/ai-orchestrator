@@ -124,7 +124,7 @@ Traceability:
   - Owns: AC-08
   - Proof: `python3 .agents/scripts/run_proof.py task --task 8 -- mix test test/sdd_orchestrator/privacy/delivery_preview_retention_test.exs` passes focused expired, superseded, failed, timed-out, still-pending and still-ready exclusion, day-29, day-30, each unconfirmed cleanup state retained, referring-record hold-back, and owning-record preservation cases.
 
-- [ ] Task 11 — Enforce device preview-deployment expiry.
+- [x] Task 11 — Enforce device preview-deployment expiry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8

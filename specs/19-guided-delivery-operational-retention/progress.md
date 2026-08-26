@@ -1,5 +1,17 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-26 — Task 11 device preview-deployment expiry
+
+- Completed: `expired_device_delivery_previews` registered in `Retention.prune_all/1`, tombstoning terminal device preview records past the boundary behind the same single `cleanup_state == "done"` guard, stated once ahead of every status.
+- Instant per status, each established from what survives `to_value/1` rather than assumed: `expired` uses its own `expires_at`; `timed_out` uses `timeout_at`, which `from_value/1` refuses to decode without, so no fallback is needed; `superseded` uses the replacement's `requested_at`, verified to be the device-visible instant of the same write the hosted half measures as `inserted_at`, because `requested_attrs/4` sets it on the replacement in the same atomic commit as the supersession step.
+- Two cases are deliberately undatable and retained, not guessed: a `failed` record always, because `stopped/2` writes a null expiry, `ready_at` is never set for a refusal, and `updated_at` does not cross the seam — while `requested_at` and `timeout_at` belong to the request rather than the refusal and can precede it by any amount, so measuring from either would delete the record before its window ran; and an `expired` record whose provider stated no expiry. A superseded record whose replacement the store no longer holds is undatable for the same reason, consistent with Task 10's evidence case. All three are pinned by tests, and no field was added to the value shape.
+- The referring-record hazard applies on the device path in a different form and was mirrored rather than dismissed. Nothing can abort a pass there — no foreign key, no check constraint — but a retained record's supersession instant *is* its replacement's `requested_at`, read from the same listing, so tombstoning the replacement first would make the referrer permanently undatable and retain it forever. That is reached whenever the replacement's remote is settled and the referrer's is not, an ordinary outcome. The rule holds back any due record a retained one names and closes the set to a fixpoint, because holding one record back makes it a retainer in its own right. Both the pair and a three-link chain are tested.
+- Defect found in already-committed work and reported rather than silently patched: the hosted Task 8 rule has the same closure hole and is not safe. Recorded and fixed separately.
+- Failed checks: None. `mix format` and `mix credo --strict` clean on both files.
+- Proof receipt: `Task 11` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_device_preview_retention_test.exs` — exit `0`.
+- 18 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 11 checked complete.
+
 ### 2026-08-26 — Task 10 device superseded-artifact expiry
 
 - Completed: `expired_device_delivery_artifacts` registered in `Retention.prune_all/1`, releasing superseded artifact bytes inside a device-authoritative project through one `Devices.list_delivery(project_id, :evidence)` per project, decoded once and indexed by id so the release predicate and the still-needed set share a single fetch. No `:evidence` record is written or tombstoned; only bytes go, exactly as hosted.
