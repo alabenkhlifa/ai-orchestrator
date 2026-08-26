@@ -233,6 +233,42 @@ defmodule SddOrchestrator.Privacy.Retention do
       is the ordering that keeps a superseded worker's late events rejected,
       it is `null: false` and must stay positive and unique within its run, and
       it expires with the attempt row rather than on this window.
+    * Retention rule outcomes — the operational record of what each rule did
+      on its last pass is held to the same 30-day boundary the rules enforce.
+      A `SddOrchestrator.Privacy.RetentionRuleOutcome` row whose last success
+      is more than 30 days old is deleted, which in practice releases the row
+      of a rule that no longer exists: a rule still in the table is rewritten
+      on every pass and can never go stale. The sweep is registered like any
+      other rule and can release its own previous record, but not the record
+      of the pass it is running in — that row is written after the rule body
+      returns, so it does not exist yet when the delete runs.
+
+  ## How a pass executes
+
+  `prune_all/1` is a list of rules, not a block of statements, and every rule
+  runs the same way:
+
+    * **Under its own advisory lock.** Each rule takes a distinct, stable key
+      (see `rules/0`) through `with_advisory_lock/3` and releases it before
+      the next rule starts, so a contended or slow rule can neither block nor
+      silently suppress another. A contended rule reports zero for its own
+      categories and leaves its outcome record alone, because the instance
+      holding the lock is the one doing — and recording — that work.
+    * **Isolated.** A rule that raises, exits, or violates a constraint does
+      not abort the pass. Every other rule still runs and `prune_all/1` still
+      returns its full map, with zeros for the rule that did not complete.
+      Several rules used to swallow their own unreachable-store exit
+      (`catch :exit, _unavailable_store -> 0`); that behaviour is now uniform
+      across every rule and, more importantly, visible, because the runner
+      records it.
+    * **Recorded.** Each rule's outcome is written to its own
+      `RetentionRuleOutcome` row inside its lock: the coarse class if it did
+      not complete, the success instant if it did, and the attempt count
+      either way. Row counts stay in the returned map and never enter the
+      row. The record is what makes an earlier failure discoverable after a
+      restart; retrying needs nothing else, because every selector below is a
+      pure function of authoritative state and `now`, so a retry is simply the
+      rule running again and can never restore what an earlier pass deleted.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -293,6 +329,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   }
 
   alias SddOrchestrator.Portability.ImportAttempt
+  alias SddOrchestrator.Privacy.RetentionRuleOutcome
 
   alias SddOrchestrator.ProjectAssistant.{
     AssistantBoundaryConfirmation,
@@ -381,6 +418,27 @@ defmodule SddOrchestrator.Privacy.Retention do
   # silently suppresses any of them.
   @project_assistant_advisory_lock_key 703_881_642
 
+  # Every remaining rule gets its own key too, so no rule's contention or
+  # failure can skip or block another. Four keys already exist above and each
+  # keeps the one it has; the rest are assigned from a reserved contiguous
+  # band that no other lock in this codebase occupies —
+  # `RetentionPruner` (748_213_905),
+  # `SddOrchestrator.AIRuntime.PersonalConnectionRevocations` (613_477_218),
+  # `SddOrchestrator.Privacy.ParticipationPropagation` (902_774_531), and the
+  # four keys above are all far outside it. Reserving a band rather than
+  # scattering thirty-one more magic numbers is what keeps that disjointness
+  # checkable by reading one line, and each key is written out literally in
+  # `rules/0` so it is stable across releases even if the list is reordered.
+  # `SddOrchestrator.Privacy.RetentionRuleOutcome`'s own proof asserts the
+  # whole set is pairwise distinct.
+  @rule_advisory_lock_band 1_900_000_001..1_900_000_031
+
+  # The outcome record is operational evidence of one retention pass, so it
+  # serves the same 30-day terminal window every other operational record in
+  # this module serves. It is its own named window even though the value
+  # matches `@participation_window` above.
+  @retention_rule_outcome_window 30 * @day
+
   # An observation is the operational trail of one agent's run: elapsed time,
   # token counters, an estimated cost, the quota that applied, and the status at
   # that moment. Its purpose is operating and pausing work safely and answering
@@ -424,49 +482,71 @@ defmodule SddOrchestrator.Privacy.Retention do
   @typedoc "Rows deleted by one runtime observation sweep."
   @type observation_counts :: %{expired_agent_runtime_observations: non_neg_integer()}
 
-  @doc "Runs every retention rule and returns the number of rows deleted per category."
+  @typedoc """
+  One retention rule: its name, the categories it reports into `prune_all/1`'s
+  map, the advisory-lock key it claims for the duration of its own body, and
+  the body itself. A body returning a bare integer reports into its single
+  category; a body returning a map reports its own keys.
+  """
+  @type rule ::
+          {atom(), [atom(), ...], pos_integer(),
+           (DateTime.t() -> non_neg_integer() | %{atom() => non_neg_integer()})}
+
+  @doc """
+  Runs every retention rule and returns the number of rows deleted per category.
+
+  Every category is always present in the returned map. A rule that was
+  contended, or that did not complete, reports zero for its own categories and
+  never removes a key — see this module's "How a pass executes".
+  """
   @spec prune_all(DateTime.t()) :: %{atom() => non_neg_integer()}
   def prune_all(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
 
-    %{
-      authorization_attempts: prune_authorization_attempts(now),
-      magic_link_attempts: prune_magic_link_attempts(now),
-      onboarding_attempts: prune_onboarding_attempts(now),
-      hosted_import_attempts: prune_hosted_import_attempts(now),
-      device_import_attempts: prune_device_import_attempts(now),
-      sessions: prune_sessions(now),
-      hosted_sessions: prune_hosted_sessions(now),
-      merge_records: IdentityLinking.prune_merge_records(now),
-      expired_invitations: Invitations.expire_due(now),
-      terminal_invitations: prune_terminal_invitations(now),
-      departed_participant_links: prune_departed_participant_links(now),
-      participation_revocation_links: prune_participation_revocation_links(now),
-      acknowledged_personal_ai_connections: reconcile_personal_ai_connections(now),
-      revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now),
-      unstarted_repository_initialization_plans:
-        prune_unstarted_repository_initialization_plans(now),
-      expired_delivery_notifications: prune_delivery_notifications(now),
-      expired_participation_email_delivery_diagnostics:
-        prune_participation_email_delivery_diagnostics(now),
-      expired_participation_notifications: prune_participation_notifications(now),
-      expired_participation_security_events: prune_participation_security_events(now),
-      expired_delivery_commands: prune_delivery_commands(now),
-      expired_delivery_checkpoints: prune_delivery_checkpoints(now),
-      expired_delivery_artifacts: prune_delivery_artifacts(now),
-      expired_delivery_previews: prune_delivery_previews(now),
-      released_delivery_attempt_leases: prune_delivery_attempt_leases(now),
-      expired_device_delivery_commands: prune_device_delivery_commands(now),
-      expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now),
-      expired_device_delivery_artifacts: prune_device_delivery_artifacts(now),
-      expired_device_delivery_previews: prune_device_delivery_previews(now)
-    }
-    |> Map.merge(snapshot_counts(now))
-    |> Map.merge(runtime_counts(now))
-    |> Map.merge(observation_counts(now))
-    |> Map.merge(repository_initialization_run_counts(now))
-    |> Map.merge(prune_project_assistant_conversations(now))
+    # One fresh, non-secret identifier per pass, minted here and never derived
+    # from anything, so the rules of one pass can be read together afterwards
+    # and two passes over the same data are never recognisable as such.
+    correlation_id = Ecto.UUID.generate()
+
+    Enum.reduce(rules(), %{}, fn rule, counts ->
+      Map.merge(counts, run_rule(rule, now, correlation_id))
+    end)
   end
+
+  @doc """
+  The closed retention-rule vocabulary, in execution order.
+
+  Order is part of the contract, not incidental: invitation expiry runs before
+  the terminal-invitation delete so an invitation that ends in this pass starts
+  its own 30 days now; the personal-connection reconciliation runs before the
+  terminal-reference delete for the same reason; the snapshot, runtime-session,
+  and observation sweeps run after those deletes so each reports only what its
+  own window removed rather than what a cascade already took; and the
+  outcome-record sweep runs last, after every other rule has recorded a fresh
+  success, so the only stale row it can find belongs to a rule that no longer
+  exists.
+  """
+  @spec rule_names() :: [atom()]
+  def rule_names, do: Enum.map(rules(), fn {name, _categories, _lock, _body} -> name end)
+
+  @doc """
+  The advisory-lock key one rule claims for the duration of its own body.
+
+  Every key is pairwise distinct, and distinct from `RetentionPruner`'s
+  whole-pass key and from every other sweep's key in this codebase, so no
+  rule's contention or failure can skip or block another.
+  """
+  @spec rule_advisory_lock_key(atom()) :: pos_integer() | nil
+  def rule_advisory_lock_key(name) do
+    Enum.find_value(rules(), fn
+      {^name, _categories, key, _body} -> key
+      _other_rule -> nil
+    end)
+  end
+
+  @doc false
+  @spec rule_advisory_lock_band() :: Range.t()
+  def rule_advisory_lock_band, do: @rule_advisory_lock_band
 
   @doc false
   @spec snapshot_advisory_lock_key() :: pos_integer()
@@ -479,6 +559,238 @@ defmodule SddOrchestrator.Privacy.Retention do
   @doc false
   @spec observation_advisory_lock_key() :: pos_integer()
   def observation_advisory_lock_key, do: @observation_advisory_lock_key
+
+  @doc false
+  @spec project_assistant_advisory_lock_key() :: pos_integer()
+  def project_assistant_advisory_lock_key, do: @project_assistant_advisory_lock_key
+
+  # The pass, written out. The four sweeps that already owned an advisory key
+  # keep the one they had — their public entry points still take it themselves
+  # — and the rule table calls their unlocked bodies so the key is taken
+  # exactly once either way. Every other rule takes a key from the reserved
+  # band documented above.
+  @spec rules() :: [rule()]
+  defp rules do
+    [
+      {:authorization_attempts, [:authorization_attempts], 1_900_000_001,
+       &prune_authorization_attempts/1},
+      {:magic_link_attempts, [:magic_link_attempts], 1_900_000_002, &prune_magic_link_attempts/1},
+      {:onboarding_attempts, [:onboarding_attempts], 1_900_000_003, &prune_onboarding_attempts/1},
+      {:hosted_import_attempts, [:hosted_import_attempts], 1_900_000_004,
+       &prune_hosted_import_attempts/1},
+      {:device_import_attempts, [:device_import_attempts], 1_900_000_005,
+       &prune_device_import_attempts/1},
+      {:sessions, [:sessions], 1_900_000_006, &prune_sessions/1},
+      {:hosted_sessions, [:hosted_sessions], 1_900_000_007, &prune_hosted_sessions/1},
+      {:merge_records, [:merge_records], 1_900_000_008, &IdentityLinking.prune_merge_records/1},
+      {:expired_invitations, [:expired_invitations], 1_900_000_009, &Invitations.expire_due/1},
+      {:terminal_invitations, [:terminal_invitations], 1_900_000_010,
+       &prune_terminal_invitations/1},
+      {:departed_participant_links, [:departed_participant_links], 1_900_000_011,
+       &prune_departed_participant_links/1},
+      {:participation_revocation_links, [:participation_revocation_links], 1_900_000_012,
+       &prune_participation_revocation_links/1},
+      {:acknowledged_personal_ai_connections, [:acknowledged_personal_ai_connections],
+       1_900_000_013, &reconcile_personal_ai_connections/1},
+      {:revoked_personal_ai_connections, [:revoked_personal_ai_connections], 1_900_000_014,
+       &prune_revoked_personal_ai_connections/1},
+      {:unstarted_repository_initialization_plans, [:unstarted_repository_initialization_plans],
+       1_900_000_015, &prune_unstarted_repository_initialization_plans/1},
+      {:expired_delivery_notifications, [:expired_delivery_notifications], 1_900_000_016,
+       &prune_delivery_notifications/1},
+      {:expired_participation_email_delivery_diagnostics,
+       [:expired_participation_email_delivery_diagnostics], 1_900_000_017,
+       &prune_participation_email_delivery_diagnostics/1},
+      {:expired_participation_notifications, [:expired_participation_notifications],
+       1_900_000_018, &prune_participation_notifications/1},
+      {:expired_participation_security_events, [:expired_participation_security_events],
+       1_900_000_019, &prune_participation_security_events/1},
+      {:expired_delivery_commands, [:expired_delivery_commands], 1_900_000_020,
+       &prune_delivery_commands/1},
+      {:expired_delivery_checkpoints, [:expired_delivery_checkpoints], 1_900_000_021,
+       &prune_delivery_checkpoints/1},
+      {:expired_delivery_artifacts, [:expired_delivery_artifacts], 1_900_000_022,
+       &prune_delivery_artifacts/1},
+      {:expired_delivery_previews, [:expired_delivery_previews], 1_900_000_023,
+       &prune_delivery_previews/1},
+      {:released_delivery_attempt_leases, [:released_delivery_attempt_leases], 1_900_000_024,
+       &prune_delivery_attempt_leases/1},
+      {:expired_device_delivery_commands, [:expired_device_delivery_commands], 1_900_000_025,
+       &prune_device_delivery_commands/1},
+      {:expired_device_delivery_checkpoints, [:expired_device_delivery_checkpoints],
+       1_900_000_026, &prune_device_delivery_checkpoints/1},
+      {:expired_device_delivery_artifacts, [:expired_device_delivery_artifacts], 1_900_000_027,
+       &prune_device_delivery_artifacts/1},
+      {:expired_device_delivery_previews, [:expired_device_delivery_previews], 1_900_000_028,
+       &prune_device_delivery_previews/1},
+      {:ai_runtime_snapshots, [:expired_model_catalog_snapshots, :expired_quota_snapshots],
+       @snapshot_advisory_lock_key, &delete_due_snapshots/1},
+      {:ai_runtime_sessions, [:expired_ai_runtime_sessions, :expired_runtime_cost_ledgers],
+       @runtime_advisory_lock_key, &delete_due_runtime_sessions/1},
+      {:ai_runtime_observations, [:expired_agent_runtime_observations],
+       @observation_advisory_lock_key, &delete_due_observations/1},
+      {:repository_initialization_runs,
+       [
+         :expired_repository_initialization_runs,
+         :expired_repository_initialization_orphan_plans
+       ], 1_900_000_029, &repository_initialization_run_counts/1},
+      {:project_assistant_conversations,
+       [:expired_project_assistant_conversations, :expired_assistant_boundary_confirmations],
+       @project_assistant_advisory_lock_key, &delete_due_hosted_project_assistant_records/1},
+      {:device_project_assistant_conversations, [:expired_device_project_assistant_conversations],
+       1_900_000_030, &sweep_device_project_assistant_conversations/1},
+      {:retention_rule_outcomes, [:expired_retention_rule_outcomes], 1_900_000_031,
+       &prune_retention_rule_outcomes/1}
+    ]
+  end
+
+  # One rule, start to finish: its own lock, its own isolation boundary, its
+  # own durable outcome, and its own categories zeroed when it did not run.
+  #
+  # A contended rule returns its zeros and writes nothing at all. The instance
+  # holding the lock is the one doing that rule's work, and it is the one that
+  # will record the outcome; overwriting its record with "this pass skipped it"
+  # would replace a true account of the rule with a false one.
+  defp run_rule({name, categories, lock_key, body}, now, correlation_id) do
+    zeros = Map.new(categories, &{&1, 0})
+
+    lock_key
+    |> with_advisory_lock("#{name} retention rule", fn ->
+      result = attempt_rule(body, now)
+      record_outcome(name, result, now, correlation_id)
+      reported_counts(result, categories, zeros)
+    end)
+    |> case do
+      :locked -> zeros
+      counts -> counts
+    end
+  end
+
+  # The isolation boundary. A rule that raises, exits, or throws is reduced to
+  # one coarse class and stops there: the pass keeps going, every other rule
+  # still runs, and nothing the rule was reaching for survives the reduction.
+  # An unreachable device store or artifact store arrives here as an exit,
+  # which is what several rules used to catch and silently report as zero.
+  defp attempt_rule(body, now) do
+    {:ok, body.(now)}
+  rescue
+    error -> {:error, failure_class(error)}
+  catch
+    :exit, _unavailable_authority -> {:error, :store_unavailable}
+    _kind, _thrown -> {:error, :unexpected_error}
+  end
+
+  # Coarse categories only. The exception itself is deliberately not passed on
+  # anywhere: its message can name the very rows, addresses, paths, and
+  # payloads the rule exists to delete, and this is the one record in the
+  # retention path whose failure branch could otherwise preserve them.
+  defp failure_class(%Postgrex.Error{postgres: %{code: code}})
+       when code in [
+              :check_violation,
+              :exclusion_violation,
+              :foreign_key_violation,
+              :not_null_violation,
+              :unique_violation
+            ],
+       do: :constraint_violation
+
+  defp failure_class(%Postgrex.Error{}), do: :database_unavailable
+  defp failure_class(%DBConnection.ConnectionError{}), do: :database_unavailable
+  defp failure_class(%Ecto.ConstraintError{}), do: :constraint_violation
+  defp failure_class(%Ecto.InvalidChangesetError{}), do: :constraint_violation
+  defp failure_class(_unclassified), do: :unexpected_error
+
+  defp reported_counts({:ok, counts}, categories, zeros),
+    do: Map.merge(zeros, normalize_counts(counts, categories))
+
+  defp reported_counts({:error, _failure_class}, _categories, zeros), do: zeros
+
+  defp normalize_counts(count, [category]) when is_integer(count), do: %{category => count}
+  defp normalize_counts(counts, _categories) when is_map(counts), do: counts
+
+  # Written inside the rule's own lock, so the attempt count is read and
+  # advanced without racing another instance, and *after* the rule body has
+  # returned, which is what keeps the outcome sweep from ever deleting the row
+  # recording the pass it is running in.
+  #
+  # Bookkeeping never aborts a pass. A rule that completed its deletes has done
+  # the work whether or not the record of it lands, and losing the remaining
+  # rules to a failed write would be the worse outcome by far.
+  defp record_outcome(name, result, now, correlation_id) do
+    log_outcome(name, result)
+
+    outcome = Repo.get_by(RetentionRuleOutcome, rule: name) || %RetentionRuleOutcome{}
+
+    outcome
+    |> outcome_changeset(name, result, now, correlation_id)
+    |> Repo.insert_or_update()
+    |> case do
+      {:ok, _recorded} -> :ok
+      {:error, _changeset} -> log_unrecorded(name)
+    end
+  rescue
+    _unrecordable -> log_unrecorded(name)
+  catch
+    :exit, _unavailable -> log_unrecorded(name)
+  end
+
+  defp outcome_changeset(outcome, name, {:ok, _counts}, now, correlation_id) do
+    RetentionRuleOutcome.succeeded_changeset(outcome, %{
+      rule: name,
+      last_attempted_at: now,
+      correlation_id: correlation_id
+    })
+  end
+
+  defp outcome_changeset(outcome, name, {:error, failure_class}, now, correlation_id) do
+    RetentionRuleOutcome.failed_changeset(outcome, %{
+      rule: name,
+      state: RetentionRuleOutcome.state_for_failure(failure_class),
+      failure_class: failure_class,
+      last_attempted_at: now,
+      correlation_id: correlation_id
+    })
+  end
+
+  # The rule and the coarse class, and nothing else. The operational log is
+  # held to the same minimisation as the row it accompanies, so the exception's
+  # own message never reaches it either.
+  defp log_outcome(name, {:error, failure_class}) do
+    Logger.warning("retention rule #{name} did not complete (#{failure_class})")
+  end
+
+  defp log_outcome(_name, {:ok, _counts}), do: :ok
+
+  defp log_unrecorded(name) do
+    Logger.warning("retention rule #{name} outcome could not be recorded")
+    :ok
+  end
+
+  # The record prunes itself, on the same 30-day boundary it enforces
+  # elsewhere. Only a succeeded row is released: a row still classified
+  # `:failed` or `:retry_pending` is precisely the visible failure this record
+  # exists to expose, and age is not a reason to hide it.
+  #
+  # A rule that still runs was rewritten with a fresh `succeeded_at` earlier in
+  # this very pass, so it can never be stale here; what this releases in
+  # practice is the row of a rule that no longer exists. Its own row is the one
+  # exception to "rewritten earlier in this pass", because the runner writes an
+  # outcome only after the rule body returns — so at the moment this delete
+  # runs, the row recording the current pass has not been written yet and is
+  # not reachable by it. What it can release is its own *previous* record, once
+  # that record is itself thirty days stale, which is exactly the boundary
+  # every other rule is held to.
+  defp prune_retention_rule_outcomes(now) do
+    cutoff = DateTime.add(now, -@retention_rule_outcome_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from outcome in RetentionRuleOutcome,
+          where: outcome.state == ^:succeeded and outcome.succeeded_at <= ^cutoff
+      )
+
+    count
+  end
 
   @doc """
   Deletes every pinned runtime session whose accountability window has passed.
@@ -497,8 +809,15 @@ defmodule SddOrchestrator.Privacy.Retention do
     now = DateTime.truncate(now, :second)
 
     with_advisory_lock(@runtime_advisory_lock_key, "runtime accountability sweep", fn ->
-      delete_due_runtime_records(due_runtime_session_ids(now))
+      delete_due_runtime_sessions(now)
     end)
+  end
+
+  # The sweep itself, without the lock. `prune_all/1` runs it as a rule and
+  # takes this same key around it, so the lock is claimed exactly once either
+  # way and the two entry points can never contend with each other.
+  defp delete_due_runtime_sessions(now) do
+    delete_due_runtime_records(due_runtime_session_ids(now))
   end
 
   @doc """
@@ -515,12 +834,16 @@ defmodule SddOrchestrator.Privacy.Retention do
   def prune_ai_runtime_snapshots(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
 
-    with_snapshot_lock(fn ->
-      %{
-        expired_model_catalog_snapshots: delete_unusable_snapshots(ModelCatalogSnapshot, now),
-        expired_quota_snapshots: delete_unusable_snapshots(QuotaSnapshot, now)
-      }
-    end)
+    with_snapshot_lock(fn -> delete_due_snapshots(now) end)
+  end
+
+  # The sweep itself, without the lock, for the reason
+  # `delete_due_runtime_sessions/1` states.
+  defp delete_due_snapshots(now) do
+    %{
+      expired_model_catalog_snapshots: delete_unusable_snapshots(ModelCatalogSnapshot, now),
+      expired_quota_snapshots: delete_unusable_snapshots(QuotaSnapshot, now)
+    }
   end
 
   @doc """
@@ -536,27 +859,24 @@ defmodule SddOrchestrator.Privacy.Retention do
   @spec prune_ai_runtime_observations(DateTime.t()) :: observation_counts() | :locked
   def prune_ai_runtime_observations(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
-    cutoff = DateTime.add(now, -@runtime_observation_window, :second)
 
     with_advisory_lock(@observation_advisory_lock_key, "runtime observation sweep", fn ->
-      {count, _} =
-        Repo.delete_all(
-          from observation in AgentRuntimeObservation,
-            where: observation.observed_at <= ^cutoff
-        )
-
-      %{expired_agent_runtime_observations: count}
+      delete_due_observations(now)
     end)
   end
 
-  # The sweep runs after reconciliation and after the terminal-reference delete,
-  # so a connection that becomes terminal in this pass loses its evidence now and
-  # the reported counts never double-count a row the connection cascade removed.
-  defp snapshot_counts(now) do
-    case prune_ai_runtime_snapshots(now) do
-      :locked -> %{expired_model_catalog_snapshots: 0, expired_quota_snapshots: 0}
-      counts -> counts
-    end
+  # The sweep itself, without the lock, for the reason
+  # `delete_due_runtime_sessions/1` states.
+  defp delete_due_observations(now) do
+    cutoff = DateTime.add(now, -@runtime_observation_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from observation in AgentRuntimeObservation,
+          where: observation.observed_at <= ^cutoff
+      )
+
+    %{expired_agent_runtime_observations: count}
   end
 
   defp delete_unusable_snapshots(schema, now) do
@@ -645,13 +965,12 @@ defmodule SddOrchestrator.Privacy.Retention do
   @spec prune_project_assistant_conversations(DateTime.t()) :: project_assistant_counts()
   def prune_project_assistant_conversations(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
-    cutoff = DateTime.add(now, -@project_assistant_conversation_window, :second)
 
     hosted =
       with_advisory_lock(
         @project_assistant_advisory_lock_key,
         "project assistant conversation sweep",
-        fn -> delete_due_project_assistant_records(cutoff) end
+        fn -> delete_due_hosted_project_assistant_records(now) end
       )
 
     hosted =
@@ -669,8 +988,24 @@ defmodule SddOrchestrator.Privacy.Retention do
     Map.put(
       hosted,
       :expired_device_project_assistant_conversations,
-      prune_device_project_assistant_conversations(cutoff)
+      prune_device_project_assistant_conversations(now)
     )
+  end
+
+  # `prune_all/1` runs the hosted and device halves as two separate recorded
+  # rules — they answer to different authorities and fail independently, which
+  # is exactly the boundary an outcome record has to be able to show. This
+  # function stays the direct, unrecorded entry point for a caller sweeping
+  # project-assistant history on its own, and keeps its own device-store catch
+  # for that reason.
+  defp delete_due_hosted_project_assistant_records(now) do
+    now
+    |> project_assistant_cutoff()
+    |> delete_due_project_assistant_records()
+  end
+
+  defp project_assistant_cutoff(now) do
+    DateTime.add(now, -@project_assistant_conversation_window, :second)
   end
 
   # The confirmation delete runs first, while its own matching conversation
@@ -749,13 +1084,23 @@ defmodule SddOrchestrator.Privacy.Retention do
     )
   end
 
-  defp prune_device_project_assistant_conversations(cutoff) do
+  defp prune_device_project_assistant_conversations(now) do
+    sweep_device_project_assistant_conversations(now)
+  catch
+    :exit, _unavailable_store -> 0
+  end
+
+  # The same sweep with no catch of its own, so that when `prune_all/1` runs it
+  # as a rule an unreachable worker is recorded rather than silently reported
+  # as zero. The count is unchanged either way: nothing on an unreachable
+  # device is due until it can be asked again.
+  defp sweep_device_project_assistant_conversations(now) do
+    cutoff = project_assistant_cutoff(now)
+
     Devices.list_projects()
     |> Enum.reduce(0, fn project, count ->
       count + sweep_one_device_project_assistant_conversation(project.id, cutoff)
     end)
-  catch
-    :exit, _unavailable_store -> 0
   end
 
   defp sweep_one_device_project_assistant_conversation(project_id, cutoff) do
@@ -808,15 +1153,6 @@ defmodule SddOrchestrator.Privacy.Retention do
     end
   end
 
-  # The runtime sweep runs after the terminal-connection delete, so a session
-  # this pass detached is judged as detached now rather than one pass later.
-  defp runtime_counts(now) do
-    case prune_ai_runtime_sessions(now) do
-      :locked -> %{expired_ai_runtime_sessions: 0, expired_runtime_cost_ledgers: 0}
-      counts -> counts
-    end
-  end
-
   defp due_runtime_session_ids(now) do
     attached_cutoff = DateTime.add(now, -@runtime_session_window, :second)
     detached_cutoff = DateTime.add(now, -@detached_runtime_session_window, :second)
@@ -846,18 +1182,6 @@ defmodule SddOrchestrator.Privacy.Retention do
       end)
 
     counts
-  end
-
-  # The observation sweep runs last, after the session sweep, for the same
-  # reason the snapshot sweep runs after the terminal-connection delete: a
-  # session deleted earlier in this pass has already cascaded its observations
-  # away, so this count reports only the rows the observation window itself
-  # removed and never double-counts what the cascade removed.
-  defp observation_counts(now) do
-    case prune_ai_runtime_observations(now) do
-      :locked -> %{expired_agent_runtime_observations: 0}
-      counts -> counts
-    end
   end
 
   defp with_snapshot_lock(sweep) do
@@ -895,14 +1219,14 @@ defmodule SddOrchestrator.Privacy.Retention do
   # does: a connection that becomes terminal in this pass starts its own
   # retention window now rather than being deleted the instant it completes.
   # A worker that cannot be reached is an environment fact, not a retention
-  # failure, so it never stops the rest of the pass.
+  # failure, so it never stops the rest of the pass — the exit reaches the rule
+  # runner, which records it as an unreachable store and reports zero, instead
+  # of being caught and forgotten here.
   defp reconcile_personal_ai_connections(now) do
     case PersonalConnectionRevocations.reconcile(now) do
       {:ok, %{acknowledged: acknowledged}} -> acknowledged
       :locked -> 0
     end
-  catch
-    :exit, _unavailable_worker_transport -> 0
   end
 
   defp prune_revoked_personal_ai_connections(now) do
@@ -1369,11 +1693,6 @@ defmodule SddOrchestrator.Privacy.Retention do
     |> Enum.reduce(0, fn project, count ->
       count + sweep_one_device_project_delivery(project.id, :command, cutoff)
     end)
-  catch
-    # An offline, unpaired, or unreachable worker pauses this rule instead of
-    # aborting the pass: nothing on that device is due until it can be asked
-    # again, and every hosted rule in `prune_all/1` still runs.
-    :exit, _unavailable_store -> 0
   end
 
   # The device-authoritative resolved checkpoint, on the same window and the
@@ -1386,8 +1705,6 @@ defmodule SddOrchestrator.Privacy.Retention do
     |> Enum.reduce(0, fn project, count ->
       count + sweep_one_device_project_delivery(project.id, :question, cutoff)
     end)
-  catch
-    :exit, _unavailable_store -> 0
   end
 
   defp sweep_one_device_project_delivery(project_id, kind, cutoff) do
@@ -1492,11 +1809,6 @@ defmodule SddOrchestrator.Privacy.Retention do
     |> Enum.reduce(0, fn project, count ->
       count + sweep_one_device_project_artifacts(project, cutoff)
     end)
-  catch
-    # An offline, unpaired, or unreachable worker pauses this rule instead of
-    # aborting the pass: nothing on that device is due until it can be asked
-    # again, and every hosted rule in `prune_all/1` still runs.
-    :exit, _unavailable_store -> 0
   end
 
   defp sweep_one_device_project_artifacts(project, cutoff) do
@@ -1623,11 +1935,6 @@ defmodule SddOrchestrator.Privacy.Retention do
     |> Enum.reduce(0, fn project, count ->
       count + sweep_one_device_project_previews(project.id, cutoff)
     end)
-  catch
-    # An offline, unpaired, or unreachable worker pauses this rule instead of
-    # aborting the pass: nothing on that device is due until it can be asked
-    # again, and every hosted rule in `prune_all/1` still runs.
-    :exit, _unavailable_store -> 0
   end
 
   # One listing per project, decoded once and indexed by id. Both questions this
@@ -1943,8 +2250,6 @@ defmodule SddOrchestrator.Privacy.Retention do
       {:ok, count} when is_integer(count) and count >= 0 -> count
       _unavailable_or_invalid -> 0
     end
-  catch
-    :exit, _unavailable_store -> 0
   end
 
   defp prune_sessions(now) do

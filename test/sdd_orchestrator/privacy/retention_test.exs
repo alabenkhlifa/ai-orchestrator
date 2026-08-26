@@ -4,7 +4,10 @@ defmodule SddOrchestrator.Privacy.RetentionTest do
   passwordless attempts, onboarding attempts, and application and hosted sessions
   past their configured windows, keeps still-live records, and is idempotent.
   """
-  use SddOrchestrator.DataCase, async: true
+  # `async: false`, like every other retention suite: `prune_all/1` now claims a
+  # per-rule advisory lock, so a concurrently running module that also calls it
+  # would make this one's exact-count assertions report a locked rule as zero.
+  use SddOrchestrator.DataCase, async: false
 
   alias SddOrchestrator.Accounts.{
     ApplicationSession,

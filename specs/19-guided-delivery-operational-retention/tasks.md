@@ -151,7 +151,7 @@ Traceability:
   - Owns: AC-07
   - Proof: `python3 .agents/scripts/run_proof.py task --task 7 -- mix test test/sdd_orchestrator/worker/run_state_retention_test.exs` passes focused terminal, non-terminal exclusion, day-29, day-30, previous-slot, file-permission, missing-file, and history-unchanged cases.
 
-- [ ] Task 3 — Deliver locked retention execution, durable rule outcome, and reconciliation.
+- [x] Task 3 — Deliver locked retention execution, durable rule outcome, and reconciliation.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 2, Task 6, Task 8, Task 9, Task 10, Task 11
