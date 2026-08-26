@@ -1198,14 +1198,13 @@ defmodule SddOrchestrator.Privacy.Retention do
       |> DateTime.add(-@delivery_temporary_window, :second)
       |> DateTime.add(0, :microsecond)
 
-    due = due_preview_deployment_ids(cutoff)
+    due = cutoff |> due_preview_deployment_ids() |> Repo.all() |> MapSet.new()
+    releasable = releasable_preview_deployment_ids(due)
 
     {count, _} =
       Repo.delete_all(
         from deployment in PreviewDeployment,
-          as: :governed,
-          where: deployment.id in subquery(due),
-          where: not exists(retained_referring_preview_subquery(due))
+          where: deployment.id in ^MapSet.to_list(releasable)
       )
 
     count
@@ -1263,12 +1262,48 @@ defmodule SddOrchestrator.Privacy.Retention do
   # null — so this only ever defers a row to the pass where its own referrer
   # becomes releasable, most often once that referrer's provider cleanup
   # finally succeeds.
-  defp retained_referring_preview_subquery(due) do
-    from(other in PreviewDeployment,
-      where: other.superseded_by_id == parent_as(:governed).id,
-      where: other.id not in subquery(due),
-      select: 1
+  #
+  # Being due is not the same as being deleted, so the set is closed rather than
+  # filtered once, exactly as `releasable_device_preview_ids/2` closes the
+  # device half: holding one row back makes it a retained referrer in its own
+  # right, and a chain of supersessions would otherwise strand its middle. In
+  # `A -> B -> C`, a single filter keeps `B` because retained `A` names it, then
+  # releases `C` because its only referrer `B` was in the due set — the very row
+  # just held back — and nulling the held-back `B`'s link is the abort this rule
+  # exists to prevent. Each round drops at least one id, so the recursion
+  # terminates.
+  defp releasable_preview_deployment_ids(due) do
+    close_releasable_preview_ids(referring_preview_links(due), due)
+  end
+
+  defp close_releasable_preview_ids(links, releasable) do
+    strandable =
+      MapSet.intersection(releasable, ids_named_by_retained_preview_links(links, releasable))
+
+    if MapSet.size(strandable) == 0 do
+      releasable
+    else
+      close_releasable_preview_ids(links, MapSet.difference(releasable, strandable))
+    end
+  end
+
+  # Every supersession link that could ever strand a candidate, read once. A
+  # link whose target is not a candidate cannot hold anything back, and a
+  # candidate with no link named at it cannot be stranded, so restricting the
+  # read to the candidates is the whole relation this closure needs rather than
+  # a sample of it.
+  defp referring_preview_links(due) do
+    Repo.all(
+      from other in PreviewDeployment,
+        where: other.superseded_by_id in ^MapSet.to_list(due),
+        select: {other.id, other.superseded_by_id}
     )
+  end
+
+  defp ids_named_by_retained_preview_links(links, releasable) do
+    links
+    |> Enum.reject(fn {referrer_id, _target_id} -> MapSet.member?(releasable, referrer_id) end)
+    |> MapSet.new(fn {_referrer_id, target_id} -> target_id end)
   end
 
   # A lease claim is operational data with a short purpose: it names the one

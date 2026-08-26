@@ -304,6 +304,47 @@ defmodule SddOrchestrator.Privacy.DeliveryPreviewRetentionTest do
       refute exists?(pair.superseded)
       refute exists?(pair.replacement)
     end
+
+    # A run replaced twice leaves a chain, and holding one row back makes that
+    # row a retainer in its own right. Asking only "is my referrer due?" answers
+    # the wrong question for the middle of the chain: the head is retained, so
+    # the middle is held back, and the tail is then released on the strength of
+    # a referrer that was never going to go. That delete nulls the middle's link
+    # while its status still says `"superseded"`, and the check violation aborts
+    # the whole pass — every other retention rule in it included — which is the
+    # exact failure the hold-back exists to prevent.
+    test "holds back the whole chain a retained preview heads", context do
+      now = truncated_now()
+      chain = supersession_chain(context, DateTime.add(now, -10 * @window, :second))
+
+      assert %{expired_delivery_previews: 0} = Retention.prune_all(now)
+
+      assert exists?(chain.head)
+      assert exists?(chain.middle)
+      assert exists?(chain.tail)
+
+      # The link the aborting delete would have cleared, still intact, and the
+      # table's own pairing rule restated as a query rather than paraphrased.
+      assert Repo.get!(PreviewDeployment, chain.middle.id).superseded_by_id == chain.tail.id
+      assert_supersession_pairing_holds()
+    end
+
+    # The other direction, so a rule that released nothing could not pass the
+    # test above unnoticed. Once the head's provider confirms the teardown
+    # nothing outside the delete set names any of the three, and one statement
+    # takes the whole chain.
+    test "releases the whole chain in one pass once its head is unblocked", context do
+      now = truncated_now()
+      chain = supersession_chain(context, DateTime.add(now, -10 * @window, :second))
+
+      confirm_cleanup(chain.head)
+
+      assert %{expired_delivery_previews: 3} = Retention.prune_all(now)
+
+      refute exists?(chain.head)
+      refute exists?(chain.middle)
+      refute exists?(chain.tail)
+    end
   end
 
   describe "the surrounding record" do
@@ -430,6 +471,56 @@ defmodule SddOrchestrator.Privacy.DeliveryPreviewRetentionTest do
       )
 
     %{superseded: superseded, replacement: replacement}
+  end
+
+  # Two supersessions rather than one: `head` was replaced by `middle`, which
+  # was replaced by `tail`. Everything is old enough to be due and every remote
+  # is confirmed torn down except the head's, which is the one thing holding the
+  # chain. Written tail first, because each row's foreign key names the one that
+  # replaced it.
+  defp supersession_chain(context, oldest_at) do
+    tail =
+      deployment(context,
+        status: "expired",
+        expires_at: oldest_at,
+        inserted_at: oldest_at,
+        updated_at: oldest_at
+      )
+
+    middle = superseding(context, tail, DateTime.add(oldest_at, -@day, :second))
+
+    head =
+      superseding(context, middle, DateTime.add(oldest_at, -2 * @day, :second),
+        cleanup_state: "requested"
+      )
+
+    %{head: head, middle: middle, tail: tail}
+  end
+
+  defp superseding(context, replacement, inserted_at, attrs \\ []) do
+    deployment(
+      context,
+      Keyword.merge(
+        [
+          status: "superseded",
+          superseded_by_id: replacement.id,
+          inserted_at: inserted_at,
+          updated_at: inserted_at
+        ],
+        attrs
+      )
+    )
+  end
+
+  # `preview_deployments_supersession_pairing` restated as a query, so what is
+  # asserted is the invariant itself rather than a description of it.
+  defp assert_supersession_pairing_holds do
+    assert %Postgrex.Result{rows: [[0]]} =
+             Repo.query!("""
+             SELECT COUNT(*)
+             FROM preview_deployments
+             WHERE (status = 'superseded') <> (superseded_by_id IS NOT NULL)
+             """)
   end
 
   # Inserted directly rather than driven through `Previews`, because every

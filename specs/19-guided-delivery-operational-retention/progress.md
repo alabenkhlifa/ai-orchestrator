@@ -1,5 +1,19 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-26 — Defect fixed in Task 8's hold-back: the release set is now closed to a fixpoint
+
+- Found by Task 11 while building the device equivalent, in code Task 8 had already proved and committed at `b5adf57`, and confirmed on the main thread before any change. `retained_referring_preview_subquery/1` held a due record back when some record naming it was *not in the due set*, treating membership of that set as proof the referrer would be deleted. It is not: a due record can itself be held back by the same guard.
+- The failure it allowed, on a chain `A → B → C` where `X → Y` means `X.superseded_by_id == Y.id`, with `A` retained and `B` and `C` due: `B` is held back because `A` names it, then `C` is deleted because its only referrer `B` is in the due set. The foreign key is `on_delete: :nilify_all`, so that nulls `B`'s link while `B` is still `status = "superseded"`, violating `preview_deployments_supersession_pairing`. The raise comes out of `Repo.delete_all` inside `prune_all/1` and aborts the entire pass, every other retention rule included — exactly the failure the hold-back exists to prevent.
+- Reproduced before fixing, not assumed: the new chain test failed with `Postgrex.Error ERROR 23514 (check_violation) ... status = superseded, superseded_by_id = null` raised at `prune_delivery_previews/1`, at 17 of 18 passing.
+- Fixed by closing the release set to a fixpoint, mirroring `releasable_device_preview_ids/2` from Task 11 shape for shape so the two halves stay recognisably one rule: the due set is materialised, the supersession relation is read once restricted to links whose target is a candidate — a link pointing outside the candidate set can strand nothing, so that restricted read is complete rather than a sample — and any id named by a survivor is removed from the release set repeatedly until it stops shrinking. Each round drops at least one id, so it terminates. `retained_referring_preview_subquery/1` is gone with no remaining reference in `lib` or `test`.
+- A second test guards the opposite direction: once the chain's head is confirmed released, all three go in one pass. Without it a rule that simply released nothing would satisfy the first test.
+- Eligibility is untouched. `due_preview_deployment_ids/1` is not modified at all: the `cleanup_state == "done"` guard, the open-status guard, the four per-status branches and their instants, the left join, and the microsecond cutoff widening all stand as Task 8 proved them.
+- Scope note: this could only fire once a preview can reach `cleanup_state == "done"`, which nothing triggers today, so it was latent rather than live. It would have aborted the first real retention pass after that trigger landed.
+- Failed checks: None after the fix. `mix format --check-formatted` and `mix credo --strict` clean on both files.
+- Proof receipt: `Task 8` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_preview_retention_test.exs` — exit `0`.
+- 18 tests passed, 16 existing plus 2 regressions. Confirmed on the main thread by real exit status.
+- Spec updates: none. Task 8's contract is unchanged; only its implementation was wrong.
+
 ### 2026-08-26 — Task 11 device preview-deployment expiry
 
 - Completed: `expired_device_delivery_previews` registered in `Retention.prune_all/1`, tombstoning terminal device preview records past the boundary behind the same single `cleanup_state == "done"` guard, stated once ahead of every status.
