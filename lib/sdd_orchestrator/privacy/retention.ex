@@ -108,6 +108,179 @@ defmodule SddOrchestrator.Privacy.Retention do
       operational-security log ceiling `AIRuntime.SecurityLog` documents.
       Emitting or pruning a security event never reads or changes any
       invitation, participant, profile, revocation, or account row.
+    * Guided-delivery operational-security events — a fixed, minimized
+      `DeliverySecurityEvent` row (specs/19 Task 4) is deleted 30 days after
+      its own `occurred_at` through
+      `SddOrchestrator.Privacy.DeliverySecurityLog`'s retention-capable local
+      sink. `occurred_at` is the only selector: the row carries no project
+      identifier to filter on, which is the schema's own minimization
+      decision, and all five allowlisted event types serve one
+      operational-review purpose under one window, so none of them is
+      selected separately. Expiring this log is deliberately inert with
+      respect to everything the log is *about* — no project authorization or
+      access state, no feature or run state, no accepted evidence, and no
+      other `delivery_*` row is read, updated, or deleted by it.
+    * Guided-delivery temporary execution data — an inactive `RunCommand` is
+      deleted 30 days after its purpose ended (`acknowledged_at` when present,
+      otherwise `updated_at`), and a resolved `BlockingQuestion` is deleted 30
+      days after the resolution that bumped its `updated_at`. Both rows carry
+      only execution mechanics: the command's operation, manifest digest,
+      claim, result, and failure code, and the question's opaque checkpoint,
+      branch, and worker-local workspace path. Neither is selected while its
+      own run is still active — a command or question belonging to a run that
+      has not reached `"failed"`, `"canceled"`, or `"completed"` is current
+      recovery material whatever its age, because that run can still be
+      resumed, retried, or reconciled from it. The participant-visible
+      question and its answer are not deleted here: they are duplicated into
+      `activity_entries` as `"question_asked"` and `"question_answered"`,
+      which is the retained authoritative history and is governed by its own
+      lifecycle rather than by this window. A device-authoritative project gets
+      the same window and the same run-still-active exclusion, decided inside
+      the device authority through `SddOrchestrator.Devices`' delivery API and
+      applied as a tombstone put rather than a key delete (the delivery seam
+      applies puts and nothing else). Nothing about a device project is read
+      from or written to the hosted store to make that decision, and an
+      unreachable worker pauses only this rule.
+    * Superseded guided-delivery evidence artifacts — the stored *bytes* a
+      superseded `Evidence` row names are removed from the project's artifact
+      store 30 days after that row was superseded. Nothing about the row
+      itself changes: `superseded_by_id`, `artifact_ref`, `digest`, and
+      `recorded_at` are provenance, the database refuses to rewrite them
+      (`evidence_reject_rewrite`), and this rule never issues a delete or an
+      update against `evidence` at all. What is released is only the screenshot
+      or log the superseded result captured, which no longer proves anything
+      once a later result replaced it; the row keeps naming a reference whose
+      bytes are gone, and `ArtifactStore.fetch/3` answers for it exactly as it
+      answers for content that was never stored. The supersession instant is
+      the *replacement* row's `inserted_at`: `evidence` deliberately has no
+      `updated_at` and no `superseded_at`, and the replacement is inserted in
+      the same atomic commit as the supersession link
+      (`SddOrchestrator.Delivery.EvidenceIngestion`), so a server-written
+      timestamp no worker can backdate already records exactly when the older
+      result stopped being current. Artifacts are digest-addressed, so one
+      stored object can be named by several rows; a reference is released only
+      when *no* evidence row of the same project still needs it — a current
+      row, or one superseded more recently than the window — which is what
+      keeps accepted evidence's bytes from being destroyed by an unrelated
+      row's expiry. A device-authoritative project gets the same window, the
+      same never-rewrite-the-record contract, and the same digest-safety check,
+      resolved entirely inside the device authority through
+      `SddOrchestrator.Devices`' delivery API and applied through the device
+      artifact adapter's own tombstone. Its supersession instant is the
+      replacement record's `recorded_at` rather than an `inserted_at`:
+      `Evidence.to_value/1` emits no Ecto timestamp at all, so the
+      server-written instant the hosted half measures does not survive device
+      serialization, and on a device the worker is the authority for when its
+      own result happened. Nothing about a device project is read from or
+      written to the hosted store to make that decision, and an unreachable
+      worker pauses only this rule.
+    * Terminal preview deployments — a `PreviewDeployment` row is deleted 30
+      days after the preview it describes stopped being useful. Terminal is
+      exactly "not `PreviewDeployment.open_statuses/0`", so all four of the
+      statuses a preview can stop in are governed and each is measured by the
+      instant that actually ended its purpose rather than by one shared
+      approximation. `"expired"` uses `expires_at`, the moment it stopped
+      being reachable, falling back to `updated_at` for a row a provider
+      called expired without ever stating a time — the same
+      authoritative-instant-or-last-write idiom the command rule above uses,
+      available here because `preview_deployments` does carry `timestamps()`,
+      which `evidence` deliberately does not. `"superseded"` uses the
+      *replacement* row's `inserted_at`, written in the same atomic commit as
+      the supersession link (`SddOrchestrator.Delivery.Previews`) and frozen
+      afterwards by the `preview_deployments_binding_frozen` trigger, exactly
+      as the evidence rule above reasons and for the same reason: the
+      superseded row's own `expires_at` says when its preview stopped being
+      reachable, which is a different question from when a later attempt
+      replaced it. `"timed_out"` uses `timeout_at`, the deadline the request
+      policy set and the one `Previews` compares against to declare the
+      timeout, so the row is measured from when the preview stopped being
+      useful rather than from when that was noticed. `"failed"` uses
+      `updated_at` alone: a provider refusal records no expiry and no
+      deadline of its own, so the failure write is the only instant the row
+      has and none is invented for it. A `"pending"` or `"ready"` deployment
+      is never selected whatever its age — it is still the preview a reviewer
+      opens. Age alone is never enough either: a row is released only once
+      `cleanup_state` is `"done"`, the one value that means the provider
+      confirmed the deployment itself was torn down. Deleting a row whose
+      remote release is still owed (`"none"`), recorded but unconfirmed
+      (`"requested"`), or refused (`"failed"`) would leave a preview serving
+      the project's content at a provider nothing can name any more, which is
+      a worse outcome than retaining the row, and that guard is not
+      status-specific. The feature, run, attempt, activity history, and
+      evidence the preview belonged to are never touched. A device-authoritative
+      project gets the same window, the same terminal-status boundary, and the
+      same confirmed-remote guard, resolved entirely inside the device authority
+      through `SddOrchestrator.Devices`' delivery API and applied as a tombstone
+      put rather than a key delete. What differs is what it can be dated by:
+      `PreviewDeployment.to_value/1` emits no `inserted_at` and no
+      `updated_at`, so `"expired"` is measured by `expires_at` alone with no
+      last-write fallback, `"superseded"` by the replacement record's
+      `requested_at` — written in the same atomic commit as the supersession
+      link, which is the device-visible instant of the write the hosted half
+      measures as `inserted_at` — and `"timed_out"` by `timeout_at`, which
+      every decodable record carries. A `"failed"` preview, and an `"expired"`
+      one whose provider never stated an expiry, carry no instant of their own
+      across that seam and are retained rather than released against an instant
+      that answers a different question. A releasable record that a retained
+      one still names through `superseded_by_id` is held back until that one is
+      releasable too, so the sweep never leaves a retained record naming a
+      replacement that is gone. Nothing about a device project is read from or
+      written to the hosted store to make that decision, and an unreachable
+      worker pauses only this rule.
+    * Spent attempt-lease claims — the `lease_owner` and `lease_expires_at` a
+      terminal `RunAttempt` is still carrying are cleared 30 days after it
+      finished. Terminal is exactly `RunAttempt.terminal_states/0`, and
+      "finished" is `updated_at`: an attempt has no `finished_at` column, and
+      reaching a terminal state is by construction the last write it can take,
+      because every transition out of one is illegal. This is an update, never
+      a delete — the attempt, its outcome, its ordering, and its fence token
+      are participant-visible history owned by the delivery lifecycle, and the
+      row is removed with its run and not by time. Only a claim actually still
+      held is selected, so the reported count describes work this pass did and
+      a repeat pass reports nothing. Both lease columns are cleared in the same
+      statement because `run_attempts_lease_pairing` requires them to be null
+      or non-null together; clearing one alone would abort the whole pass, and
+      the constraint exists because an owner without an expiry lets a stale
+      claim look current forever. `fence_token` is deliberately untouched: it
+      is the ordering that keeps a superseded worker's late events rejected,
+      it is `null: false` and must stay positive and unique within its run, and
+      it expires with the attempt row rather than on this window.
+    * Retention rule outcomes — the operational record of what each rule did
+      on its last pass is held to the same 30-day boundary the rules enforce.
+      A `SddOrchestrator.Privacy.RetentionRuleOutcome` row whose last success
+      is more than 30 days old is deleted, which in practice releases the row
+      of a rule that no longer exists: a rule still in the table is rewritten
+      on every pass and can never go stale. The sweep is registered like any
+      other rule and can release its own previous record, but not the record
+      of the pass it is running in — that row is written after the rule body
+      returns, so it does not exist yet when the delete runs.
+
+  ## How a pass executes
+
+  `prune_all/1` is a list of rules, not a block of statements, and every rule
+  runs the same way:
+
+    * **Under its own advisory lock.** Each rule takes a distinct, stable key
+      (see `rules/0`) through `with_advisory_lock/3` and releases it before
+      the next rule starts, so a contended or slow rule can neither block nor
+      silently suppress another. A contended rule reports zero for its own
+      categories and leaves its outcome record alone, because the instance
+      holding the lock is the one doing — and recording — that work.
+    * **Isolated.** A rule that raises, exits, or violates a constraint does
+      not abort the pass. Every other rule still runs and `prune_all/1` still
+      returns its full map, with zeros for the rule that did not complete.
+      Several rules used to swallow their own unreachable-store exit
+      (`catch :exit, _unavailable_store -> 0`); that behaviour is now uniform
+      across every rule and, more importantly, visible, because the runner
+      records it.
+    * **Recorded.** Each rule's outcome is written to its own
+      `RetentionRuleOutcome` row inside its lock: the coarse class if it did
+      not complete, the success instant if it did, and the attempt count
+      either way. Row counts stay in the returned map and never enter the
+      row. The record is what makes an earlier failure discoverable after a
+      restart; retrying needs nothing else, because every selector below is a
+      pure function of authoritative state and `now`, so a retry is simply the
+      rule running again and can never restore what an earlier pass deleted.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -128,6 +301,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
 
   alias SddOrchestrator.Accounts.{
+    DeviceWorkspace,
     HostedIdentity,
     HostedSession,
     MagicLinkAttempt,
@@ -144,6 +318,16 @@ defmodule SddOrchestrator.Privacy.Retention do
     RuntimeCostLedger
   }
 
+  alias SddOrchestrator.Delivery.{
+    AgentRun,
+    ArtifactStore,
+    BlockingQuestion,
+    Evidence,
+    PreviewDeployment,
+    RunAttempt,
+    RunCommand
+  }
+
   alias SddOrchestrator.Devices
   alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Notifications.AccountNotification
@@ -157,6 +341,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   }
 
   alias SddOrchestrator.Portability.ImportAttempt
+  alias SddOrchestrator.Privacy.RetentionRuleOutcome
 
   alias SddOrchestrator.ProjectAssistant.{
     AssistantBoundaryConfirmation,
@@ -204,6 +389,17 @@ defmodule SddOrchestrator.Privacy.Retention do
   # value matches `@participation_window` above.
   @participation_security_log_window 30 * @day
 
+  # A guided-delivery operational-security event is the same kind of fixed,
+  # minimized evidence on the Slice 07 boundary, deleted 30 days after its own
+  # `occurred_at` through `DeliverySecurityLog`'s retention-capable local
+  # sink. It is its own named window even though the value matches
+  # `@participation_security_log_window` above: the two logs are separate
+  # sinks over separate boundaries, and tying them to one constant would make
+  # a later change to either lifetime silently move the other. For the same
+  # reason it is not `@delivery_temporary_window` below, which governs
+  # commands, questions, and artifact bytes rather than security evidence.
+  @delivery_security_log_window 30 * @day
+
   # A stable, arbitrary key so every instance contends for the same lock. It is
   # deliberately distinct from the whole-pruner key and from the personal
   # connection revocation sweep's key, so a contended revocation sweep never
@@ -245,6 +441,33 @@ defmodule SddOrchestrator.Privacy.Retention do
   # silently suppresses any of them.
   @project_assistant_advisory_lock_key 703_881_642
 
+  # Every remaining rule gets its own key too, so no rule's contention or
+  # failure can skip or block another. Four keys already exist above and each
+  # keeps the one it has; the rest are assigned from a reserved contiguous
+  # band that no other lock in this codebase occupies —
+  # `RetentionPruner` (748_213_905),
+  # `SddOrchestrator.AIRuntime.PersonalConnectionRevocations` (613_477_218),
+  # `SddOrchestrator.Privacy.ParticipationPropagation` (902_774_531), and the
+  # four keys above are all far outside it. Reserving a band rather than
+  # scattering one more magic number per rule is what keeps that disjointness
+  # checkable by reading one line, and each key is written out literally in
+  # `rules/0` so it is stable across releases even if the list is reordered.
+  # `SddOrchestrator.Privacy.RetentionRuleOutcome`'s own proof asserts the
+  # whole set is pairwise distinct.
+  #
+  # What the band guarantees is that it is contiguous and exclusive, not how
+  # wide it is: its width is only ever "as many keys as there are rules", so a
+  # new rule extends the upper bound by one and takes it. Extending it can
+  # never collide, because the three keys above and the four legacy sweep keys
+  # are all orders of magnitude away from `1_900_000_000`.
+  @rule_advisory_lock_band 1_900_000_001..1_900_000_032
+
+  # The outcome record is operational evidence of one retention pass, so it
+  # serves the same 30-day terminal window every other operational record in
+  # this module serves. It is its own named window even though the value
+  # matches `@participation_window` above.
+  @retention_rule_outcome_window 30 * @day
+
   # An observation is the operational trail of one agent's run: elapsed time,
   # token counters, an estimated cost, the quota that applied, and the status at
   # that moment. Its purpose is operating and pausing work safely and answering
@@ -261,6 +484,18 @@ defmodule SddOrchestrator.Privacy.Retention do
   # reason the two session windows above are stated here.
   @runtime_observation_window 30 * @day
 
+  # Guided-delivery temporary execution data — an inactive command and a
+  # resolved blocking question — serves recovery, not history: it exists so a
+  # dispatcher can redeliver an instruction and a later attempt can resume
+  # accepted work. Once the run that could use it is no longer active and 30
+  # days have passed since that purpose ended, nothing can still read it. It is
+  # its own named window even though the value matches `@participation_window`
+  # above, because it governs a different feature's lifecycle. A superseded
+  # evidence artifact's stored bytes are released on this same window and for
+  # the same reason: once a later result replaced it, the captured screenshot or
+  # log proves nothing, and only the immutable provenance row is still history.
+  @delivery_temporary_window 30 * @day
+
   @typedoc "Rows deleted by one catalog and quota snapshot sweep."
   @type snapshot_counts :: %{
           expired_model_catalog_snapshots: non_neg_integer(),
@@ -276,40 +511,71 @@ defmodule SddOrchestrator.Privacy.Retention do
   @typedoc "Rows deleted by one runtime observation sweep."
   @type observation_counts :: %{expired_agent_runtime_observations: non_neg_integer()}
 
-  @doc "Runs every retention rule and returns the number of rows deleted per category."
+  @typedoc """
+  One retention rule: its name, the categories it reports into `prune_all/1`'s
+  map, the advisory-lock key it claims for the duration of its own body, and
+  the body itself. A body returning a bare integer reports into its single
+  category; a body returning a map reports its own keys.
+  """
+  @type rule ::
+          {atom(), [atom(), ...], pos_integer(),
+           (DateTime.t() -> non_neg_integer() | %{atom() => non_neg_integer()})}
+
+  @doc """
+  Runs every retention rule and returns the number of rows deleted per category.
+
+  Every category is always present in the returned map. A rule that was
+  contended, or that did not complete, reports zero for its own categories and
+  never removes a key — see this module's "How a pass executes".
+  """
   @spec prune_all(DateTime.t()) :: %{atom() => non_neg_integer()}
   def prune_all(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
 
-    %{
-      authorization_attempts: prune_authorization_attempts(now),
-      magic_link_attempts: prune_magic_link_attempts(now),
-      onboarding_attempts: prune_onboarding_attempts(now),
-      hosted_import_attempts: prune_hosted_import_attempts(now),
-      device_import_attempts: prune_device_import_attempts(now),
-      sessions: prune_sessions(now),
-      hosted_sessions: prune_hosted_sessions(now),
-      merge_records: IdentityLinking.prune_merge_records(now),
-      expired_invitations: Invitations.expire_due(now),
-      terminal_invitations: prune_terminal_invitations(now),
-      departed_participant_links: prune_departed_participant_links(now),
-      participation_revocation_links: prune_participation_revocation_links(now),
-      acknowledged_personal_ai_connections: reconcile_personal_ai_connections(now),
-      revoked_personal_ai_connections: prune_revoked_personal_ai_connections(now),
-      unstarted_repository_initialization_plans:
-        prune_unstarted_repository_initialization_plans(now),
-      expired_delivery_notifications: prune_delivery_notifications(now),
-      expired_participation_email_delivery_diagnostics:
-        prune_participation_email_delivery_diagnostics(now),
-      expired_participation_notifications: prune_participation_notifications(now),
-      expired_participation_security_events: prune_participation_security_events(now)
-    }
-    |> Map.merge(snapshot_counts(now))
-    |> Map.merge(runtime_counts(now))
-    |> Map.merge(observation_counts(now))
-    |> Map.merge(repository_initialization_run_counts(now))
-    |> Map.merge(prune_project_assistant_conversations(now))
+    # One fresh, non-secret identifier per pass, minted here and never derived
+    # from anything, so the rules of one pass can be read together afterwards
+    # and two passes over the same data are never recognisable as such.
+    correlation_id = Ecto.UUID.generate()
+
+    Enum.reduce(rules(), %{}, fn rule, counts ->
+      Map.merge(counts, run_rule(rule, now, correlation_id))
+    end)
   end
+
+  @doc """
+  The closed retention-rule vocabulary, in execution order.
+
+  Order is part of the contract, not incidental: invitation expiry runs before
+  the terminal-invitation delete so an invitation that ends in this pass starts
+  its own 30 days now; the personal-connection reconciliation runs before the
+  terminal-reference delete for the same reason; the snapshot, runtime-session,
+  and observation sweeps run after those deletes so each reports only what its
+  own window removed rather than what a cascade already took; and the
+  outcome-record sweep runs last, after every other rule has recorded a fresh
+  success, so the only stale row it can find belongs to a rule that no longer
+  exists.
+  """
+  @spec rule_names() :: [atom()]
+  def rule_names, do: Enum.map(rules(), fn {name, _categories, _lock, _body} -> name end)
+
+  @doc """
+  The advisory-lock key one rule claims for the duration of its own body.
+
+  Every key is pairwise distinct, and distinct from `RetentionPruner`'s
+  whole-pass key and from every other sweep's key in this codebase, so no
+  rule's contention or failure can skip or block another.
+  """
+  @spec rule_advisory_lock_key(atom()) :: pos_integer() | nil
+  def rule_advisory_lock_key(name) do
+    Enum.find_value(rules(), fn
+      {^name, _categories, key, _body} -> key
+      _other_rule -> nil
+    end)
+  end
+
+  @doc false
+  @spec rule_advisory_lock_band() :: Range.t()
+  def rule_advisory_lock_band, do: @rule_advisory_lock_band
 
   @doc false
   @spec snapshot_advisory_lock_key() :: pos_integer()
@@ -322,6 +588,240 @@ defmodule SddOrchestrator.Privacy.Retention do
   @doc false
   @spec observation_advisory_lock_key() :: pos_integer()
   def observation_advisory_lock_key, do: @observation_advisory_lock_key
+
+  @doc false
+  @spec project_assistant_advisory_lock_key() :: pos_integer()
+  def project_assistant_advisory_lock_key, do: @project_assistant_advisory_lock_key
+
+  # The pass, written out. The four sweeps that already owned an advisory key
+  # keep the one they had — their public entry points still take it themselves
+  # — and the rule table calls their unlocked bodies so the key is taken
+  # exactly once either way. Every other rule takes a key from the reserved
+  # band documented above.
+  @spec rules() :: [rule()]
+  defp rules do
+    [
+      {:authorization_attempts, [:authorization_attempts], 1_900_000_001,
+       &prune_authorization_attempts/1},
+      {:magic_link_attempts, [:magic_link_attempts], 1_900_000_002, &prune_magic_link_attempts/1},
+      {:onboarding_attempts, [:onboarding_attempts], 1_900_000_003, &prune_onboarding_attempts/1},
+      {:hosted_import_attempts, [:hosted_import_attempts], 1_900_000_004,
+       &prune_hosted_import_attempts/1},
+      {:device_import_attempts, [:device_import_attempts], 1_900_000_005,
+       &prune_device_import_attempts/1},
+      {:sessions, [:sessions], 1_900_000_006, &prune_sessions/1},
+      {:hosted_sessions, [:hosted_sessions], 1_900_000_007, &prune_hosted_sessions/1},
+      {:merge_records, [:merge_records], 1_900_000_008, &IdentityLinking.prune_merge_records/1},
+      {:expired_invitations, [:expired_invitations], 1_900_000_009, &Invitations.expire_due/1},
+      {:terminal_invitations, [:terminal_invitations], 1_900_000_010,
+       &prune_terminal_invitations/1},
+      {:departed_participant_links, [:departed_participant_links], 1_900_000_011,
+       &prune_departed_participant_links/1},
+      {:participation_revocation_links, [:participation_revocation_links], 1_900_000_012,
+       &prune_participation_revocation_links/1},
+      {:acknowledged_personal_ai_connections, [:acknowledged_personal_ai_connections],
+       1_900_000_013, &reconcile_personal_ai_connections/1},
+      {:revoked_personal_ai_connections, [:revoked_personal_ai_connections], 1_900_000_014,
+       &prune_revoked_personal_ai_connections/1},
+      {:unstarted_repository_initialization_plans, [:unstarted_repository_initialization_plans],
+       1_900_000_015, &prune_unstarted_repository_initialization_plans/1},
+      {:expired_delivery_notifications, [:expired_delivery_notifications], 1_900_000_016,
+       &prune_delivery_notifications/1},
+      {:expired_participation_email_delivery_diagnostics,
+       [:expired_participation_email_delivery_diagnostics], 1_900_000_017,
+       &prune_participation_email_delivery_diagnostics/1},
+      {:expired_participation_notifications, [:expired_participation_notifications],
+       1_900_000_018, &prune_participation_notifications/1},
+      {:expired_participation_security_events, [:expired_participation_security_events],
+       1_900_000_019, &prune_participation_security_events/1},
+      {:expired_delivery_security_events, [:expired_delivery_security_events], 1_900_000_032,
+       &prune_delivery_security_events/1},
+      {:expired_delivery_commands, [:expired_delivery_commands], 1_900_000_020,
+       &prune_delivery_commands/1},
+      {:expired_delivery_checkpoints, [:expired_delivery_checkpoints], 1_900_000_021,
+       &prune_delivery_checkpoints/1},
+      {:expired_delivery_artifacts, [:expired_delivery_artifacts], 1_900_000_022,
+       &prune_delivery_artifacts/1},
+      {:expired_delivery_previews, [:expired_delivery_previews], 1_900_000_023,
+       &prune_delivery_previews/1},
+      {:released_delivery_attempt_leases, [:released_delivery_attempt_leases], 1_900_000_024,
+       &prune_delivery_attempt_leases/1},
+      {:expired_device_delivery_commands, [:expired_device_delivery_commands], 1_900_000_025,
+       &prune_device_delivery_commands/1},
+      {:expired_device_delivery_checkpoints, [:expired_device_delivery_checkpoints],
+       1_900_000_026, &prune_device_delivery_checkpoints/1},
+      {:expired_device_delivery_artifacts, [:expired_device_delivery_artifacts], 1_900_000_027,
+       &prune_device_delivery_artifacts/1},
+      {:expired_device_delivery_previews, [:expired_device_delivery_previews], 1_900_000_028,
+       &prune_device_delivery_previews/1},
+      {:ai_runtime_snapshots, [:expired_model_catalog_snapshots, :expired_quota_snapshots],
+       @snapshot_advisory_lock_key, &delete_due_snapshots/1},
+      {:ai_runtime_sessions, [:expired_ai_runtime_sessions, :expired_runtime_cost_ledgers],
+       @runtime_advisory_lock_key, &delete_due_runtime_sessions/1},
+      {:ai_runtime_observations, [:expired_agent_runtime_observations],
+       @observation_advisory_lock_key, &delete_due_observations/1},
+      {:repository_initialization_runs,
+       [
+         :expired_repository_initialization_runs,
+         :expired_repository_initialization_orphan_plans
+       ], 1_900_000_029, &repository_initialization_run_counts/1},
+      {:project_assistant_conversations,
+       [:expired_project_assistant_conversations, :expired_assistant_boundary_confirmations],
+       @project_assistant_advisory_lock_key, &delete_due_hosted_project_assistant_records/1},
+      {:device_project_assistant_conversations, [:expired_device_project_assistant_conversations],
+       1_900_000_030, &sweep_device_project_assistant_conversations/1},
+      {:retention_rule_outcomes, [:expired_retention_rule_outcomes], 1_900_000_031,
+       &prune_retention_rule_outcomes/1}
+    ]
+  end
+
+  # One rule, start to finish: its own lock, its own isolation boundary, its
+  # own durable outcome, and its own categories zeroed when it did not run.
+  #
+  # A contended rule returns its zeros and writes nothing at all. The instance
+  # holding the lock is the one doing that rule's work, and it is the one that
+  # will record the outcome; overwriting its record with "this pass skipped it"
+  # would replace a true account of the rule with a false one.
+  defp run_rule({name, categories, lock_key, body}, now, correlation_id) do
+    zeros = Map.new(categories, &{&1, 0})
+
+    lock_key
+    |> with_advisory_lock("#{name} retention rule", fn ->
+      result = attempt_rule(body, now)
+      record_outcome(name, result, now, correlation_id)
+      reported_counts(result, categories, zeros)
+    end)
+    |> case do
+      :locked -> zeros
+      counts -> counts
+    end
+  end
+
+  # The isolation boundary. A rule that raises, exits, or throws is reduced to
+  # one coarse class and stops there: the pass keeps going, every other rule
+  # still runs, and nothing the rule was reaching for survives the reduction.
+  # An unreachable device store or artifact store arrives here as an exit,
+  # which is what several rules used to catch and silently report as zero.
+  defp attempt_rule(body, now) do
+    {:ok, body.(now)}
+  rescue
+    error -> {:error, failure_class(error)}
+  catch
+    :exit, _unavailable_authority -> {:error, :store_unavailable}
+    _kind, _thrown -> {:error, :unexpected_error}
+  end
+
+  # Coarse categories only. The exception itself is deliberately not passed on
+  # anywhere: its message can name the very rows, addresses, paths, and
+  # payloads the rule exists to delete, and this is the one record in the
+  # retention path whose failure branch could otherwise preserve them.
+  defp failure_class(%Postgrex.Error{postgres: %{code: code}})
+       when code in [
+              :check_violation,
+              :exclusion_violation,
+              :foreign_key_violation,
+              :not_null_violation,
+              :unique_violation
+            ],
+       do: :constraint_violation
+
+  defp failure_class(%Postgrex.Error{}), do: :database_unavailable
+  defp failure_class(%DBConnection.ConnectionError{}), do: :database_unavailable
+  defp failure_class(%Ecto.ConstraintError{}), do: :constraint_violation
+  defp failure_class(%Ecto.InvalidChangesetError{}), do: :constraint_violation
+  defp failure_class(_unclassified), do: :unexpected_error
+
+  defp reported_counts({:ok, counts}, categories, zeros),
+    do: Map.merge(zeros, normalize_counts(counts, categories))
+
+  defp reported_counts({:error, _failure_class}, _categories, zeros), do: zeros
+
+  defp normalize_counts(count, [category]) when is_integer(count), do: %{category => count}
+  defp normalize_counts(counts, _categories) when is_map(counts), do: counts
+
+  # Written inside the rule's own lock, so the attempt count is read and
+  # advanced without racing another instance, and *after* the rule body has
+  # returned, which is what keeps the outcome sweep from ever deleting the row
+  # recording the pass it is running in.
+  #
+  # Bookkeeping never aborts a pass. A rule that completed its deletes has done
+  # the work whether or not the record of it lands, and losing the remaining
+  # rules to a failed write would be the worse outcome by far.
+  defp record_outcome(name, result, now, correlation_id) do
+    log_outcome(name, result)
+
+    outcome = Repo.get_by(RetentionRuleOutcome, rule: name) || %RetentionRuleOutcome{}
+
+    outcome
+    |> outcome_changeset(name, result, now, correlation_id)
+    |> Repo.insert_or_update()
+    |> case do
+      {:ok, _recorded} -> :ok
+      {:error, _changeset} -> log_unrecorded(name)
+    end
+  rescue
+    _unrecordable -> log_unrecorded(name)
+  catch
+    :exit, _unavailable -> log_unrecorded(name)
+  end
+
+  defp outcome_changeset(outcome, name, {:ok, _counts}, now, correlation_id) do
+    RetentionRuleOutcome.succeeded_changeset(outcome, %{
+      rule: name,
+      last_attempted_at: now,
+      correlation_id: correlation_id
+    })
+  end
+
+  defp outcome_changeset(outcome, name, {:error, failure_class}, now, correlation_id) do
+    RetentionRuleOutcome.failed_changeset(outcome, %{
+      rule: name,
+      state: RetentionRuleOutcome.state_for_failure(failure_class),
+      failure_class: failure_class,
+      last_attempted_at: now,
+      correlation_id: correlation_id
+    })
+  end
+
+  # The rule and the coarse class, and nothing else. The operational log is
+  # held to the same minimisation as the row it accompanies, so the exception's
+  # own message never reaches it either.
+  defp log_outcome(name, {:error, failure_class}) do
+    Logger.warning("retention rule #{name} did not complete (#{failure_class})")
+  end
+
+  defp log_outcome(_name, {:ok, _counts}), do: :ok
+
+  defp log_unrecorded(name) do
+    Logger.warning("retention rule #{name} outcome could not be recorded")
+    :ok
+  end
+
+  # The record prunes itself, on the same 30-day boundary it enforces
+  # elsewhere. Only a succeeded row is released: a row still classified
+  # `:failed` or `:retry_pending` is precisely the visible failure this record
+  # exists to expose, and age is not a reason to hide it.
+  #
+  # A rule that still runs was rewritten with a fresh `succeeded_at` earlier in
+  # this very pass, so it can never be stale here; what this releases in
+  # practice is the row of a rule that no longer exists. Its own row is the one
+  # exception to "rewritten earlier in this pass", because the runner writes an
+  # outcome only after the rule body returns — so at the moment this delete
+  # runs, the row recording the current pass has not been written yet and is
+  # not reachable by it. What it can release is its own *previous* record, once
+  # that record is itself thirty days stale, which is exactly the boundary
+  # every other rule is held to.
+  defp prune_retention_rule_outcomes(now) do
+    cutoff = DateTime.add(now, -@retention_rule_outcome_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from outcome in RetentionRuleOutcome,
+          where: outcome.state == ^:succeeded and outcome.succeeded_at <= ^cutoff
+      )
+
+    count
+  end
 
   @doc """
   Deletes every pinned runtime session whose accountability window has passed.
@@ -340,8 +840,15 @@ defmodule SddOrchestrator.Privacy.Retention do
     now = DateTime.truncate(now, :second)
 
     with_advisory_lock(@runtime_advisory_lock_key, "runtime accountability sweep", fn ->
-      delete_due_runtime_records(due_runtime_session_ids(now))
+      delete_due_runtime_sessions(now)
     end)
+  end
+
+  # The sweep itself, without the lock. `prune_all/1` runs it as a rule and
+  # takes this same key around it, so the lock is claimed exactly once either
+  # way and the two entry points can never contend with each other.
+  defp delete_due_runtime_sessions(now) do
+    delete_due_runtime_records(due_runtime_session_ids(now))
   end
 
   @doc """
@@ -358,12 +865,16 @@ defmodule SddOrchestrator.Privacy.Retention do
   def prune_ai_runtime_snapshots(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
 
-    with_snapshot_lock(fn ->
-      %{
-        expired_model_catalog_snapshots: delete_unusable_snapshots(ModelCatalogSnapshot, now),
-        expired_quota_snapshots: delete_unusable_snapshots(QuotaSnapshot, now)
-      }
-    end)
+    with_snapshot_lock(fn -> delete_due_snapshots(now) end)
+  end
+
+  # The sweep itself, without the lock, for the reason
+  # `delete_due_runtime_sessions/1` states.
+  defp delete_due_snapshots(now) do
+    %{
+      expired_model_catalog_snapshots: delete_unusable_snapshots(ModelCatalogSnapshot, now),
+      expired_quota_snapshots: delete_unusable_snapshots(QuotaSnapshot, now)
+    }
   end
 
   @doc """
@@ -379,27 +890,24 @@ defmodule SddOrchestrator.Privacy.Retention do
   @spec prune_ai_runtime_observations(DateTime.t()) :: observation_counts() | :locked
   def prune_ai_runtime_observations(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
-    cutoff = DateTime.add(now, -@runtime_observation_window, :second)
 
     with_advisory_lock(@observation_advisory_lock_key, "runtime observation sweep", fn ->
-      {count, _} =
-        Repo.delete_all(
-          from observation in AgentRuntimeObservation,
-            where: observation.observed_at <= ^cutoff
-        )
-
-      %{expired_agent_runtime_observations: count}
+      delete_due_observations(now)
     end)
   end
 
-  # The sweep runs after reconciliation and after the terminal-reference delete,
-  # so a connection that becomes terminal in this pass loses its evidence now and
-  # the reported counts never double-count a row the connection cascade removed.
-  defp snapshot_counts(now) do
-    case prune_ai_runtime_snapshots(now) do
-      :locked -> %{expired_model_catalog_snapshots: 0, expired_quota_snapshots: 0}
-      counts -> counts
-    end
+  # The sweep itself, without the lock, for the reason
+  # `delete_due_runtime_sessions/1` states.
+  defp delete_due_observations(now) do
+    cutoff = DateTime.add(now, -@runtime_observation_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from observation in AgentRuntimeObservation,
+          where: observation.observed_at <= ^cutoff
+      )
+
+    %{expired_agent_runtime_observations: count}
   end
 
   defp delete_unusable_snapshots(schema, now) do
@@ -488,13 +996,12 @@ defmodule SddOrchestrator.Privacy.Retention do
   @spec prune_project_assistant_conversations(DateTime.t()) :: project_assistant_counts()
   def prune_project_assistant_conversations(now \\ DateTime.utc_now()) do
     now = DateTime.truncate(now, :second)
-    cutoff = DateTime.add(now, -@project_assistant_conversation_window, :second)
 
     hosted =
       with_advisory_lock(
         @project_assistant_advisory_lock_key,
         "project assistant conversation sweep",
-        fn -> delete_due_project_assistant_records(cutoff) end
+        fn -> delete_due_hosted_project_assistant_records(now) end
       )
 
     hosted =
@@ -512,8 +1019,24 @@ defmodule SddOrchestrator.Privacy.Retention do
     Map.put(
       hosted,
       :expired_device_project_assistant_conversations,
-      prune_device_project_assistant_conversations(cutoff)
+      prune_device_project_assistant_conversations(now)
     )
+  end
+
+  # `prune_all/1` runs the hosted and device halves as two separate recorded
+  # rules — they answer to different authorities and fail independently, which
+  # is exactly the boundary an outcome record has to be able to show. This
+  # function stays the direct, unrecorded entry point for a caller sweeping
+  # project-assistant history on its own, and keeps its own device-store catch
+  # for that reason.
+  defp delete_due_hosted_project_assistant_records(now) do
+    now
+    |> project_assistant_cutoff()
+    |> delete_due_project_assistant_records()
+  end
+
+  defp project_assistant_cutoff(now) do
+    DateTime.add(now, -@project_assistant_conversation_window, :second)
   end
 
   # The confirmation delete runs first, while its own matching conversation
@@ -592,13 +1115,23 @@ defmodule SddOrchestrator.Privacy.Retention do
     )
   end
 
-  defp prune_device_project_assistant_conversations(cutoff) do
+  defp prune_device_project_assistant_conversations(now) do
+    sweep_device_project_assistant_conversations(now)
+  catch
+    :exit, _unavailable_store -> 0
+  end
+
+  # The same sweep with no catch of its own, so that when `prune_all/1` runs it
+  # as a rule an unreachable worker is recorded rather than silently reported
+  # as zero. The count is unchanged either way: nothing on an unreachable
+  # device is due until it can be asked again.
+  defp sweep_device_project_assistant_conversations(now) do
+    cutoff = project_assistant_cutoff(now)
+
     Devices.list_projects()
     |> Enum.reduce(0, fn project, count ->
       count + sweep_one_device_project_assistant_conversation(project.id, cutoff)
     end)
-  catch
-    :exit, _unavailable_store -> 0
   end
 
   defp sweep_one_device_project_assistant_conversation(project_id, cutoff) do
@@ -651,15 +1184,6 @@ defmodule SddOrchestrator.Privacy.Retention do
     end
   end
 
-  # The runtime sweep runs after the terminal-connection delete, so a session
-  # this pass detached is judged as detached now rather than one pass later.
-  defp runtime_counts(now) do
-    case prune_ai_runtime_sessions(now) do
-      :locked -> %{expired_ai_runtime_sessions: 0, expired_runtime_cost_ledgers: 0}
-      counts -> counts
-    end
-  end
-
   defp due_runtime_session_ids(now) do
     attached_cutoff = DateTime.add(now, -@runtime_session_window, :second)
     detached_cutoff = DateTime.add(now, -@detached_runtime_session_window, :second)
@@ -689,18 +1213,6 @@ defmodule SddOrchestrator.Privacy.Retention do
       end)
 
     counts
-  end
-
-  # The observation sweep runs last, after the session sweep, for the same
-  # reason the snapshot sweep runs after the terminal-connection delete: a
-  # session deleted earlier in this pass has already cascaded its observations
-  # away, so this count reports only the rows the observation window itself
-  # removed and never double-counts what the cascade removed.
-  defp observation_counts(now) do
-    case prune_ai_runtime_observations(now) do
-      :locked -> %{expired_agent_runtime_observations: 0}
-      counts -> counts
-    end
   end
 
   defp with_snapshot_lock(sweep) do
@@ -738,14 +1250,14 @@ defmodule SddOrchestrator.Privacy.Retention do
   # does: a connection that becomes terminal in this pass starts its own
   # retention window now rather than being deleted the instant it completes.
   # A worker that cannot be reached is an environment fact, not a retention
-  # failure, so it never stops the rest of the pass.
+  # failure, so it never stops the rest of the pass — the exit reaches the rule
+  # runner, which records it as an unreachable store and reports zero, instead
+  # of being caught and forgotten here.
   defp reconcile_personal_ai_connections(now) do
     case PersonalConnectionRevocations.reconcile(now) do
       {:ok, %{acknowledged: acknowledged}} -> acknowledged
       :locked -> 0
     end
-  catch
-    :exit, _unavailable_worker_transport -> 0
   end
 
   defp prune_revoked_personal_ai_connections(now) do
@@ -825,6 +1337,18 @@ defmodule SddOrchestrator.Privacy.Retention do
     SddOrchestrator.Privacy.ParticipationSecurityLog.prune(cutoff)
   end
 
+  # A fixed, minimized guided-delivery security event is deleted 30 days after
+  # its own occurred_at through DeliverySecurityLog's retention-capable local
+  # sink, which owns the table and the delete statement itself, exactly as the
+  # participation rule directly above delegates to its own sink. This rule
+  # supplies only the window and the call, and neither it nor the statement it
+  # calls names any project authorization, feature, run, evidence, or other
+  # `delivery_*` row.
+  defp prune_delivery_security_events(now) do
+    cutoff = DateTime.add(now, -@delivery_security_log_window, :second)
+    SddOrchestrator.Privacy.DeliverySecurityLog.prune(cutoff)
+  end
+
   # A finalized ("sent" or "failed") diagnostic is deleted 30 days after its
   # authoritative attempt or completion time: `delivered_at` when present,
   # otherwise `attempted_at`. A "pending" row is never selected — it still
@@ -843,6 +1367,772 @@ defmodule SddOrchestrator.Privacy.Retention do
       )
 
     count
+  end
+
+  # An acknowledged or failed command has already done the only thing it exists
+  # to do. Its purpose ended when the worker answered (`acknowledged_at`, set by
+  # both the acknowledgement and the terminal-failure transition) or, for a row
+  # that reached a terminal state without one, when it was last written
+  # (`updated_at`). Thirty days later the whole row goes: it carries only
+  # execution mechanics — the operation, the manifest digest, the claim, the
+  # result, and the failure code — and no participant-visible text, so there is
+  # nothing in it to keep once redelivery and replay can no longer be asked for.
+  defp prune_delivery_commands(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from command in RunCommand,
+          as: :governed,
+          where:
+            command.state in ^RunCommand.terminal_states() and
+              fragment("COALESCE(?, ?)", command.acknowledged_at, command.updated_at) <= ^cutoff and
+              not exists(active_delivery_run_subquery())
+      )
+
+    count
+  end
+
+  # A resolved blocking question is the worker's resume aid and nothing else:
+  # the checkpoint, the branch, and the worker-local workspace path a later
+  # attempt would continue accepted work from. `updated_at` is the resolution
+  # time because resolving is the transition that bumps `state_version`, and
+  # there is deliberately no separate `resolved_at` column. Thirty days after
+  # that resolution the whole row is deleted rather than emptied, because the
+  # participant-visible question and its answer are not stored here at all —
+  # they are duplicated into `activity_entries` as `"question_asked"` and
+  # `"question_answered"`, which survive this delete untouched and are governed
+  # by their own lifecycle. Keeping the row would leave a path from the
+  # developer's own machine stored indefinitely for no remaining purpose.
+  defp prune_delivery_checkpoints(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from question in BlockingQuestion,
+          as: :governed,
+          where:
+            question.state in ^BlockingQuestion.resolved_states() and
+              question.updated_at <= ^cutoff and
+              not exists(active_delivery_run_subquery())
+      )
+
+    count
+  end
+
+  # Correlated to the outer `:governed` binding (the command or question
+  # currently being judged). Age alone is not enough to release either row: a
+  # run that has not reached `"failed"`, `"canceled"`, or `"completed"` can
+  # still be resumed, retried, or reconciled, and both rows are exactly what
+  # that recovery reads. So an old terminal command or resolved question of a
+  # still-`"running"` or `"blocked"` run is kept, and becomes due only once its
+  # run itself ends.
+  defp active_delivery_run_subquery do
+    from(run in AgentRun,
+      where: run.id == parent_as(:governed).run_id,
+      where: run.state not in ^AgentRun.terminal_states(),
+      select: 1
+    )
+  end
+
+  # Releases the stored bytes of superseded evidence, and nothing else. No
+  # `evidence` row is deleted or updated here, by this function or anything it
+  # calls: the supersession link, the reference, the digest, and the recorded
+  # time are the provenance a reader follows, the database itself refuses to
+  # rewrite them, and the intended end state is a row that still names a
+  # reference whose content is gone. What expires is the captured screenshot or
+  # log, which stopped being proof of anything the moment a later result
+  # replaced it.
+  #
+  # The count is what the store actually still held, not how many references
+  # were judged due, because `ArtifactStore.delete/3` answers `:ok` for content
+  # that is already absent. Two rows superseded a month apart can name the same
+  # digest, so the second sweep must report nothing rather than re-counting a
+  # deletion the first one already made.
+  defp prune_delivery_artifacts(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    cutoff
+    |> released_artifact_refs()
+    |> Enum.reduce(0, fn {workspace_id, project_id, refs}, count ->
+      count + delete_released_artifacts(%PersonalWorkspace{id: workspace_id}, project_id, refs)
+    end)
+  end
+
+  # The supersession instant is the replacement row's `inserted_at`, reached
+  # through `superseded_by_id`. `evidence` has no `updated_at` and no
+  # `superseded_at` — its create migration says so deliberately, and the
+  # `evidence_reject_rewrite` trigger freezes every column but the supersession
+  # link — so there is no timestamp on the superseded row itself that moved when
+  # it was superseded. The replacement is inserted in the same atomic commit as
+  # that link (`EvidenceIngestion`'s `:evidence` and `:superseded` steps, the
+  # second referencing the first), which makes its server-written `inserted_at`
+  # the exact moment the older result stopped being current, and one no worker
+  # can backdate the way it can choose its own `recorded_at`. The join is inner,
+  # so a row that was never superseded is not a candidate at all.
+  defp released_artifact_refs(cutoff) do
+    from(evidence in Evidence,
+      as: :governed,
+      join: replacement in Evidence,
+      on: replacement.id == evidence.superseded_by_id,
+      join: project in Project,
+      on: project.id == evidence.project_id,
+      where: not is_nil(evidence.artifact_ref),
+      where: replacement.inserted_at <= ^cutoff,
+      where: not exists(still_needed_evidence_subquery(cutoff)),
+      distinct: true,
+      select: {project.workspace_id, evidence.project_id, evidence.artifact_ref}
+    )
+    |> Repo.all()
+    |> Enum.group_by(
+      fn {workspace_id, project_id, _ref} -> {workspace_id, project_id} end,
+      fn {_workspace_id, _project_id, ref} -> ref end
+    )
+    |> Enum.map(fn {{workspace_id, project_id}, refs} -> {workspace_id, project_id, refs} end)
+  end
+
+  # The check that keeps this rule from destroying accepted evidence. An
+  # artifact is addressed by the digest of its own content within its own
+  # project, so a rerun that produced byte-identical output, and a current row
+  # and a superseded row describing the same capture, all name one stored
+  # object. Deleting on the strength of the expired row alone would take the
+  # bytes out from under every other row naming it.
+  #
+  # Correlated to the outer `:governed` binding: it asks whether any row of the
+  # same project names the same reference while still needing it — either
+  # current, or superseded too recently for its own window to have passed. One
+  # such row anywhere keeps the content. Same-project is the whole question:
+  # both adapters key an artifact by `(project, digest)` and every read is
+  # scoped to the project that owns it, so a matching digest under another
+  # project is a different stored object this delete cannot reach.
+  defp still_needed_evidence_subquery(cutoff) do
+    from(other in Evidence,
+      left_join: other_replacement in Evidence,
+      on: other_replacement.id == other.superseded_by_id,
+      where: other.project_id == parent_as(:governed).project_id,
+      where: other.artifact_ref == parent_as(:governed).artifact_ref,
+      where: is_nil(other.superseded_by_id) or other_replacement.inserted_at > ^cutoff,
+      select: 1
+    )
+  end
+
+  # One `list_refs/2` per project rather than a `stat/3` per reference: it reads
+  # no bytes, and it answers for every candidate at once what a repeat sweep
+  # needs to know — that the content is already gone, so this pass removed
+  # nothing and must say so.
+  defp delete_released_artifacts(authority, project_id, refs) do
+    held = MapSet.new(ArtifactStore.list_refs(authority, project_id))
+
+    refs
+    |> Enum.filter(&MapSet.member?(held, &1))
+    |> Enum.map(&ArtifactStore.delete(authority, project_id, &1))
+    |> Enum.count(&(&1 == :ok))
+  end
+
+  # A preview stops being useful at a knowable instant whichever way it stopped
+  # — it expired, a later attempt replaced it, its request ran past the
+  # deadline, or the provider refused it — and 30 days after that instant the
+  # record of the deployment goes. What it carries is the provider's opaque
+  # handle, the one
+  # participant-safe link, and the deployment's own timings — a convenience that
+  # was never a verdict — so nothing about the feature, the run, the attempt, the
+  # activity history, or the evidence depends on it still being there.
+  #
+  # The hazard this rule is shaped around is the *remote* half. A preview
+  # deployment has a counterpart at a preview provider, and `cleanup_state` is
+  # the only record of whether that counterpart is gone: `"none"` means the
+  # release is still owed (the processing inventory says so in exactly those
+  # words), `"requested"` that the command was made durable but the provider
+  # never confirmed, `"failed"` that the provider refused it, and `"done"` that
+  # `SddOrchestrator.Delivery.Previews.cleanup/4` saw the adapter answer `:ok`.
+  # Deleting a row in any of the first three would orphan a deployment nothing
+  # can ever name again, and it may go on serving the project's content
+  # publicly; a retained row costs storage, an orphaned preview is an exposure
+  # with no owner. So only `"done"` is released, however old the rest are.
+  #
+  # `"expired"` in particular is not itself proof the remote is gone: when a
+  # provider states no expiry of its own, `Previews` applies the *configured*
+  # ttl, so an expired status can be the control plane's own deadline rather
+  # than anything the provider reclaimed.
+  defp prune_delivery_previews(now) do
+    # Every timestamp on `preview_deployments` is `:utc_datetime_usec`, unlike
+    # the second-precision columns the rules above compare against, so the
+    # cutoff is widened rather than truncated: Ecto refuses to dump a
+    # second-precision value against a microsecond column instead of comparing
+    # it.
+    cutoff =
+      now
+      |> DateTime.add(-@delivery_temporary_window, :second)
+      |> DateTime.add(0, :microsecond)
+
+    due = cutoff |> due_preview_deployment_ids() |> Repo.all() |> MapSet.new()
+    releasable = releasable_preview_deployment_ids(due)
+
+    {count, _} =
+      Repo.delete_all(
+        from deployment in PreviewDeployment,
+          where: deployment.id in ^MapSet.to_list(releasable)
+      )
+
+    count
+  end
+
+  # Four statuses, four instants, one cutoff. Each branch names the timestamp
+  # that actually ended that preview's purpose rather than sharing one
+  # approximation across all of them:
+  #
+  #   * `"expired"` — `expires_at`, when it stopped being reachable, falling
+  #     back to `updated_at` for a provider that reported the status without
+  #     ever stating a time.
+  #   * `"superseded"` — the replacement's `inserted_at`, written beside the
+  #     supersession link in one atomic commit and frozen afterwards by the
+  #     binding trigger. This row's own `expires_at` is deliberately not
+  #     consulted: it answers when that preview stopped being reachable, not
+  #     when a later attempt made it the wrong one to look at, and the two can
+  #     be months apart in either direction.
+  #   * `"timed_out"` — `timeout_at`, the deadline the request policy set and
+  #     the very value `Previews.settle/3` compares against to declare the
+  #     timeout, so the row is measured from when the preview stopped being
+  #     useful and not from whenever a later poll noticed.
+  #   * `"failed"` — `updated_at` alone. A provider refusal records no expiry
+  #     (`Previews.stopped/2` writes `nil`) and the deadline it never reached
+  #     says nothing about it, so the failure write is the only instant the row
+  #     has and none is invented for it.
+  #
+  # The open-status guard is the invariant stated once rather than left implied
+  # by the absence of a branch: a `"pending"` or `"ready"` preview is the one a
+  # reviewer still opens, and no age releases it. The left join is what lets a
+  # single statement carry all four, since only the superseded branch has a
+  # replacement row to reach.
+  defp due_preview_deployment_ids(cutoff) do
+    from(deployment in PreviewDeployment,
+      left_join: replacement in PreviewDeployment,
+      on: replacement.id == deployment.superseded_by_id,
+      where: deployment.cleanup_state == "done",
+      where: deployment.status not in ^PreviewDeployment.open_statuses(),
+      where:
+        (deployment.status == "expired" and
+           fragment("COALESCE(?, ?)", deployment.expires_at, deployment.updated_at) <= ^cutoff) or
+          (deployment.status == "superseded" and replacement.inserted_at <= ^cutoff) or
+          (deployment.status == "timed_out" and deployment.timeout_at <= ^cutoff) or
+          (deployment.status == "failed" and deployment.updated_at <= ^cutoff),
+      select: deployment.id
+    )
+  end
+
+  # A due row that a *retained* deployment still names through `superseded_by_id`
+  # is held back until that one is due as well. The foreign key is
+  # `on_delete: :nilify_all`, and clearing the link of a row whose status is
+  # still `"superseded"` violates `preview_deployments_supersession_pairing`,
+  # which would abort the whole pass rather than skip one row. Deleting both in
+  # the same statement is fine — the referential action finds nothing left to
+  # null — so this only ever defers a row to the pass where its own referrer
+  # becomes releasable, most often once that referrer's provider cleanup
+  # finally succeeds.
+  #
+  # Being due is not the same as being deleted, so the set is closed rather than
+  # filtered once, exactly as `releasable_device_preview_ids/2` closes the
+  # device half: holding one row back makes it a retained referrer in its own
+  # right, and a chain of supersessions would otherwise strand its middle. In
+  # `A -> B -> C`, a single filter keeps `B` because retained `A` names it, then
+  # releases `C` because its only referrer `B` was in the due set — the very row
+  # just held back — and nulling the held-back `B`'s link is the abort this rule
+  # exists to prevent. Each round drops at least one id, so the recursion
+  # terminates.
+  defp releasable_preview_deployment_ids(due) do
+    close_releasable_preview_ids(referring_preview_links(due), due)
+  end
+
+  defp close_releasable_preview_ids(links, releasable) do
+    strandable =
+      MapSet.intersection(releasable, ids_named_by_retained_preview_links(links, releasable))
+
+    if MapSet.size(strandable) == 0 do
+      releasable
+    else
+      close_releasable_preview_ids(links, MapSet.difference(releasable, strandable))
+    end
+  end
+
+  # Every supersession link that could ever strand a candidate, read once. A
+  # link whose target is not a candidate cannot hold anything back, and a
+  # candidate with no link named at it cannot be stranded, so restricting the
+  # read to the candidates is the whole relation this closure needs rather than
+  # a sample of it.
+  defp referring_preview_links(due) do
+    Repo.all(
+      from other in PreviewDeployment,
+        where: other.superseded_by_id in ^MapSet.to_list(due),
+        select: {other.id, other.superseded_by_id}
+    )
+  end
+
+  defp ids_named_by_retained_preview_links(links, releasable) do
+    links
+    |> Enum.reject(fn {referrer_id, _target_id} -> MapSet.member?(releasable, referrer_id) end)
+    |> MapSet.new(fn {_referrer_id, target_id} -> target_id end)
+  end
+
+  # A lease claim is operational data with a short purpose: it names the one
+  # worker allowed to execute an attempt and until when. Once the attempt is
+  # terminal that purpose is over — a terminal attempt can take no further
+  # transition, so no worker can ever act under the claim again — and what the
+  # row still carries is the worker's identity string. Thirty days after the
+  # attempt finished the claim goes, on the same window and for the same reason
+  # as the temporary execution data above.
+  #
+  # This is an update and never a delete. The attempt itself, its outcome, its
+  # number, and its fence are the participant-visible account of what the run
+  # did; they belong to the delivery lifecycle and are removed with the run,
+  # not by this rule. Nothing here touches `state`, `state_version`,
+  # `last_sequence`, `required_checks`, or any revision or manifest digest.
+  #
+  # "Finished" is `updated_at` because `run_attempts` has no `finished_at`
+  # column and needs none: `RunAttempt.transitions/0` gives every terminal
+  # state an empty target list, so the write that made the attempt terminal is
+  # by construction the last write it can take. `updated_at` is deliberately
+  # left alone by the update as well — it is the very instant this rule
+  # measures, and overwriting it would erase when the attempt ended and make a
+  # released row look freshly written.
+  #
+  # Both columns are cleared in one statement because
+  # `run_attempts_lease_pairing` requires them null together or non-null
+  # together; setting one alone raises the check violation and aborts the whole
+  # `prune_all/1` pass. `fence_token` is not part of the release: it is
+  # `null: false`, constrained positive, and unique within its run, and it is
+  # what keeps a superseded worker's late events rejected, so it expires with
+  # the attempt row under the delivery lifecycle rather than on this window.
+  defp prune_delivery_attempt_leases(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    {count, _} =
+      Repo.update_all(
+        from(attempt in RunAttempt,
+          where: attempt.state in ^RunAttempt.terminal_states(),
+          where: attempt.updated_at <= ^cutoff,
+          # Only a claim still held is counted, so the number describes rows
+          # this pass actually released and a repeat pass reports nothing. The
+          # pairing constraint makes testing the owner alone sufficient: a row
+          # with an expiry and no owner cannot exist.
+          where: not is_nil(attempt.lease_owner)
+        ),
+        set: [lease_owner: nil, lease_expires_at: nil]
+      )
+
+    count
+  end
+
+  # The device-authoritative half of the same lifecycle, on the same window and
+  # the same eligibility rule: a terminal command whose purpose ended more than
+  # 30 days ago and whose run is no longer active. Eligibility is decided inside
+  # the device authority — the records are read from `SddOrchestrator.Devices`'
+  # already-public delivery API and judged there — because a device project has
+  # no hosted row at all, and copying one out to decide what to prune would
+  # create exactly the hosted copy this authority exists to avoid.
+  defp prune_device_delivery_commands(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_delivery(project.id, :command, cutoff)
+    end)
+  end
+
+  # The device-authoritative resolved checkpoint, on the same window and the
+  # same run-still-active exclusion as its hosted counterpart, resolved inside
+  # the device authority for the same reason as the command sweep above.
+  defp prune_device_delivery_checkpoints(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_delivery(project.id, :question, cutoff)
+    end)
+  end
+
+  defp sweep_one_device_project_delivery(project_id, kind, cutoff) do
+    active_run_ids = active_device_run_ids(project_id)
+
+    project_id
+    |> Devices.list_delivery(kind)
+    |> Enum.filter(&due_device_delivery_record?(kind, &1, cutoff, active_run_ids))
+    |> Enum.map(&tombstone_device_delivery_record(project_id, kind, &1))
+    |> Enum.count(&(&1 == :ok))
+  end
+
+  # The device value shape carries no Ecto timestamps at all — `to_value/1`
+  # deliberately exposes no `acknowledged_at`, `updated_at`, or `resolved_at`
+  # — so each record is measured by the only instant it does carry. For a
+  # command that is `due_at`, the last time the instruction was scheduled for
+  # delivery, which for a terminal command is the delivery it answered; for a
+  # question it is `asked_at`, and a resolution can only have happened at or
+  # after it. Both are at or before the hosted rule's own purpose-ended time,
+  # so the device half never retains a record longer than the hosted half
+  # would, which is the direction data minimisation must err in.
+  defp due_device_delivery_record?(:command, value, cutoff, active_run_ids) do
+    case RunCommand.from_value(value) do
+      {:ok, command} ->
+        command.state in RunCommand.terminal_states() and
+          DateTime.compare(command.due_at, cutoff) != :gt and
+          command.run_id not in active_run_ids
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  defp due_device_delivery_record?(:question, value, cutoff, active_run_ids) do
+    case BlockingQuestion.from_value(value) do
+      {:ok, question} ->
+        question.state in BlockingQuestion.resolved_states() and
+          DateTime.compare(question.asked_at, cutoff) != :gt and
+          question.run_id not in active_run_ids
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  # The device equivalent of the hosted `not exists(active_delivery_run_subquery())`:
+  # a command or question whose run has not reached `"failed"`, `"canceled"`, or
+  # `"completed"` is current recovery material whatever its age. A record whose
+  # run is absent from the store has no active run and is released by age alone,
+  # exactly as the hosted `not exists` clause decides it.
+  defp active_device_run_ids(project_id) do
+    project_id
+    |> Devices.list_delivery(:run)
+    |> Enum.flat_map(fn value ->
+      case AgentRun.from_value(value) do
+        {:ok, run} -> [run]
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.reject(&AgentRun.terminal?/1)
+    |> MapSet.new(& &1.id)
+  end
+
+  # A tombstone put, never a key delete: the delivery seam applies puts and
+  # nothing else (see `SddOrchestrator.Delivery.ArtifactStore.Device`), so the
+  # record is replaced by the bare fact that this key is no longer a command or
+  # a question. The tombstone carries no operation, result, checkpoint, branch,
+  # or workspace path — nothing of the expired record survives it, and every
+  # decode treats it as absent. The expected version is the one the record
+  # itself carries (`nil` for a command, which has no `state_version` in its
+  # value shape), so a record rewritten since this sweep read it is refused
+  # rather than overwritten, and is judged again on the next pass.
+  defp tombstone_device_delivery_record(project_id, kind, value) do
+    project_id
+    |> Devices.commit_delivery([
+      {:put, kind, value["id"], %{"deleted" => true}, value["state_version"]}
+    ])
+    |> case do
+      {:ok, _applied} -> :ok
+      {:error, _reason} -> :error
+    end
+  end
+
+  # The device-authoritative half of the superseded-artifact rule, on the same
+  # window, the same digest-safety check, and the same refusal to touch the
+  # record. No evidence record is written, tombstoned, or removed here, by this
+  # function or anything it calls: only the stored bytes go, and the intended
+  # end state is a record that still names a reference whose content is gone.
+  #
+  # Eligibility is resolved inside the device authority. A device project has no
+  # hosted `evidence` row to join against, and copying one out to decide what to
+  # prune would create exactly the hosted copy this authority exists to avoid,
+  # so the records are read from `SddOrchestrator.Devices`' delivery API and
+  # judged there. The release itself reuses the hosted rule's own
+  # `delete_released_artifacts/3` against a `DeviceWorkspace` authority, which is
+  # what makes the count mean the same thing on both sides: what the store
+  # actually still held, so a second pass reports nothing.
+  defp prune_device_delivery_artifacts(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_artifacts(project, cutoff)
+    end)
+  end
+
+  defp sweep_one_device_project_artifacts(project, cutoff) do
+    project.id
+    |> decoded_device_evidence()
+    |> released_device_artifact_refs(cutoff)
+    |> case do
+      # Nothing due asks the store nothing further: there is no reference whose
+      # presence the count would depend on.
+      [] ->
+        0
+
+      refs ->
+        delete_released_artifacts(
+          %DeviceWorkspace{id: project.workspace_id},
+          project.id,
+          refs
+        )
+    end
+  end
+
+  defp decoded_device_evidence(project_id) do
+    project_id
+    |> Devices.list_delivery(:evidence)
+    |> Enum.flat_map(fn value ->
+      case Evidence.from_value(value) do
+        {:ok, evidence} -> [evidence]
+        {:error, _reason} -> []
+      end
+    end)
+  end
+
+  # `released_artifact_refs/1` and `still_needed_evidence_subquery/1` expressed
+  # over one project's own records rather than over a join, and deciding the
+  # same thing: a reference is released only when *no* record of this project
+  # still needs it. Artifacts are digest-addressed, so a rerun that produced
+  # byte-identical output and the item it replaced are one stored object, and
+  # releasing on the strength of the expired record alone would take the bytes
+  # out from under accepted evidence that still names them. Same-project is the
+  # whole question, exactly as hosted: the device adapter keys an artifact by
+  # `(project, digest)`, so a matching digest under another project is a
+  # different stored object this delete cannot reach.
+  defp released_device_artifact_refs(records, cutoff) do
+    by_id = Map.new(records, &{&1.id, &1})
+
+    still_needed =
+      records
+      |> Enum.filter(&device_evidence_still_needed?(&1, by_id, cutoff))
+      |> MapSet.new(& &1.artifact_ref)
+
+    records
+    |> Enum.filter(&device_artifact_released?(&1, by_id, cutoff))
+    |> Enum.map(& &1.artifact_ref)
+    |> Enum.reject(&MapSet.member?(still_needed, &1))
+    |> Enum.uniq()
+  end
+
+  # A record that never named an artifact is neither a candidate nor a claim on
+  # one, exactly as the hosted query's `not is_nil(evidence.artifact_ref)` and
+  # its subquery's reference equality decide it.
+  defp device_artifact_released?(%Evidence{artifact_ref: ref}, _by_id, _cutoff)
+       when not is_binary(ref),
+       do: false
+
+  defp device_artifact_released?(record, by_id, cutoff) do
+    case device_supersession(record, by_id) do
+      {:superseded_at, at} -> DateTime.compare(at, cutoff) != :gt
+      _not_datable -> false
+    end
+  end
+
+  defp device_evidence_still_needed?(%Evidence{artifact_ref: ref}, _by_id, _cutoff)
+       when not is_binary(ref),
+       do: false
+
+  defp device_evidence_still_needed?(record, by_id, cutoff) do
+    case device_supersession(record, by_id) do
+      :current -> true
+      {:superseded_at, at} -> DateTime.compare(at, cutoff) == :gt
+      :undatable -> false
+    end
+  end
+
+  # The supersession instant is the *replacement* record's `recorded_at`, found
+  # by id in the same project's own listing. This is the one place the device
+  # half deliberately measures something different from the hosted half, which
+  # uses the replacement row's server-written `inserted_at`: `Evidence.to_value/1`
+  # emits `recorded_at` and no Ecto timestamp at all, so there is no
+  # server-written instant to carry across the device seam — and on a device the
+  # worker that recorded the replacement is the authority for when its own
+  # result happened, so there is no server clock to prefer over it.
+  #
+  # A record naming a replacement the store does not hold is `:undatable`: its
+  # supersession cannot be placed against the window, so it neither releases its
+  # own bytes nor holds anyone else's. That is the same outcome the hosted
+  # rule's left join produces for a missing replacement, which its foreign key
+  # makes unreachable and the device store does not.
+  defp device_supersession(%Evidence{superseded_by_id: nil}, _by_id), do: :current
+
+  defp device_supersession(%Evidence{superseded_by_id: replacement_id}, by_id) do
+    case Map.fetch(by_id, replacement_id) do
+      {:ok, replacement} -> {:superseded_at, replacement.recorded_at}
+      :error -> :undatable
+    end
+  end
+
+  # The device-authoritative half of the terminal-preview rule, on the same
+  # window, the same terminal-status boundary, and the same confirmed-remote
+  # guard. Eligibility is resolved inside the device authority — the records are
+  # read from `SddOrchestrator.Devices`' delivery API and judged there — because
+  # a device project has no hosted `preview_deployments` row at all, and copying
+  # one out to decide what to prune would create exactly the hosted copy this
+  # authority exists to avoid.
+  #
+  # The hazard the rule is shaped around does not soften on a device. A worker's
+  # preview is still served by a provider, `cleanup_state` is still the only
+  # record of whether that counterpart was torn down, and removing the record
+  # while its release is owed, unconfirmed, or refused still leaves a deployment
+  # nothing can ever name again.
+  defp prune_device_delivery_previews(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_previews(project.id, cutoff)
+    end)
+  end
+
+  # One listing per project, decoded once and indexed by id. Both questions this
+  # rule asks beyond a single record — which replacement dates a superseded one,
+  # and which records name a record that is about to go — are answered from that
+  # same read rather than from a second trip to the worker.
+  defp sweep_one_device_project_previews(project_id, cutoff) do
+    records = decoded_device_previews(project_id)
+    by_id = Map.new(records, &{&1.id, &1})
+
+    due =
+      records
+      |> Enum.filter(&device_preview_due?(&1, by_id, cutoff))
+      |> MapSet.new(& &1.id)
+
+    releasable = releasable_device_preview_ids(records, due)
+
+    records
+    |> Enum.filter(&MapSet.member?(releasable, &1.id))
+    |> Enum.map(&tombstone_device_preview(project_id, &1))
+    |> Enum.count(&(&1 == :ok))
+  end
+
+  defp decoded_device_previews(project_id) do
+    project_id
+    |> Devices.list_delivery(:preview)
+    |> Enum.flat_map(fn value ->
+      case PreviewDeployment.from_value(value) do
+        {:ok, deployment} -> [deployment]
+        {:error, _reason} -> []
+      end
+    end)
+  end
+
+  # The same tombstone put every device rule above applies, through the same
+  # helper. `to_value/1` round-trips the id and the state version the record was
+  # read with unchanged, which is all the tombstone reads, so a record rewritten
+  # since this sweep listed it is refused rather than overwritten and is judged
+  # again on the next pass.
+  defp tombstone_device_preview(project_id, %PreviewDeployment{} = record) do
+    tombstone_device_delivery_record(project_id, :preview, PreviewDeployment.to_value(record))
+  end
+
+  # `"done"` and nothing else, stated once ahead of every status exactly as the
+  # hosted `where` clause states it: `"none"` means the release was never asked
+  # for rather than that nothing is owed, `"requested"` is a command made
+  # durable that the provider never confirmed, and `"failed"` is a refusal. The
+  # guard is about the remote, not about how the preview stopped.
+  defp device_preview_due?(%PreviewDeployment{cleanup_state: "done"} = record, by_id, cutoff) do
+    not PreviewDeployment.open?(record) and
+      past_device_preview_window?(record, by_id, cutoff)
+  end
+
+  defp device_preview_due?(_unconfirmed_remote, _by_id, _cutoff), do: false
+
+  defp past_device_preview_window?(record, by_id, cutoff) do
+    case device_preview_stopped_at(record, by_id) do
+      {:stopped_at, at} -> DateTime.compare(at, cutoff) != :gt
+      :undatable -> false
+    end
+  end
+
+  # What each terminal status can actually be dated by once it has crossed the
+  # device seam. `PreviewDeployment.to_value/1` emits `requested_at`,
+  # `ready_at`, `timeout_at`, and `expires_at` and no Ecto timestamp at all, so
+  # neither the hosted rule's `COALESCE(expires_at, updated_at)` fallback nor
+  # its `replacement.inserted_at` exists here, and nothing is invented to stand
+  # in for them:
+  #
+  #   * `"expired"` — `expires_at`, the moment it stopped being reachable, the
+  #     same instant the hosted rule prefers. A provider can report the status
+  #     without ever stating a time, and `Previews` only invents one for a
+  #     deployment it saw become ready, so such a record has no expiry and no
+  #     last write to fall back to: it is `:undatable`.
+  #   * `"timed_out"` — `timeout_at`, the deadline the request policy set and
+  #     the value `Previews` compares against to declare the timeout, so the
+  #     record is measured from when the preview stopped being useful rather
+  #     than from when a later poll noticed. `from_value/1` refuses a record
+  #     without one, so every decodable timed-out record carries it.
+  #   * `"superseded"` — the *replacement* record's `requested_at`, found by id
+  #     in the same listing. That is the device-visible instant of the write the
+  #     hosted half measures as `inserted_at`: `Previews.start/4` writes
+  #     `requested_at: now` on the replacement in the same atomic commit as the
+  #     supersession link. This record's own `expires_at` is deliberately not
+  #     consulted, for the reason the hosted rule states — it answers when this
+  #     preview stopped being reachable, not when a later attempt made it the
+  #     wrong one to look at. A replacement the store no longer holds leaves it
+  #     `:undatable`, as the device evidence rule above decides the same case.
+  #   * `"failed"` — `:undatable`. A provider refusal records no expiry, never
+  #     became ready, and reached no deadline of its own, so `updated_at` was
+  #     the only instant the hosted rule had for it and that is precisely what
+  #     `to_value/1` does not carry. `requested_at` and `timeout_at` both belong
+  #     to the request rather than to the refusal and can precede it by any
+  #     amount, so measuring the window from either would release the record
+  #     before the thirty days it is owed have run. Retaining a record whose
+  #     remote is already confirmed torn down is the conservative side of that
+  #     trade, and the one this seam takes.
+  defp device_preview_stopped_at(
+         %PreviewDeployment{status: "expired", expires_at: %DateTime{} = at},
+         _by_id
+       ),
+       do: {:stopped_at, at}
+
+  defp device_preview_stopped_at(
+         %PreviewDeployment{status: "timed_out", timeout_at: %DateTime{} = at},
+         _by_id
+       ),
+       do: {:stopped_at, at}
+
+  defp device_preview_stopped_at(
+         %PreviewDeployment{status: "superseded", superseded_by_id: replacement_id},
+         by_id
+       )
+       when is_binary(replacement_id) do
+    case Map.fetch(by_id, replacement_id) do
+      {:ok, replacement} -> {:stopped_at, replacement.requested_at}
+      :error -> :undatable
+    end
+  end
+
+  defp device_preview_stopped_at(_undatable, _by_id), do: :undatable
+
+  # The hosted rule holds back a due row that a *retained* row still names,
+  # because `superseded_by_id` is `on_delete: :nilify_all` and clearing the link
+  # of a row still marked `"superseded"` violates that table's pairing
+  # constraint, aborting the whole pass. The device store has neither foreign
+  # keys nor check constraints, so nothing here can abort — but the same removal
+  # does real damage in its own way, so the hold-back is mirrored rather than
+  # dropped. A retained record's supersession instant *is* its replacement's
+  # `requested_at`, read out of this same listing, so tombstoning the
+  # replacement first turns the record naming it `:undatable` permanently: the
+  # moment its own provider cleanup is finally confirmed, the instant that would
+  # have released it is gone and the sweep would retain it forever. That is
+  # reachable exactly when the replacement's remote is settled and the
+  # referrer's is not, which is an ordinary outcome rather than a corner case.
+  #
+  # The set is closed rather than filtered once, because holding one record back
+  # makes it a retained referrer in its own right and a chain of supersessions
+  # would otherwise strand its middle. Each pass drops at least one id, so the
+  # recursion terminates.
+  defp releasable_device_preview_ids(records, due) do
+    strandable = MapSet.intersection(due, ids_named_by_retained_previews(records, due))
+
+    if MapSet.size(strandable) == 0 do
+      due
+    else
+      releasable_device_preview_ids(records, MapSet.difference(due, strandable))
+    end
+  end
+
+  defp ids_named_by_retained_previews(records, due) do
+    records
+    |> Enum.reject(&MapSet.member?(due, &1.id))
+    |> Enum.flat_map(&List.wrap(&1.superseded_by_id))
+    |> MapSet.new()
   end
 
   # Departure ends authorization immediately; the row stays as governed project
@@ -1003,8 +2293,6 @@ defmodule SddOrchestrator.Privacy.Retention do
       {:ok, count} when is_integer(count) and count >= 0 -> count
       _unavailable_or_invalid -> 0
     end
-  catch
-    :exit, _unavailable_store -> 0
   end
 
   defp prune_sessions(now) do
