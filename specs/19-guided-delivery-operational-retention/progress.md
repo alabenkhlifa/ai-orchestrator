@@ -1,5 +1,19 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-26 — Task 10 device superseded-artifact expiry
+
+- Completed: `expired_device_delivery_artifacts` registered in `Retention.prune_all/1`, releasing superseded artifact bytes inside a device-authoritative project through one `Devices.list_delivery(project_id, :evidence)` per project, decoded once and indexed by id so the release predicate and the still-needed set share a single fetch. No `:evidence` record is written or tombstoned; only bytes go, exactly as hosted.
+- Task 2's `delete_released_artifacts/3` was reused without a character changed, called with a `%DeviceWorkspace{}` authority. The device adapter ignores the authority itself — `delete(_authority, ...)` — so the struct is load-bearing only for `dispatch_authority/3` routing, and the shared helper's `list_refs/2` counting keeps repeat sweeps honest on both adapters.
+- The instant is the replacement record's `recorded_at`, as `design.md` already agreed, because `to_value/1` emits no `inserted_at` for the device path.
+- Precision, checked rather than assumed after two briefs were wrong in opposite directions: there is no hazard on the device path at all. `to_value/1` renders with `DateTime.to_iso8601/1` and `from_value/1` parses with `DateTime.from_iso8601/1`, which preserves whatever precision the string carried without truncating or widening, and nothing on this path meets a Postgres column. `DateTime.compare/2` compares absolute instants, so the boundary is exact either way. The hosted fixtures in the same test file still need Task 2's two idioms, and are commented as such.
+- Case the brief did not specify, decided and documented in the code: a device record naming a `superseded_by_id` absent from its own project listing. The device store has no foreign key, so unlike hosted this is reachable. It is treated as undatable — it neither releases its own bytes nor holds anyone else's — mirroring the hosted left-join semantics exactly. Treating it as still needed would be an unbounded retention leak; treating it as released would date a supersession that cannot be dated.
+- Non-vacuity was proved by mutation rather than asserted: forcing the still-needed predicate false fails the shared-digest and staggered cases, and measuring the superseded record's own `recorded_at` instead of the replacement's fails the boundary and shared-digest cases. Both were reverted.
+- The unreachable-device pause is proved by consequence, as in Task 6: with the device store stopped, one `prune_all/1` call returns zero for this key while the hosted artifact rule still releases its bytes, confirmed through `ArtifactStore.fetch/3`.
+- Failed checks: None. `mix format --check-formatted`, `mix credo --strict`, and `git diff --check` all clean.
+- Proof receipt: `Task 10` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_device_artifact_retention_test.exs` — exit `0`.
+- 11 tests passed. Confirmed on the main thread by real exit status.
+- Spec updates: `tasks.md` Task 10 checked complete.
+
 ### 2026-08-26 — Task 9 spent attempt-lease claims released
 
 - Completed: `released_delivery_attempt_leases` registered in `Retention.prune_all/1`, one `Repo.update_all` setting `lease_owner` and `lease_expires_at` to null together on a terminal attempt whose last write is at or before the cutoff and which still holds a lease. The key is named `released_` rather than `expired_` because it is an update; every other key in the map counts deleted rows.

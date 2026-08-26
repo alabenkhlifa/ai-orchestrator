@@ -150,7 +150,18 @@ defmodule SddOrchestrator.Privacy.Retention do
       when *no* evidence row of the same project still needs it — a current
       row, or one superseded more recently than the window — which is what
       keeps accepted evidence's bytes from being destroyed by an unrelated
-      row's expiry.
+      row's expiry. A device-authoritative project gets the same window, the
+      same never-rewrite-the-record contract, and the same digest-safety check,
+      resolved entirely inside the device authority through
+      `SddOrchestrator.Devices`' delivery API and applied through the device
+      artifact adapter's own tombstone. Its supersession instant is the
+      replacement record's `recorded_at` rather than an `inserted_at`:
+      `Evidence.to_value/1` emits no Ecto timestamp at all, so the
+      server-written instant the hosted half measures does not survive device
+      serialization, and on a device the worker is the authority for when its
+      own result happened. Nothing about a device project is read from or
+      written to the hosted store to make that decision, and an unreachable
+      worker pauses only this rule.
     * Terminal preview deployments — a `PreviewDeployment` row is deleted 30
       days after the preview it describes stopped being useful. Terminal is
       exactly "not `PreviewDeployment.open_statuses/0`", so all four of the
@@ -223,6 +234,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   alias SddOrchestrator.Accounts.{ApplicationSession, GitHubAuthorizationAttempt}
 
   alias SddOrchestrator.Accounts.{
+    DeviceWorkspace,
     HostedIdentity,
     HostedSession,
     MagicLinkAttempt,
@@ -426,7 +438,8 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_delivery_previews: prune_delivery_previews(now),
       released_delivery_attempt_leases: prune_delivery_attempt_leases(now),
       expired_device_delivery_commands: prune_device_delivery_commands(now),
-      expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now)
+      expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now),
+      expired_device_delivery_artifacts: prune_device_delivery_artifacts(now)
     }
     |> Map.merge(snapshot_counts(now))
     |> Map.merge(runtime_counts(now))
@@ -1400,6 +1413,138 @@ defmodule SddOrchestrator.Privacy.Retention do
     |> case do
       {:ok, _applied} -> :ok
       {:error, _reason} -> :error
+    end
+  end
+
+  # The device-authoritative half of the superseded-artifact rule, on the same
+  # window, the same digest-safety check, and the same refusal to touch the
+  # record. No evidence record is written, tombstoned, or removed here, by this
+  # function or anything it calls: only the stored bytes go, and the intended
+  # end state is a record that still names a reference whose content is gone.
+  #
+  # Eligibility is resolved inside the device authority. A device project has no
+  # hosted `evidence` row to join against, and copying one out to decide what to
+  # prune would create exactly the hosted copy this authority exists to avoid,
+  # so the records are read from `SddOrchestrator.Devices`' delivery API and
+  # judged there. The release itself reuses the hosted rule's own
+  # `delete_released_artifacts/3` against a `DeviceWorkspace` authority, which is
+  # what makes the count mean the same thing on both sides: what the store
+  # actually still held, so a second pass reports nothing.
+  defp prune_device_delivery_artifacts(now) do
+    cutoff = DateTime.add(now, -@delivery_temporary_window, :second)
+
+    Devices.list_projects()
+    |> Enum.reduce(0, fn project, count ->
+      count + sweep_one_device_project_artifacts(project, cutoff)
+    end)
+  catch
+    # An offline, unpaired, or unreachable worker pauses this rule instead of
+    # aborting the pass: nothing on that device is due until it can be asked
+    # again, and every hosted rule in `prune_all/1` still runs.
+    :exit, _unavailable_store -> 0
+  end
+
+  defp sweep_one_device_project_artifacts(project, cutoff) do
+    project.id
+    |> decoded_device_evidence()
+    |> released_device_artifact_refs(cutoff)
+    |> case do
+      # Nothing due asks the store nothing further: there is no reference whose
+      # presence the count would depend on.
+      [] ->
+        0
+
+      refs ->
+        delete_released_artifacts(
+          %DeviceWorkspace{id: project.workspace_id},
+          project.id,
+          refs
+        )
+    end
+  end
+
+  defp decoded_device_evidence(project_id) do
+    project_id
+    |> Devices.list_delivery(:evidence)
+    |> Enum.flat_map(fn value ->
+      case Evidence.from_value(value) do
+        {:ok, evidence} -> [evidence]
+        {:error, _reason} -> []
+      end
+    end)
+  end
+
+  # `released_artifact_refs/1` and `still_needed_evidence_subquery/1` expressed
+  # over one project's own records rather than over a join, and deciding the
+  # same thing: a reference is released only when *no* record of this project
+  # still needs it. Artifacts are digest-addressed, so a rerun that produced
+  # byte-identical output and the item it replaced are one stored object, and
+  # releasing on the strength of the expired record alone would take the bytes
+  # out from under accepted evidence that still names them. Same-project is the
+  # whole question, exactly as hosted: the device adapter keys an artifact by
+  # `(project, digest)`, so a matching digest under another project is a
+  # different stored object this delete cannot reach.
+  defp released_device_artifact_refs(records, cutoff) do
+    by_id = Map.new(records, &{&1.id, &1})
+
+    still_needed =
+      records
+      |> Enum.filter(&device_evidence_still_needed?(&1, by_id, cutoff))
+      |> MapSet.new(& &1.artifact_ref)
+
+    records
+    |> Enum.filter(&device_artifact_released?(&1, by_id, cutoff))
+    |> Enum.map(& &1.artifact_ref)
+    |> Enum.reject(&MapSet.member?(still_needed, &1))
+    |> Enum.uniq()
+  end
+
+  # A record that never named an artifact is neither a candidate nor a claim on
+  # one, exactly as the hosted query's `not is_nil(evidence.artifact_ref)` and
+  # its subquery's reference equality decide it.
+  defp device_artifact_released?(%Evidence{artifact_ref: ref}, _by_id, _cutoff)
+       when not is_binary(ref),
+       do: false
+
+  defp device_artifact_released?(record, by_id, cutoff) do
+    case device_supersession(record, by_id) do
+      {:superseded_at, at} -> DateTime.compare(at, cutoff) != :gt
+      _not_datable -> false
+    end
+  end
+
+  defp device_evidence_still_needed?(%Evidence{artifact_ref: ref}, _by_id, _cutoff)
+       when not is_binary(ref),
+       do: false
+
+  defp device_evidence_still_needed?(record, by_id, cutoff) do
+    case device_supersession(record, by_id) do
+      :current -> true
+      {:superseded_at, at} -> DateTime.compare(at, cutoff) == :gt
+      :undatable -> false
+    end
+  end
+
+  # The supersession instant is the *replacement* record's `recorded_at`, found
+  # by id in the same project's own listing. This is the one place the device
+  # half deliberately measures something different from the hosted half, which
+  # uses the replacement row's server-written `inserted_at`: `Evidence.to_value/1`
+  # emits `recorded_at` and no Ecto timestamp at all, so there is no
+  # server-written instant to carry across the device seam — and on a device the
+  # worker that recorded the replacement is the authority for when its own
+  # result happened, so there is no server clock to prefer over it.
+  #
+  # A record naming a replacement the store does not hold is `:undatable`: its
+  # supersession cannot be placed against the window, so it neither releases its
+  # own bytes nor holds anyone else's. That is the same outcome the hosted
+  # rule's left join produces for a missing replacement, which its foreign key
+  # makes unreachable and the device store does not.
+  defp device_supersession(%Evidence{superseded_by_id: nil}, _by_id), do: :current
+
+  defp device_supersession(%Evidence{superseded_by_id: replacement_id}, by_id) do
+    case Map.fetch(by_id, replacement_id) do
+      {:ok, replacement} -> {:superseded_at, replacement.recorded_at}
+      :error -> :undatable
     end
   end
 
