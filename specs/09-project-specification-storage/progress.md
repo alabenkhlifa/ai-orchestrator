@@ -1,5 +1,25 @@
 # Project Specification Storage Progress Log
 
+### 2026-08-26 - Verification gate re-run and slice marked Verified
+
+- All seven implementation tasks, both provided capabilities, and every verification-gate item were already recorded complete; the slice was held at `In Progress` only by deployment-specific evidence that belongs in the release gate. Per the project rule that deployment-dependent evidence blocks release rather than implementation or local verification, that is not a `Verified` blocker. Re-ran the full gate on `main` first, because it last ran before `specs/25-` through `specs/37-` landed.
+- Proof receipts, all confirmed on the main thread by real exit status:
+  - `python3 .agents/scripts/run_proof.py slice -- mix check` — exit `0` (4541 passed, 6 properties, 1 excluded `:live` tag; `MIX_TEST_PARTITION=463620` passed explicitly because the runner injects it only for a bare `mix test`).
+  - `python3 .agents/scripts/run_proof.py slice -- mix dialyzer` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- mix deps.audit` — exit `0` (no vulnerabilities).
+  - `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` — exit `0` (148 passed, 2 skipped, `chromium` and `mobile-chromium`).
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release --overwrite` — exit `0`.
+- Validators: `python3 .agents/scripts/validate_spec.py specs/09-project-specification-storage`, `python3 .agents/scripts/validate_spec.py --all specs` (37 specifications), and `python3 .agents/scripts/split_progress_log.py --check` all pass.
+- The three exceptions `specs/29-participation-completion` accepted at its own gate no longer reproduce and were not needed: `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` and `SddOrchestrator.Delivery.RevocationConsumerTest` pass, and `e2e/repository-kits.spec.js` passes after dropping the stale `sdd_orchestrator_e2e_desktop` and `sdd_orchestrator_e2e_mobile` databases, which is the known non-idempotent fixed-digest kit-package seed, not a product defect.
+- Failed checks: None.
+- Status: `In Progress` to `Verified`.
+- Corrected a stale line under `## Blocked Decisions` that still claimed `Task 2` was the next executable task; every task is complete.
+- Release readiness is unchanged and remains blocked on the deployment-specific controller, processor, region, transfer, notice, retention-enforcement, incident, and final accountable privacy or legal review evidence in the release gate.
+- Spec updates: `tasks.md` status and the stale blocked-decision line only. No requirement, design decision, acceptance criterion, task boundary, or verification expectation changed.
+
 ### 2026-07-28 - Slice implementation and local verification complete
 
 - Completed: Delivered the shared hosted and device-authoritative specification store with stable specification identity, immutable complete revisions, optimistic expected-head append, consistent allowlisted snapshots, destination-local restoration transaction contributions, cross-operation idempotency and concurrency enforcement, project deletion and rights propagation, privacy inventory and field purposes, fixed redacted security outcomes, consumer compatibility, and both published capabilities.

@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-All seven implementation tasks are complete, both `capability:project-specification-store` and `capability:project-specification-governance` are ready, and the full local verification gate passes. The slice remains short of `Verified` only because the deployment-specific controller, processor, region, transfer, notice, retention-enforcement, incident, and final accountable privacy or legal review evidence remains in the release gate below.
+All seven implementation tasks are complete, both `capability:project-specification-store` and `capability:project-specification-governance` are ready, and the full local verification gate passes. The gate was re-run on 2026-08-26 after slices 25 through 37 landed and passed with no exceptions: `mix check` (4541 passed, 1 excluded `:live` tag), `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `npm --prefix assets ci` and the full `npm --prefix assets run test:e2e` (148 passed, 2 skipped, desktop and mobile), and `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release`. Public release readiness remains separately gated on the deployment-specific controller, processor, region, transfer, notice, retention-enforcement, incident, and final accountable privacy or legal review evidence recorded in the release gate below.
 
 ## Active Slice
 
@@ -143,7 +143,7 @@ Release gates:
 
 ## Blocked Decisions
 
-- None. Both required Slice 05 capabilities are available, and Task 2 is the next executable task.
+- None. Both required Slice 05 capabilities are available and every task is complete.
 
 ## Progress Log
 
