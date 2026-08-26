@@ -115,7 +115,7 @@ Traceability:
   - Owns: AC-10
   - Proof: `python3 .agents/scripts/run_proof.py task --task 10 -- mix test test/sdd_orchestrator/privacy/delivery_device_artifact_retention_test.exs` passes focused device superseded, day-29, day-30, shared-digest survival, tombstone-not-delete, no-hosted-copy, unreachable-device pause, and repeat cases.
 
-- [ ] Task 8 — Enforce hosted preview-deployment expiry.
+- [x] Task 8 — Enforce hosted preview-deployment expiry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1

@@ -151,6 +151,40 @@ defmodule SddOrchestrator.Privacy.Retention do
       row, or one superseded more recently than the window — which is what
       keeps accepted evidence's bytes from being destroyed by an unrelated
       row's expiry.
+    * Terminal preview deployments — a `PreviewDeployment` row is deleted 30
+      days after the preview it describes stopped being useful. Terminal is
+      exactly "not `PreviewDeployment.open_statuses/0`", so all four of the
+      statuses a preview can stop in are governed and each is measured by the
+      instant that actually ended its purpose rather than by one shared
+      approximation. `"expired"` uses `expires_at`, the moment it stopped
+      being reachable, falling back to `updated_at` for a row a provider
+      called expired without ever stating a time — the same
+      authoritative-instant-or-last-write idiom the command rule above uses,
+      available here because `preview_deployments` does carry `timestamps()`,
+      which `evidence` deliberately does not. `"superseded"` uses the
+      *replacement* row's `inserted_at`, written in the same atomic commit as
+      the supersession link (`SddOrchestrator.Delivery.Previews`) and frozen
+      afterwards by the `preview_deployments_binding_frozen` trigger, exactly
+      as the evidence rule above reasons and for the same reason: the
+      superseded row's own `expires_at` says when its preview stopped being
+      reachable, which is a different question from when a later attempt
+      replaced it. `"timed_out"` uses `timeout_at`, the deadline the request
+      policy set and the one `Previews` compares against to declare the
+      timeout, so the row is measured from when the preview stopped being
+      useful rather than from when that was noticed. `"failed"` uses
+      `updated_at` alone: a provider refusal records no expiry and no
+      deadline of its own, so the failure write is the only instant the row
+      has and none is invented for it. A `"pending"` or `"ready"` deployment
+      is never selected whatever its age — it is still the preview a reviewer
+      opens. Age alone is never enough either: a row is released only once
+      `cleanup_state` is `"done"`, the one value that means the provider
+      confirmed the deployment itself was torn down. Deleting a row whose
+      remote release is still owed (`"none"`), recorded but unconfirmed
+      (`"requested"`), or refused (`"failed"`) would leave a preview serving
+      the project's content at a provider nothing can name any more, which is
+      a worse outcome than retaining the row, and that guard is not
+      status-specific. The feature, run, attempt, activity history, and
+      evidence the preview belonged to are never touched.
 
   Encrypted GitHub credentials and confirmed project metadata are kept while the
   account or project requires them and are removed by account erasure, not by time.
@@ -192,6 +226,7 @@ defmodule SddOrchestrator.Privacy.Retention do
     ArtifactStore,
     BlockingQuestion,
     Evidence,
+    PreviewDeployment,
     RunCommand
   }
 
@@ -369,6 +404,7 @@ defmodule SddOrchestrator.Privacy.Retention do
       expired_delivery_commands: prune_delivery_commands(now),
       expired_delivery_checkpoints: prune_delivery_checkpoints(now),
       expired_delivery_artifacts: prune_delivery_artifacts(now),
+      expired_delivery_previews: prune_delivery_previews(now),
       expired_device_delivery_commands: prune_device_delivery_commands(now),
       expired_device_delivery_checkpoints: prune_device_delivery_checkpoints(now)
     }
@@ -1071,6 +1107,115 @@ defmodule SddOrchestrator.Privacy.Retention do
     |> Enum.filter(&MapSet.member?(held, &1))
     |> Enum.map(&ArtifactStore.delete(authority, project_id, &1))
     |> Enum.count(&(&1 == :ok))
+  end
+
+  # A preview stops being useful at a knowable instant whichever way it stopped
+  # — it expired, a later attempt replaced it, its request ran past the
+  # deadline, or the provider refused it — and 30 days after that instant the
+  # record of the deployment goes. What it carries is the provider's opaque
+  # handle, the one
+  # participant-safe link, and the deployment's own timings — a convenience that
+  # was never a verdict — so nothing about the feature, the run, the attempt, the
+  # activity history, or the evidence depends on it still being there.
+  #
+  # The hazard this rule is shaped around is the *remote* half. A preview
+  # deployment has a counterpart at a preview provider, and `cleanup_state` is
+  # the only record of whether that counterpart is gone: `"none"` means the
+  # release is still owed (the processing inventory says so in exactly those
+  # words), `"requested"` that the command was made durable but the provider
+  # never confirmed, `"failed"` that the provider refused it, and `"done"` that
+  # `SddOrchestrator.Delivery.Previews.cleanup/4` saw the adapter answer `:ok`.
+  # Deleting a row in any of the first three would orphan a deployment nothing
+  # can ever name again, and it may go on serving the project's content
+  # publicly; a retained row costs storage, an orphaned preview is an exposure
+  # with no owner. So only `"done"` is released, however old the rest are.
+  #
+  # `"expired"` in particular is not itself proof the remote is gone: when a
+  # provider states no expiry of its own, `Previews` applies the *configured*
+  # ttl, so an expired status can be the control plane's own deadline rather
+  # than anything the provider reclaimed.
+  defp prune_delivery_previews(now) do
+    # Every timestamp on `preview_deployments` is `:utc_datetime_usec`, unlike
+    # the second-precision columns the rules above compare against, so the
+    # cutoff is widened rather than truncated: Ecto refuses to dump a
+    # second-precision value against a microsecond column instead of comparing
+    # it.
+    cutoff =
+      now
+      |> DateTime.add(-@delivery_temporary_window, :second)
+      |> DateTime.add(0, :microsecond)
+
+    due = due_preview_deployment_ids(cutoff)
+
+    {count, _} =
+      Repo.delete_all(
+        from deployment in PreviewDeployment,
+          as: :governed,
+          where: deployment.id in subquery(due),
+          where: not exists(retained_referring_preview_subquery(due))
+      )
+
+    count
+  end
+
+  # Four statuses, four instants, one cutoff. Each branch names the timestamp
+  # that actually ended that preview's purpose rather than sharing one
+  # approximation across all of them:
+  #
+  #   * `"expired"` — `expires_at`, when it stopped being reachable, falling
+  #     back to `updated_at` for a provider that reported the status without
+  #     ever stating a time.
+  #   * `"superseded"` — the replacement's `inserted_at`, written beside the
+  #     supersession link in one atomic commit and frozen afterwards by the
+  #     binding trigger. This row's own `expires_at` is deliberately not
+  #     consulted: it answers when that preview stopped being reachable, not
+  #     when a later attempt made it the wrong one to look at, and the two can
+  #     be months apart in either direction.
+  #   * `"timed_out"` — `timeout_at`, the deadline the request policy set and
+  #     the very value `Previews.settle/3` compares against to declare the
+  #     timeout, so the row is measured from when the preview stopped being
+  #     useful and not from whenever a later poll noticed.
+  #   * `"failed"` — `updated_at` alone. A provider refusal records no expiry
+  #     (`Previews.stopped/2` writes `nil`) and the deadline it never reached
+  #     says nothing about it, so the failure write is the only instant the row
+  #     has and none is invented for it.
+  #
+  # The open-status guard is the invariant stated once rather than left implied
+  # by the absence of a branch: a `"pending"` or `"ready"` preview is the one a
+  # reviewer still opens, and no age releases it. The left join is what lets a
+  # single statement carry all four, since only the superseded branch has a
+  # replacement row to reach.
+  defp due_preview_deployment_ids(cutoff) do
+    from(deployment in PreviewDeployment,
+      left_join: replacement in PreviewDeployment,
+      on: replacement.id == deployment.superseded_by_id,
+      where: deployment.cleanup_state == "done",
+      where: deployment.status not in ^PreviewDeployment.open_statuses(),
+      where:
+        (deployment.status == "expired" and
+           fragment("COALESCE(?, ?)", deployment.expires_at, deployment.updated_at) <= ^cutoff) or
+          (deployment.status == "superseded" and replacement.inserted_at <= ^cutoff) or
+          (deployment.status == "timed_out" and deployment.timeout_at <= ^cutoff) or
+          (deployment.status == "failed" and deployment.updated_at <= ^cutoff),
+      select: deployment.id
+    )
+  end
+
+  # A due row that a *retained* deployment still names through `superseded_by_id`
+  # is held back until that one is due as well. The foreign key is
+  # `on_delete: :nilify_all`, and clearing the link of a row whose status is
+  # still `"superseded"` violates `preview_deployments_supersession_pairing`,
+  # which would abort the whole pass rather than skip one row. Deleting both in
+  # the same statement is fine — the referential action finds nothing left to
+  # null — so this only ever defers a row to the pass where its own referrer
+  # becomes releasable, most often once that referrer's provider cleanup
+  # finally succeeds.
+  defp retained_referring_preview_subquery(due) do
+    from(other in PreviewDeployment,
+      where: other.superseded_by_id == parent_as(:governed).id,
+      where: other.id not in subquery(due),
+      select: 1
+    )
   end
 
   # The device-authoritative half of the same lifecycle, on the same window and

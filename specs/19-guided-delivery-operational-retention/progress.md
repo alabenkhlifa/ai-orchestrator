@@ -1,5 +1,19 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-26 — Task 8 hosted preview-deployment expiry
+
+- Completed: `expired_delivery_previews` registered in `Retention.prune_all/1`, releasing hosted preview-deployment records at every terminal status once 30 days have passed and the remote counterpart is confirmed released. Pending and ready records are excluded by a standing `status not in open_statuses()` guard rather than by the mere absence of a branch, so the invariant is stated once.
+- Instant per status, each taken from what the code actually records: `expired` uses `COALESCE(expires_at, updated_at)`, whose fallback is reachable because `Previews.stopped/2` writes a null expiry for a provider error; `superseded` uses the replacement's `inserted_at`, written beside the supersession link in one atomic commit and then frozen by the binding trigger; `timed_out` uses `timeout_at`, the deadline `Previews.request/6` set and that `settle/3` acted on, so the window runs from when the preview stopped being useful rather than from when that was noticed; `failed` uses `updated_at`, the only instant a failure write leaves behind.
+- The confirmed-remote-release guard admits only `cleanup_state == "done"`. `enqueue_cleanup/3` moves `none` to `requested` before the provider is called and the state records what the adapter actually answered, so `none` means the release was never asked for rather than that nothing is owed. The proof asserts the guard is not status-specific by retaining six rows across `none`, `requested`, and `failed` for both new statuses.
+- A `COALESCE(timeout_at, updated_at)` fallback was written, then deliberately removed on reconciliation: `timeout_at` is `null: false` in the table, required by `request_changeset`, refused by `from_value/1`, and frozen by the binding trigger, so the second argument could never be reached and implying the column is nullable is worse than saying nothing. The invariant test was kept and retargeted rather than deleted, because it is more load-bearing without the fallback than with it — were the column ever made nullable, a null deadline would silently fail the comparison and retain that row forever, which is the exact failure retention exists to prevent. It reads `information_schema` rather than asserting on a rejected insert, which would poison the sandbox transaction.
+- The timed-out instant is pinned by mutation rather than by assertion alone: a row whose deadline passed 30 days ago but was last written yesterday is still released, and swapping that branch to `updated_at` fails exactly that test and nothing else.
+- The supersession-pairing crash found earlier is guarded by `retained_referring_preview_subquery/1`, holding a due record back until the record naming it is due as well. Deleting both in one statement is safe because the referential action then finds nothing to null.
+- Failed checks: None. `mix format --check-formatted` and `mix credo --strict` pass on both files.
+- Proof receipt: `Task 8` — scope `Focused` — command `mix test test/sdd_orchestrator/privacy/delivery_preview_retention_test.exs` — exit `0`.
+- 16 tests passed, re-confirmed on the main thread by real exit status after the fallback was removed.
+- Known limitation, unchanged and recorded in `design.md` and the implementation boundary: no production caller releases a preview's remote counterpart on expiry, so no record reaches `done` and this rule deletes nothing in production today. That blocks the rule's real-world effect only, not this slice's implementation or verification.
+- Spec updates: `tasks.md` Task 8 checked complete.
+
 ### 2026-08-25 — Preview retention completed as a contract; remote-release trigger raised as a defect elsewhere
 
 - Task 8's implementation is written and passing but is deliberately not yet checked complete: its rule is widened by this update and must be re-proved against the widened contract first.
