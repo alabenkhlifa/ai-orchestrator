@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -71,7 +71,8 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Introduce the unbound pairing attempt and its state constraints.
+- [x] Task 1 — Introduce the unbound pairing attempt and its state constraints.
+  - Status: Complete.
   - Size: Exception — the column, its backfill, and the constraints expressing the two valid states are one migration; applying them separately leaves existing rows momentarily violating the constraint that defines a valid attempt.
   - Proof scope: Focused
   - Depends on: none

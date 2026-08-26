@@ -5,6 +5,24 @@ defmodule SddOrchestrator.Devices.PairingAttempt do
   The raw pairing code is never stored; only a salted digest, the opaque
   device-workspace id, and lifecycle timestamps are persisted. An attempt is
   single-use: once confirmed or canceled it can no longer complete a pairing.
+
+  An attempt has exactly two valid shapes.
+
+  A *bound* attempt carries the device workspace it belongs to. This is the
+  original shape, still produced by `Pairing.start_pairing/2` for the dashboard
+  and the `Open in App` deep link, where the workspace is known before the code
+  is issued.
+
+  An *unbound* attempt carries no workspace at all. It exists because a worker
+  app that has never been paired has no workspace identity to name — acquiring
+  one is what pairing is for. An unbound attempt authorizes nothing: it names no
+  person, no machine, and no workspace, and its whole content is a random digest
+  and an expiry. It becomes bound once, when an authorized owner redeems its
+  code against their own workspace (`specs/38` Task 2).
+
+  The third combination — confirmed, or holding a worker, while belonging to no
+  workspace — is a credential attached to nobody. It is unreachable by database
+  constraint rather than by convention, so no code path can produce it.
   """
   use Ecto.Schema
 
@@ -31,10 +49,27 @@ defmodule SddOrchestrator.Devices.PairingAttempt do
     timestamps()
   end
 
-  @doc "Changeset for issuing a new pairing attempt."
+  @doc "Changeset for issuing a new pairing attempt bound to a known workspace."
   def create_changeset(attempt, attrs) do
     attempt
     |> cast(attrs, [:device_workspace_id, :code_digest, :code_salt, :expires_at])
     |> validate_required([:device_workspace_id, :code_digest, :code_salt, :expires_at])
+  end
+
+  @doc """
+  Changeset for issuing a pairing attempt that belongs to no workspace yet.
+
+  `:device_workspace_id` is not in the cast list, so a caller cannot smuggle one
+  in through the attrs map. An unbound attempt is unbound because nothing may
+  name a workspace at this point, not because the caller chose to omit it.
+  """
+  def create_unbound_changeset(attempt, attrs) do
+    attempt
+    |> cast(attrs, [:code_digest, :code_salt, :expires_at])
+    |> validate_required([:code_digest, :code_salt, :expires_at])
+    |> check_constraint(:device_workspace_id,
+      name: :pairing_attempts_bound_before_use_check,
+      message: "an unbound attempt cannot be confirmed or hold a worker"
+    )
   end
 end
