@@ -133,14 +133,14 @@ Traceability:
   - Owns: AC-11
   - Proof: `python3 .agents/scripts/run_proof.py task --task 11 -- mix test test/sdd_orchestrator/privacy/delivery_device_preview_retention_test.exs` passes focused device terminal-status, day-29, day-30, unconfirmed-cleanup retention, tombstone-not-delete, no-hosted-copy, unreachable-device pause, and repeat cases.
 
-- [ ] Task 9 — Clear spent attempt-lease material.
+- [ ] Task 9 — Clear spent attempt-lease claims.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
-  - Purpose: Blank the lease owner, lease expiry, and fence token of a terminal attempt without touching the attempt itself, which is participant-visible history owned elsewhere.
-  - Owned surfaces: Terminal-attempt eligibility, the 30-day boundary, the in-place clearing of the three lease columns, non-deletion of the attempt row, non-mutation of its participant-visible outcome, and attempt fixtures.
+  - Purpose: Release the lease claim held by a terminal attempt without touching the attempt itself, which is participant-visible history owned elsewhere.
+  - Owned surfaces: Terminal-attempt eligibility, the 30-day boundary, the paired in-place clearing of `lease_owner` and `lease_expires_at`, retention of the fence token and the reason for it, non-deletion of the attempt row, non-mutation of its participant-visible outcome, and attempt fixtures.
   - Owns: AC-09
-  - Proof: `python3 .agents/scripts/run_proof.py task --task 9 -- mix test test/sdd_orchestrator/privacy/delivery_attempt_lease_retention_test.exs` passes focused terminal, non-terminal exclusion, day-29, day-30, row-preservation, outcome-preservation, and idempotent-repeat cases.
+  - Proof: `python3 .agents/scripts/run_proof.py task --task 9 -- mix test test/sdd_orchestrator/privacy/delivery_attempt_lease_retention_test.exs` passes focused terminal, non-terminal exclusion, day-29, day-30, paired-clearing, fence-token retention, row-preservation, outcome-preservation, and idempotent-repeat cases.
 
 - [x] Task 7 — Expire the worker-local provider-thread reference.
   - Size: Standard

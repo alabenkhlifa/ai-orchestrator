@@ -1,5 +1,16 @@
 # Guided Delivery Operational Retention Progress Log
 
+### 2026-08-26 — AC-09 corrected: the fence token cannot be cleared
+
+- Found during Task 9's preflight, before any brief was dispatched: `AC-09` promised to clear the lease owner, lease expiry, and fence token, and the third is impossible. `fence_token` is `null: false`, constrained by `run_attempts_fence_token_positive`, and carries `unique_index(:run_attempts, [:run_id, :fence_token])`, so clearing it would mean dropping an index that execution-ordering correctness depends on.
+- The other two are nullable but paired: `run_attempts_lease_pairing` requires both null or both set, with the migration's own reason recorded beside it — an owner without an expiry would let a stale claim look current forever. They are therefore cleared together or not at all.
+- `AC-09` now reads as the lease pair only, with the fence token explicitly retained. This is a correction of an unimplementable criterion, not a weakening to fit code: no data the criterion intended to release is now retained beyond the attempt's own lifecycle, and the fence token is a monotonic ordering integer that describes no one.
+- Raised rather than edited: `specs/18`'s processing inventory tags `run_attempt.fence_token` with `lifecycle_owner: :specs_19_operational_retention`, which overstates what this slice can enforce. The token expires when the attempt row is deleted, so the tag belongs with the attempt's own owner. That file lives in a verified specification and is not changed from here.
+- This is the third schema constraint in this slice to contradict a task brief before implementation — after `blocking_questions`' not-null location columns and `evidence`'s absent `updated_at`. Preflighting the target schema's null and check constraints before dispatching is now the established practice for the remaining tasks.
+- Failed checks: None. `validate_spec.py specs/19-guided-delivery-operational-retention` and `validate_spec.py --all specs` pass by real exit status.
+- Proof receipts: None. Specification change only.
+- Spec updates: `requirements.md` `AC-09`, two new business rules, in-scope wording; `design.md` the fence-token decision and the lease-clearing interface; `tasks.md` Task 9 purpose, owned surfaces, and proof; this entry.
+
 ### 2026-08-26 — Task 8 hosted preview-deployment expiry
 
 - Completed: `expired_delivery_previews` registered in `Retention.prune_all/1`, releasing hosted preview-deployment records at every terminal status once 30 days have passed and the remote counterpart is confirmed released. Pending and ready records are excluded by a standing `status not in open_statuses()` guard rather than by the mere absence of a branch, so the invariant is stated once.

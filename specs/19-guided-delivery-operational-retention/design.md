@@ -40,7 +40,7 @@ Required boundaries:
 
 - Temporary-data selector: identify inactive command payloads and checkpoints whose purpose ended at least 30 days earlier, together with the transient result and failure detail they carry.
 - Preview-deployment selector: identify terminal deployments past the same boundary whose remote counterpart is confirmed released, on both the hosted and device authority.
-- Attempt-lease clearing: blank spent lease owner, lease expiry, and fence token on a terminal attempt without deleting the attempt.
+- Attempt-lease clearing: blank the spent lease owner and expiry together on a terminal attempt, leaving the attempt and its fence token intact.
 - Worker run-state pruning: remove the provider-thread reference from the worker's local run state once its run is terminal and past the boundary.
 - Artifact-retention interface: delete eligible superseded artifact bytes while preserving immutable evidence provenance and accepted artifacts.
 - Retention-runner interface: claim one rule under a lock, prune through the correct authority, persist minimized completion or failure state, and resume safely after restart.
@@ -91,6 +91,12 @@ Required boundaries:
 - Choice: Release a preview-deployment record only when its cleanup state records a confirmed provider-side release. Anything else — never requested, requested and still awaited, or failed — retains the record at any age. Retention itself never calls a preview provider.
 - Reason: A preview has a counterpart at a third-party provider. The record is the only thing that identifies it. Deleting the record while the remote deployment is still live orphans it permanently, and it may keep serving the project's content with nothing left that could ever find it again. That is a worse data-protection outcome than keeping an internal row past its window, so the ordering is one-directional: the remote copy goes first, then the record.
 - Consequence: This rule is only as effective as the workflow that triggers the release. No such trigger exists today for a preview that merely expires — the release seam is implemented and tested but is called from nowhere in production — so the rule is correct and currently inert. That gap belongs to the preview lifecycle, not to retention; `specs/21-guided-delivery-deletion-and-recovery` Task 4 already owns the project-deletion path, and the expiry path has no owner yet.
+
+### The Fence Token Is Structure, Not Residue
+
+- Choice: Clear a terminal attempt's lease owner and expiry as a pair and retain its fence token.
+- Reason: The schema settles it. `lease_owner` and `lease_expires_at` are nullable but bound by a paired check constraint, so releasing one without the other would leave a stale claim that reads as current forever. `fence_token` is `null: false`, constrained positive, and unique per run: it cannot be cleared without dropping an index that execution-ordering correctness depends on. It is also not the same kind of data — a monotonic integer that orders attempts, describing no one.
+- Consequence: The fence token expires with the attempt row under the project's own deletion lifecycle rather than on this 30-day clock. The processing inventory currently tags it to this specification's lifecycle owner, which overstates what this slice can enforce; that tag belongs with the attempt's own owner and is raised rather than edited here, because it lives in a verified specification.
 
 ### Structured Security Logs Only
 
