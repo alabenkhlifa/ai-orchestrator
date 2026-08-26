@@ -2,11 +2,11 @@
 
 ## Status
 
-Not Started
+Verified
 
-Product readiness: `Approved`. Design readiness: `Approved`. Implementation readiness: ready to start; every required capability is available and Task 1 is executable. Verification readiness: not started. Release readiness: no release gate applies to this slice.
+Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: complete; all eleven tasks delivered and `capability:guided-delivery-operational-retention` is ready for `specs/21`, `specs/22`, `specs/23`, and `specs/24`. Verification readiness: `Verified`, with no exception — the repository gate, the browser matrix, and the production build all pass. Release readiness: no release gate applies to this slice.
 
-The task plan was reconciled with `specs/18-guided-delivery-data-protection-controls`' processing inventory, which is the authoritative classification of what this specification's lifecycle owns.
+One recorded limitation does not affect that status and must not be read as preview retention being live: the hosted and device preview rules release only a record whose remote counterpart is confirmed released, and nothing triggers that release when a preview merely expires, so they delete nothing in production until the expiry trigger is wired. That trigger belongs to the preview lifecycle and is raised there; `specs/21-guided-delivery-deletion-and-recovery` Task 4 already owns the project-deletion path.
 
 ## Active Slice
 
@@ -180,15 +180,15 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] All eleven acceptance criteria pass against hosted, device, and worker-local authority where applicable.
-- [ ] Active recovery state, accepted evidence, attempt rows, and participant-visible history remain available after every retention rule.
-- [ ] Security-log field allowlists and content, credential, and email negative scans pass.
-- [ ] Retention lock, restart, partial-failure, retry, and reconciliation scenarios pass, and a failed rule is discoverable through its durable outcome record.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check` and the explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` pass for the repository browser matrix.
-- [ ] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
-- [ ] The individual specification validator and global capability graph pass, and capability readiness is recorded.
-- [ ] New decisions and proof receipts are written back.
+- [x] All eleven acceptance criteria pass against hosted, device, and worker-local authority where applicable.
+- [x] Active recovery state, accepted evidence, attempt rows, and participant-visible history remain available after every retention rule.
+- [x] Security-log field allowlists and content, credential, and email negative scans pass.
+- [x] Retention lock, restart, partial-failure, retry, and reconciliation scenarios pass, and a failed rule is discoverable through its durable outcome record.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check` and the explicit formatting, warnings-as-errors, Credo, Dialyzer, dependency-audit, Sobelow, and test commands pass through slice scope.
+- [x] `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` pass for the repository browser matrix.
+- [x] Production asset deployment and release assembly pass through slice scope with `MIX_ENV=prod`.
+- [x] The individual specification validator and global capability graph pass, and capability readiness is recorded.
+- [x] New decisions and proof receipts are written back.
 
 ## Blocked Decisions
 
