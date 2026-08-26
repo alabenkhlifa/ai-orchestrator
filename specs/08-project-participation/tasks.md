@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 The invitation, authorization, notification, departure, historical-attribution,
 owner-profile, and recipient-routing foundation is implemented through Task 36.
@@ -10,12 +10,16 @@ owner-profile, and recipient-routing foundation is implemented through Task 36.
 `capability:project-owner-display-profile`, and
 `capability:project-participation-recipient-routing` are ready. The legacy plan's
 unfinished identity-lifecycle repair, processing, operational retention,
-deletion, recovery, and final-governance outcomes now belong to focused
-continuation specifications under `specs/25-` through `specs/29-`.
-`capability:project-participation-governance` remains unavailable until
-`specs/29-participation-completion/` completes its provider reconciliation and
-verification gate. This parent is an umbrella with completed legacy foundation
-and no duplicate child implementation ownership.
+deletion, recovery, and final-governance outcomes belong to the focused
+continuation specifications under `specs/25-` through `specs/29-`, all of which
+are `Verified`. `specs/29-participation-completion/` completed its provider
+reconciliation and verification gate and published
+`capability:project-participation-governance`, which closed this umbrella's last
+open gate item. This parent is an umbrella with completed legacy foundation and
+no duplicate child implementation ownership. Public release readiness remains
+separately gated on deployment-specific controller, processor, region, transfer,
+notice, incident, retention-enforcement, and accountable privacy or legal
+evidence.
 
 ## Active Slice
 
@@ -329,7 +333,7 @@ Release gates:
 - [x] Completed foundation tasks retain their recorded focused and slice evidence.
 - [x] Current-participant, owner-profile, and recipient-routing capabilities have one completed provider and readiness write-back.
 - [x] Every unfinished criterion is mapped to one focused child specification without duplicate parent implementation ownership.
-- [ ] `specs/29-participation-completion/` reconciles every child provider, runs the full deterministic gate, records staged readiness, and publishes `capability:project-participation-governance`.
+- [x] `specs/29-participation-completion/` reconciles every child provider, runs the full deterministic gate, records staged readiness, and publishes `capability:project-participation-governance`.
 
 ## Blocked Decisions
 

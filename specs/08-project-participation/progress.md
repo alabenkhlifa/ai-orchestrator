@@ -1,5 +1,25 @@
 # Project Participation Progress Log
 
+### 2026-08-26 - Umbrella gate closed and slice marked Verified
+
+- The umbrella's only open verification-gate item was `specs/29-participation-completion/` reconciling every child provider, running the full deterministic gate, recording staged readiness, and publishing `capability:project-participation-governance`. That condition is met: `specs/29` is `Verified`, and `python3 .agents/scripts/capability_index.py --capability project-participation-governance` reports provider `specs/29-participation-completion#Task 1`, state `ready`, consumed by `specs/12-project-assistant#Task 9` and `specs/22-guided-delivery-rights-and-anonymization#Task 1`. Every continuation specification `specs/25-` through `specs/29-` is `Verified`.
+- The gate item was recorded but never ticked, so the umbrella sat at `In Progress` with no outstanding work of its own. Re-ran the full gate on `main` anyway to confirm the foundation still holds before changing the status.
+- Proof receipts, all confirmed on the main thread by real exit status:
+  - `python3 .agents/scripts/run_proof.py slice -- mix check` — exit `0` (4541 passed, 6 properties, 1 excluded `:live` tag; `MIX_TEST_PARTITION=463620` passed explicitly because the runner injects it only for a bare `mix test`).
+  - `python3 .agents/scripts/run_proof.py slice -- mix dialyzer` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- mix deps.audit` — exit `0` (no vulnerabilities).
+  - `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` — exit `0` (148 passed, 2 skipped, `chromium` and `mobile-chromium`).
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release --overwrite` — exit `0`.
+- Validators: `python3 .agents/scripts/validate_spec.py specs/08-project-participation`, `python3 .agents/scripts/validate_spec.py --all specs` (37 specifications), and `python3 .agents/scripts/split_progress_log.py --check` all pass.
+- The three exceptions `specs/29-participation-completion` accepted at its own gate no longer reproduce and were not needed: `SddOrchestrator.Delivery.LocalWorkerRuntimeProjectionTest` and `SddOrchestrator.Delivery.RevocationConsumerTest` pass, and `e2e/repository-kits.spec.js` passes after dropping the stale `sdd_orchestrator_e2e_desktop` and `sdd_orchestrator_e2e_mobile` databases, which is the known non-idempotent fixed-digest kit-package seed, not a product defect.
+- Failed checks: None.
+- Status: `In Progress` to `Verified`. No implementation ownership moved; this parent remains an umbrella with completed legacy foundation and no duplicate child implementation.
+- Release readiness is unchanged and remains separately gated on deployment-specific controller, processor, region, transfer, notice, incident, retention-enforcement, and accountable privacy or legal evidence.
+- Spec updates: `tasks.md` status and the one verification-gate checkbox only. No requirement, design decision, acceptance criterion, task boundary, or verification expectation changed.
+
 ### 2026-08-02 - Participation continuations split and lifecycle decisions approved
 
 - Completed: Classified Slice 08 as an umbrella with completed legacy foundation and moved every unfinished implementation outcome into focused child specifications. Approved fresh re-entry through linked historical-profile reuse, permanent anonymized-history separation, current-participant departure before verified anonymization, verified pending-handoff override after departure, and revocation former-account and former-hosted-identity cleanup after acknowledgement and no later than 30 days.
