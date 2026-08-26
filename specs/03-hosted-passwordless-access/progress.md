@@ -1,5 +1,24 @@
 # Hosted Passwordless Access Progress Log
 
+### 2026-08-26 - Verification-gate contradiction resolved and slice marked Verified
+
+- Trigger: the slice sat at `In Progress` on one unchecked gate item, `GDPR data contract, retention, rights, processor, transfer, and privacy-review gates are complete`, which bundled locally provable work with deployment-only evidence.
+- Classification: verification-expectation correction, not a product, workflow, business-rule, or architecture change. `design.md` already recorded the split at its data-protection decision: "Final retention durations, the delivery processor and its region and transfer safeguards, and the required privacy review are release-gate items; the recorded contract is sufficient to build and locally verify." The verification gate contradicted that decision, so the two files disagreed rather than the work being incomplete.
+- Earliest blocked stage: release. Nothing in the bundled item blocked implementation or local verification.
+- Change: the single item is now two. The locally provable half — processing inventory, attempt and expired-session retention pruning, identity and authentication-data export and erasure, access boundaries, log and inspection redaction, and the prohibited-analytics and stable-pseudonym checks — is owned and proven by completed `Task 7` and is checked. The deployment half — processor, region, transfer safeguards, final retention durations, and the privacy or legal review — stays in the Release Gate, where it was already listed. No acceptance criterion, data entity, task boundary, ownership, or proof expectation changed, and nothing was weakened to make failing code pass.
+- Proof receipts, all confirmed on the main thread by real exit status:
+  - `python3 .agents/scripts/run_proof.py slice -- mix check` — exit `0` (4541 passed, 6 properties, 1 excluded `:live` tag; `MIX_TEST_PARTITION=463620` passed explicitly because the runner injects it only for a bare `mix test`).
+  - `python3 .agents/scripts/run_proof.py slice -- mix dialyzer` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- mix deps.audit` — exit `0` (no vulnerabilities).
+  - `python3 .agents/scripts/run_proof.py slice -- mix sobelow --config` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets run test:e2e` — exit `0` (148 passed, 2 skipped, `chromium` and `mobile-chromium`).
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix release --overwrite` — exit `0`.
+- Failed checks: None.
+- Status: `In Progress` to `Verified`. Release readiness is unchanged and remains blocked on the production delivery provider and its processor agreement, sender domain, region and transfer safeguards; final retention durations; the required privacy or legal review and anonymisation confirmation; and wiring the production passwordless origin from `APP_ORIGIN` in `runtime.exs`.
+- Spec updates: `tasks.md` verification-gate item and status only. `requirements.md` and `design.md` are unchanged because the decision they record was already correct.
+
 ### 2026-07-23 - Extracted from project onboarding
 
 - Completed: Approved the hosted-access product requirements, including verified-email access, account-neutral responses, combined catalog behavior, pre-linked recovery, deferred two-proof email change, and persistent independently revocable device sessions.

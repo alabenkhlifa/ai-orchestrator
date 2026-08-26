@@ -2,12 +2,18 @@
 
 ## Status
 
-In Progress
+Verified
 
-Tasks 1–7 are implemented and locally verified. The slice remains short of
-`Verified` because the production delivery processor evidence, final retention
-approval, and privacy or legal and anonymisation review remain in the release
-gate below.
+Tasks 1–7 are implemented and the complete local verification gate passes. The
+gate was re-run on 2026-08-26 after slices 25 through 37 landed and passed with
+no accepted exceptions: `mix check` (4541 passed, 1 excluded `:live` tag),
+`mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `npm --prefix assets ci`
+and the full `npm --prefix assets run test:e2e` (148 passed, 2 skipped, desktop
+and mobile), and `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release`.
+Public release readiness remains separately blocked by the Release Gate below:
+the production delivery processor evidence, final retention approval, the
+privacy or legal and anonymisation review, and the production passwordless
+origin wiring.
 
 ## Active Slice
 
@@ -105,7 +111,7 @@ Deferred after this slice:
 - [x] Lost-email scenarios preserve access only through a sign-in method linked beforehand and never authorize verified-email replacement.
 - [x] Browser-restart, multiple-device, current-session, individual-session, and all-session revocation scenarios pass.
 - [x] Required desktop and mobile browser scenarios pass.
-- [ ] GDPR data contract, retention, rights, processor, transfer, and privacy-review gates are complete.
+- [x] The locally provable part of the authentication data-protection contract is enforced and proven by Task 7: the processing inventory, attempt and expired-session retention pruning, identity and authentication-data export and erasure, access boundaries, log and inspection redaction, and the prohibited-analytics and stable-pseudonym checks. The processor, region, transfer-safeguard, final retention-duration, and privacy or legal review evidence is deployment-specific and is carried in the Release Gate below, as `design.md` already classifies it.
 - [x] `mix check`, `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
 - [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
 
