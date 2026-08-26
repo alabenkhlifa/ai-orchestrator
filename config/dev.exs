@@ -138,6 +138,21 @@ config :sdd_orchestrator, :github,
 config :sdd_orchestrator, :passwordless,
   app_origin: System.get_env("APP_ORIGIN", "http://localhost:4000")
 
+# Under the isolated end-to-end server only, GitHub itself is replaced so the
+# authenticated onboarding path can be proven in a real browser without a live
+# GitHub App. The deterministic provider answers the token, identity, and
+# repository-discovery calls, and the authorize URL points at the harness's own
+# stand-in for GitHub's authorization page. Everything the product owns still
+# runs for real: its state and PKCE binding, its callback validation, its code
+# exchange, and its session rotation. An ordinary `mix phx.server` sets no
+# `E2E_MODE`, so it keeps the live `ReqProvider` and github.com.
+if e2e_mode? do
+  config :sdd_orchestrator, :github,
+    provider: SddOrchestrator.GitHubIntegration.FakeProvider,
+    authorize_url:
+      System.get_env("APP_ORIGIN", "http://localhost:4000") <> "/_e2e/github/authorize"
+end
+
 # Durable local DeviceStore standing in for the native worker in development.
 config :sdd_orchestrator, SddOrchestrator.Devices.DeviceStore.Local,
   start: true,

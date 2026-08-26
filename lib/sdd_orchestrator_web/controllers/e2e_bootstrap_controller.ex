@@ -410,6 +410,33 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     end
 
     defp enabled?, do: Application.get_env(:sdd_orchestrator, :e2e_bootstrap, false) == true
+
+    @doc """
+    Stands in for GitHub's own authorization page.
+
+    `/auth/github` builds its authorize URL from configuration, so under the
+    harness that URL points here. This mints one fresh authorization code and
+    returns the browser to the product's real callback, which then validates the
+    `state` against its live attempt, checks the browser binding, exchanges the
+    code through the deterministic provider, and rotates the session exactly as
+    it does against GitHub.
+
+    The code is unique per authorization, so each browser run resolves its own
+    GitHub identity and therefore its own account and empty workspace, and the
+    onboarding path runs from the beginning rather than restoring a workspace a
+    previous run already filled.
+
+    The return is a path on this server rather than the submitted
+    `redirect_uri`, so the stand-in cannot be turned into an open redirect even
+    though it is unreachable outside the harness.
+    """
+    def authorize(conn, params) do
+      if enabled?() do
+        query = URI.encode_query(state: params["state"], code: "e2e-" <> unique_suffix())
+        redirect(conn, to: "/auth/github/callback?" <> query)
+      else
+        send_resp(conn, :not_found, "")
+      end
     end
 
     # One hosted project whose owner is signed in through the application
@@ -511,6 +538,22 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         device_project_name: device_only.name,
         conflicting_project_id: twin && twin.id
       })
+    end
+
+    # Points the worker stand-in's folder picker at a freshly created Git
+    # repository, so a scenario that onboards a local repository gets one nobody
+    # else has connected.
+    #
+    # Without this the picker always opens the one configured stub folder, and a
+    # device repository may back only one project, so the first spec to complete
+    # local onboarding consumes it and every later spec correctly meets "this
+    # repository is already connected". Each caller takes its own repository
+    # instead of competing for that one.
+    defp run(conn, "local_repository", _params) do
+      directory = new_git_repository()
+      Application.put_env(:sdd_orchestrator, :device_worker_stub_folder, directory)
+
+      json(conn, %{repository_path: directory, repository_name: Path.basename(directory)})
     end
 
     # One pending invitation, reachable through the credential that was actually
@@ -1373,6 +1416,27 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         canonical_repository_id: repository_id
       })
       |> Repo.insert!()
+    end
+
+    # A real, empty-but-committed Git repository under the system temporary
+    # directory. It is real on purpose: folder validation, the portable identity,
+    # and the commit read all run for real against it.
+    defp new_git_repository do
+      directory = Path.join(System.tmp_dir!(), "sdd_e2e_repo_" <> unique_suffix())
+      File.mkdir_p!(directory)
+
+      git = fn arguments ->
+        {_, 0} = System.cmd("git", ["-C", directory | arguments], stderr_to_stdout: true)
+      end
+
+      git.(["init", "--quiet"])
+      git.(["config", "user.email", "e2e@example.com"])
+      git.(["config", "user.name", "E2E"])
+      File.write!(Path.join(directory, "README.md"), "e2e " <> unique_suffix() <> "\n")
+      git.(["add", "."])
+      git.(["commit", "-m", "init", "--quiet"])
+
+      directory
     end
 
     # The folder the worker stand-in's picker opens, which is this server's own

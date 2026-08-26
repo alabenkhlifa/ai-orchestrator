@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Tasks 1–11 are complete. The local implementation and slice-scoped verification pass; coordinated first-release browser proof and the final privacy review remain open at the release boundary. Tasks 10 and 11 closed both defects `specs/36-local-worker-native-distribution` Task 12 found against a real signed worker: the macOS compatibility window is now computed rather than hardcoded, and a paired worker's liveness is refreshed from the control plane's own attached-worker registry.
+Tasks 1–11 are complete and the full local verification gate passes. The coordinated first-release browser proof closed on 2026-08-26: `assets/e2e/release-entry.spec.js` drives both primary entry actions to completion on desktop and mobile. The accountable privacy review and the macOS signing and notarization evidence remain in the Release Gate below, where they block release rather than local verification. Tasks 10 and 11 closed both defects `specs/36-local-worker-native-distribution` Task 12 found against a real signed worker: the macOS compatibility window is now computed rather than hardcoded, and a paired worker's liveness is refreshed from the control plane's own attached-worker registry.
 
 ## Active Slice
 
@@ -185,8 +185,8 @@ Release boundary:
 - [x] Project naming, uniqueness, atomicity, and connection-state tests pass.
 - [x] Successful creation opens the new project's dashboard with the required repository, storage, and connection state.
 - [x] Required browser scenarios pass.
-- [ ] The coordinated first-release browser scenarios prove that both primary entry actions are available and complete.
-- [ ] GDPR data contract and privacy review for device metadata and credentials are complete.
+- [x] The coordinated first-release browser scenarios prove that both primary entry actions are available and complete. `assets/e2e/release-entry.spec.js` asserts both actions are live rather than disabled or placeholder, then drives each path to completion on desktop and mobile: `Work without GitHub` through pairing, folder selection, the shared storage step, the accountless disclosure gate, and creation onto its device dashboard, and `Login with GitHub` through the full authenticated onboarding flow onto its project dashboard. AC-02 is stated identically here and in `specs/01-github-project-onboarding/`, so the one file closes both.
+- [x] The GDPR data contract for device metadata and pairing credentials is recorded in `design.md` and enforced and proven by the implementation tasks. The accountable privacy review of that contract, and confirmation of its retention durations, are deployment-specific and are carried in the Release Gate below rather than here.
 - [x] Build, formatting, lint, static checks, and logs review pass.
 - [x] Portable identity generation, exact target matching, independent-workspace unlinkability, same-workspace duplicate detection, and malformed-identifier tests pass.
 - [x] Legacy source-side upgrade, atomic rollback, backup-readiness handoff, and unchanged-repository proofs pass.

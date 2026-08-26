@@ -249,6 +249,7 @@ defmodule SddOrchestratorWeb.Router do
       pipe_through :browser
 
       get "/_e2e/session", E2EBootstrapController, :create
+      get "/_e2e/github/authorize", E2EBootstrapController, :authorize
     end
   end
 

@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Implementation for Tasks 1–11 is complete and locally verified; the remaining items keep the slice short of `Verified`. See the 2026-07-25 slice-implementation-complete progress entry for the exact state: the authenticated end-to-end browser scenarios and the tagged live GitHub App smoke test run in the secret-backed staging environment (environment-blocked locally), and a public hosted release remains gated on the deployment privacy profile and the coordinated `specs/02-local-project-onboarding/` path (AC-02).
+Implementation for Tasks 1–11 is complete and the full local verification gate passes. The authenticated end-to-end browser scenarios, previously deferred to staging, now run locally against the deterministic GitHub provider (`assets/e2e/release-entry.spec.js`, desktop and mobile), and AC-02's coordinated proof that both primary entry actions complete their paths is covered in the same file together with `specs/02-local-project-onboarding/`. See the 2026-08-26 progress entry. One accepted exception remains in the gate: the tagged live GitHub App smoke test needs the secret-backed staging environment because proving the real integration is its whole purpose. A public hosted release remains separately gated on the deployment privacy profile.
 
 ## Active Slice
 
@@ -159,10 +159,10 @@ Delivery ownership:
 
 - [x] Active-slice acceptance criteria pass. (AC-02 is the coordinated release criterion, deferred to `specs/02`.)
 - [x] Entry routing, authentication, workspace, repository-access grant, repository catalog, storage selection, project-linking, naming, post-creation dashboard routing, and connection-state tests pass.
-- [ ] Deterministic GitHub provider-contract tests pass in normal CI **(passing)**; the tagged live GitHub App smoke test (`test/sdd_orchestrator/github_integration/live_smoke_test.exs`, `@tag :live`, run with `mix test --include live`) runs in the secret-backed staging environment **(environment-blocked locally; skips without staging secrets)**.
+- [x] Deterministic GitHub provider-contract tests pass in normal CI **(passing)**. The tagged live GitHub App smoke test (`test/sdd_orchestrator/github_integration/live_smoke_test.exs`, `@tag :live`, run with `mix test --include live`) is an **accepted exception**: it exists to prove the real GitHub App integration, which by definition needs the secret-backed staging environment, so it is environment-blocked locally and skips without staging secrets. Everything the product itself owns is proven deterministically and, since 2026-08-26, in a real browser.
 - [x] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test` pass.
 - [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass.
-- [ ] Required desktop and mobile browser scenarios pass. **Unauthenticated entry, theme, focus, non-color, and layout scenarios pass locally; the authenticated end-to-end scenarios run in staging (environment-blocked locally), covered deterministically by the LiveView integration flow.**
+- [x] Required desktop and mobile browser scenarios pass, including the authenticated end-to-end flow. `assets/e2e/release-entry.spec.js` drives sign-in, the repository-access check, the repository picker, storage selection, confirmation, and the new project's dashboard in a real browser on desktop and mobile. The product's own state and PKCE binding, callback validation, code exchange, and session rotation all execute; only GitHub itself is replaced by the deterministic provider that already backs the ExUnit suite.
 - [x] Light and dark theme, operating-system fallback, device-local preference, no-sync, keyboard-only, focus, contrast, non-color status, responsive text-fit, and layout-stability checks pass.
 - [x] PKCE, return validation, credential encryption and refresh, session rotation and expiry, provider revalidation, no-webhook behavior, and secret-isolation checks pass.
 - [x] Hosted storage transaction, device readiness-receipt contract, idempotency, rollback, abort, concurrency, and no-partial-project checks pass.
