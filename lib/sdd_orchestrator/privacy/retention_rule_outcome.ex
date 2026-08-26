@@ -73,6 +73,12 @@ defmodule SddOrchestrator.Privacy.RetentionRuleOutcome do
   # execution order and the per-rule advisory-lock key; this list owns the
   # names, sorted so the two cannot silently drift into "whatever order the
   # runner happens to use". Retention's own proof asserts the two agree.
+  #
+  # The `retention_rule_outcomes_rule_allowed` check constraint holds the same
+  # names a third time, so a rule added to `rules/0` alone fails loudly here
+  # (an invalid `Ecto.Enum` cast) rather than silently reaching
+  # `Retention`'s `log_unrecorded/1` branch, and one added here alone fails
+  # loudly at the constraint. Adding a rule means all three, in one change.
   @rules ~w(
     acknowledged_personal_ai_connections
     ai_runtime_observations
@@ -87,6 +93,7 @@ defmodule SddOrchestrator.Privacy.RetentionRuleOutcome do
     expired_delivery_commands
     expired_delivery_notifications
     expired_delivery_previews
+    expired_delivery_security_events
     expired_device_delivery_artifacts
     expired_device_delivery_checkpoints
     expired_device_delivery_commands

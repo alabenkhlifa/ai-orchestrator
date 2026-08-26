@@ -85,6 +85,7 @@ Required boundaries:
 - Choice: Give the retention runner a durable per-rule outcome record, following the existing participation cleanup-request precedent, rather than returning in-memory counts alone.
 - Reason: The current shared pruner reports counts and forgets them, so an interrupted or failing rule is invisible until someone notices data past its limit. Restart discovery and reconciliation cannot be proved against a value that only exists inside one pass.
 - Consequence: This slice adds an operational record of its own. It holds rule name, outcome, attempt count, and non-secret correlation only, and is itself subject to the minimization rules applied to retention diagnostics.
+- Recurring cost, accepted knowingly: the rule vocabulary ends up in three places — the runner's rule table, the record's enum, and a database check constraint — so adding any future retention rule requires a migration alongside the code. Two of the three are already compared by test. The database half has no automatic check and is the one that can fail silently, by leaving a rule unable to record its outcome at all; closing it means reading the live constraint definition and comparing it with the enum, which is a proof against the schema rather than a new dependency between modules.
 
 ### A Preview Record May Only Outlive Its Remote Counterpart, Never The Reverse
 

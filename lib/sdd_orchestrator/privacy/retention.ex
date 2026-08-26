@@ -108,6 +108,18 @@ defmodule SddOrchestrator.Privacy.Retention do
       operational-security log ceiling `AIRuntime.SecurityLog` documents.
       Emitting or pruning a security event never reads or changes any
       invitation, participant, profile, revocation, or account row.
+    * Guided-delivery operational-security events — a fixed, minimized
+      `DeliverySecurityEvent` row (specs/19 Task 4) is deleted 30 days after
+      its own `occurred_at` through
+      `SddOrchestrator.Privacy.DeliverySecurityLog`'s retention-capable local
+      sink. `occurred_at` is the only selector: the row carries no project
+      identifier to filter on, which is the schema's own minimization
+      decision, and all five allowlisted event types serve one
+      operational-review purpose under one window, so none of them is
+      selected separately. Expiring this log is deliberately inert with
+      respect to everything the log is *about* — no project authorization or
+      access state, no feature or run state, no accepted evidence, and no
+      other `delivery_*` row is read, updated, or deleted by it.
     * Guided-delivery temporary execution data — an inactive `RunCommand` is
       deleted 30 days after its purpose ended (`acknowledged_at` when present,
       otherwise `updated_at`), and a resolved `BlockingQuestion` is deleted 30
@@ -377,6 +389,17 @@ defmodule SddOrchestrator.Privacy.Retention do
   # value matches `@participation_window` above.
   @participation_security_log_window 30 * @day
 
+  # A guided-delivery operational-security event is the same kind of fixed,
+  # minimized evidence on the Slice 07 boundary, deleted 30 days after its own
+  # `occurred_at` through `DeliverySecurityLog`'s retention-capable local
+  # sink. It is its own named window even though the value matches
+  # `@participation_security_log_window` above: the two logs are separate
+  # sinks over separate boundaries, and tying them to one constant would make
+  # a later change to either lifetime silently move the other. For the same
+  # reason it is not `@delivery_temporary_window` below, which governs
+  # commands, questions, and artifact bytes rather than security evidence.
+  @delivery_security_log_window 30 * @day
+
   # A stable, arbitrary key so every instance contends for the same lock. It is
   # deliberately distinct from the whole-pruner key and from the personal
   # connection revocation sweep's key, so a contended revocation sweep never
@@ -426,12 +449,18 @@ defmodule SddOrchestrator.Privacy.Retention do
   # `SddOrchestrator.AIRuntime.PersonalConnectionRevocations` (613_477_218),
   # `SddOrchestrator.Privacy.ParticipationPropagation` (902_774_531), and the
   # four keys above are all far outside it. Reserving a band rather than
-  # scattering thirty-one more magic numbers is what keeps that disjointness
+  # scattering one more magic number per rule is what keeps that disjointness
   # checkable by reading one line, and each key is written out literally in
   # `rules/0` so it is stable across releases even if the list is reordered.
   # `SddOrchestrator.Privacy.RetentionRuleOutcome`'s own proof asserts the
   # whole set is pairwise distinct.
-  @rule_advisory_lock_band 1_900_000_001..1_900_000_031
+  #
+  # What the band guarantees is that it is contiguous and exclusive, not how
+  # wide it is: its width is only ever "as many keys as there are rules", so a
+  # new rule extends the upper bound by one and takes it. Extending it can
+  # never collide, because the three keys above and the four legacy sweep keys
+  # are all orders of magnitude away from `1_900_000_000`.
+  @rule_advisory_lock_band 1_900_000_001..1_900_000_032
 
   # The outcome record is operational evidence of one retention pass, so it
   # serves the same 30-day terminal window every other operational record in
@@ -605,6 +634,8 @@ defmodule SddOrchestrator.Privacy.Retention do
        1_900_000_018, &prune_participation_notifications/1},
       {:expired_participation_security_events, [:expired_participation_security_events],
        1_900_000_019, &prune_participation_security_events/1},
+      {:expired_delivery_security_events, [:expired_delivery_security_events], 1_900_000_032,
+       &prune_delivery_security_events/1},
       {:expired_delivery_commands, [:expired_delivery_commands], 1_900_000_020,
        &prune_delivery_commands/1},
       {:expired_delivery_checkpoints, [:expired_delivery_checkpoints], 1_900_000_021,
@@ -1304,6 +1335,18 @@ defmodule SddOrchestrator.Privacy.Retention do
   defp prune_participation_security_events(now) do
     cutoff = DateTime.add(now, -@participation_security_log_window, :second)
     SddOrchestrator.Privacy.ParticipationSecurityLog.prune(cutoff)
+  end
+
+  # A fixed, minimized guided-delivery security event is deleted 30 days after
+  # its own occurred_at through DeliverySecurityLog's retention-capable local
+  # sink, which owns the table and the delete statement itself, exactly as the
+  # participation rule directly above delegates to its own sink. This rule
+  # supplies only the window and the call, and neither it nor the statement it
+  # calls names any project authorization, feature, run, evidence, or other
+  # `delivery_*` row.
+  defp prune_delivery_security_events(now) do
+    cutoff = DateTime.add(now, -@delivery_security_log_window, :second)
+    SddOrchestrator.Privacy.DeliverySecurityLog.prune(cutoff)
   end
 
   # A finalized ("sent" or "failed") diagnostic is deleted 30 days after its

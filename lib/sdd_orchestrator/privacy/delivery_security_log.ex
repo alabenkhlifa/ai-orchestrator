@@ -57,10 +57,29 @@ defmodule SddOrchestrator.Privacy.DeliverySecurityLog do
   never take down a delivery request, and must never quietly widen the trail
   either.
 
-  This module writes rows only. The approved 30-day expiry over `occurred_at`
-  is a later specs/19 task, and production sink configuration and live
-  enforced expiry remain release-gate evidence.
+  ## Expiry
+
+  `prune/1` is this sink's deletion boundary, and it is the only one:
+  `SddOrchestrator.Privacy.Retention` supplies the 30-day window and the call
+  and owns nothing about the statement, exactly as it delegates to
+  `SddOrchestrator.Privacy.ParticipationSecurityLog.prune/1` for the
+  participation boundary. The delete selects on `occurred_at` alone. It takes
+  no project filter, because a row carries no project identifier to filter on
+  — that absence is the minimization decision this schema was built around,
+  not an omission to repair — and it takes no event-type filter either,
+  because all five event types serve one operational-review purpose under one
+  window, so a type-aware selector would only let one category outlive it.
+
+  Expiring this log changes nothing authoritative. The statement names
+  `delivery_security_events` and no other table: no project authorization or
+  access state, no feature or run state, no accepted evidence, and no other
+  `delivery_*` row is read, updated, or deleted by it.
+
+  Production sink configuration and live enforced expiry remain release-gate
+  evidence; this module provides deterministic local proof only.
   """
+
+  import Ecto.Query
 
   require Logger
 
@@ -174,6 +193,26 @@ defmodule SddOrchestrator.Privacy.DeliverySecurityLog do
   @doc "The complete allowlist of option keys `emit/3` may read from a caller."
   @spec allowed_opt_keys() :: [atom()]
   def allowed_opt_keys, do: @allowed_opt_keys
+
+  @doc """
+  Deletes every guided-delivery security event at or before `cutoff` and
+  returns the deleted row count.
+
+  This is the retention-capable sink's deletion boundary
+  `SddOrchestrator.Privacy.Retention` calls; the window is that module's, the
+  statement is this one's. `occurred_at` is the only selector — see this
+  module's "Expiry" — and the delete only ever touches
+  `delivery_security_events`. It never reads or changes a project, feature,
+  run, attempt, command, evidence, artifact, preview, participant, or account
+  row.
+  """
+  @spec prune(DateTime.t()) :: non_neg_integer()
+  def prune(cutoff) do
+    {count, _} =
+      Repo.delete_all(from event in DeliverySecurityEvent, where: event.occurred_at <= ^cutoff)
+
+    count
+  end
 
   defp record(entry) do
     Logger.warning(

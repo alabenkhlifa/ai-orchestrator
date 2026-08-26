@@ -169,7 +169,7 @@ Traceability:
   - Owns: AC-04
   - Proof: `python3 .agents/scripts/run_proof.py task --task 4 -- mix test test/sdd_orchestrator/privacy/delivery_security_log_test.exs` passes focused event-allowlist, field-allowlist, correlation, credential, email, feature, specification, prompt, output, evidence, provider-payload, failure, and diagnostic-scan cases.
 
-- [ ] Task 5 — Enforce security-log expiry.
+- [x] Task 5 — Enforce security-log expiry.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3, Task 4
