@@ -1,5 +1,14 @@
 # GitHub Project Onboarding Progress Log
 
+### 2026-08-27 - Correction: the sobelow gate did not hold when this slice was marked Verified
+
+- What happened: during this slice's gate I ran `mix sobelow --config` and it passed, then the browser matrix failed on a shared-fixture problem, so I added `new_git_repository/0` to the e2e bootstrap harness and re-ran only the browser matrix, the production proof, and `mix check`. `mix check` does not include sobelow. The new helper calls `File.mkdir_p!/1` and `File.write!/2`, which sobelow flags as `Traversal.FileModule`, so from that edit onward the security gate exited 1 while this slice's gate item was already recorded as passing.
+- Found on 2026-08-27 while running sobelow for `specs/38-worker-initiated-pairing`. It was not found by this slice's own gate, which is the point worth recording: re-running only the checks that failed is not the same as re-running the gate.
+- Assessment: a reviewed false positive, not a vulnerability. The path is built entirely inside the helper from `System.tmp_dir!/0` and a random suffix, no request value reaches it, and the whole module is compiled out of any build that does not set `:e2e_bootstrap`, so it does not exist in a production release.
+- Fix: a narrow, documented `# sobelow_skip ["Traversal.FileModule"]` on that helper, matching the convention `.sobelow-conf` already establishes for reviewed false positives. `mix sobelow --config` now exits `0`.
+- Status: unchanged. The gate item is true again and was true by inspection throughout, since the flagged code never shipped in a production build. The record was wrong, not the software.
+- Spec updates: this entry only.
+
 ### 2026-08-26 - Authenticated browser proof landed locally; slice Verified
 
 - Closed both open verification items. The authenticated end-to-end browser scenarios, previously deferred to the secret-backed staging environment, now run locally on desktop and mobile.

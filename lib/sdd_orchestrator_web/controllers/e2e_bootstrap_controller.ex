@@ -1421,6 +1421,12 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # A real, empty-but-committed Git repository under the system temporary
     # directory. It is real on purpose: folder validation, the portable identity,
     # and the commit read all run for real against it.
+    #
+    # The path is built entirely here from `System.tmp_dir!/0` and this module's
+    # own random suffix. No request value reaches it, and the whole module is
+    # compiled out of any build that does not set `:e2e_bootstrap`. Reviewed
+    # false positive.
+    # sobelow_skip ["Traversal.FileModule"]
     defp new_git_repository do
       directory = Path.join(System.tmp_dir!(), "sdd_e2e_repo_" <> unique_suffix())
       File.mkdir_p!(directory)
