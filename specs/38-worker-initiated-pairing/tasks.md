@@ -101,7 +101,8 @@ Traceability:
   - Owns: AC-09, entity:PairingIssuanceThrottle
   - Proof: Controller and integration tests prove one call returns exactly one code for an unbound attempt, caller-supplied identity or workspace fields are ignored rather than honored, requests beyond the allowed rate are refused without revealing any earlier code's fate, the throttle expires with its window, and no request or response body reaches a log.
 
-- [ ] Task 4 — Redeem a real code in the dashboard pairing form.
+- [x] Task 4 — Redeem a real code in the dashboard pairing form.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2

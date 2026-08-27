@@ -1,5 +1,24 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 4 complete: the field redeems a real code and the screen waits
+
+- The pairing field now calls `Pairing.bind_pairing/2` with this browser's own device workspace, so the submitted value is the thing that pairs rather than a value that was read and dropped.
+- Binding no longer produces a worker, so the screen needed a state it did not have. It shows "Code accepted. Finishing on your Mac…" and hides the pairing form, because re-showing the form after a successful bind reads as nothing having happened and invites the person to paste a code that is already used.
+- The screen catches up on its own. A connected LiveView polls `Devices.worker_status/1` every two seconds while a bound code waits, and stops as soon as the worker is detected or the person moves on. Only a connected socket schedules a poll, so the first static render leaks no timer.
+- Placeholder corrected. It advertised `4K7Q-2P9X`, a short code the product has never issued; the real code is an attempt id joined to a 43-character secret. It now reads "Paste the code from the worker app", and a test asserts the old example is gone.
+- One refusal message covers every rejected code, since `bind_pairing/2` already makes the reasons indistinguishable and saying more here would undo that.
+- The local worker stand-in kept its fallback, deliberately. Where it is configured — development and the browser suite, never a production build — a code that fails to bind still drives the flow, because no app exists there to issue a real one and other slices' browser scenarios type a placeholder. A real code binds for real first, in every environment, and a test asserts the bind actually claimed the code rather than the stand-in having quietly stood in for it.
+- Three failures during the work were mine, not the product's: the waiting flag was read inside a function component that never declared it; one assertion expected a refusal where re-binding to the same workspace is intentionally harmless; and one matched an apostrophe that HTML-escapes to `&#39;`.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (7 passed); the second is the regression across the local-onboarding flow, device setup, and every pairing suite (62 passed).
+
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/pairing_redemption_live_test.exs` — exit `0`.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/pairing_redemption_live_test.exs test/sdd_orchestrator_web/live/local_onboarding_live_test.exs test/sdd_orchestrator_web/live/local_onboarding_flow_test.exs test/sdd_orchestrator_web/live/device_setup_live_test.exs test/sdd_orchestrator/devices/pairing_test.exs test/sdd_orchestrator/devices/pairing_redemption_test.exs test/sdd_orchestrator/devices/unbound_pairing_attempt_test.exs` — exit `0`.
+
+- Directly applicable safety checks: `mix compile --warnings-as-errors` and `mix format --check-formatted` pass, and `mix credo --strict` reports no issues on the changed LiveView.
+- Failed checks: None.
+- Remaining: `Task 5` and `Task 6` are the worker app's own halves and are next. `Task 7` closes the round trip.
+- Spec updates: `Task 4` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed.
+
 ### 2026-08-27 - Task 2 complete on the corrected design: binding only
 
 - `Pairing.redeem_pairing/3` is replaced by `Pairing.bind_pairing/2`. It attaches the attempt to the redeemer's workspace with one conditional update and stops. It creates no worker and returns nothing the browser has to hold, which is the whole point of the correction: only the app knows its own versions and only the app should hold its credential.
