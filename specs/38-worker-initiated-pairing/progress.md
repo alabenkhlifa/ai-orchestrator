@@ -1,5 +1,22 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 8 complete: the app now performs the round trip, verified against the real app
+
+- `PairingLoop.next/4` decides what an unpaired app does each tick: fetch a code when it has none or cannot reach the control plane, replace one nearing expiry, otherwise try to finish. A paired app idles, and `AppDelegate` stops the timer entirely rather than idling in a loop.
+- The app discovers that an owner redeemed its code by attempting completion. It needs no new endpoint and no new state to read: an unbound attempt cannot be completed, so a refusal means "not yet" and a success means an owner bound it — and that same call already returned the credential. A refusal shows the person nothing, because it is not a failure they caused or can act on.
+- Replacing beats attempting when a code is inside the refresh margin, so the app never spends its last seconds on a completion attempt while the person may be about to paste that code.
+- Verified against the installed app rather than only in tests, which is the whole reason this task exists. The running app fetched a real unbound code from the live control plane; binding that code the way the dashboard does produced a worker within about six seconds, with no interaction. The worker carries `macos`, major `26`, protocol `1`, app `0.1.0` — the facts only the app can report — and the attempt is confirmed and linked to it.
+- What this task deliberately does not do: configure the paired worker. A worker-initiated pairing has no project yet by definition, and post-pairing setup needs one. `AC-08` promises the app finishes pairing, takes its credential, stops offering a code, and reports its state; what a paired worker may then do stays out of scope and belongs to `specs/33-local-worker-run-execution/`.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (7 passed); the second is the whole worker-app suite (208 passed).
+
+- Proof receipt: `Task 8` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp --filter PairingLoopTests` — exit `0`.
+- Proof receipt: `Task 8` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp` — exit `0`.
+
+- Directly applicable safety check: `swift build -c release` links the AppKit target, so the timer and completion wiring compile and not only the loop decision.
+- Failed checks: None.
+- Remaining: the slice verification gate, then `Verified`.
+- Spec updates: `Task 8` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed beyond the reopening already recorded.
+
 ### 2026-08-27 - Verified removed: the app performs none of the calls the round trip needs
 
 - Found by installing the app and using it, not by any check. `POST /pairing_codes` answered `201`, the app was running, and the pairing still could not complete.

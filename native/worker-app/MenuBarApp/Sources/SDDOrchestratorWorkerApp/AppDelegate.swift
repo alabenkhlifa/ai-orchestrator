@@ -34,6 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pairingCodeCopier: PairingCodeCopier?
     private var pairingCodeJustCopied = false
 
+    // The loop that actually closes the round trip. Without it the app fetched
+    // one code at startup, never replaced it, and never tried to finish, so a
+    // code the person pasted was never acted on.
+    private var pairingLoopTimer: Timer?
+    private let pairingLoopInterval: TimeInterval = 5
+    private var pairingCompletionInFlight = false
+    private let pairingCompletionPoster: PairingHTTPPosting = URLSessionPairingHTTPPoster()
+
     // Polls SddOrchestrator.Worker.ConnectionStatus (see
     // ConnectionStatusQuerier) only once this worker is known to be paired
     // — with no configuration, GatewayConnection never starts, so polling
@@ -561,23 +569,105 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         pairingCodeCopier = PairingCodeCopier(pasteboard: SystemPasteboard())
-        refreshPairingCode()
+        startPairingLoop()
     }
 
-    /// Asks for a code only while unpaired, and only replaces one that is about
-    /// to expire — the holder decides both. Once paired, whatever is held is
-    /// dropped rather than left copyable.
-    private func refreshPairingCode() {
-        guard currentStatus == .notPaired else {
-            pairingCodeHolder?.discard()
-            return
+    /// Ticks while this app is unpaired. Each tick does the one thing the
+    /// current state calls for, decided by `PairingLoop`.
+    private func startPairingLoop() {
+        pairingLoopTimer?.invalidate()
+
+        pairingLoopTimer = Timer.scheduledTimer(
+            withTimeInterval: pairingLoopInterval,
+            repeats: true
+        ) { [weak self] _ in
+            self?.runPairingLoopTick()
         }
 
-        pairingCodeHolder?.refreshIfNeeded { [weak self] _ in
+        runPairingLoopTick()
+    }
+
+    private func stopPairingLoop() {
+        pairingLoopTimer?.invalidate()
+        pairingLoopTimer = nil
+    }
+
+    private func runPairingLoopTick() {
+        guard let pairingCodeHolder else { return }
+
+        switch PairingLoop.next(status: currentStatus, codeState: pairingCodeHolder.state) {
+        case .idle:
+            // Paired. Nothing to fetch and nothing to try, so stop asking.
+            stopPairingLoop()
+            pairingCodeHolder.discard()
+            rebuildMenu()
+
+        case .refreshCode:
+            pairingCodeHolder.refreshIfNeeded { [weak self] _ in
+                DispatchQueue.main.async { self?.rebuildMenu() }
+            }
+
+        case .attemptCompletion(let code):
+            attemptPairingCompletion(with: code)
+        }
+    }
+
+    /// Tries to finish pairing with the held code. A refusal means no owner has
+    /// redeemed it yet, which is an ordinary answer and leaves the code in
+    /// place; a success means one has, and the same call already returned the
+    /// credential. Nothing is shown to the person for a refusal, because "not
+    /// yet" is not a failure they caused or can act on.
+    private func attemptPairingCompletion(with code: String) {
+        guard !pairingCompletionInFlight else { return }
+
+        pairingCompletionInFlight = true
+
+        let endpoint = DashboardURLProvider
+            .dashboardURL(infoDictionary: Bundle.main.infoDictionary)
+            .appendingPathComponent("worker_pairings")
+
+        let body = PairingCompletionRequestBody.build(code: code, selfReport: selfReport())
+
+        pairingCompletionPoster.post(url: endpoint, jsonObject: body) { [weak self] data, response, error in
             DispatchQueue.main.async {
-                self?.rebuildMenu()
+                guard let self else { return }
+
+                self.pairingCompletionInFlight = false
+
+                let statusCode = (response as? HTTPURLResponse)?.statusCode
+
+                switch PairingCompletionResponseParser.parse(
+                    statusCode: statusCode,
+                    data: data,
+                    transportError: error
+                ) {
+                case .success:
+                    // An owner redeemed it. The worker is authorized, so this
+                    // app stops offering a code and reports its own state.
+                    self.pairingCodeHolder?.discard()
+                    self.pairingCodeJustCopied = false
+                    self.urlPairingOverrideStatus = .pairedSettingUp
+                    self.stopPairingLoop()
+                    self.refreshStatus()
+
+                case .failure:
+                    // Not yet. Keep the code and keep waiting.
+                    break
+                }
             }
         }
+    }
+
+    private func selfReport() -> WorkerSelfReport {
+        WorkerSelfReport(
+            osFamily: "macos",
+            osMajor: String(ProcessInfo.processInfo.operatingSystemVersion.majorVersion),
+            protocolVersion: ProtocolVersionQuerier.query(
+                workerBinaryPath: workerBinaryPath,
+                runner: commandRunner
+            ),
+            appVersion: WorkerAppVersionReader.appVersion(infoDictionary: Bundle.main.infoDictionary)
+        )
     }
 
     @objc private func copyPairingCode(_ sender: Any?) {
