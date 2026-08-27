@@ -1,5 +1,25 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Verification gate passed; slice Verified
+
+- The gate found what focused proof could not, which is the argument for it existing. `mix check` failed with the retention rule registered in only one of the three places the framework closes it: `Retention.rules/0`, `RetentionRuleOutcome`'s `Ecto.Enum`, and the `retention_rule_outcomes_rule_allowed` check constraint. My task proof ran the retention suites I judged relevant and passed, because that contract is asserted in a delivery retention test I had no reason to name.
+- Fixed by adding the enum value and a migration extending the constraint, following the precedent migration for the previously added rule, which writes both directions out separately so `down` is a real inverse.
+- The advisory-lock band was also full: 32 rules, 32 reserved keys. Its own comment states the width is only ever "as many keys as there are rules" and that a new rule extends the upper bound by one, so the band is now `1_900_000_001..1_900_000_033` rather than a key invented outside it.
+- Two accepted exceptions, both confirmed as suite pollution rather than defects, and both passing in isolation together (60 passed):
+  - `SddOrchestrator.ProjectAssistant.SecurityLogTest` "emits nothing for a success". Its `capture_log` collected `[repository_initialization_security] event=confirm_plan outcome=denied_or_missing`, which is another async test's output. `capture_log` captures the global handler, so `assert log == ""` is fragile under parallel async execution. Pre-existing fragility in a specification this slice does not touch, and nothing of this slice's logs at `:info` during the async phase.
+  - `SddOrchestrator.Delivery.Worker.IsolationTest` fence-token test, the same load-sensitive failure recorded earlier in this repository's history.
+- Proof receipts, all confirmed on the main thread by real exit status:
+  - `python3 .agents/scripts/run_proof.py slice -- mix check` — 4580/4582 passed, 1 excluded `:live` tag, with the two accepted exceptions above.
+  - `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `... mix deps.audit`, `... mix sobelow --config` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `... npm --prefix assets run test:e2e` — exit `0` (153 passed, 2 skipped, on each of `chromium` and `mobile-chromium`).
+  - `python3 .agents/scripts/run_proof.py slice -- swift test --package-path native/worker-app/MenuBarApp` — exit `0` (201 passed).
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `... env MIX_ENV=prod mix release --overwrite` — exit `0`.
+- The changed pairing screen did not disturb the other slices' browser scenarios. The stand-in fallback kept them driving the flow with a placeholder code, which is why it was deliberately kept in Task 4.
+- Verified against the built artifact, not only the configuration: the production release contains no `E2E` and no `FakeProvider` module, so neither the harness nor the anonymous-issuance stand-in exists in a production build.
+- Status: `In Progress` to `Verified`. `capability:worker-initiated-pairing` is ready for implementation and local verification only.
+- Release readiness is separate and remains open: if the control plane is hosted, the processor, region, and transfer safeguards covering anonymous issuance requests reaching it; and confirmation of the retention window for unredeemed attempts and issuance-throttle counters in the accountable privacy review.
+- Spec updates: slice status and the verification gate. No requirement, design decision, acceptance criterion, or task boundary changed.
+
 ### 2026-08-27 - Task 7 complete: the round trip closes and the data rules hold
 
 - The whole path is proven in one scenario: the app obtains a code that belongs to nobody, polls and is told "not yet", the owner pastes it into the dashboard, the app's next poll succeeds and takes its own credential, and the workspace can discover the worker — with no further action anywhere.

@@ -461,7 +461,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   # new rule extends the upper bound by one and takes it. Extending it can
   # never collide, because the three keys above and the four legacy sweep keys
   # are all orders of magnitude away from `1_900_000_000`.
-  @rule_advisory_lock_band 1_900_000_001..1_900_000_032
+  @rule_advisory_lock_band 1_900_000_001..1_900_000_033
 
   # The outcome record is operational evidence of one retention pass, so it
   # serves the same 30-day terminal window every other operational record in

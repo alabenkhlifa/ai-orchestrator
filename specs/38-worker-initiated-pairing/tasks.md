@@ -2,7 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
+
+All seven tasks are complete and the full local verification gate passes. `capability:worker-initiated-pairing` is ready, for implementation and local verification only; release readiness stays separate and is listed in the release gates below.
 
 ## Active Slice
 
@@ -143,18 +145,18 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Every active acceptance criterion and data entity has one clear primary task owner.
-- [ ] Unbound and bound attempt states, one-way single-use binding, concurrency, foreign-workspace refusal, and completion of a bound attempt tests pass.
-- [ ] Expired, canceled, already-redeemed, and never-existed codes are proven indistinguishable to the caller.
-- [ ] Anonymous issuance, its rate limit, and its audit pass without honoring any caller-supplied identity or workspace.
-- [ ] `POST /worker_pairings`, the `Open in App` deep link, and the workspace-scoped `start_pairing/2` path are proven unchanged.
-- [ ] Required desktop and mobile browser scenarios for the redemption surface pass.
-- [ ] Worker-app tests for acquisition, refresh, presentation, clipboard, and the post-redemption transition pass.
-- [ ] Retention of unredeemed attempts and throttle counters passes, and the log, diagnostic, and no-analytics review finds no code or credential.
-- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check`, and the same through slice scope for `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test`, pass.
-- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
-- [ ] New decisions and invalidated proof are written back.
+- [x] Active-slice acceptance criteria pass.
+- [x] Every active acceptance criterion and data entity has one clear primary task owner.
+- [x] Unbound and bound attempt states, one-way single-use binding, concurrency, foreign-workspace refusal, and completion of a bound attempt tests pass.
+- [x] Expired, canceled, already-redeemed, and never-existed codes are proven indistinguishable to the caller.
+- [x] Anonymous issuance, its rate limit, and its audit pass without honoring any caller-supplied identity or workspace.
+- [x] `POST /worker_pairings`, the `Open in App` deep link, and the workspace-scoped `start_pairing/2` path are proven unchanged.
+- [x] Required desktop and mobile browser scenarios for the redemption surface pass.
+- [x] Worker-app tests for acquisition, refresh, presentation, clipboard, and the post-redemption transition pass.
+- [x] Retention of unredeemed attempts and throttle counters passes, and the log, diagnostic, and no-analytics review finds no code or credential.
+- [x] `python3 .agents/scripts/run_proof.py slice -- mix check`, and the same through slice scope for `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test`, pass.
+- [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
+- [x] New decisions and invalidated proof are written back.
 
 ## Blocked Decisions
 
