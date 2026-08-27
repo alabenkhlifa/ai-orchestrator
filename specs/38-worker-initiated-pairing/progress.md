@@ -1,5 +1,16 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Correction: the acceptance-criterion ownership map was wrong
+
+- Found before starting `Task 4`, by checking what it actually owns rather than trusting the map I wrote. `Task 4` delivers the dashboard redemption surface but owned `AC-01`, which describes the worker app obtaining a code and showing it in the menu bar. `Task 4` can neither deliver nor prove that. The validator accepted it because every criterion had exactly one owner; one owner is not the same as the right owner.
+- Second problem in the same map: `Task 2` owned `AC-04`, whose last clause is "the repository flow continues". That is only deliverable by `Task 4`'s LiveView, so the criterion had no owner that could prove all of it.
+- Corrected ownership: `Task 2` owns `AC-05` and `AC-06`, which is exactly what its domain proof already covers. `Task 4` owns `AC-04`, the user-visible redemption workflow. `Task 5` owns `AC-01` and `AC-07`.
+- `AC-01` and `AC-02` were also reworded so each is provable by one task. `AC-01` is now about the app obtaining and holding a live code. `AC-02` absorbed the menu-bar unpaired state it used to share with `AC-01`, alongside the click-to-copy behavior it already had. Nothing was weakened: both halves are still asserted, and `Task 6`'s proof line was updated to match.
+- No completed history was rewritten. `Task 1`, `Task 2`, and `Task 3` remain complete and their recorded proofs still cover what they claim. `Task 2` losing `AC-04` does not invalidate its proof; the domain behaviour it proved is unchanged, and `Task 4` will exercise that same function end to end.
+- Earliest stage blocked: active-slice implementation, which is why this was fixed before `Task 4` rather than after.
+- Failed checks: None. `validate_spec.py` and the global graph pass.
+- Spec updates: `requirements.md` `AC-01` and `AC-02` wording, and `tasks.md` `Owns:` lines for `Task 2`, `Task 4`, `Task 5` plus `Task 6`'s proof line. No workflow, business rule, design decision, task boundary, or capability edge changed.
+
 ### 2026-08-27 - Task 3 complete: anonymous issuance, bounded and audited
 
 - Added `POST /pairing_codes` (`PairingCodeController`) and `Pairing.issue_unbound_code/2`. An app that has never been paired holds no credential and knows no workspace, so it cannot authenticate to ask for a code, and this endpoint does not ask it to.

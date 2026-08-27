@@ -88,7 +88,7 @@ Traceability:
   - Depends on: Task 1
   - Purpose: Make redemption the single moment a code stops being inert and starts authorizing exactly one worker for exactly one owner.
   - Owned surfaces: The bind-and-complete operation in `Devices.Pairing`, its single-use and one-way binding enforcement, its ownership check against the redeeming owner's own device workspace, and its uniform refusal answer.
-  - Owns: AC-04, AC-05, AC-06
+  - Owns: AC-05, AC-06
   - Proof: Domain and transaction tests cover a valid redemption binding to the redeemer's own workspace and authorizing one worker, a second redemption of the same code being refused, concurrent redemptions where exactly one wins, redemption against a foreign workspace being refused, and expired, canceled, already-redeemed, and never-existed codes returning one indistinguishable answer.
 
 - [x] Task 3 — Expose anonymous code issuance with its rate limit and audit.
@@ -107,7 +107,7 @@ Traceability:
   - Depends on: Task 2
   - Purpose: Turn the pairing field into the redemption surface the workflow depends on, instead of a field whose value is discarded.
   - Owned surfaces: `LocalOnboardingLive`'s pairing form submission, its authorized redemption call, its success continuation into repository selection, its failure presentation for a refused code, and its placeholder and error copy.
-  - Owns: AC-01
+  - Owns: AC-04
   - Proof: LiveView tests cover a valid code pairing the worker and continuing the flow, a refused code showing one safe message that does not distinguish the reason, an empty submission being rejected before any call, and the copy no longer advertising a code format the product does not issue.
 
 - [ ] Task 5 — Acquire and refresh the code in the worker app.
@@ -116,7 +116,7 @@ Traceability:
   - Depends on: Task 3
   - Purpose: Keep an unpaired app holding a code the dashboard will still accept, without the person managing expiry.
   - Owned surfaces: Worker-app code acquisition against the bundle-resolved control-plane address, the refresh schedule ahead of expiry, the unreachable-control-plane state, and the retirement of a replaced code.
-  - Owns: AC-07
+  - Owns: AC-01, AC-07
   - Proof: Swift tests against the existing HTTP seam cover acquiring a code on first start, replacing it before expiry, surfacing an unreachable control plane rather than a stale code, and never retaining a replaced code.
 
 - [ ] Task 6 — Present the code and copy it from the menu bar.
@@ -126,7 +126,7 @@ Traceability:
   - Purpose: Give the person the one action the workflow asks of them, on the item they already read for status.
   - Owned surfaces: The unpaired menu-bar states, the status line as the copy action, the copy confirmation, and the absence of any automatic clipboard write.
   - Owns: AC-02
-  - Proof: Swift tests cover the unpaired menu offering the copy action, clicking it placing the full code on the clipboard and confirming, the clipboard being untouched until the person acts, and `Open Dashboard` and `Quit` remaining reachable.
+  - Proof: Swift tests cover the menu showing the unpaired state, clicking the status line placing the full code on the clipboard and confirming, the clipboard being untouched until the person acts, and `Open Dashboard` and `Quit` remaining reachable.
 
 - [ ] Task 7 — Complete the pairing round trip and enforce its data rules.
   - Size: Standard

@@ -56,8 +56,8 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 
 ## Acceptance Criteria
 
-- [AC-01] Given the app has never been paired, when it starts, then it obtains a pairing code and the menu bar shows that it is not paired with a code available.
-- [AC-02] Given the menu bar is showing a code, when the person clicks the status line, then the full code is on the clipboard and the app confirms it was copied.
+- [AC-01] Given the app has never been paired, when it starts, then it obtains a pairing code from the control plane and holds one that has not expired.
+- [AC-02] Given the app is unpaired and holding a code, when the person clicks the status line in the menu bar, then the menu shows that it is not paired, the full code is on the clipboard, and the app confirms it was copied.
 - [AC-03] Given a code was created by the app, when it is inspected before anyone redeems it, then it is attached to no Mac project space and grants no access.
 - [AC-04] Given the person pastes a valid code into the dashboard while authorized, when it is accepted, then the code is attached to that person's own Mac project space, one worker is authorized, and the repository flow continues.
 - [AC-05] Given a code was already redeemed, when the same code is submitted again, then it is refused and no second worker is authorized.
