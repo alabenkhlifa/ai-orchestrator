@@ -1,5 +1,84 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Verification gate passed on the corrected contract; slice Verified
+
+- Every gate command passes with no accepted exceptions.
+- One failure during the first attempt was mine and is recorded rather than accepted: `Delivery.Worker.IsolationTest` failed because I ran `swift test` concurrently with `mix check` in the same worktree, which is this repository's known shared-temporary-fixture collision. It passes alone (53 passed), and the gate was re-run with nothing else touching the tree rather than logged as an exception. An exception describes a limitation of the software; this was a limitation of how I ran the check.
+- Proof receipts, all confirmed on the main thread by real exit status:
+  - `python3 .agents/scripts/run_proof.py slice -- mix check` — exit `0` (4582 passed, 1 excluded `:live` tag, no exceptions).
+  - `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `... mix deps.audit`, `... mix sobelow --config` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `... npm --prefix assets run test:e2e` — exit `0` (153 passed on each of `chromium` and `mobile-chromium`).
+  - `python3 .agents/scripts/run_proof.py slice -- swift test --package-path native/worker-app/MenuBarApp` — exit `0` (210 passed).
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `... env MIX_ENV=prod mix release --overwrite` — exit `0`.
+- Verified against the built artifact as well as the configuration: the production release contains no `E2E` and no `FakeProvider` module.
+- What this slice now genuinely delivers, verified by reading the app rather than the database: an unpaired app fetches its own code and offers it on the menu bar's status line; the owner pastes it into the dashboard, which binds it to their own workspace and authorizes one worker; and the app notices, stops offering a code, and says the dashboard has taken over.
+- What it deliberately does not deliver, stated so nobody has to discover it: the worker this pairing authorizes has no project, folder, or coding agent, so it cannot connect or run anything. Configuring it is deferred and will need a credential this flow discards.
+- Status: `In Progress` to `Verified`. `capability:worker-initiated-pairing` is ready for implementation and local verification only.
+- Release readiness is separate and remains open: if the control plane is hosted, the processor, region, and transfer safeguards covering anonymous issuance; and confirmation of the retention window for unredeemed attempts and issuance-throttle counters in the accountable privacy review.
+- Spec updates: slice status and the verification gate only.
+
+### 2026-08-27 - Task 8 complete on the corrected contract, verified by reading the app
+
+- `WorkerStatus.handedOffToDashboard` added, shown as "Paired — continue in the dashboard". The success handler sets that instead of `pairedSettingUp`, so the app never claims a setup it has no project to complete.
+- Verified by reading the app's own menu through the accessibility API, which is what I should have done the previous two times instead of querying the database. Before binding, the live menu read "Not paired — click to copy your pairing code". After an owner bound the code, the same read returned "Paired — continue in the dashboard, missing value, Open Dashboard, Quit". The app's state, from the app.
+- Two further app-side checks, both from outside the test suite: no new unbound attempts appeared over the following twelve seconds, so the loop genuinely stopped rather than idling in place; and no worker configuration exists on disk, which is what the hand-off decision requires and what makes the deferred follow-on honest rather than hidden.
+- Regression guards added so the stuck state cannot return: `PairingCodeMenuTests` asserts the hand-off line names where to continue, offers no copy action, and is not equal to "Paired, setting up…" — the exact wording a real install got stuck on. `PairingLoopTests` asserts the hand-off status idles and offers no code.
+- Test rows created during verification were deleted from the development database, and the app is left installed and unpaired.
+- Proof receipt, confirmed on the main thread by real exit status (210 passed).
+
+- Proof receipt: `Task 8` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp` — exit `0`.
+
+- Directly applicable safety check: `swift build -c release` links the AppKit target.
+- Failed checks: None.
+- Remaining: the slice verification gate, then `Verified`.
+- Spec updates: `Task 8` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed beyond the `AC-08` correction already recorded.
+
+### 2026-08-27 - AC-08 corrected: the app hands off instead of claiming a setup it cannot finish
+
+- Found by the user on a real install: the menu bar sat on "Paired, setting up…" with no code and no way to pair. It was paired, by my own verification a few minutes earlier, and it could never leave that state.
+- The defect: `Task 8`'s success handler did not even bind the completion result. It discarded the credential, set `urlPairingOverrideStatus = .pairedSettingUp`, and stored nothing, so the app claimed a setup that had no project to complete against and could never finish.
+- Why my verification missed it, which is the part worth keeping: I said I had checked the real app, but what I actually queried was the database. A worker row appeared, so I called the round trip closed. That is the server's half again — the same mistake that caused the previous reopening. The correct check was what the app held afterwards, and it held nothing.
+- Decision, chosen by the user from three options: the app must not claim it is paired or setting up. The pairing exists on the control plane so the dashboard sees a worker and onboarding can continue; the app says the dashboard has taken over and stops there.
+- `AC-08` reworded to match, and the workflow and scope lines with it. Nothing was weakened: the previous wording promised the app "receives its own credential", which it cannot usefully keep without a project, so the promise was unkeepable rather than merely unmet.
+- The limitation is now stated rather than implied, in `Out of Scope`, in a design consequence, and as a risk: a worker paired this way is authorized but cannot connect or run anything until something gives it a project, a folder, and an agent. That follow-on will need a credential this flow discards, and it is recorded in the deferred boundary.
+- Rejected, and recorded as rejected: storing the credential now with an unset project. That needs a storage contract for a partially configured worker, which is a larger decision than this slice should make alone.
+- Recovery performed on the user's machine: the app was quit, which clears the in-memory override, and the two `pairing_attempts` rows and one `local_workers` row my verification created were deleted. Nothing had been written to disk, so relaunching returns it to `Not paired` with a fresh code.
+- `Task 8` reopened. Its loop and its decision function are unchanged and correct; only the success handler and the state it shows must change.
+- Failed checks: none failing. `mix check` passed clean at the gate (4582 passed) while this defect was present, which is exactly why it is recorded here rather than treated as covered.
+- Spec updates: `requirements.md` `AC-08`, one workflow step, one in-scope line, and a new out-of-scope line. `design.md` one new decision and one new risk. `tasks.md` `Task 8` reopened with corrected owned surfaces and proof, and one new deferred item.
+
+### 2026-08-27 - Task 8 complete: the app now performs the round trip, verified against the real app
+
+- `PairingLoop.next/4` decides what an unpaired app does each tick: fetch a code when it has none or cannot reach the control plane, replace one nearing expiry, otherwise try to finish. A paired app idles, and `AppDelegate` stops the timer entirely rather than idling in a loop.
+- The app discovers that an owner redeemed its code by attempting completion. It needs no new endpoint and no new state to read: an unbound attempt cannot be completed, so a refusal means "not yet" and a success means an owner bound it — and that same call already returned the credential. A refusal shows the person nothing, because it is not a failure they caused or can act on.
+- Replacing beats attempting when a code is inside the refresh margin, so the app never spends its last seconds on a completion attempt while the person may be about to paste that code.
+- Verified against the installed app rather than only in tests, which is the whole reason this task exists. The running app fetched a real unbound code from the live control plane; binding that code the way the dashboard does produced a worker within about six seconds, with no interaction. The worker carries `macos`, major `26`, protocol `1`, app `0.1.0` — the facts only the app can report — and the attempt is confirmed and linked to it.
+- What this task deliberately does not do: configure the paired worker. A worker-initiated pairing has no project yet by definition, and post-pairing setup needs one. `AC-08` promises the app finishes pairing, takes its credential, stops offering a code, and reports its state; what a paired worker may then do stays out of scope and belongs to `specs/33-local-worker-run-execution/`.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (7 passed); the second is the whole worker-app suite (208 passed).
+
+- Proof receipt: `Task 8` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp --filter PairingLoopTests` — exit `0`.
+- Proof receipt: `Task 8` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp` — exit `0`.
+
+- Directly applicable safety check: `swift build -c release` links the AppKit target, so the timer and completion wiring compile and not only the loop decision.
+- Failed checks: None.
+- Remaining: the slice verification gate, then `Verified`.
+- Spec updates: `Task 8` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed beyond the reopening already recorded.
+
+### 2026-08-27 - Verified removed: the app performs none of the calls the round trip needs
+
+- Found by installing the app and using it, not by any check. `POST /pairing_codes` answered `201`, the app was running, and the pairing still could not complete.
+- Three gaps, all in the `AppDelegate` wiring rather than in anything a test covered:
+  - `refreshPairingCode()` is called once from `setUpPairingCode()` and never again, so the held code is fetched once and never replaced. Ten minutes later it expires and the menu offers something the dashboard refuses, which is exactly what `AC-07` exists to prevent.
+  - `refreshPairingStatus()` is likewise called once at startup, so an app that starts unpaired never re-checks.
+  - The app never attempts completion with its held code at all. `PairingFlowController` is triggered only by the `sddworker://` deep link, so nothing calls `POST /worker_pairings` with the code the menu is showing. `AC-08` describes the app finishing for itself, and no code path did that.
+- Why the proofs missed it, which is the part worth keeping: `Task 5` and `Task 6` tested the Core decisions — when to refresh, what the menu says — and both are correct. `Task 7` proved the round trip at the domain level, calling `bind_pairing/2` then `complete_pairing/2` directly. None of them exercised the AppKit wiring that has to perform those calls on a schedule. I then wrote that the round trip was closed, on evidence that covered only the half a test could reach easily.
+- The slice verification gate did not catch it either, and could not have: it runs `mix check`, the browser matrix, and `swift test`, and none of those drive a running menu-bar app against a live control plane.
+- Changes: `Verified` removed and the verification gate unchecked. `Task 8` added, owning the app's unpaired polling schedule, the periodic refresh, the completion attempt, and stopping once paired. `AC-07` moves from `Task 5` and `AC-08` from `Task 7` to `Task 8`, because the task that delivers an observable behaviour should own the criterion for it. `capability:worker-initiated-pairing` now becomes ready after `Task 8` rather than `Task 7`; it has no consumers, so nothing downstream is affected.
+- `Tasks 1` through `7` stay complete and their proofs stand. They delivered their owned surfaces; they simply no longer own criteria they could not finish delivering on their own.
+- `design.md` gains the decision that the app discovers binding by attempting completion — a refusal means not yet, a success means an owner redeemed it — and its earlier claim that the app "learns it has been bound by the status check it already performs" is corrected, since no such check ran while unpaired. Assuming that was already true is what allowed the premature `Verified`.
+- Failed checks: none currently failing; the gap is missing behaviour rather than a failing assertion, which is why nothing reported it.
+- Spec updates: `tasks.md` status, capability readiness, `Task 7` owned surfaces, `Owns:` lines for `Task 5` and `Task 7`, the new `Task 8`, and the verification gate. `design.md` approach and one new decision. No requirement, workflow, business rule, or acceptance-criterion wording changed.
+
 ### 2026-08-27 - Verification gate passed; slice Verified
 
 - The gate found what focused proof could not, which is the argument for it existing. `mix check` failed with the retention rule registered in only one of the three places the framework closes it: `Retention.rules/0`, `RetentionRuleOutcome`'s `Ecto.Enum`, and the `retention_rule_outcomes_rule_allowed` check constraint. My task proof ran the retention suites I judged relevant and passed, because that contract is asserted in a delivery retention test I had no reason to name.

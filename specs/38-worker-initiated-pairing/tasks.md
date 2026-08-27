@@ -4,7 +4,10 @@
 
 Verified
 
-All seven tasks are complete and the full local verification gate passes. `capability:worker-initiated-pairing` is ready, for implementation and local verification only; release readiness stays separate and is listed in the release gates below.
+All eight tasks are complete and the full local verification gate passes.
+`capability:worker-initiated-pairing` is ready, for implementation and local
+verification only; release readiness stays separate and is listed in the
+release gates below.
 
 ## Active Slice
 
@@ -19,7 +22,7 @@ Requires:
 
 Provides:
 
-- `capability:worker-initiated-pairing` — ready after `Task 7`.
+- `capability:worker-initiated-pairing` — ready after `Task 8`.
 
 ## Slice Size Gate
 
@@ -56,6 +59,7 @@ Excluded:
 
 Deferred after this slice:
 
+- Configuring a worker paired this way: giving it a project, a repository folder, and a coding agent so it can actually connect. It will need a credential this flow does not retain.
 - Retiring the deep link, or unifying the two entry points behind one surface, if usage later shows one is redundant.
 - Showing the person which worker a redemption authorized, beyond the connection state the app already reports.
 
@@ -120,7 +124,7 @@ Traceability:
   - Depends on: Task 3
   - Purpose: Keep an unpaired app holding a code the dashboard will still accept, without the person managing expiry.
   - Owned surfaces: Worker-app code acquisition against the bundle-resolved control-plane address, the refresh schedule ahead of expiry, the unreachable-control-plane state, and the retirement of a replaced code.
-  - Owns: AC-01, AC-07
+  - Owns: AC-01
   - Proof: Swift tests against the existing HTTP seam cover acquiring a code on first start, replacing it before expiry, surfacing an unreachable control plane rather than a stale code, and never retaining a replaced code.
 
 - [x] Task 6 — Present the code and copy it from the menu bar.
@@ -139,9 +143,19 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 4, Task 6
   - Purpose: Prove the two halves meet: a code shown by the app, redeemed in the dashboard, brings the worker online without the person returning to the app, and leaves nothing behind.
-  - Owned surfaces: The app's transition out of the unpaired state after an external redemption, retention and deletion of unredeemed unbound attempts, the diagnostic exclusion of codes and credentials across both sides, and the `capability:worker-initiated-pairing` readiness write-back.
-  - Owns: AC-08, AC-10, AC-11
+  - Owned surfaces: Retention and deletion of unredeemed unbound attempts, and the diagnostic exclusion of codes and credentials across both sides.
+  - Owns: AC-10, AC-11
   - Proof: An integration scenario pairs a worker end to end from an app-issued code bound in the dashboard and completed by the app through `POST /worker_pairings`, showing the app reaching its connected state without further input; retention tests prove an unredeemed attempt is discarded once unusable; and a log and diagnostic review across the control plane and the app finds no code, credential, or fragment of either.
+
+- [x] Task 8 — Run the app's pairing loop so the round trip actually closes.
+  - Status: Complete. Reopened once: the success handler discarded the credential and set a permanent `pairedSettingUp`, which left a real install stuck on a setup that never finishes.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 5, Task 6, Task 7
+  - Purpose: Make the app perform, on a schedule, the calls the rest of this slice proved: replace its code before expiry, try to finish pairing, and stop once it has.
+  - Owned surfaces: The unpaired polling schedule in `AppDelegate`, the periodic code refresh, the completion attempt against `POST /worker_pairings` using the held code, the hand-off state shown once completion succeeds, stopping the loop then, and the `capability:worker-initiated-pairing` readiness write-back.
+  - Owns: AC-07, AC-08
+  - Proof: Swift tests drive the loop's decisions against the existing HTTP and command seams: an unpaired tick refreshes an expiring code, a tick attempts completion with the held code, a refused completion leaves the code and keeps waiting, a successful completion discards the code and shows the hand-off state without claiming a setup, and a paired tick stops polling.
 
 ## Verification Gate
 
