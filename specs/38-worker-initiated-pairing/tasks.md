@@ -38,7 +38,7 @@ Included:
 
 - An unbound `PairingAttempt` state and the constraints that keep its two valid shapes reachable and the third unreachable.
 - An anonymous issuance endpoint with its rate limit and audit.
-- One authorized bind-and-complete redemption that attaches the attempt to the redeeming owner's device workspace and authorizes one worker.
+- One authorized binding that attaches the attempt to the redeeming owner's device workspace, with completion left to the app through the existing endpoint.
 - The dashboard pairing form redeeming a real code, and its corrected placeholder.
 - Worker-app code acquisition, expiry-driven refresh, menu-bar presentation, and clipboard copy.
 - The app's own transition out of the unpaired state once redemption happened elsewhere.
@@ -81,15 +81,15 @@ Traceability:
   - Owns: AC-03, entity:PairingAttempt
   - Proof: Migration and schema tests prove an unbound attempt inserts, a bound attempt inserts, the mixed invalid state is rejected by the database, every pre-existing attempt remains valid and bound, and no existing workspace-scoped caller changed behavior.
 
-- [x] Task 2 — Implement authorized bind-and-complete redemption.
-  - Status: Complete.
-  - Size: Exception — binding the workspace and authorizing the worker are one transaction; an attempt that is bound but not completed is a workspace-attached credential with no holder.
+- [ ] Task 2 — Implement authorized binding of a code to the redeemer's workspace.
+  - Status: Reopened. The first implementation also created the worker, which only the app can describe and only the app should hold a credential for.
+  - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
-  - Purpose: Make redemption the single moment a code stops being inert and starts authorizing exactly one worker for exactly one owner.
-  - Owned surfaces: The bind-and-complete operation in `Devices.Pairing`, its single-use and one-way binding enforcement, its ownership check against the redeeming owner's own device workspace, and its uniform refusal answer.
+  - Purpose: Make binding the single moment a code stops being inert and becomes attached to exactly one owner's workspace, leaving completion to the app that will hold the credential.
+  - Owned surfaces: The bind operation in `Devices.Pairing`, its single-use and one-way binding enforcement, its ownership check against the redeeming owner's own device workspace, and its uniform refusal answer.
   - Owns: AC-05, AC-06
-  - Proof: Domain and transaction tests cover a valid redemption binding to the redeemer's own workspace and authorizing one worker, a second redemption of the same code being refused, concurrent redemptions where exactly one wins, redemption against a foreign workspace being refused, and expired, canceled, already-redeemed, and never-existed codes returning one indistinguishable answer.
+  - Proof: Domain tests cover a valid binding attaching the attempt to the redeemer's own workspace and creating no worker, a second binding of the same code being refused, concurrent bindings where exactly one wins, binding against a foreign workspace being refused, expired, canceled, already-bound, and never-existed codes returning one indistinguishable answer, and a bound attempt then completing through `complete_pairing/2` to issue the worker and its credential.
 
 - [x] Task 3 — Expose anonymous code issuance with its rate limit and audit.
   - Status: Complete.
@@ -108,7 +108,7 @@ Traceability:
   - Purpose: Turn the pairing field into the redemption surface the workflow depends on, instead of a field whose value is discarded.
   - Owned surfaces: `LocalOnboardingLive`'s pairing form submission, its authorized redemption call, its success continuation into repository selection, its failure presentation for a refused code, and its placeholder and error copy.
   - Owns: AC-04
-  - Proof: LiveView tests cover a valid code pairing the worker and continuing the flow, a refused code showing one safe message that does not distinguish the reason, an empty submission being rejected before any call, and the copy no longer advertising a code format the product does not issue.
+  - Proof: LiveView tests cover a valid code being bound to this browser's own workspace and the screen reporting that the app can now finish, a refused code showing one safe message that does not distinguish the reason, an empty submission being rejected before any call, and the copy no longer advertising a code format the product does not issue.
 
 - [ ] Task 5 — Acquire and refresh the code in the worker app.
   - Size: Standard
@@ -135,13 +135,13 @@ Traceability:
   - Purpose: Prove the two halves meet: a code shown by the app, redeemed in the dashboard, brings the worker online without the person returning to the app, and leaves nothing behind.
   - Owned surfaces: The app's transition out of the unpaired state after an external redemption, retention and deletion of unredeemed unbound attempts, the diagnostic exclusion of codes and credentials across both sides, and the `capability:worker-initiated-pairing` readiness write-back.
   - Owns: AC-08, AC-10, AC-11
-  - Proof: An integration scenario pairs a worker end to end from an app-issued code redeemed in the dashboard and shows the app reaching its connected state without further input; retention tests prove an unredeemed attempt is discarded once unusable; and a log and diagnostic review across the control plane and the app finds no code, credential, or fragment of either.
+  - Proof: An integration scenario pairs a worker end to end from an app-issued code bound in the dashboard and completed by the app through `POST /worker_pairings`, showing the app reaching its connected state without further input; retention tests prove an unredeemed attempt is discarded once unusable; and a log and diagnostic review across the control plane and the app finds no code, credential, or fragment of either.
 
 ## Verification Gate
 
 - [ ] Active-slice acceptance criteria pass.
 - [ ] Every active acceptance criterion and data entity has one clear primary task owner.
-- [ ] Unbound and bound attempt states, one-way single-use binding, concurrency, and foreign-workspace refusal tests pass.
+- [ ] Unbound and bound attempt states, one-way single-use binding, concurrency, foreign-workspace refusal, and completion of a bound attempt tests pass.
 - [ ] Expired, canceled, already-redeemed, and never-existed codes are proven indistinguishable to the caller.
 - [ ] Anonymous issuance, its rate limit, and its audit pass without honoring any caller-supplied identity or workspace.
 - [ ] `POST /worker_pairings`, the `Open in App` deep link, and the workspace-scoped `start_pairing/2` path are proven unchanged.

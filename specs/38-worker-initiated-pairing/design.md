@@ -16,9 +16,11 @@ Split the attempt's life into two moments that are today one.
 
 Creation becomes anonymous and unbound. A new endpoint mints a `PairingAttempt` with no workspace and returns the code. The record grants nothing: every path that authorizes a worker requires a workspace, and this record has none.
 
-Binding and completion stay together and stay authorized. When the owner submits the code in the dashboard, one transaction attaches their own device workspace to the attempt and completes pairing exactly as it does now. An attempt can be bound once; binding and completion cannot be separated, because an attempt that is bound but not completed is a workspace-attached credential nobody is holding.
+Binding stays authorized and stops there. When the owner submits the code in the dashboard, one conditional update attaches their own device workspace to the attempt. An attempt can be bound once. Binding does not create the worker, because the dashboard is not the worker and does not know what it is.
 
-The app keeps a live code by replacing it before expiry, and learns it has been paired by the status check it already performs, so the person never returns to the app to finish.
+Completion stays where it already is. The app then posts the same code to the existing `POST /worker_pairings`, reporting its own operating-system and protocol versions and receiving its own credential. That is the endpoint's existing job and the only place those facts are known, so nothing new has to learn them.
+
+The app keeps a live code by replacing it before expiry, and learns it has been bound by the status check it already performs, so the person never returns to the app to finish.
 
 ## Components Affected
 
@@ -48,8 +50,8 @@ Required boundaries:
 
 - New: an anonymous request that mints one unbound attempt and returns its code once. It accepts no caller-supplied identity, workspace, project, or secret.
 - Changed: `Devices.Pairing.start_pairing/2` keeps its workspace-scoped behavior for the existing dashboard-issued and deep-link paths, which continue to work unchanged.
-- New: a bind-and-complete operation taking a code and the redeeming owner's device workspace, returning the same worker and credential shape `complete_pairing/2` returns today.
-- Unchanged: `POST /worker_pairings` and its response contract, so `specs/36`'s deep-link pairing keeps working exactly as verified.
+- New: a bind operation taking a code and the redeeming owner's device workspace, attaching the attempt to it and returning nothing the browser must hold.
+- Unchanged: `POST /worker_pairings` and its response contract, so `specs/36`'s deep-link pairing keeps working exactly as verified. It is also how a worker-initiated pairing finishes, so both origins complete through one endpoint.
 - Unchanged: the code format above, so one redemption path accepts codes from either origin.
 
 ## Decisions and Tradeoffs
@@ -60,11 +62,18 @@ Required boundaries:
 - Reason: An unpaired app has no workspace identity — establishing one is what pairing is for. Minting unbound is the only option that lets the app show a code without either inventing a workspace or letting an anonymous caller name someone else's.
 - Consequence: A leaked, unredeemed code is worth nothing, which is the point. The cost is a nullable column with two valid states, and a schema constraint to keep the invalid third state unreachable.
 
-### Binding and completion are one transaction
+### Binding and completion are separate steps, each done by the party that can
 
-- Choice: Redeeming binds the workspace and authorizes the worker together, or does neither.
-- Reason: An attempt that is bound but not completed is a workspace-attached credential with no holder — a state with no legitimate reader and a real blast radius.
-- Consequence: The dashboard cannot offer a preview step that validates a code without redeeming it.
+- Choice: Redeeming binds the attempt to the owner's workspace and stops. The app completes it afterwards through the existing `POST /worker_pairings` and receives its own credential.
+- Reason: Only the app knows its operating-system and protocol versions, and only the app should hold its credential. A dashboard-created worker has neither: it is reported `:incompatible` by `WorkerDiscovery` because it can state no versions, and its credential is handed to a browser that has no use for it and no way to pass it on.
+- Consequence: The worker appears a moment after the code is accepted rather than instantly, so the dashboard shows the pairing step completing rather than a worker already present. The dashboard also cannot offer a preview step that validates a code without binding it.
+- Replaces an earlier decision that made binding and completion one transaction. That decision's reason — that an attempt bound but not completed is a workspace-attached credential with no holder — was wrong. It is exactly the normal state of today's dashboard-issued pairing, where `start_pairing/2` creates a bound attempt and the worker completes it later. The state has always existed and has always been safe, because the code is what completes it and only its holder has that.
+
+### An unbound attempt still cannot be completed
+
+- Choice: Nothing new guards `POST /worker_pairings` against an unbound attempt; the guards Task 1 already added do it.
+- Reason: `complete_pairing/2` builds the worker with the attempt's workspace. For an unbound attempt that is `nil`, which `LocalWorker.create_changeset/2` rejects as a required field, and the check constraint independently forbids confirming an attempt that belongs to no workspace. Two separate mechanisms already refuse it.
+- Consequence: The safety property survives splitting the steps, so exposing anonymous issuance did not widen what a code can do before an owner binds it.
 
 ### Collision-freedom stays structural
 

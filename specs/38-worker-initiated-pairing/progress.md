@@ -1,5 +1,18 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Design correction: binding and completion are separate, and Task 2 reopens
+
+- Found by `Task 4`'s own proof, not by review. Four LiveView tests failed: after a valid code was redeemed, the screen never reached `data-worker-status="detected"`. The cause is not the test. `WorkerDiscovery.status/2` reports a worker `:incompatible` when it states no `os_family`, `os_major`, or `protocol_version`, and unreachable when it has no `last_seen_at`. A worker the dashboard creates has none of those, because the dashboard is not the worker.
+- The deeper problem the failure exposed: `redeem_pairing/3` returned the per-worker credential to the browser. The app needs that credential to connect, and a browser cannot hand it over. The flow as designed could never have produced a working worker.
+- The decision that caused it was mine and its stated reason was false. "Binding and completion are one transaction" was justified by claiming that an attempt bound but not completed is a workspace-attached credential with no holder. That is exactly the normal state of today's dashboard-issued pairing: `start_pairing/2` creates a bound attempt and the worker completes it later through `POST /worker_pairings`. The state has always existed and has always been safe, because the code is what completes it and only its holder has that.
+- Corrected design, now recorded in `design.md` with the replaced tradeoff kept: redemption binds the attempt to the owner's workspace and stops. The app completes it through the existing `POST /worker_pairings`, reporting its own versions and receiving its own credential. Each step is done by the party that can actually do it.
+- The safety property survives the split and needs nothing new to enforce it. `complete_pairing/2` builds the worker with the attempt's workspace; for an unbound attempt that is `nil`, which `LocalWorker.create_changeset/2` rejects as required, and `Task 1`'s check constraint independently forbids confirming an attempt that belongs to no workspace. Two separate mechanisms already refuse it.
+- `Task 2` reopens. Its `Size:` drops from `Exception` to `Standard`, because binding alone is one conditional update and no longer spans two things that must be atomic together. Its committed code and test need reworking; the commit stays in history rather than being rewritten.
+- `Task 1` and `Task 3` are unaffected and stay complete. Neither the unbound state nor anonymous issuance changes.
+- Acceptance criteria reworded to match, without weakening any: `AC-04` now ends at the flow continuing once the worker comes online, `AC-05` is about a second binding rather than a second worker, and `AC-08` now includes the app receiving its own credential.
+- Failed checks: `Task 4`'s proof is failing and stays failing until `Task 2` is reworked. That is the correct order; the code is wrong, not the test.
+- Spec updates: `requirements.md` workflow step 5, one business rule, and `AC-04`, `AC-05`, `AC-08`. `design.md` approach, the replaced decision, and interfaces. `tasks.md` `Task 2`, `Task 4`'s proof, `Task 7`'s proof, the implementation boundary, and one verification-gate line.
+
 ### 2026-08-27 - Correction: the acceptance-criterion ownership map was wrong
 
 - Found before starting `Task 4`, by checking what it actually owns rather than trusting the map I wrote. `Task 4` delivers the dashboard redemption surface but owned `AC-01`, which describes the worker app obtaining a code and showing it in the menu bar. `Task 4` can neither deliver nor prove that. The validator accepted it because every criterion had exactly one owner; one owner is not the same as the right owner.
