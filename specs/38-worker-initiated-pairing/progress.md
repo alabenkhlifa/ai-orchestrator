@@ -1,5 +1,23 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 5 complete: the app holds a live code of its own
+
+- Added `PairingCode`, `PairingCodeResponseParser`, and `PairingCodeHolder` to `SDDOrchestratorWorkerCore`. The holder asks `POST /pairing_codes` for a code when it has none and replaces it a minute before expiry, so a person who walks away and comes back copies something the dashboard still accepts rather than hitting a refusal they did not cause and could not diagnose.
+- It sends nothing with the request, and a test asserts the body is empty. The app has no workspace, project, identity, or secret to name, which is the whole reason the endpoint is anonymous.
+- A replacement drops the code it replaced in the same step, so the app never holds two and never shows the older one. A test distinguishes them by value rather than by count.
+- An unreachable or refusing control plane is its own state, not an absence. `PairingCodeState.unreachable` exists so the menu can say the app cannot reach the control plane instead of silently offering nothing, and a failed refresh clears the held code rather than leaving a stale one on display that would be refused when pasted.
+- The holder owns no timer. `AppDelegate` already runs a periodic check, so refreshing is driven from there and the decision stays a plain, testable function. That also keeps the refresh margin explicit rather than buried in a scheduler.
+- Refresh margin settled, the second engineering choice `design.md` left open: 60 seconds against the control plane's ten-minute code. Comfortably longer than a fetch and a paste, while still using most of each code's life.
+- The parser accepts an ISO 8601 timestamp with or without fractional seconds, so a rendering change on the control plane cannot silently stop pairing.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (11 passed); the second is the whole worker-app suite (193 passed).
+
+- Proof receipt: `Task 5` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp --filter PairingCodeHolderTests` — exit `0`.
+- Proof receipt: `Task 5` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp` — exit `0`.
+
+- Failed checks: None.
+- Remaining: `Task 6` puts this in the menu bar and on the clipboard. `Task 7` closes the round trip.
+- Spec updates: `Task 5` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed; the refresh margin was an open engineering choice and is now recorded above.
+
 ### 2026-08-27 - Task 4 complete: the field redeems a real code and the screen waits
 
 - The pairing field now calls `Pairing.bind_pairing/2` with this browser's own device workspace, so the submitted value is the thing that pairs rather than a value that was read and dropped.

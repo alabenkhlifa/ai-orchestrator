@@ -111,7 +111,8 @@ Traceability:
   - Owns: AC-04
   - Proof: LiveView tests cover a valid code being bound to this browser's own workspace and the screen reporting that the app can now finish, a refused code showing one safe message that does not distinguish the reason, an empty submission being rejected before any call, and the copy no longer advertising a code format the product does not issue.
 
-- [ ] Task 5 — Acquire and refresh the code in the worker app.
+- [x] Task 5 — Acquire and refresh the code in the worker app.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
