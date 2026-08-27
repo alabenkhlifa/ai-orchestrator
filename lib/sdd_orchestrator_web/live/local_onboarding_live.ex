@@ -55,6 +55,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # window while the user completes the storage step.
   @readiness_ttl_seconds 15 * 60
 
+  # How often the screen re-checks while a bound code waits for its app to finish.
+  @worker_poll_ms 2_000
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, workspace} = Devices.establish_workspace()
@@ -69,6 +72,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:deep_link_code, nil)
      |> assign(:onboarding_attempt, nil)
      |> assign(:pairing_error, nil)
+     |> assign(:awaiting_worker, false)
      |> assign(:selection_error, nil)
      |> assign(:selected, nil)
      |> assign(:project_name, "")
@@ -145,33 +149,30 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   @impl true
   def handle_event("recheck", _params, socket) do
-    {:noreply, socket |> assign(:pairing_error, nil) |> assign_worker_status()}
+    socket = socket |> assign(:pairing_error, nil) |> assign_worker_status()
+    {:noreply, assign(socket, :awaiting_worker, socket.assigns.worker_status != :detected)}
   end
 
-  # With the local worker stand-in on, entering a pairing code completes the
-  # pairing the way the native worker would over its outbound transport, so the
-  # graphical flow can be driven end to end. Replacement-worker pairing reuses the
-  # same path: pairing again simply authorizes another worker for this workspace.
+  # The submitted code is redeemed for real (`specs/38`): redemption is the moment
+  # an attempt the worker app obtained for itself stops being inert, binding to
+  # this browser's own device workspace and authorizing one worker. Replacement
+  # pairing reuses the same path, since pairing again simply authorizes another
+  # worker for this workspace.
+  #
+  # Redemption is attempted first and always. The local worker stand-in only
+  # catches what redemption refused, and only where the stand-in is enabled at
+  # all: development and the browser suite, where there is no native app to hand
+  # out a code and the flow still has to be drivable end to end. A real code
+  # therefore behaves identically in development and in production, and the
+  # stand-in can no longer hide a redemption that genuinely failed.
   def handle_event("pair", %{"pairing" => %{"code" => code}}, socket) do
-    cond do
-      String.trim(code) == "" ->
-        {:noreply,
-         assign(socket, :pairing_error, "Enter the pairing code shown in the worker app.")}
+    trimmed = String.trim(code)
 
-      worker_stub?() ->
-        case stub_complete_pairing(socket.assigns.workspace.id) do
-          :ok ->
-            {:noreply, socket |> assign(:pairing_error, nil) |> assign_worker_status()}
-
-          {:error, _reason} ->
-            {:noreply,
-             assign(socket, :pairing_error, "Pairing couldn't be completed. Try again.")}
-        end
-
-      true ->
-        # Without the stand-in the dashboard waits for the real worker to connect
-        # after the user enters the code in the worker app; re-check its status.
-        {:noreply, socket |> assign(:pairing_error, nil) |> assign_worker_status()}
+    if trimmed == "" do
+      {:noreply,
+       assign(socket, :pairing_error, "Enter the pairing code shown in the worker app.")}
+    else
+      {:noreply, complete_pairing(socket, trimmed)}
     end
   end
 
@@ -255,6 +256,23 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   end
 
   # ---- selection / creation internals ----
+
+  @impl true
+  def handle_info(:check_worker, socket) do
+    socket = assign_worker_status(socket)
+
+    cond do
+      socket.assigns.worker_status == :detected ->
+        {:noreply, assign(socket, :awaiting_worker, false)}
+
+      socket.assigns.awaiting_worker ->
+        {:noreply, schedule_worker_check(socket)}
+
+      # The person moved on, so stop polling rather than run a timer forever.
+      true ->
+        {:noreply, socket}
+    end
+  end
 
   defp validate_selection(
          %{assigns: %{locate_project: %{} = project, workspace: workspace}} = socket,
@@ -454,6 +472,63 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   # Simulates the native worker completing a dashboard-issued pairing and reporting
   # in, so worker discovery resolves to `:detected` without a signed binary.
+  # One safe answer for every refused code. Expired, already used, belonging to
+  # another workspace, malformed, and never issued are indistinguishable here
+  # because `redeem_pairing/3` already makes them indistinguishable, and saying
+  # more would undo that.
+  @refused_pairing "That code didn't work. Get a new one from the worker app and try again."
+
+  defp complete_pairing(socket, code) do
+    case Pairing.bind_pairing(code, socket.assigns.workspace.id) do
+      :ok ->
+        socket |> assign(:pairing_error, nil) |> await_worker()
+
+      {:error, :invalid_code} ->
+        refused(socket)
+    end
+  end
+
+  # Where the local worker stand-in is configured, a code that did not bind still
+  # drives the flow, because there is no app to issue a real one and the other
+  # slices' browser scenarios type a placeholder. The stand-in exists only in
+  # development and the browser suite, never in a production build, so this
+  # cannot soften a refusal a real person would see.
+  defp refused(socket) do
+    if worker_stub?() and stub_complete_pairing(socket.assigns.workspace.id) == :ok do
+      socket |> assign(:pairing_error, nil) |> assign_worker_status()
+    else
+      assign(socket, :pairing_error, @refused_pairing)
+    end
+  end
+
+  # The code is bound, so the worker is authorized to finish. It does that for
+  # itself against `POST /worker_pairings`, reporting versions only it knows, so
+  # the screen waits rather than showing a worker it cannot yet describe.
+  #
+  # Where the local worker stand-in is configured — development and the browser
+  # suite, never a production build — it plays the app's part and finishes
+  # immediately, so the flow stays drivable with no native app installed.
+  defp await_worker(socket) do
+    if worker_stub?() do
+      stub_complete_pairing(socket.assigns.workspace.id)
+    end
+
+    socket = assign_worker_status(socket)
+
+    if socket.assigns.worker_status == :detected do
+      assign(socket, :awaiting_worker, false)
+    else
+      socket |> assign(:awaiting_worker, true) |> schedule_worker_check()
+    end
+  end
+
+  # Only a connected LiveView polls; the first static render has no socket to
+  # deliver the message to and would leak a timer for nothing.
+  defp schedule_worker_check(socket) do
+    if connected?(socket), do: Process.send_after(self(), :check_worker, @worker_poll_ms)
+    socket
+  end
+
   defp stub_complete_pairing(workspace_id) do
     with {:ok, %{code: code}} <- Pairing.start_pairing(workspace_id),
          {:ok, %{worker: worker}} <- Pairing.complete_pairing(code, stub_worker_attrs()),
@@ -501,6 +576,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         <.discovery_step
           :if={@step == :discovery}
           worker_status={@worker_status}
+          awaiting_worker={@awaiting_worker}
           pairing_error={@pairing_error}
           project_id={@project_id}
           deep_link_code={@deep_link_code}
@@ -530,6 +606,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # ---- worker discovery step (with storage-mode explanation) ----
 
   attr :worker_status, :atom, required: true
+  attr :awaiting_worker, :boolean, default: false
   attr :pairing_error, :string, default: nil
   attr :project_id, :string, default: nil
   attr :deep_link_code, :string, default: nil
@@ -555,20 +632,50 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
       <.storage_explanation />
 
       <div class="mt-6" data-worker-status={@worker_status}>
+        <%!--
+          A bound code is waiting on its own app to finish, which it does against
+          `POST /worker_pairings` a moment later. Showing the pairing form again
+          here would read as "nothing happened" and invite the person to paste a
+          code that has already been used.
+        --%>
+        <.worker_awaiting :if={@awaiting_worker} />
         <.worker_missing
-          :if={@worker_status == :missing}
+          :if={!@awaiting_worker and @worker_status == :missing}
           pairing_error={@pairing_error}
           project_id={@project_id}
           deep_link_code={@deep_link_code}
         />
         <.worker_incompatible
-          :if={@worker_status == :incompatible}
+          :if={!@awaiting_worker and @worker_status == :incompatible}
           pairing_error={@pairing_error}
           project_id={@project_id}
           deep_link_code={@deep_link_code}
         />
-        <.worker_unavailable :if={@worker_status == :unavailable} />
+        <.worker_unavailable :if={!@awaiting_worker and @worker_status == :unavailable} />
         <.worker_detected :if={@worker_status == :detected} />
+      </div>
+    </div>
+    """
+  end
+
+  # The code was accepted and the app is finishing on its own. This is a real
+  # state, not a spinner over nothing: the worker is authorized and the screen is
+  # waiting for it to report the versions only it can.
+  defp worker_awaiting(assigns) do
+    ~H"""
+    <div data-worker-awaiting>
+      <.notice variant="info" icon="refresh-cw">
+        <p class="font-semibold text-ink">Code accepted. Finishing on your Mac…</p>
+        <p class="mt-0.5">
+          The worker app is connecting itself. This usually takes a moment and needs nothing
+          from you.
+        </p>
+      </.notice>
+
+      <div class="mt-3">
+        <.button variant="secondary" phx-click="recheck" data-recheck class="w-full sm:w-auto">
+          <.lucide name="refresh-cw" class="size-4" /> Check again
+        </.button>
       </div>
     </div>
     """
@@ -773,7 +880,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         name="pairing[code]"
         label="Pairing code"
         error={@pairing_error}
-        placeholder="For example, 4K7Q-2P9X"
+        placeholder="Paste the code from the worker app"
         autocomplete="off"
       />
       <div class="mt-3 flex flex-col gap-2.5 sm:flex-row sm:items-center">

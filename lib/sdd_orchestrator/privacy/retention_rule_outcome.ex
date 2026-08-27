@@ -115,6 +115,7 @@ defmodule SddOrchestrator.Privacy.RetentionRuleOutcome do
     revoked_personal_ai_connections
     sessions
     terminal_invitations
+    unredeemed_pairing_attempts
     unstarted_repository_initialization_plans
   )a
 

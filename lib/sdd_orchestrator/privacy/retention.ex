@@ -329,6 +329,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   }
 
   alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.PairingAttempt
   alias SddOrchestrator.IdentityLinking
   alias SddOrchestrator.Notifications.AccountNotification
   alias SddOrchestrator.Participation.Invitations
@@ -460,7 +461,7 @@ defmodule SddOrchestrator.Privacy.Retention do
   # new rule extends the upper bound by one and takes it. Extending it can
   # never collide, because the three keys above and the four legacy sweep keys
   # are all orders of magnitude away from `1_900_000_000`.
-  @rule_advisory_lock_band 1_900_000_001..1_900_000_032
+  @rule_advisory_lock_band 1_900_000_001..1_900_000_033
 
   # The outcome record is operational evidence of one retention pass, so it
   # serves the same 30-day terminal window every other operational record in
@@ -609,6 +610,8 @@ defmodule SddOrchestrator.Privacy.Retention do
        &prune_hosted_import_attempts/1},
       {:device_import_attempts, [:device_import_attempts], 1_900_000_005,
        &prune_device_import_attempts/1},
+      {:unredeemed_pairing_attempts, [:unredeemed_pairing_attempts], 1_900_000_033,
+       &prune_unredeemed_pairing_attempts/1},
       {:sessions, [:sessions], 1_900_000_006, &prune_sessions/1},
       {:hosted_sessions, [:hosted_sessions], 1_900_000_007, &prune_hosted_sessions/1},
       {:merge_records, [:merge_records], 1_900_000_008, &IdentityLinking.prune_merge_records/1},
@@ -2293,6 +2296,25 @@ defmodule SddOrchestrator.Privacy.Retention do
       {:ok, count} when is_integer(count) and count >= 0 -> count
       _unavailable_or_invalid -> 0
     end
+  end
+
+  # A pairing attempt nobody redeemed (`specs/38-worker-initiated-pairing`).
+  # Anonymous issuance means anyone who can reach the control plane can create
+  # one, so they must not accumulate. An expired attempt can never authorize
+  # anything again, whether it was ever bound or not, so a grace day after
+  # expiry is enough to keep it out of a live pairing's way while still leaving
+  # nothing behind. The row holds only a random digest, its salt, and
+  # timestamps, so nothing describing a person or a machine survives either way.
+  defp prune_unredeemed_pairing_attempts(now) do
+    cutoff = DateTime.add(now, -@day, :second)
+
+    {count, _} =
+      Repo.delete_all(
+        from a in PairingAttempt,
+          where: is_nil(a.confirmed_at) and a.expires_at < ^cutoff
+      )
+
+    count
   end
 
   defp prune_sessions(now) do

@@ -94,6 +94,12 @@ defmodule SddOrchestratorWeb.Router do
     pipe_through :api
 
     post "/worker_pairings", WorkerPairingController, :create
+
+    # Issuance is anonymous for the same reason completion is: an app that has
+    # never been paired has no credential to present. It is safe to expose
+    # because what it returns belongs to no workspace and authorizes nothing
+    # until an owner redeems it (specs/38-worker-initiated-pairing).
+    post "/pairing_codes", PairingCodeController, :create
   end
 
   scope "/", SddOrchestratorWeb do

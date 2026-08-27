@@ -38,14 +38,14 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 2. The app asks the control plane for a pairing code and shows `Not paired` in the menu bar with the code available there.
 3. The person clicks the status line in the menu bar. The full code is copied to the clipboard and the app confirms the copy.
 4. The person opens the dashboard, starts connecting a repository on this Mac, and pastes the code into the pairing field.
-5. The dashboard accepts the code, attaches it to this browser's Mac project space, and authorizes the worker. The person continues choosing their repository without touching the app again.
+5. The dashboard accepts the code and attaches it to this browser's Mac project space. The app finishes on its own moments later and comes online. The person continues choosing their repository without touching the app again.
 6. The app notices it has been paired, stops showing a code, and reports its connection state instead.
 
 ## Business Rules
 
 - A code the app obtains belongs to no Mac project space when it is created. It authorizes nothing and identifies nobody until it is redeemed.
 - A code becomes attached to exactly one Mac project space at the moment an authorized person redeems it in the dashboard, and to that person's own space only.
-- A code is single-use. Redeeming it authorizes exactly one worker, and a second attempt with the same code is refused.
+- A code is single-use. It is attached to one Mac project space once and brings exactly one worker online, and a second attempt with the same code is refused.
 - A code expires. An expired code is refused with the same answer as a code that never existed, so no answer reveals whether a code was ever real.
 - The code shown in the menu bar is replaced before it expires, so a person who copies what they can see always copies something the dashboard will accept.
 - Copying is explicit. The app never places a code on the clipboard without the person asking for it.
@@ -56,14 +56,14 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 
 ## Acceptance Criteria
 
-- [AC-01] Given the app has never been paired, when it starts, then it obtains a pairing code and the menu bar shows that it is not paired with a code available.
-- [AC-02] Given the menu bar is showing a code, when the person clicks the status line, then the full code is on the clipboard and the app confirms it was copied.
+- [AC-01] Given the app has never been paired, when it starts, then it obtains a pairing code from the control plane and holds one that has not expired.
+- [AC-02] Given the app is unpaired and holding a code, when the person clicks the status line in the menu bar, then the menu shows that it is not paired, the full code is on the clipboard, and the app confirms it was copied.
 - [AC-03] Given a code was created by the app, when it is inspected before anyone redeems it, then it is attached to no Mac project space and grants no access.
-- [AC-04] Given the person pastes a valid code into the dashboard while authorized, when it is accepted, then the code is attached to that person's own Mac project space, one worker is authorized, and the repository flow continues.
-- [AC-05] Given a code was already redeemed, when the same code is submitted again, then it is refused and no second worker is authorized.
+- [AC-04] Given the person pastes a valid code into the dashboard while authorized, when it is accepted, then the code is attached to that person's own Mac project space and the repository flow continues once the worker comes online, without the person returning to the app.
+- [AC-05] Given a code was already attached to a Mac project space, when the same code is submitted again, then it is refused and no second workspace is attached.
 - [AC-06] Given a code has expired, canceled, or never existed, when it is submitted, then it is refused with one answer that does not reveal which of those it was.
 - [AC-07] Given the shown code is approaching expiry, when the app refreshes it, then the menu bar shows a code the dashboard still accepts and the replaced code no longer works.
-- [AC-08] Given the person redeemed the code in the dashboard, when the app next checks, then it stops offering a code and reports its connection state without the person reopening it.
+- [AC-08] Given the person redeemed the code in the dashboard, when the app next checks, then it finishes pairing for itself, receives its own credential, stops offering a code, and reports its connection state without the person reopening it.
 - [AC-09] Given an unidentified caller requests codes repeatedly, when the allowed rate is exceeded, then further requests are refused without revealing whether any earlier code was redeemed.
 - [AC-10] Given a code was never redeemed, when it can no longer be used, then it is discarded and retains nothing describing a person or a machine.
 - [AC-11] Given a pairing succeeds or fails, when the app's and the control plane's diagnostics are inspected, then no code, credential, or fragment of either appears in any of them.

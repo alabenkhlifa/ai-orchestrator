@@ -13,7 +13,13 @@ defmodule SddOrchestrator.Devices.Pairing do
   """
   import Ecto.Query, warn: false
 
-  alias SddOrchestrator.Devices.{LocalWorker, PairingAttempt}
+  alias SddOrchestrator.Devices.{
+    LocalWorker,
+    PairingAttempt,
+    PairingIssuanceThrottle,
+    PairingSecurityLog
+  }
+
   alias SddOrchestrator.Repo
 
   @code_ttl_seconds 10 * 60
@@ -78,6 +84,129 @@ defmodule SddOrchestrator.Devices.Pairing do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  @doc """
+  Issues a single-use pairing code that belongs to no device workspace yet.
+
+  This is what a worker app calls for itself (`specs/38`). It has never been
+  paired, so it has no workspace to name — acquiring one is what pairing does.
+  The attempt it creates authorizes nothing: every worker-authorizing path needs
+  a bound workspace, and this record has none until an authorized owner redeems
+  its code through `redeem_pairing/3`.
+
+  Takes no caller-supplied identity, workspace, project, or secret. The only
+  input is the caller key the throttle bounds, and that key is HMAC'd before it
+  enters any state.
+  """
+  @spec issue_unbound_code(:inet.ip_address() | String.t() | nil, keyword()) ::
+          {:ok, %{attempt: PairingAttempt.t(), code: String.t()}}
+          | {:error, :throttled | Ecto.Changeset.t()}
+  def issue_unbound_code(caller, opts \\ []) do
+    if PairingIssuanceThrottle.allow?(caller) do
+      ttl = Keyword.get(opts, :ttl_seconds, @code_ttl_seconds)
+      {secret, salt, digest} = new_secret()
+
+      %PairingAttempt{}
+      |> PairingAttempt.create_unbound_changeset(%{
+        code_digest: digest,
+        code_salt: salt,
+        expires_at: seconds_from_now(ttl)
+      })
+      |> Repo.insert()
+      |> case do
+        {:ok, attempt} -> {:ok, %{attempt: attempt, code: encode(attempt.id, secret)}}
+        {:error, _changeset} = error -> error
+      end
+    else
+      {:error, :throttled}
+    end
+    |> PairingSecurityLog.audit(:issue_code)
+  end
+
+  @doc """
+  Binds a pairing code to the workspace the redeemer owns.
+
+  This is the path an authorized owner takes in the dashboard (`specs/38`). It
+  is the moment an unbound attempt — one a worker app obtained for itself, with
+  no workspace to name — stops being inert and becomes attached to exactly one
+  owner.
+
+  Binding is where this stops. It does not create the worker, because the
+  dashboard is not the worker: only the app knows its operating-system and
+  protocol versions, and only the app should hold its credential. The app
+  finishes afterwards through `complete_pairing/2`, exactly as a worker paired
+  from a dashboard-issued code already does. An attempt that is bound and not
+  yet completed is the ordinary waiting state of every pairing, not a loose
+  credential — the code is what completes it, and only its holder has one.
+
+  The bind is a conditional update rather than a read followed by a write, so
+  two concurrent redemptions of one code cannot both succeed.
+
+  A code that was issued already bound, by `start_pairing/2` for the dashboard or
+  the deep link, is accepted here too, but only against the same workspace it was
+  issued for. That is what makes this safe to expose: possessing a code for
+  someone else's workspace does not let a redeemer pull it into their own.
+
+  Every refusal answers `{:error, :invalid_code}`. Expired, canceled, already
+  bound, belonging to another workspace, malformed, and never existed are
+  deliberately indistinguishable, so no answer reveals whether a code was ever
+  real. Callers that need the older, more specific reasons keep using
+  `complete_pairing/2`, whose contract is unchanged.
+  """
+  @spec bind_pairing(String.t(), Ecto.UUID.t()) :: :ok | {:error, :invalid_code}
+  def bind_pairing(code, device_workspace_id)
+      when is_binary(code) and is_binary(device_workspace_id) do
+    now = now()
+
+    with {:ok, attempt_id, secret} <- decode(code),
+         %PairingAttempt{} = attempt <- Repo.get(PairingAttempt, attempt_id),
+         :ok <- bindable(attempt, secret, device_workspace_id, now),
+         1 <- claim_attempt(attempt.id, device_workspace_id, now) do
+      :ok
+    else
+      _refused -> {:error, :invalid_code}
+    end
+  end
+
+  def bind_pairing(_code, _device_workspace_id), do: {:error, :invalid_code}
+
+  # The guard lives in the WHERE clause, so the database decides the winner. An
+  # attempt already confirmed, canceled, or bound elsewhere matches no row. An
+  # attempt already bound to this same workspace matches and is left as it is,
+  # which keeps a repeated submission of a dashboard-issued code harmless.
+  defp claim_attempt(attempt_id, device_workspace_id, now) do
+    {claimed, _} =
+      PairingAttempt
+      |> where([a], a.id == ^attempt_id and is_nil(a.confirmed_at) and is_nil(a.canceled_at))
+      |> where(
+        [a],
+        is_nil(a.device_workspace_id) or a.device_workspace_id == ^device_workspace_id
+      )
+      |> Repo.update_all(set: [device_workspace_id: device_workspace_id, updated_at: now])
+
+    claimed
+  end
+
+  defp bindable(
+         %PairingAttempt{confirmed_at: nil, canceled_at: nil} = attempt,
+         secret,
+         device_workspace_id,
+         now
+       ) do
+    cond do
+      DateTime.compare(now, attempt.expires_at) != :lt -> :error
+      not secret_matches?(attempt.code_digest, attempt.code_salt, secret) -> :error
+      not bindable_to?(attempt, device_workspace_id) -> :error
+      true -> :ok
+    end
+  end
+
+  defp bindable(%PairingAttempt{}, _secret, _device_workspace_id, _now), do: :error
+
+  defp bindable_to?(%PairingAttempt{device_workspace_id: nil}, _device_workspace_id), do: true
+
+  defp bindable_to?(%PairingAttempt{device_workspace_id: bound}, device_workspace_id),
+    do: bound == device_workspace_id
 
   @doc """
   Lists the active (non-revoked) workers paired to one device workspace.
@@ -155,6 +284,16 @@ defmodule SddOrchestrator.Devices.Pairing do
         {:error, :expired}
 
       not secret_matches?(attempt.code_digest, attempt.code_salt, secret) ->
+        {:error, :invalid_or_used}
+
+      # An attempt nobody has bound yet belongs to no workspace, so there is no
+      # workspace to authorize a worker for. `LocalWorker.create_changeset/2`
+      # and the `pairing_attempts_bound_before_use_check` constraint both refuse
+      # it anyway; refusing here makes that a clean answer instead of a raised
+      # changeset. The app polls this endpoint to learn whether its code has
+      # been bound yet (`specs/38`), so "not yet" has to be an ordinary reply
+      # rather than a 500.
+      is_nil(attempt.device_workspace_id) ->
         {:error, :invalid_or_used}
 
       true ->

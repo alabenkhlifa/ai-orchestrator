@@ -115,6 +115,7 @@ defmodule SddOrchestrator.Application do
       SddOrchestrator.Vault,
       SddOrchestrator.Repo,
       SddOrchestrator.HostedAccess.RateLimiter,
+      SddOrchestrator.Devices.PairingIssuanceThrottle,
       {DNSCluster, query: Application.get_env(:sdd_orchestrator, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: SddOrchestrator.PubSub},
       # Attached workers are looked up, never dialled. Losing every
