@@ -106,8 +106,16 @@ Required boundaries:
 - Consequence: An unpaired app makes a request per tick, which the issuance rate limit and this schedule have to stay consistent about. The loop stops as soon as the app is paired, so a paired app polls nothing.
 - Recorded because assuming it was already true is what let this slice be called `Verified` while the app performed none of these calls.
 
+### The app hands off rather than claiming a setup it cannot finish
+
+- Choice: On a successful completion the app stops offering a code and says the dashboard has taken over. It does not report itself paired, connecting, or setting up.
+- Reason: A worker-initiated pairing has no project, and the worker configuration requires one, so there is no configuration the app can store. Reporting `pairedSettingUp` describes a setup that will never complete, which is what the first implementation did and what left a real install stuck on that line forever.
+- Consequence, stated plainly because it is a real limitation and not a detail: the credential this pairing issues is not retained by the app. The worker row exists and the dashboard sees it, which is enough for onboarding to continue, but that worker cannot connect or run anything. Giving it a project, a repository folder, and a coding agent is deferred, and doing so will need a credential this flow currently discards.
+- Rejected: storing the credential now with an unset project. That needs a storage contract for a partially configured worker, which is a larger decision than this slice should make on its own.
+
 ## Risks
 
+- A worker paired this way is authorized but unusable until it is configured, and nothing in this slice configures it. Reduced by saying so in the app rather than implying a working worker, and by naming the follow-on in the deferred boundary; detected by the dashboard showing a worker that never connects.
 - An anonymous endpoint invites automated abuse. Reduced by rate limiting per coarse caller key, short expiry, and discarding unredeemed attempts; detected by auditing issuance volume without recording a caller identity.
 - A person could paste a code into someone else's dashboard session. Reduced by binding only to the redeeming owner's own workspace, so the worst case is pairing a worker to a space the person controls, never to a stranger's.
 - Nullable `device_workspace_id` invites code that forgets to check it. Reduced by a database constraint expressing the two valid states and by keeping every worker-authorizing path workspace-required.

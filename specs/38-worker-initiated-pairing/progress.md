@@ -1,5 +1,19 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - AC-08 corrected: the app hands off instead of claiming a setup it cannot finish
+
+- Found by the user on a real install: the menu bar sat on "Paired, setting up…" with no code and no way to pair. It was paired, by my own verification a few minutes earlier, and it could never leave that state.
+- The defect: `Task 8`'s success handler did not even bind the completion result. It discarded the credential, set `urlPairingOverrideStatus = .pairedSettingUp`, and stored nothing, so the app claimed a setup that had no project to complete against and could never finish.
+- Why my verification missed it, which is the part worth keeping: I said I had checked the real app, but what I actually queried was the database. A worker row appeared, so I called the round trip closed. That is the server's half again — the same mistake that caused the previous reopening. The correct check was what the app held afterwards, and it held nothing.
+- Decision, chosen by the user from three options: the app must not claim it is paired or setting up. The pairing exists on the control plane so the dashboard sees a worker and onboarding can continue; the app says the dashboard has taken over and stops there.
+- `AC-08` reworded to match, and the workflow and scope lines with it. Nothing was weakened: the previous wording promised the app "receives its own credential", which it cannot usefully keep without a project, so the promise was unkeepable rather than merely unmet.
+- The limitation is now stated rather than implied, in `Out of Scope`, in a design consequence, and as a risk: a worker paired this way is authorized but cannot connect or run anything until something gives it a project, a folder, and an agent. That follow-on will need a credential this flow discards, and it is recorded in the deferred boundary.
+- Rejected, and recorded as rejected: storing the credential now with an unset project. That needs a storage contract for a partially configured worker, which is a larger decision than this slice should make alone.
+- Recovery performed on the user's machine: the app was quit, which clears the in-memory override, and the two `pairing_attempts` rows and one `local_workers` row my verification created were deleted. Nothing had been written to disk, so relaunching returns it to `Not paired` with a fresh code.
+- `Task 8` reopened. Its loop and its decision function are unchanged and correct; only the success handler and the state it shows must change.
+- Failed checks: none failing. `mix check` passed clean at the gate (4582 passed) while this defect was present, which is exactly why it is recorded here rather than treated as covered.
+- Spec updates: `requirements.md` `AC-08`, one workflow step, one in-scope line, and a new out-of-scope line. `design.md` one new decision and one new risk. `tasks.md` `Task 8` reopened with corrected owned surfaces and proof, and one new deferred item.
+
 ### 2026-08-27 - Task 8 complete: the app now performs the round trip, verified against the real app
 
 - `PairingLoop.next/4` decides what an unpaired app does each tick: fetch a code when it has none or cannot reach the control plane, replace one nearing expiry, otherwise try to finish. A paired app idles, and `AppDelegate` stops the timer entirely rather than idling in a loop.

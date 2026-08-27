@@ -19,7 +19,7 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 - Showing the current pairing state and the code in the menu bar, and copying the code to the clipboard from there.
 - Keeping the shown code live, so a code the person copies is one the dashboard will still accept.
 - Redeeming a code in the dashboard, which is the moment it becomes attached to that browser's Mac project space and the worker is authorized.
-- The worker noticing on its own that it has been paired, and moving to its connected state without the person returning to the app.
+- The worker noticing on its own that its code was taken, and saying so without the person returning to the app.
 - Refusing, safely and legibly, every code that is expired, already used, canceled, or not a real code.
 - Limiting how many codes an unidentified caller can obtain, and discarding codes nobody redeems.
 
@@ -28,6 +28,7 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 - Replacing the existing `Open in App` deep link, which stays the shorter path for reconnecting a machine to a project that already exists.
 - Pairing a worker to a hosted project, or to a machine other than the one running the app.
 - Any change to what a paired worker is then allowed to do, which `specs/33-local-worker-run-execution/` owns.
+- Configuring the worker that this pairing authorizes. A worker paired this way has no project, no repository folder, and no chosen coding agent, so it cannot connect or run anything yet. It exists so the dashboard can see a worker and let onboarding continue.
 - Re-pairing or rotating the credential of a worker that is already paired.
 - Pairing from a phone, from a second device, or by scanning anything.
 - Windows and Linux workers.
@@ -39,7 +40,7 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 3. The person clicks the status line in the menu bar. The full code is copied to the clipboard and the app confirms the copy.
 4. The person opens the dashboard, starts connecting a repository on this Mac, and pastes the code into the pairing field.
 5. The dashboard accepts the code and attaches it to this browser's Mac project space. The app finishes on its own moments later and comes online. The person continues choosing their repository without touching the app again.
-6. The app notices it has been paired, stops showing a code, and reports its connection state instead.
+6. The app notices the code was taken, stops showing one, and says the dashboard has taken over. The person stays in the dashboard; nothing more is asked of them in the app.
 
 ## Business Rules
 
@@ -63,7 +64,7 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 - [AC-05] Given a code was already attached to a Mac project space, when the same code is submitted again, then it is refused and no second workspace is attached.
 - [AC-06] Given a code has expired, canceled, or never existed, when it is submitted, then it is refused with one answer that does not reveal which of those it was.
 - [AC-07] Given the shown code is approaching expiry, when the app refreshes it, then the menu bar shows a code the dashboard still accepts and the replaced code no longer works.
-- [AC-08] Given the person redeemed the code in the dashboard, when the app next checks, then it finishes pairing for itself, receives its own credential, stops offering a code, and reports its connection state without the person reopening it.
+- [AC-08] Given the person redeemed the code in the dashboard, when the app next checks, then it stops offering a code and reports that the dashboard has taken over, without claiming a setup it cannot finish and without the person reopening it.
 - [AC-09] Given an unidentified caller requests codes repeatedly, when the allowed rate is exceeded, then further requests are refused without revealing whether any earlier code was redeemed.
 - [AC-10] Given a code was never redeemed, when it can no longer be used, then it is discarded and retains nothing describing a person or a machine.
 - [AC-11] Given a pairing succeeds or fails, when the app's and the control plane's diagnostics are inspected, then no code, credential, or fragment of either appears in any of them.

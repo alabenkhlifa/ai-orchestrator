@@ -59,6 +59,7 @@ Excluded:
 
 Deferred after this slice:
 
+- Configuring a worker paired this way: giving it a project, a repository folder, and a coding agent so it can actually connect. It will need a credential this flow does not retain.
 - Retiring the deep link, or unifying the two entry points behind one surface, if usage later shows one is redundant.
 - Showing the person which worker a redemption authorized, beyond the connection state the app already reports.
 
@@ -146,15 +147,15 @@ Traceability:
   - Owns: AC-10, AC-11
   - Proof: An integration scenario pairs a worker end to end from an app-issued code bound in the dashboard and completed by the app through `POST /worker_pairings`, showing the app reaching its connected state without further input; retention tests prove an unredeemed attempt is discarded once unusable; and a log and diagnostic review across the control plane and the app finds no code, credential, or fragment of either.
 
-- [x] Task 8 — Run the app's pairing loop so the round trip actually closes.
-  - Status: Complete.
+- [ ] Task 8 — Run the app's pairing loop so the round trip actually closes.
+  - Status: In Progress. Reopened: the success handler discarded the credential and set a permanent `pairedSettingUp`, which left a real install stuck on a setup that never finishes.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5, Task 6, Task 7
   - Purpose: Make the app perform, on a schedule, the calls the rest of this slice proved: replace its code before expiry, try to finish pairing, and stop once it has.
-  - Owned surfaces: The unpaired polling schedule in `AppDelegate`, the periodic code refresh, the completion attempt against `POST /worker_pairings` using the held code, the transition out of the unpaired state once completion succeeds, stopping the loop when paired, and the `capability:worker-initiated-pairing` readiness write-back.
+  - Owned surfaces: The unpaired polling schedule in `AppDelegate`, the periodic code refresh, the completion attempt against `POST /worker_pairings` using the held code, the hand-off state shown once completion succeeds, stopping the loop then, and the `capability:worker-initiated-pairing` readiness write-back.
   - Owns: AC-07, AC-08
-  - Proof: Swift tests drive the loop's decisions against the existing HTTP and command seams: an unpaired tick refreshes an expiring code, a tick attempts completion with the held code, a refused completion leaves the code and keeps waiting, a successful completion stores the pairing and discards the code, and a paired tick stops polling.
+  - Proof: Swift tests drive the loop's decisions against the existing HTTP and command seams: an unpaired tick refreshes an expiring code, a tick attempts completion with the held code, a refused completion leaves the code and keeps waiting, a successful completion discards the code and shows the hand-off state without claiming a setup, and a paired tick stops polling.
 
 ## Verification Gate
 
