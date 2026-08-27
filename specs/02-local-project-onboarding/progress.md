@@ -1,5 +1,22 @@
 # Local Project Onboarding Progress Log
 
+### 2026-08-27 - Verification gate re-run after Task 12; slice Verified again
+
+- Every gate command re-run and confirmed on the main thread by real exit status:
+- Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix dialyzer` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix deps.audit` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix sobelow --config` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix assets.deploy` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix release --overwrite` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `npm --prefix assets run test:e2e` — exit `0`.
+- `mix check` finished at `4590 passed (6 properties, 4584 tests), 1 excluded`. The browser matrix ran both projects: `153 passed` on `chromium` and `153 passed` on `mobile-chromium`. The e2e desktop and mobile databases were dropped first, because the fixed-digest kit-package seed is not idempotent across runs.
+- Two suite flakes were hit before the clean run, and both are recorded here rather than passed over, because a gate that is re-run until it goes green without saying so is not evidence:
+  - `SddOrchestrator.Worker.RequiredCheckRunnerTest` AC-14 failed once on `assert_receive {:worker_event, %{"event_type" => "progress"}}` after 3000 ms, with a reconciliation snapshot in the mailbox instead. It is a race, not a regression: it reproduces on `main` without this slice's changes, and the file passed three consecutive isolated runs on this branch.
+  - `SddOrchestrator.RepositoryInitializationTest` `set_kit_choice/2` failed once with `DBConnection.ConnectionError: tcp recv: closed`, a pool connection dropped under full-suite load. The file passed in isolation at `35 passed`.
+  - Neither test touches pairing guidance. Both are suite-stability defects owned by their own specifications, not by this slice, and neither was suppressed, skipped, or weakened to reach the gate.
+- Verification readiness: complete. Release readiness is unchanged and still blocked by this slice's own Release Gate, which holds the accountable privacy review and the real macOS signing and notarization evidence.
+
 ### 2026-08-27 - Task 12 complete: one pairing guidance, no assumed missing app
 
 - `Devices.PairingGuidance` now owns the wording. `guidance/0` returns the headline and the two steps that obtain the code; `paste_step/0` is a separate call so a surface renders it only when it has a field to paste into.

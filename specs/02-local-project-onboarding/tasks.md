@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Tasks 1–11 are complete and their local verification gate passed on 2026-08-26. Task 12 reopens the slice: `specs/38-worker-initiated-pairing` changed how a person obtains a pairing code, and the pairing guidance on every surface still describes the worker app as absent and the code as something seen once on first launch. `AC-33` and Task 12 correct that guidance and make it one owned value. The coordinated first-release browser proof closed on 2026-08-26: `assets/e2e/release-entry.spec.js` drives both primary entry actions to completion on desktop and mobile. The accountable privacy review and the macOS signing and notarization evidence remain in the Release Gate below, where they block release rather than local verification. Tasks 10 and 11 closed both defects `specs/36-local-worker-native-distribution` Task 12 found against a real signed worker: the macOS compatibility window is now computed rather than hardcoded, and a paired worker's liveness is refreshed from the control plane's own attached-worker registry.
+All twelve tasks are complete and the full local verification gate passes. Task 12 closed the pairing-guidance defect the user found on the accountless onboarding screen: the guidance asserted the worker app was not installed, which no browser can know, and described a code shown once on first launch, which stopped being true when `specs/38-worker-initiated-pairing` gave the app a live code on its menu bar. `AC-33` and `Devices.PairingGuidance` make that guidance one owned value rendered by every surface that asks for a pairing code. The coordinated first-release browser proof closed on 2026-08-26: `assets/e2e/release-entry.spec.js` drives both primary entry actions to completion on desktop and mobile. The accountable privacy review and the macOS signing and notarization evidence remain in the Release Gate below, where they block release rather than local verification. Tasks 10 and 11 closed both defects `specs/36-local-worker-native-distribution` Task 12 found against a real signed worker: the macOS compatibility window is now computed rather than hardcoded, and a paired worker's liveness is refreshed from the control plane's own attached-worker registry.
 
 ## Active Slice
 
@@ -187,7 +187,7 @@ Release boundary:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
+- [x] Active-slice acceptance criteria pass.
 - [x] Pairing security and cross-workspace isolation tests pass.
 - [x] Worker and repository integration tests pass on the approved macOS versions.
 - [x] Source-upload, prohibited-onboarding-data, first-confirmation, and metadata-minimization checks pass.
@@ -197,7 +197,7 @@ Release boundary:
 - [x] Required browser scenarios pass.
 - [x] The coordinated first-release browser scenarios prove that both primary entry actions are available and complete. `assets/e2e/release-entry.spec.js` asserts both actions are live rather than disabled or placeholder, then drives each path to completion on desktop and mobile: `Work without GitHub` through pairing, folder selection, the shared storage step, the accountless disclosure gate, and creation onto its device dashboard, and `Login with GitHub` through the full authenticated onboarding flow onto its project dashboard. AC-02 is stated identically here and in `specs/01-github-project-onboarding/`, so the one file closes both.
 - [x] The GDPR data contract for device metadata and pairing credentials is recorded in `design.md` and enforced and proven by the implementation tasks. The accountable privacy review of that contract, and confirmation of its retention durations, are deployment-specific and are carried in the Release Gate below rather than here.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
+- [x] Build, formatting, lint, static checks, and logs review pass.
 - [x] The pairing guidance is one owned value, every surface that asks for a pairing code renders it, and no surface keeps its own wording.
 - [x] Portable identity generation, exact target matching, independent-workspace unlinkability, same-workspace duplicate detection, and malformed-identifier tests pass.
 - [x] Legacy source-side upgrade, atomic rollback, backup-readiness handoff, and unchanged-repository proofs pass.
