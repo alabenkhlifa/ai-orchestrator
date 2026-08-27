@@ -20,7 +20,7 @@ Binding stays authorized and stops there. When the owner submits the code in the
 
 Completion stays where it already is. The app then posts the same code to the existing `POST /worker_pairings`, reporting its own operating-system and protocol versions and receiving its own credential. That is the endpoint's existing job and the only place those facts are known, so nothing new has to learn them.
 
-The app keeps a live code by replacing it before expiry, and learns it has been bound by the status check it already performs, so the person never returns to the app to finish.
+The app keeps a live code by replacing it before expiry, and learns it has been bound by trying to finish: an unbound attempt cannot be completed, so a refusal means "not yet" and a success means an owner has redeemed it. Both run on the app's own unpaired polling schedule, so the person never returns to the app to finish.
 
 ## Components Affected
 
@@ -98,6 +98,13 @@ Required boundaries:
 - Choice: `Open in App` is kept for reconnecting a machine to an existing project.
 - Reason: It is implemented, verified, and strictly shorter when a project already exists. This slice fills the case it structurally cannot serve.
 - Consequence: Two pairing entry points exist, and both must keep working; the redemption path is shared so they cannot diverge.
+
+### The app discovers binding by attempting completion
+
+- Choice: While unpaired, the app periodically refreshes its code and attempts `POST /worker_pairings` with it. A refusal means nobody has bound it yet; a success means an owner has, and the app takes its credential in the same call.
+- Reason: It needs no new endpoint and no new state to read. Completion is already the only thing the app must eventually do, so trying it is both the question and the answer. `complete_pairing/2` refusing an unbound attempt cleanly is what makes "not yet" an ordinary reply rather than an error.
+- Consequence: An unpaired app makes a request per tick, which the issuance rate limit and this schedule have to stay consistent about. The loop stops as soon as the app is paired, so a paired app polls nothing.
+- Recorded because assuming it was already true is what let this slice be called `Verified` while the app performed none of these calls.
 
 ## Risks
 

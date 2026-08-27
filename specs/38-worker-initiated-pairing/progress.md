@@ -1,5 +1,20 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Verified removed: the app performs none of the calls the round trip needs
+
+- Found by installing the app and using it, not by any check. `POST /pairing_codes` answered `201`, the app was running, and the pairing still could not complete.
+- Three gaps, all in the `AppDelegate` wiring rather than in anything a test covered:
+  - `refreshPairingCode()` is called once from `setUpPairingCode()` and never again, so the held code is fetched once and never replaced. Ten minutes later it expires and the menu offers something the dashboard refuses, which is exactly what `AC-07` exists to prevent.
+  - `refreshPairingStatus()` is likewise called once at startup, so an app that starts unpaired never re-checks.
+  - The app never attempts completion with its held code at all. `PairingFlowController` is triggered only by the `sddworker://` deep link, so nothing calls `POST /worker_pairings` with the code the menu is showing. `AC-08` describes the app finishing for itself, and no code path did that.
+- Why the proofs missed it, which is the part worth keeping: `Task 5` and `Task 6` tested the Core decisions — when to refresh, what the menu says — and both are correct. `Task 7` proved the round trip at the domain level, calling `bind_pairing/2` then `complete_pairing/2` directly. None of them exercised the AppKit wiring that has to perform those calls on a schedule. I then wrote that the round trip was closed, on evidence that covered only the half a test could reach easily.
+- The slice verification gate did not catch it either, and could not have: it runs `mix check`, the browser matrix, and `swift test`, and none of those drive a running menu-bar app against a live control plane.
+- Changes: `Verified` removed and the verification gate unchecked. `Task 8` added, owning the app's unpaired polling schedule, the periodic refresh, the completion attempt, and stopping once paired. `AC-07` moves from `Task 5` and `AC-08` from `Task 7` to `Task 8`, because the task that delivers an observable behaviour should own the criterion for it. `capability:worker-initiated-pairing` now becomes ready after `Task 8` rather than `Task 7`; it has no consumers, so nothing downstream is affected.
+- `Tasks 1` through `7` stay complete and their proofs stand. They delivered their owned surfaces; they simply no longer own criteria they could not finish delivering on their own.
+- `design.md` gains the decision that the app discovers binding by attempting completion — a refusal means not yet, a success means an owner redeemed it — and its earlier claim that the app "learns it has been bound by the status check it already performs" is corrected, since no such check ran while unpaired. Assuming that was already true is what allowed the premature `Verified`.
+- Failed checks: none currently failing; the gap is missing behaviour rather than a failing assertion, which is why nothing reported it.
+- Spec updates: `tasks.md` status, capability readiness, `Task 7` owned surfaces, `Owns:` lines for `Task 5` and `Task 7`, the new `Task 8`, and the verification gate. `design.md` approach and one new decision. No requirement, workflow, business rule, or acceptance-criterion wording changed.
+
 ### 2026-08-27 - Verification gate passed; slice Verified
 
 - The gate found what focused proof could not, which is the argument for it existing. `mix check` failed with the retention rule registered in only one of the three places the framework closes it: `Retention.rules/0`, `RetentionRuleOutcome`'s `Ecto.Enum`, and the `retention_rule_outcomes_rule_allowed` check constraint. My task proof ran the retention suites I judged relevant and passed, because that contract is asserted in a delivery retention test I had no reason to name.

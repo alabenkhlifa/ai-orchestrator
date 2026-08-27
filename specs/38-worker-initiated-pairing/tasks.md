@@ -2,9 +2,12 @@
 
 ## Status
 
-Verified
+In Progress
 
-All seven tasks are complete and the full local verification gate passes. `capability:worker-initiated-pairing` is ready, for implementation and local verification only; release readiness stays separate and is listed in the release gates below.
+`Verified` was removed on 2026-08-27. Tasks 1 through 7 are complete and their
+proofs stand, but running the installed app showed the round trip does not
+close: nothing in the app performs the calls those proofs exercised. `Task 8`
+owns that gap and the slice cannot be `Verified` until it passes.
 
 ## Active Slice
 
@@ -19,7 +22,7 @@ Requires:
 
 Provides:
 
-- `capability:worker-initiated-pairing` — ready after `Task 7`.
+- `capability:worker-initiated-pairing` — ready after `Task 8`.
 
 ## Slice Size Gate
 
@@ -120,7 +123,7 @@ Traceability:
   - Depends on: Task 3
   - Purpose: Keep an unpaired app holding a code the dashboard will still accept, without the person managing expiry.
   - Owned surfaces: Worker-app code acquisition against the bundle-resolved control-plane address, the refresh schedule ahead of expiry, the unreachable-control-plane state, and the retirement of a replaced code.
-  - Owns: AC-01, AC-07
+  - Owns: AC-01
   - Proof: Swift tests against the existing HTTP seam cover acquiring a code on first start, replacing it before expiry, surfacing an unreachable control plane rather than a stale code, and never retaining a replaced code.
 
 - [x] Task 6 — Present the code and copy it from the menu bar.
@@ -139,24 +142,33 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 4, Task 6
   - Purpose: Prove the two halves meet: a code shown by the app, redeemed in the dashboard, brings the worker online without the person returning to the app, and leaves nothing behind.
-  - Owned surfaces: The app's transition out of the unpaired state after an external redemption, retention and deletion of unredeemed unbound attempts, the diagnostic exclusion of codes and credentials across both sides, and the `capability:worker-initiated-pairing` readiness write-back.
-  - Owns: AC-08, AC-10, AC-11
+  - Owned surfaces: Retention and deletion of unredeemed unbound attempts, and the diagnostic exclusion of codes and credentials across both sides.
+  - Owns: AC-10, AC-11
   - Proof: An integration scenario pairs a worker end to end from an app-issued code bound in the dashboard and completed by the app through `POST /worker_pairings`, showing the app reaching its connected state without further input; retention tests prove an unredeemed attempt is discarded once unusable; and a log and diagnostic review across the control plane and the app finds no code, credential, or fragment of either.
+
+- [ ] Task 8 — Run the app's pairing loop so the round trip actually closes.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 5, Task 6, Task 7
+  - Purpose: Make the app perform, on a schedule, the calls the rest of this slice proved: replace its code before expiry, try to finish pairing, and stop once it has.
+  - Owned surfaces: The unpaired polling schedule in `AppDelegate`, the periodic code refresh, the completion attempt against `POST /worker_pairings` using the held code, the transition out of the unpaired state once completion succeeds, stopping the loop when paired, and the `capability:worker-initiated-pairing` readiness write-back.
+  - Owns: AC-07, AC-08
+  - Proof: Swift tests drive the loop's decisions against the existing HTTP and command seams: an unpaired tick refreshes an expiring code, a tick attempts completion with the held code, a refused completion leaves the code and keeps waiting, a successful completion stores the pairing and discards the code, and a paired tick stops polling.
 
 ## Verification Gate
 
-- [x] Active-slice acceptance criteria pass.
-- [x] Every active acceptance criterion and data entity has one clear primary task owner.
-- [x] Unbound and bound attempt states, one-way single-use binding, concurrency, foreign-workspace refusal, and completion of a bound attempt tests pass.
-- [x] Expired, canceled, already-redeemed, and never-existed codes are proven indistinguishable to the caller.
-- [x] Anonymous issuance, its rate limit, and its audit pass without honoring any caller-supplied identity or workspace.
-- [x] `POST /worker_pairings`, the `Open in App` deep link, and the workspace-scoped `start_pairing/2` path are proven unchanged.
-- [x] Required desktop and mobile browser scenarios for the redemption surface pass.
-- [x] Worker-app tests for acquisition, refresh, presentation, clipboard, and the post-redemption transition pass.
-- [x] Retention of unredeemed attempts and throttle counters passes, and the log, diagnostic, and no-analytics review finds no code or credential.
-- [x] `python3 .agents/scripts/run_proof.py slice -- mix check`, and the same through slice scope for `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test`, pass.
-- [x] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
-- [x] New decisions and invalidated proof are written back.
+- [ ] Active-slice acceptance criteria pass.
+- [ ] Every active acceptance criterion and data entity has one clear primary task owner.
+- [ ] Unbound and bound attempt states, one-way single-use binding, concurrency, foreign-workspace refusal, and completion of a bound attempt tests pass.
+- [ ] Expired, canceled, already-redeemed, and never-existed codes are proven indistinguishable to the caller.
+- [ ] Anonymous issuance, its rate limit, and its audit pass without honoring any caller-supplied identity or workspace.
+- [ ] `POST /worker_pairings`, the `Open in App` deep link, and the workspace-scoped `start_pairing/2` path are proven unchanged.
+- [ ] Required desktop and mobile browser scenarios for the redemption surface pass.
+- [ ] Worker-app tests for acquisition, refresh, presentation, clipboard, and the post-redemption transition pass.
+- [ ] Retention of unredeemed attempts and throttle counters passes, and the log, diagnostic, and no-analytics review finds no code or credential.
+- [ ] `python3 .agents/scripts/run_proof.py slice -- mix check`, and the same through slice scope for `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test`, pass.
+- [ ] `npm --prefix assets ci`, `npm --prefix assets run test:e2e`, `MIX_ENV=prod mix assets.deploy`, and `MIX_ENV=prod mix release` pass through slice scope.
+- [ ] New decisions and invalidated proof are written back.
 
 ## Blocked Decisions
 
