@@ -1,5 +1,24 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 7 complete: the round trip closes and the data rules hold
+
+- The whole path is proven in one scenario: the app obtains a code that belongs to nobody, polls and is told "not yet", the owner pastes it into the dashboard, the app's next poll succeeds and takes its own credential, and the workspace can discover the worker — with no further action anywhere.
+- One change was needed to make polling viable. `complete_pairing/2` now refuses an unbound attempt with its existing `{:error, :invalid_or_used}` instead of raising a changeset. The app learns whether an owner has bound its code by trying to complete it, so "not yet" has to be an ordinary reply rather than a 500. The guards themselves are unchanged: `LocalWorker.create_changeset/2` still requires a workspace and the check constraint still forbids confirming an unbound attempt. This turns a raise into a clean answer; it does not open anything.
+- A refusal never consumes the code. A test polls five times before binding and then completes successfully, so a slow owner cannot strand the app with a code it has already spent.
+- Retention added as `unredeemed_pairing_attempts`, deleting attempts that were never confirmed once a grace day past expiry. Anonymous issuance means anyone who can reach the control plane can create one, so they must not accumulate. An expired attempt can never authorize anything again, and the row holds only a random digest, its salt, and timestamps, so nothing describing a person or a machine survives either way. A test proves a live attempt and a completed pairing are both left alone.
+- The log review is a test rather than an inspection. It runs a whole successful pairing and a whole failed one at `:info`, then asserts the log contains neither the code, nor the credential, nor either of their secret halves.
+- One stale assertion corrected in Task 2's suite: it expected `Ecto.InvalidChangesetError` where completing an unbound attempt now refuses cleanly. The property it guards — an unbound attempt cannot be completed — is unchanged and still asserted, and a second test now proves the code survives that refusal.
+- `capability:worker-initiated-pairing` is ready. Its readiness is implementation and local-verification only; release readiness stays separate and is recorded in the release gate.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (7 passed); the second is the regression across every pairing, issuance, redemption, and retention suite (62 passed).
+
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/worker_initiated_pairing_test.exs` — exit `0`.
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/worker_initiated_pairing_test.exs test/sdd_orchestrator/devices/pairing_test.exs test/sdd_orchestrator/devices/pairing_redemption_test.exs test/sdd_orchestrator/devices/unbound_pairing_attempt_test.exs test/sdd_orchestrator_web/controllers/worker_pairing_controller_test.exs test/sdd_orchestrator_web/controllers/pairing_code_controller_test.exs test/sdd_orchestrator_web/live/pairing_redemption_live_test.exs and every retention suite` — exit `0`.
+
+- Directly applicable safety checks: `mix compile --warnings-as-errors`, `mix format --check-formatted`, and `mix dialyzer` pass, and `mix credo --strict` reports no issues on the changed modules.
+- Failed checks: None.
+- Remaining: the slice verification gate.
+- Spec updates: `Task 7` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed.
+
 ### 2026-08-27 - Task 6 complete: the status line is the copy action
 
 - `PairingCodeMenu.statusLine/3` decides what the menu's first line says and whether clicking it copies. `PairingCodeCopier` performs the write. Both live in `SDDOrchestratorWorkerCore`, so the decision is unit-tested without AppKit and `AppDelegate` stays the thin wiring the package was built around.

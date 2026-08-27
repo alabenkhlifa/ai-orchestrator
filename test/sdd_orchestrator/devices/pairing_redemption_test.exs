@@ -73,15 +73,29 @@ defmodule SddOrchestrator.Devices.PairingRedemptionTest do
     end
   end
 
-  describe "an unbound attempt cannot be completed (Task 1 guards this)" do
+  describe "an unbound attempt cannot be completed" do
     test "completing a code nobody has bound refuses and creates nothing" do
       {_attempt, code} = unbound_code()
 
-      assert_raise Ecto.InvalidChangesetError, fn ->
-        Pairing.complete_pairing(code, worker_attrs())
-      end
+      # Refused rather than raised: Task 7 made this an ordinary answer because
+      # the app polls completion to learn whether an owner has bound its code
+      # yet, and "not yet" must not be a 500. The underlying guards are
+      # unchanged — `LocalWorker.create_changeset/2` still requires a workspace
+      # and the check constraint still forbids confirming an unbound attempt.
+      assert {:error, :invalid_or_used} = Pairing.complete_pairing(code, worker_attrs())
 
       assert Repo.aggregate(LocalWorker, :count) == 0
+    end
+
+    test "the code survives the refusal, so a later binding still works" do
+      ws = workspace_id()
+      {_attempt, code} = unbound_code()
+
+      assert {:error, :invalid_or_used} = Pairing.complete_pairing(code, worker_attrs())
+
+      assert :ok = Pairing.bind_pairing(code, ws)
+      assert {:ok, %{worker: worker}} = Pairing.complete_pairing(code, worker_attrs())
+      assert worker.device_workspace_id == ws
     end
   end
 

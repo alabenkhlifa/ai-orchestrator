@@ -131,7 +131,8 @@ Traceability:
   - Owns: AC-02
   - Proof: Swift tests cover the menu showing the unpaired state, clicking the status line placing the full code on the clipboard and confirming, the clipboard being untouched until the person acts, and `Open Dashboard` and `Quit` remaining reachable.
 
-- [ ] Task 7 — Complete the pairing round trip and enforce its data rules.
+- [x] Task 7 — Complete the pairing round trip and enforce its data rules.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4, Task 6

@@ -286,6 +286,16 @@ defmodule SddOrchestrator.Devices.Pairing do
       not secret_matches?(attempt.code_digest, attempt.code_salt, secret) ->
         {:error, :invalid_or_used}
 
+      # An attempt nobody has bound yet belongs to no workspace, so there is no
+      # workspace to authorize a worker for. `LocalWorker.create_changeset/2`
+      # and the `pairing_attempts_bound_before_use_check` constraint both refuse
+      # it anyway; refusing here makes that a clean answer instead of a raised
+      # changeset. The app polls this endpoint to learn whether its code has
+      # been bound yet (`specs/38`), so "not yet" has to be an ordinary reply
+      # rather than a 500.
+      is_nil(attempt.device_workspace_id) ->
+        {:error, :invalid_or_used}
+
       true ->
         :ok
     end
