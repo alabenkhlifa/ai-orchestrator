@@ -1,5 +1,15 @@
 # Local Project Onboarding Progress Log
 
+### 2026-08-27 - Pairing guidance reopened: it assumes an app the product cannot see
+
+- Found by the user reading the accountless onboarding screen. The guidance opens by asserting the worker app is not installed, then says the app "shows a pairing code the first time you open it. Enter it below". Neither statement survives contact with the product. Nothing detects an installed application from a browser, so the assertion is a guess that is wrong for anyone who already has the app. And `specs/38-worker-initiated-pairing` replaced first-launch-only display: an unpaired app now holds a live code and offers it on its menu bar status line, which the person clicks to copy.
+- The same two sentences existed three times: `LocalOnboardingLive`'s missing-worker state, `RepositoryInitializationLive`'s missing-or-incompatible state, and `Portability.HostedLocalRepositoryMachines.guidance/0`, which the hosted project page renders. `specs/38` Task 4 corrected one field's placeholder on one of those screens, which is why the drift survived that slice.
+- Second defect found in the same pass: `RepositoryInitializationLive`'s pairing-code placeholder still reads "For example, 4K7Q-2P9X". Codes are URL-safe base64 of random bytes, so it advertises a format the product has never issued. `specs/38` Task 4 fixed this on the onboarding screen only.
+- Decision: the guidance becomes one value owned by this specification, rendered by every surface that asks for a pairing code, leading with the menu bar copy step and carrying installation as a branch inside it rather than as the premise. Recorded as `AC-33`, the three new business rules under Worker installation, and the `One Pairing Guidance, Rendered Everywhere` decision in `design.md`.
+- Scope decided with the user: all three surfaces, owned by this specification, three numbered steps, and the hosted project page's missing pairing field recorded as separate work rather than folded in.
+- Status: `tasks.md` moves `Verified` to `In Progress` for Task 12. Requirements readiness stays `Approved`. `specs/16-empty-repository-initialization` and `specs/37-hosted-local-repository-connection` stay `Verified`: their own criteria require graphical guidance with no terminal command, which the shared value satisfies, and both now record that the wording is not theirs to keep.
+- No code changed in this update.
+
 ### 2026-08-27 - Correction: the sobelow gate did not hold when this slice was marked Verified
 
 - What happened: during this slice's gate I ran `mix sobelow --config` and it passed, then the browser matrix failed on a shared-fixture problem, so I added `new_git_repository/0` to the e2e bootstrap harness and re-ran only the browser matrix, the production proof, and `mix check`. `mix check` does not include sobelow. The new helper calls `File.mkdir_p!/1` and `File.write!/2`, which sobelow flags as `Traversal.FileModule`, so from that edit onward the security gate exited 1 while this slice's gate item was already recorded as passing.

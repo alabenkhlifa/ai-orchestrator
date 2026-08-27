@@ -1,5 +1,12 @@
 # Hosted Local Repository Connection Progress Log
 
+### 2026-08-27 - Guidance wording handed to specs/02; the page's pairing dead end recorded
+
+- `AC-05` no longer prescribes its own instruction. It now requires this page to show the product's shared pairing guidance, which `specs/02-local-project-onboarding` owns and its Task 12 corrects, because the wording here had drifted from what the worker app actually does after `specs/38-worker-initiated-pairing`.
+- Behavior on this page is unchanged: graphical steps, no terminal command, the download action. Only the source of the words moves, so this slice stays `Verified`. `Portability.HostedLocalRepositoryMachines.guidance/0` must delegate rather than keep a copy.
+- Recorded as deferred: this page tells an owner to pair a worker but offers no field to paste a code into and no link to a surface that has one. Correcting the wording cannot close that, so it is named as its own work rather than left implied.
+- No code changed in this update.
+
 ### 2026-08-24 - Independent re-confirmation of the verification gate on `main`
 
 - Re-ran the repository-wide gate on `main` at `28f1b29` to confirm the slice's `Verified` status by real exit status rather than by the recorded receipt alone. Result: `4408 passed (6 properties, 4402 tests), 1 excluded`, exit `0`, with no exception. The `Status` section still described the cleared exception as outstanding and now matches the Verification Gate line.

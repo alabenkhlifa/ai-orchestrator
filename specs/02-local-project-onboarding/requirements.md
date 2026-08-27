@@ -18,7 +18,7 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 1. The user selects `Work without GitHub` from the shared entry surface.
 2. The product explains the available project-data storage modes defined by `specs/05-project-storage-lifecycle/`.
 3. The product detects whether a local worker is paired to the current personal or device workspace.
-4. If no compatible macOS worker is available, the product guides the user through graphical installation and secure pairing without requiring terminal commands.
+4. If no compatible macOS worker is paired, the product guides the user to copy the pairing code from the worker app's menu bar and paste it into the product, and covers installing the app for someone who does not have it yet, without requiring terminal commands.
 5. The paired worker opens the operating system's folder picker, then shows the selected repository name and location and validates that it is a Git repository.
 6. Before approved onboarding metadata leaves the device for the first time, the product explains in plain language what remains local, what is shared, and the recovery limit for accountless device-workspace data, then requires confirmation.
 7. The worker returns only the minimum approved connection and compatibility metadata.
@@ -64,6 +64,9 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - A local worker must be explicitly paired to the current personal or device workspace before it can register a repository.
 - The first executable local-worker slice supports macOS. Windows support is deferred next, followed by Linux.
 - Worker installation, pairing, reconnection, and update guidance must not require terminal commands from the user.
+- The product cannot detect whether the worker app is installed on the user's machine. Pairing guidance must therefore address someone who already has the app first, and present installation as the alternative branch rather than as the assumption.
+- Pairing guidance must say where the code is and how to get it: the worker app's icon in the macOS menu bar, whose status line copies the code to the clipboard when clicked.
+- Every surface that asks for a pairing code shows the same guidance for obtaining that code, so the instructions cannot drift apart between surfaces. A surface adds its own step only for what it uniquely offers, such as the field the code is pasted into.
 - Pairing credentials must be attempt-bound, replaceable, revocable, and protected from client payloads, logs, analytics, and project data.
 - A worker paired to one workspace cannot register or operate on a project owned by another workspace.
 - Repository selection must use the operating system's folder picker. The product may show the selected name and location afterward but must not require manual path entry.
@@ -129,6 +132,7 @@ A user can choose `Work without GitHub`, connect a Git repository on their compu
 - [AC-30] Given accountless device-workspace data is lost and a previous export exists, when the user chooses to recover the project, then recovery continues through the import workflow defined by `specs/06-project-portability/`.
 - [AC-31] Given pairing fails, when the operation ends, then no partial connection, credential, or source upload remains.
 - [AC-32] Given repository validation fails, when the operation ends, then no partial project, connection, or source upload remains.
+- [AC-33] Given any surface asks the user for a pairing code, when its guidance is read, then that guidance is the one shared guidance, it tells someone who already has the worker app how to copy the code from its menu bar, and it offers installation as the alternative rather than assuming the app is missing.
 
 ## Open Questions
 

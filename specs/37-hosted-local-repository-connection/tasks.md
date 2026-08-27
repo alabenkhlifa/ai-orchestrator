@@ -4,7 +4,7 @@
 
 Verified
 
-Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: complete; all seven tasks delivered and `capability:hosted-local-repository-connection` is ready. Verification readiness: `Verified`, with no outstanding exception; the two pre-existing failures it had recorded were fixed by their owning specifications and the repository-wide gate was re-confirmed passing on `main`. Release readiness: blocked on this slice's own release gates — the fresh-machine live proof and the accountable privacy and security review, including its decision on whether the connect, disconnect, and replace actions need their own minimized operational-security event.
+Product readiness: `Approved`, no open product question. Design readiness: `Approved`, no open technical question. Implementation readiness: complete; all seven tasks delivered and `capability:hosted-local-repository-connection` is ready. Verification readiness: `Verified`, with no outstanding exception; the two pre-existing failures it had recorded were fixed by their owning specifications and the repository-wide gate was re-confirmed passing on `main`. Release readiness: blocked on this slice's own release gates — the fresh-machine live proof and the accountable privacy and security review, including its decision on whether the connect, disconnect, and replace actions need their own minimized operational-security event. The wording of this page's no-worker-paired guidance is no longer owned here: `specs/02-local-project-onboarding` Task 12 makes it one shared value, and this page must render that value rather than keep a copy.
 
 ## Active Slice
 
@@ -68,6 +68,7 @@ Deferred after this slice:
 
 - Connecting a hosted local-repository project during onboarding, if creation-time connection is later shown to be worth a second entry point.
 - Presenting the connected machine's label or last validation time to the owner, which requires a separate minimization decision about what worker data may be disclosed.
+- Giving the project page a way to pair a worker. Its no-worker-paired step shows the shared pairing guidance and the download action, but has no field to paste a code into and no link to a surface that has one, so an owner who follows it reaches a dead end. Found while correcting that guidance under `specs/02-local-project-onboarding` Task 12, which changes the wording only and cannot close this.
 
 Release gates:
 

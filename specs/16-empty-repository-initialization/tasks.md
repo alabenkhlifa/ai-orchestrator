@@ -50,6 +50,7 @@ Included:
 Excluded:
 
 - Non-empty repository changes, empty GitHub remote mutation, source import or merge, multiple roots, monorepos, production deployment, and project features beyond the skeleton.
+- The pairing guidance and pairing-code field on this slice's worker-discovery step. `specs/02-local-project-onboarding` owns that guidance as one shared value and `specs/02` Task 12 makes this screen render it; this screen must not keep its own wording.
 
 Deferred after this slice:
 
