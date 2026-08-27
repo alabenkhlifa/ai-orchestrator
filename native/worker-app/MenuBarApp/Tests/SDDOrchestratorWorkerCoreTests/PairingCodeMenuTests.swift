@@ -53,7 +53,8 @@ final class PairingCodeMenuTests: XCTestCase {
 
     func testEveryPairedStatusIsAPlainStatusLine() {
         let paired: [WorkerStatus] = [
-            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
+            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable,
+            .handedOffToDashboard
         ]
 
         for status in paired {
@@ -62,6 +63,18 @@ final class PairingCodeMenuTests: XCTestCase {
             XCTAssertEqual(line.title, status.menuStatusLine)
             XCTAssertFalse(line.isCopyAction, "\(status) must not offer a pairing code")
         }
+    }
+
+    func testTheHandOffStateSaysWhereToContinueAndNeverClaimsASetup() {
+        let line = PairingCodeMenu.statusLine(
+            status: .handedOffToDashboard,
+            codeState: .none
+        )
+
+        XCTAssertEqual(line.title, "Paired — continue in the dashboard")
+        XCTAssertFalse(line.isCopyAction)
+        // The wording a real install got stuck on. It must not come back.
+        XCTAssertNotEqual(line.title, "Paired, setting up…")
     }
 
     // MARK: - The clipboard is only ever written on purpose

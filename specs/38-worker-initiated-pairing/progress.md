@@ -1,5 +1,21 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 8 complete on the corrected contract, verified by reading the app
+
+- `WorkerStatus.handedOffToDashboard` added, shown as "Paired — continue in the dashboard". The success handler sets that instead of `pairedSettingUp`, so the app never claims a setup it has no project to complete.
+- Verified by reading the app's own menu through the accessibility API, which is what I should have done the previous two times instead of querying the database. Before binding, the live menu read "Not paired — click to copy your pairing code". After an owner bound the code, the same read returned "Paired — continue in the dashboard, missing value, Open Dashboard, Quit". The app's state, from the app.
+- Two further app-side checks, both from outside the test suite: no new unbound attempts appeared over the following twelve seconds, so the loop genuinely stopped rather than idling in place; and no worker configuration exists on disk, which is what the hand-off decision requires and what makes the deferred follow-on honest rather than hidden.
+- Regression guards added so the stuck state cannot return: `PairingCodeMenuTests` asserts the hand-off line names where to continue, offers no copy action, and is not equal to "Paired, setting up…" — the exact wording a real install got stuck on. `PairingLoopTests` asserts the hand-off status idles and offers no code.
+- Test rows created during verification were deleted from the development database, and the app is left installed and unpaired.
+- Proof receipt, confirmed on the main thread by real exit status (210 passed).
+
+- Proof receipt: `Task 8` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp` — exit `0`.
+
+- Directly applicable safety check: `swift build -c release` links the AppKit target.
+- Failed checks: None.
+- Remaining: the slice verification gate, then `Verified`.
+- Spec updates: `Task 8` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed beyond the `AC-08` correction already recorded.
+
 ### 2026-08-27 - AC-08 corrected: the app hands off instead of claiming a setup it cannot finish
 
 - Found by the user on a real install: the menu bar sat on "Paired, setting up…" with no code and no way to pair. It was paired, by my own verification a few minutes earlier, and it could never leave that state.

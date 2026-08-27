@@ -147,8 +147,8 @@ Traceability:
   - Owns: AC-10, AC-11
   - Proof: An integration scenario pairs a worker end to end from an app-issued code bound in the dashboard and completed by the app through `POST /worker_pairings`, showing the app reaching its connected state without further input; retention tests prove an unredeemed attempt is discarded once unusable; and a log and diagnostic review across the control plane and the app finds no code, credential, or fragment of either.
 
-- [ ] Task 8 — Run the app's pairing loop so the round trip actually closes.
-  - Status: In Progress. Reopened: the success handler discarded the credential and set a permanent `pairedSettingUp`, which left a real install stuck on a setup that never finishes.
+- [x] Task 8 — Run the app's pairing loop so the round trip actually closes.
+  - Status: Complete. Reopened once: the success handler discarded the credential and set a permanent `pairedSettingUp`, which left a real install stuck on a setup that never finishes.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5, Task 6, Task 7

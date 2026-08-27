@@ -31,6 +31,14 @@ public enum WorkerStatus: Equatable, Sendable {
     /// verified its checksum — see `AppDelegate`'s `AppcastUpdateChecker`
     /// wiring. Never set on an unverified or not-newer entry.
     case updateAvailable
+    /// [specs/38] An owner redeemed this app's pairing code, so the control
+    /// plane has authorized a worker and the dashboard can see it. The app
+    /// deliberately does not report `.pairedSettingUp` here: a worker-initiated
+    /// pairing has no project, the worker configuration requires one, and there
+    /// is nothing this app can store or finish. Saying the dashboard has taken
+    /// over is the honest state; claiming a setup would describe one that never
+    /// completes.
+    case handedOffToDashboard
 
     /// The status line shown at the top of the menu.
     public var menuStatusLine: String {
@@ -41,6 +49,7 @@ public enum WorkerStatus: Equatable, Sendable {
         case .connected: return "Connected"
         case .disconnected: return "Disconnected"
         case .updateAvailable: return "Update available"
+        case .handedOffToDashboard: return "Paired — continue in the dashboard"
         }
     }
 

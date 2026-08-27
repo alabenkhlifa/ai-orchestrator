@@ -642,11 +642,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     transportError: error
                 ) {
                 case .success:
-                    // An owner redeemed it. The worker is authorized, so this
-                    // app stops offering a code and reports its own state.
+                    // An owner redeemed it, so the control plane has authorized
+                    // a worker and the dashboard can see it. This app says so
+                    // and stops. It does not claim `.pairedSettingUp`: this
+                    // pairing carries no project, the worker configuration
+                    // requires one, and there is nothing here to finish. See
+                    // specs/38's "the app hands off" decision.
                     self.pairingCodeHolder?.discard()
                     self.pairingCodeJustCopied = false
-                    self.urlPairingOverrideStatus = .pairedSettingUp
+                    self.urlPairingOverrideStatus = .handedOffToDashboard
                     self.stopPairingLoop()
                     self.refreshStatus()
 

@@ -69,7 +69,8 @@ final class PairingLoopTests: XCTestCase {
 
     func testEveryPairedStatusIdles() {
         let paired: [WorkerStatus] = [
-            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
+            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable,
+            .handedOffToDashboard
         ]
 
         for status in paired {
@@ -81,6 +82,18 @@ final class PairingLoopTests: XCTestCase {
 
             XCTAssertEqual(action, .idle, "\(status) must not keep polling")
         }
+    }
+
+    func testAfterHandingOffTheAppStopsAndOffersNoCode() {
+        // The state the app reaches when an owner redeems its code. It must not
+        // resume polling or start offering a new code.
+        let action = PairingLoop.next(
+            status: .handedOffToDashboard,
+            codeState: .none,
+            now: now
+        )
+
+        XCTAssertEqual(action, .idle)
     }
 
     func testAPairedAppIdlesEvenWithNoCodeHeld() {
