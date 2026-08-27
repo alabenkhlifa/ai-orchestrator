@@ -1,5 +1,34 @@
 # Local Project Onboarding Progress Log
 
+### 2026-08-27 - Verification gate re-run after Task 12; slice Verified again
+
+- Every gate command re-run and confirmed on the main thread by real exit status:
+- Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix dialyzer` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix deps.audit` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix sobelow --config` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix assets.deploy` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `mix release --overwrite` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `npm --prefix assets run test:e2e` — exit `0`.
+- `mix check` finished at `4590 passed (6 properties, 4584 tests), 1 excluded`. The browser matrix ran both projects: `153 passed` on `chromium` and `153 passed` on `mobile-chromium`. The e2e desktop and mobile databases were dropped first, because the fixed-digest kit-package seed is not idempotent across runs.
+- Two suite flakes were hit before the clean run, and both are recorded here rather than passed over, because a gate that is re-run until it goes green without saying so is not evidence:
+  - `SddOrchestrator.Worker.RequiredCheckRunnerTest` AC-14 failed once on `assert_receive {:worker_event, %{"event_type" => "progress"}}` after 3000 ms, with a reconciliation snapshot in the mailbox instead. It is a race, not a regression: it reproduces on `main` without this slice's changes, and the file passed three consecutive isolated runs on this branch.
+  - `SddOrchestrator.RepositoryInitializationTest` `set_kit_choice/2` failed once with `DBConnection.ConnectionError: tcp recv: closed`, a pool connection dropped under full-suite load. The file passed in isolation at `35 passed`.
+  - Neither test touches pairing guidance. Both are suite-stability defects owned by their own specifications, not by this slice, and neither was suppressed, skipped, or weakened to reach the gate.
+- Verification readiness: complete. Release readiness is unchanged and still blocked by this slice's own Release Gate, which holds the accountable privacy review and the real macOS signing and notarization evidence.
+
+### 2026-08-27 - Task 12 complete: one pairing guidance, no assumed missing app
+
+- `Devices.PairingGuidance` now owns the wording. `guidance/0` returns the headline and the two steps that obtain the code; `paste_step/0` is a separate call so a surface renders it only when it has a field to paste into.
+- Resolved mechanism worth recording: `paste_step/0` lives in the same module rather than being written out again by each surface with a field. `design.md` says a surface appends its own paste step only when it actually offers a field, which is a rule about whether to render it, not about where the sentence lives. Two surfaces have a field today, and letting them keep their own copy of that sentence would recreate the exact drift this task exists to remove.
+- `RepositoryInitializationLive` had merged `:missing` and `:incompatible` into a single branch whose notice tried to describe both at once. They are now separate states with their own notices, sharing one `initialization_pairing_form/1` so the two branches cannot drift in markup either. Its placeholder no longer shows `4K7Q-2P9X`; codes are URL-safe base64 of random bytes.
+- No pairing selector changed. `#pairing-form`, `#pairing-code`, `[data-pair]`, `[data-pairing-form]`, `[data-state]`, `[data-worker-status]`, and `[data-no-worker-paired]` are all intact, so the Playwright specs that drive pairing were not touched.
+- Out of scope and left alone, reported to the user rather than fixed here: em dashes still appear in user-facing copy this task does not own, including `LocalOnboardingLive`'s unavailable-worker notice and `ProjectDashboardLive`'s `machine_label/2` and connection-loss notices.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Result: 60 passed`. Runner receipt:
+- Proof receipt: `Task 12` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/pairing_guidance_test.exs test/sdd_orchestrator/portability/hosted_local_repository_machines_test.exs test/sdd_orchestrator_web/live/local_onboarding_live_test.exs test/sdd_orchestrator_web/live/repository_initialization_live_test.exs test/sdd_orchestrator_web/live/project_connect_machine_live_test.exs` — exit `0`.
+- Directly applicable safety checks, also confirmed by real exit status: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`.
+- The slice verification gate has not been re-run yet.
+
 ### 2026-08-27 - Pairing guidance reopened: it assumes an app the product cannot see
 
 - Found by the user reading the accountless onboarding screen. The guidance opens by asserting the worker app is not installed, then says the app "shows a pairing code the first time you open it. Enter it below". Neither statement survives contact with the product. Nothing detects an installed application from a browser, so the assertion is a guess that is wrong for anyone who already has the app. And `specs/38-worker-initiated-pairing` replaced first-launch-only display: an unpaired app now holds a live code and offers it on its menu bar status line, which the person clicks to copy.

@@ -17,7 +17,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
-  alias SddOrchestrator.Devices.Pairing
+  alias SddOrchestrator.Devices.{Pairing, WorkerDiscovery}
 
   # Shell-command shapes that would mean the user was asked to use a terminal.
   @terminal_markers [
@@ -53,8 +53,24 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       # Graphical installation and pairing guidance.
       assert has_element?(view, "a[href='/downloads/worker']")
       assert has_element?(view, "form[phx-submit=pair]")
-      assert html =~ "Download the worker for macOS"
-      assert html =~ "pairing code"
+
+      # The page states only what the control plane knows: nothing is paired. It
+      # cannot see whether the app is installed, so it points at the menu bar.
+      assert html =~ "This Mac has no paired worker yet."
+
+      assert html =~
+               "If the worker app is already installed, the code you need is in its menu bar."
+
+      assert html =~ "Open the worker app"
+      assert html =~ "Look for its icon in the menu bar at the top of your screen."
+      assert html =~ "Copy the code"
+      assert html =~ "the top line that says &quot;Not paired&quot;"
+      assert html =~ "Paste it here"
+      assert html =~ "The code works once, and only on this Mac."
+
+      # The supported window comes from the computed policy, never a literal.
+      majors = Enum.join(WorkerDiscovery.compatibility_policy().os_majors, " and ")
+      assert html =~ "Works on macOS #{majors}."
 
       refute_terminal_commands(html)
     end

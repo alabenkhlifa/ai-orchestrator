@@ -518,7 +518,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
                     :for={step <- HostedLocalRepositoryMachines.guidance().steps}
                     class="text-[13px] leading-relaxed text-ink-muted"
                   >
-                    <span class="font-semibold text-ink">{step.title}</span> — {step.detail}
+                    <span class="font-semibold text-ink">{step.title}</span>. {step.detail}
                   </li>
                 </ol>
                 <.button

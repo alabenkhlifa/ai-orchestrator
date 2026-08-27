@@ -10,7 +10,7 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryMachinesTest do
   use SddOrchestrator.DataCase, async: false
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.{Pairing, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{Pairing, PairingGuidance, WorkerDiscovery}
   alias SddOrchestrator.Portability.HostedLocalRepositoryMachines
 
   setup do
@@ -141,7 +141,14 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryMachinesTest do
     assert {:error, :no_worker_paired} = HostedLocalRepositoryMachines.confirm(nil, nil)
 
     guidance = HostedLocalRepositoryMachines.guidance()
-    assert Enum.map(guidance.steps, & &1.action) == [:download, :pair]
+
+    # The wording is owned by `PairingGuidance`, not restated here, so the three
+    # surfaces that ask for a pairing code cannot drift apart again.
+    assert guidance == PairingGuidance.guidance()
+    assert Enum.map(guidance.steps, & &1.action) == [:open, :copy]
+
+    # This page has no pairing field, so it must not promise one.
+    refute PairingGuidance.paste_step() in guidance.steps
 
     copy =
       [guidance.headline | Enum.flat_map(guidance.steps, &[&1.title, &1.detail])]
