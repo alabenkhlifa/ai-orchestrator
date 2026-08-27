@@ -21,7 +21,7 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryMachines do
   """
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
-  alias SddOrchestrator.Devices.{LocalWorker, Pairing, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{LocalWorker, Pairing, PairingGuidance, WorkerDiscovery}
 
   @type machine :: %{worker_id: Ecto.UUID.t(), available?: boolean()}
 
@@ -31,9 +31,9 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryMachines do
           preselected_worker_id: Ecto.UUID.t() | nil
         }
 
-  @type step :: %{title: String.t(), detail: String.t(), action: :download | :pair}
+  @type step :: PairingGuidance.step()
 
-  @type guidance :: %{headline: String.t(), steps: [step()]}
+  @type guidance :: PairingGuidance.guidance()
 
   @type confirm_error :: :no_worker_paired | :selection_required | :unauthorized_worker
 
@@ -112,30 +112,14 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryMachines do
   @doc """
   Graphical steps for an owner with no paired worker on this machine.
 
-  The worker is installed by dragging an app to Applications and paired with the
-  code it displays, so this guidance names no Terminal command. Rendering belongs
-  to the page; the steps are data so the no-terminal rule can be proved.
+  The wording is owned by `PairingGuidance`, so every surface that asks for a
+  pairing code says the same thing. Nothing is restated here.
+
+  This page hands the owner off without a pairing field of its own, so it renders
+  only the steps that obtain the code and never `PairingGuidance.paste_step/0`.
   """
   @spec guidance() :: guidance()
-  def guidance do
-    %{
-      headline:
-        "No worker is set up on this Mac yet. Install the worker app, then pair it with the code it shows.",
-      steps: [
-        %{
-          title: "Download the worker for macOS",
-          detail: "A signed app you install by dragging it to Applications.",
-          action: :download
-        },
-        %{
-          title: "Open it and enter the pairing code",
-          detail:
-            "The worker shows a pairing code the first time you open it. Enter it to link this Mac.",
-          action: :pair
-        }
-      ]
-    }
-  end
+  defdelegate guidance(), to: PairingGuidance
 
   defp machine(%LocalWorker{} = worker, now) do
     %{

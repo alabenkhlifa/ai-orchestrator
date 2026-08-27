@@ -46,7 +46,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   import SddOrchestratorWeb.ConnectionStatus, only: [device_connection_badge: 1]
 
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Devices.{Pairing, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{Pairing, PairingGuidance, WorkerDiscovery}
   alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
@@ -537,12 +537,6 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     end
   end
 
-  # The install guidance names the same window `WorkerDiscovery` computes, so the
-  # copy cannot drift from the policy it describes.
-  defp supported_macos_copy do
-    WorkerDiscovery.compatibility_policy().os_majors |> Enum.join(" and ")
-  end
-
   defp stub_worker_attrs do
     policy = WorkerDiscovery.compatibility_policy()
 
@@ -729,24 +723,29 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   attr :deep_link_code, :string, default: nil
 
   defp worker_missing(assigns) do
+    guidance = PairingGuidance.guidance()
+
+    assigns =
+      assigns
+      |> assign(:headline, guidance.headline)
+      |> assign(:steps, guidance.steps ++ [PairingGuidance.paste_step()])
+
     ~H"""
     <div data-state="missing">
       <.notice variant="info" icon="download">
-        No worker is set up on this Mac yet. Install the worker app, then pair it with the code it
-        shows — no Terminal needed.
+        {@headline}
       </.notice>
 
       <ol class="mt-5 flex flex-col gap-4">
-        <li class="flex gap-3">
+        <li :for={{step, index} <- Enum.with_index(@steps, 1)} class="flex gap-3">
           <span class="flex-none w-6 h-6 rounded-full bg-primary text-on-primary text-xs font-bold flex items-center justify-center">
-            1
+            {index}
           </span>
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-ink">Download the worker for macOS</p>
-            <p class="mt-0.5 text-[13px] leading-relaxed text-ink-muted">
-              A signed app you install by dragging it to Applications. Supports macOS {supported_macos_copy()}.
-            </p>
+            <p class="text-sm font-semibold text-ink">{step.title}</p>
+            <p class="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{step.detail}</p>
             <.button
+              :if={step.action == :open}
               variant="secondary"
               size="sm"
               href="/downloads/worker"
@@ -754,28 +753,16 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
             >
               <.lucide name="download" class="size-4" /> Download worker app
             </.button>
-          </div>
-        </li>
-        <li class="flex gap-3">
-          <span class="flex-none w-6 h-6 rounded-full bg-primary text-on-primary text-xs font-bold flex items-center justify-center">
-            2
-          </span>
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-ink">Open it and enter the pairing code</p>
-            <p class="mt-0.5 text-[13px] leading-relaxed text-ink-muted">
-              The worker shows a pairing code the first time you open it. Enter it below to link this
-              device — the pairing is single-use and stays on this Mac.
-            </p>
+            <.pairing_form
+              :if={step.action == :paste}
+              pairing_error={@pairing_error}
+              label="Pair worker"
+              project_id={@project_id}
+              deep_link_code={@deep_link_code}
+            />
           </div>
         </li>
       </ol>
-
-      <.pairing_form
-        pairing_error={@pairing_error}
-        label="Pair worker"
-        project_id={@project_id}
-        deep_link_code={@deep_link_code}
-      />
     </div>
     """
   end

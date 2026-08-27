@@ -64,7 +64,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
 
   alias SddOrchestrator.Delivery.WorkerProtocol
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Devices.Pairing
+  alias SddOrchestrator.Devices.{Pairing, PairingGuidance}
   alias SddOrchestrator.RepositoryInitialization
   alias SddOrchestrator.RepositoryInitialization.{Eligibility, Handoff, Publisher, Readiness}
   alias SddOrchestrator.RepositoryInitialization.{Skeleton, StagingBuilder, SupportDispatch}
@@ -481,6 +481,13 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   attr :pairing_error, :string, default: nil
 
   defp discovery_step(assigns) do
+    guidance = PairingGuidance.guidance()
+
+    assigns =
+      assigns
+      |> assign(:guidance, guidance)
+      |> assign(:steps, guidance.steps ++ [PairingGuidance.paste_step()])
+
     ~H"""
     <div data-step="discovery" data-worker-status={@worker_status}>
       <header class="flex items-start gap-3">
@@ -499,10 +506,38 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
       </header>
 
       <div class="mt-6" data-state={@worker_status}>
-        <div :if={@worker_status in [:missing, :incompatible]} data-state-detail="pair">
+        <div :if={@worker_status == :missing} data-state-detail="pair">
           <.notice variant="info" icon="download">
-            No compatible worker is paired on this computer yet. Install or update it, then pair
-            it with the code it shows — no Terminal needed.
+            {@guidance.headline}
+          </.notice>
+
+          <ol class="mt-5 flex flex-col gap-4">
+            <li :for={{step, index} <- Enum.with_index(@steps, 1)} class="flex gap-3">
+              <span class="flex-none w-6 h-6 rounded-full bg-primary text-on-primary text-xs font-bold flex items-center justify-center">
+                {index}
+              </span>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-ink">{step.title}</p>
+                <p class="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{step.detail}</p>
+                <.button
+                  :if={step.action == :open}
+                  variant="secondary"
+                  size="sm"
+                  href="/downloads/worker"
+                  class="mt-2 w-full sm:w-auto"
+                >
+                  <.lucide name="download" class="size-4" /> Download worker app
+                </.button>
+                <.initialization_pairing_form :if={step.action == :paste} error={@pairing_error} />
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div :if={@worker_status == :incompatible} data-state-detail="pair">
+          <.notice variant="warn" icon="triangle-alert">
+            The worker on this Mac is too old for this version of SDD Orchestrator. Update it, or
+            reinstall the current worker, then pair the replacement.
           </.notice>
 
           <.button
@@ -514,19 +549,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
             <.lucide name="download" class="size-4" /> Download worker app
           </.button>
 
-          <form id="pairing-form" phx-submit="pair" class="mt-5" data-pairing-form>
-            <.text_field
-              id="pairing-code"
-              name="pairing[code]"
-              label="Pairing code"
-              error={@pairing_error}
-              placeholder="For example, 4K7Q-2P9X"
-              autocomplete="off"
-            />
-            <.button type="submit" data-pair class="mt-3 w-full sm:w-auto">
-              <.lucide name="link" class="size-4" /> Pair worker
-            </.button>
-          </form>
+          <.initialization_pairing_form error={@pairing_error} />
         </div>
 
         <div :if={@worker_status == :unavailable} data-state-detail="unavailable">
@@ -549,6 +572,28 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
         </div>
       </div>
     </div>
+    """
+  end
+
+  # One pairing field shared by the two discovery states that can accept a code,
+  # so the missing and incompatible branches cannot drift apart in markup either.
+  attr :error, :string, default: nil
+
+  defp initialization_pairing_form(assigns) do
+    ~H"""
+    <form id="pairing-form" phx-submit="pair" class="mt-3" data-pairing-form>
+      <.text_field
+        id="pairing-code"
+        name="pairing[code]"
+        label="Pairing code"
+        error={@error}
+        placeholder="Paste the code from the worker app"
+        autocomplete="off"
+      />
+      <.button type="submit" data-pair class="mt-3 w-full sm:w-auto">
+        <.lucide name="link" class="size-4" /> Pair worker
+      </.button>
+    </form>
     """
   end
 

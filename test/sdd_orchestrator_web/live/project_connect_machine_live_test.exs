@@ -11,7 +11,13 @@ defmodule SddOrchestratorWeb.ProjectConnectMachineLiveTest do
   import Phoenix.LiveViewTest
 
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Devices.{DeviceStore.Local, Pairing, PortableRepositoryIdentity}
+
+  alias SddOrchestrator.Devices.{
+    DeviceStore.Local,
+    Pairing,
+    PairingGuidance,
+    PortableRepositoryIdentity
+  }
 
   alias SddOrchestrator.Portability.{
     HostedLocalRepositoryBinding,
@@ -151,8 +157,18 @@ defmodule SddOrchestratorWeb.ProjectConnectMachineLiveTest do
     html = view |> element("[data-connect-machine]") |> render_click()
 
     assert html =~ "data-no-worker-paired"
-    assert html =~ "Download the worker for macOS"
-    assert html =~ "Open it and enter the pairing code"
+    assert html =~ "This Mac has no paired worker yet."
+    assert html =~ "Open the worker app"
+    assert html =~ "Copy the code"
+    assert html =~ "the top line that says &quot;Not paired&quot;"
+
+    # This page hands the owner off and renders no pairing field, so it must not
+    # promise one by showing the paste step.
+    paste = PairingGuidance.paste_step()
+    refute html =~ paste.title
+    refute html =~ paste.detail
+    refute html =~ "data-pairing-form"
+
     refute html =~ "Terminal"
     refute html =~ "sudo"
     assert Repo.get(HostedLocalRepositoryBinding, context.project.id) == nil

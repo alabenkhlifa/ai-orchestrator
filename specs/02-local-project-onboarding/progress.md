@@ -1,5 +1,17 @@
 # Local Project Onboarding Progress Log
 
+### 2026-08-27 - Task 12 complete: one pairing guidance, no assumed missing app
+
+- `Devices.PairingGuidance` now owns the wording. `guidance/0` returns the headline and the two steps that obtain the code; `paste_step/0` is a separate call so a surface renders it only when it has a field to paste into.
+- Resolved mechanism worth recording: `paste_step/0` lives in the same module rather than being written out again by each surface with a field. `design.md` says a surface appends its own paste step only when it actually offers a field, which is a rule about whether to render it, not about where the sentence lives. Two surfaces have a field today, and letting them keep their own copy of that sentence would recreate the exact drift this task exists to remove.
+- `RepositoryInitializationLive` had merged `:missing` and `:incompatible` into a single branch whose notice tried to describe both at once. They are now separate states with their own notices, sharing one `initialization_pairing_form/1` so the two branches cannot drift in markup either. Its placeholder no longer shows `4K7Q-2P9X`; codes are URL-safe base64 of random bytes.
+- No pairing selector changed. `#pairing-form`, `#pairing-code`, `[data-pair]`, `[data-pairing-form]`, `[data-state]`, `[data-worker-status]`, and `[data-no-worker-paired]` are all intact, so the Playwright specs that drive pairing were not touched.
+- Out of scope and left alone, reported to the user rather than fixed here: em dashes still appear in user-facing copy this task does not own, including `LocalOnboardingLive`'s unavailable-worker notice and `ProjectDashboardLive`'s `machine_label/2` and connection-loss notices.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Result: 60 passed`. Runner receipt:
+- Proof receipt: `Task 12` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/pairing_guidance_test.exs test/sdd_orchestrator/portability/hosted_local_repository_machines_test.exs test/sdd_orchestrator_web/live/local_onboarding_live_test.exs test/sdd_orchestrator_web/live/repository_initialization_live_test.exs test/sdd_orchestrator_web/live/project_connect_machine_live_test.exs` — exit `0`.
+- Directly applicable safety checks, also confirmed by real exit status: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`.
+- The slice verification gate has not been re-run yet.
+
 ### 2026-08-27 - Pairing guidance reopened: it assumes an app the product cannot see
 
 - Found by the user reading the accountless onboarding screen. The guidance opens by asserting the worker app is not installed, then says the app "shows a pairing code the first time you open it. Enter it below". Neither statement survives contact with the product. Nothing detects an installed application from a browser, so the assertion is a guess that is wrong for anyone who already has the app. And `specs/38-worker-initiated-pairing` replaced first-launch-only display: an unpaired app now holds a live code and offers it on its menu bar status line, which the person clicks to copy.

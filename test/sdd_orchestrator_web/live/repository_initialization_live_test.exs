@@ -46,6 +46,39 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLiveTest do
 
       assert has_element?(view, "[data-worker-status=missing]")
       assert has_element?(view, "form[phx-submit=pair]")
+
+      html = render(view)
+
+      # The same owned guidance as local onboarding, including the paste step,
+      # because this page does offer a pairing field.
+      assert html =~ "This Mac has no paired worker yet."
+      assert html =~ "Open the worker app"
+      assert html =~ "Copy the code"
+      assert html =~ "the top line that says &quot;Not paired&quot;"
+      assert html =~ "Paste it here"
+      assert has_element?(view, "a[href='/downloads/worker']")
+
+      # Codes are URL-safe base64 of random bytes, so the field must not
+      # advertise a dashed format the product never issues.
+      assert html =~ "Paste the code from the worker app"
+      refute html =~ "4K7Q-2P9X"
+    end
+
+    test "shows the worker-incompatible state with update guidance, not the no-worker headline",
+         %{conn: conn, workspace: workspace} do
+      pair(workspace.id, %{os_major: "13"})
+
+      {:ok, view, _html} = live(conn, ~p"/onboarding/empty-repository")
+
+      assert has_element?(view, "[data-worker-status=incompatible]")
+      assert has_element?(view, "form[phx-submit=pair]")
+
+      html = render(view)
+
+      assert html =~ "too old for this version of SDD Orchestrator"
+      assert html =~ "reinstall the current worker"
+      refute html =~ "This Mac has no paired worker yet."
+      assert has_element?(view, "a[href='/downloads/worker']")
     end
 
     test "pairing the worker stand-in advances to the detected state", %{
@@ -468,16 +501,22 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLiveTest do
     )
   end
 
-  defp pair(workspace_id) do
+  defp pair(workspace_id, attrs \\ %{}) do
     {:ok, %{code: code}} = Pairing.start_pairing(workspace_id)
 
     {:ok, %{worker: worker}} =
-      Pairing.complete_pairing(code, %{
-        os_family: "macos",
-        os_major: "26",
-        protocol_version: "1",
-        app_version: "1.0.0"
-      })
+      Pairing.complete_pairing(
+        code,
+        Map.merge(
+          %{
+            os_family: "macos",
+            os_major: "26",
+            protocol_version: "1",
+            app_version: "1.0.0"
+          },
+          attrs
+        )
+      )
 
     {:ok, seen} = Pairing.mark_seen(worker)
     seen
