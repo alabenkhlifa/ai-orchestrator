@@ -121,7 +121,8 @@ Traceability:
   - Owns: AC-01, AC-07
   - Proof: Swift tests against the existing HTTP seam cover acquiring a code on first start, replacing it before expiry, surfacing an unreachable control plane rather than a stale code, and never retaining a replaced code.
 
-- [ ] Task 6 — Present the code and copy it from the menu bar.
+- [x] Task 6 — Present the code and copy it from the menu bar.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5

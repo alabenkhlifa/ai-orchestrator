@@ -1,5 +1,23 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 6 complete: the status line is the copy action
+
+- `PairingCodeMenu.statusLine/3` decides what the menu's first line says and whether clicking it copies. `PairingCodeCopier` performs the write. Both live in `SDDOrchestratorWorkerCore`, so the decision is unit-tested without AppKit and `AppDelegate` stays the thin wiring the package was built around.
+- The line a person already reads for status is the one they click, so the single action pairing asks of them needs no second place to look. The code is roughly eighty opaque characters, so the clipboard is the only usable way to move it and showing it in full would only crowd the menu.
+- Four unpaired states, each saying something true: a held code invites the click, a copied one confirms and stays clickable so a missed clipboard can be retried, an unreachable control plane is named rather than left silent, and no code yet reads as the ordinary unpaired line.
+- A paired worker is never offered a code. A test walks every paired status and asserts the line is plain, so a stale action cannot appear on a worker that has nothing to pair.
+- "Nothing copies without a click" is proven rather than asserted. The clipboard sits behind a `Pasteboarding` seam, and a test builds the line twice — including the just-copied variant — then checks the fake pasteboard was never written. Copying with nothing held writes nothing and reports `false`, so the menu cannot claim a copy that did not happen.
+- `AppDelegate` drops the held code as soon as the status stops being `notPaired`, decided in `refreshStatus()` so no other path has to remember. The real clipboard adapter stays at the AppKit edge.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (8 passed); the second is the whole worker-app suite (201 passed).
+
+- Proof receipt: `Task 6` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp --filter PairingCodeMenuTests` — exit `0`.
+- Proof receipt: `Task 6` — scope `Focused` — command `swift test --package-path native/worker-app/MenuBarApp` — exit `0`.
+
+- Directly applicable safety check: `swift build -c release` links the AppKit target, so the menu wiring compiles and not only the Core decisions.
+- Failed checks: None.
+- Remaining: `Task 7` closes the round trip and publishes `capability:worker-initiated-pairing`.
+- Spec updates: `Task 6` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed.
+
 ### 2026-08-27 - Task 5 complete: the app holds a live code of its own
 
 - Added `PairingCode`, `PairingCodeResponseParser`, and `PairingCodeHolder` to `SDDOrchestratorWorkerCore`. The holder asks `POST /pairing_codes` for a code when it has none and replaces it a minute before expiry, so a person who walks away and comes back copies something the dashboard still accepts rather than hitting a refusal they did not cause and could not diagnose.

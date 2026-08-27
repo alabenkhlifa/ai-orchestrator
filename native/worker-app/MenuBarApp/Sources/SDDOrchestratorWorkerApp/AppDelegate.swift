@@ -5,6 +5,16 @@ import SDDOrchestratorWorkerCore
 /// Wires `SDDOrchestratorWorkerCore`'s testable decisions to an
 /// `NSStatusItem`. Kept thin on purpose — see `Package.swift`'s comment on
 /// why the decision logic itself lives in the Core target instead.
+/// The real clipboard, behind `SDDOrchestratorWorkerCore`'s seam so the copy
+/// decision itself stays testable without AppKit.
+private final class SystemPasteboard: Pasteboarding {
+    func write(_ string: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(string, forType: .string)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var workerBinaryPath = ""
@@ -17,6 +27,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pairingStatus: PairingStatus = .notPaired
     private var connectionState: GatewayConnectionState = .unknown
     private var currentStatus: WorkerStatus = .notPaired
+
+    // [specs/38] While unpaired the app holds a code of its own so the person
+    // has something to copy. It is dropped the moment pairing succeeds.
+    private var pairingCodeHolder: PairingCodeHolder?
+    private var pairingCodeCopier: PairingCodeCopier?
+    private var pairingCodeJustCopied = false
 
     // Polls SddOrchestrator.Worker.ConnectionStatus (see
     // ConnectionStatusQuerier) only once this worker is known to be paired
@@ -120,6 +136,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startAppcastChecking()
 
         setUpUpdateInstallCoordinator()
+
+        setUpPairingCode()
     }
 
     // MARK: - Status item / menu
@@ -137,8 +155,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func rebuildMenu() {
         let menu = NSMenu()
 
-        let statusLineItem = NSMenuItem(title: currentStatus.menuStatusLine, action: nil, keyEquivalent: "")
-        statusLineItem.isEnabled = false
+        // [specs/38, AC-02] The line a person already reads for status is also
+        // the one they click to copy the pairing code, so the single action
+        // pairing asks of them needs no second place to look. It stays a plain
+        // disabled line whenever there is nothing to copy.
+        let line = PairingCodeMenu.statusLine(
+            status: currentStatus,
+            codeState: pairingCodeHolder?.state ?? .none,
+            justCopied: pairingCodeJustCopied
+        )
+
+        let statusLineItem = NSMenuItem(
+            title: line.title,
+            action: line.isCopyAction ? #selector(copyPairingCode(_:)) : nil,
+            keyEquivalent: ""
+        )
+
+        if line.isCopyAction {
+            statusLineItem.target = self
+        } else {
+            statusLineItem.isEnabled = false
+        }
+
         menu.addItem(statusLineItem)
 
         // [AC-08] The specific reason the last URL-scheme pairing attempt
@@ -221,6 +259,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             currentStatus = urlPairingOverrideStatus ?? WorkerStatus.from(pairing: pairingStatus, connection: connectionState)
         }
+        // A newly paired app stops offering a code; an unpaired one keeps a
+        // live one. Both are decided here so no other path has to remember.
+        if currentStatus != .notPaired {
+            pairingCodeHolder?.discard()
+            pairingCodeJustCopied = false
+        }
+
         rebuildMenu()
     }
 
@@ -500,6 +545,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openDashboard(_ sender: Any?) {
         let url = DashboardURLProvider.dashboardURL(infoDictionary: Bundle.main.infoDictionary)
         NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Pairing code (specs/38, AC-01 / AC-02 / AC-07)
+
+    /// Starts holding a code so an unpaired app has something to offer. Wired
+    /// to the dashboard URL the bundle already resolves, which is the only
+    /// control-plane address this app knows before it has ever paired.
+    private func setUpPairingCode() {
+        let controlPlane = DashboardURLProvider.dashboardURL(infoDictionary: Bundle.main.infoDictionary)
+
+        pairingCodeHolder = PairingCodeHolder(
+            poster: URLSessionPairingHTTPPoster(),
+            controlPlaneURL: controlPlane
+        )
+
+        pairingCodeCopier = PairingCodeCopier(pasteboard: SystemPasteboard())
+        refreshPairingCode()
+    }
+
+    /// Asks for a code only while unpaired, and only replaces one that is about
+    /// to expire — the holder decides both. Once paired, whatever is held is
+    /// dropped rather than left copyable.
+    private func refreshPairingCode() {
+        guard currentStatus == .notPaired else {
+            pairingCodeHolder?.discard()
+            return
+        }
+
+        pairingCodeHolder?.refreshIfNeeded { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.rebuildMenu()
+            }
+        }
+    }
+
+    @objc private func copyPairingCode(_ sender: Any?) {
+        guard let pairingCodeHolder, let pairingCodeCopier else { return }
+
+        // Only a click reaches the clipboard. Nothing copies on a schedule or
+        // as a side effect of the menu opening.
+        pairingCodeJustCopied = pairingCodeCopier.copy(from: pairingCodeHolder.state)
+        rebuildMenu()
     }
 
     // MARK: - Quit (AC-04 / AC-05)
