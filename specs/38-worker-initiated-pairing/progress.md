@@ -1,5 +1,25 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 3 complete: anonymous issuance, bounded and audited
+
+- Added `POST /pairing_codes` (`PairingCodeController`) and `Pairing.issue_unbound_code/2`. An app that has never been paired holds no credential and knows no workspace, so it cannot authenticate to ask for a code, and this endpoint does not ask it to.
+- What makes that safe is what the call produces, not who made it: an attempt bound to nothing, which authorizes nothing anywhere until an owner redeems it. A code intercepted in transit is worth nothing to whoever intercepts it.
+- The request body is ignored entirely. A test posts a workspace, a project, an account, a chosen `code_digest`, and a far-future expiry, and asserts none of them are honored: the attempt is still unbound, the digest is the server's, and the expiry is the server's. Nothing a caller sends can widen what it gets back.
+- `PairingIssuanceThrottle` follows `HostedAccess.RateLimiter`: per-caller and global token buckets consumed together, so one noisy source cannot exhaust the service and many quiet ones cannot either. The caller key is HMAC'd with a per-process secret before it enters state, buckets hold only a token count and a timestamp, and they live in memory, so nothing describing a person or a machine is retained and the window expires with the process.
+- Rate settled, the engineering choice `design.md` left open: 30 per caller per 10 minutes, 300 globally per minute, in `config :sdd_orchestrator, :pairing_issuance`. An unpaired app replaces its code before the ten-minute expiry, so one app needs roughly six an hour; the caller allowance leaves room for several apps behind one address.
+- A refusal reveals nothing about an earlier code. The test exhausts the rate with an unredeemed code outstanding, then again with that code redeemed, and asserts the two `429` answers are identical.
+- `PairingSecurityLog` records only `event=issue_code` and an outcome. A test asserts the log contains neither the code, nor its secret, nor the caller address, and that a throttled refusal is audited too.
+- Found while running the security scan, and fixed under `specs/01` and `specs/02` rather than here: `mix sobelow --config` was exiting 1 because of `new_git_repository/0`, a browser-harness helper added during those slices after their sobelow run. Both slices recorded a passing sobelow that a later edit had invalidated. See the 2026-08-27 correction entries in their own progress logs.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (8 passed); the second is the regression check across every device and pairing suite (118 passed).
+
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator_web/controllers/pairing_code_controller_test.exs` — exit `0`.
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/ test/sdd_orchestrator_web/controllers/worker_pairing_controller_test.exs test/sdd_orchestrator/worker/pairing_test.exs` — exit `0`.
+
+- Directly applicable safety checks: `mix compile --warnings-as-errors`, `mix format --check-formatted`, `mix dialyzer`, and `mix sobelow --config` pass, and `mix credo --strict` reports no issues on the three new modules.
+- Failed checks: None outstanding.
+- Remaining: `Task 4` and `Task 5` are both unblocked and independent. `Task 4` makes the dashboard field redeem a real code; `Task 5` makes the app acquire and refresh one.
+- Spec updates: `Task 3` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed; the issuance rate was an open engineering choice and is now recorded above.
+
 ### 2026-08-26 - Task 2 complete: redemption binds the workspace and pairs in one transaction
 
 - Added `Pairing.redeem_pairing/3`. It is the moment an unbound attempt stops being inert. Creating the worker and claiming the attempt happen in one transaction, so an attempt is never left bound to a workspace with nobody holding the credential.

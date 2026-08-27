@@ -13,7 +13,13 @@ defmodule SddOrchestrator.Devices.Pairing do
   """
   import Ecto.Query, warn: false
 
-  alias SddOrchestrator.Devices.{LocalWorker, PairingAttempt}
+  alias SddOrchestrator.Devices.{
+    LocalWorker,
+    PairingAttempt,
+    PairingIssuanceThrottle,
+    PairingSecurityLog
+  }
+
   alias SddOrchestrator.Repo
 
   @code_ttl_seconds 10 * 60
@@ -77,6 +83,44 @@ defmodule SddOrchestrator.Devices.Pairing do
       nil -> {:error, :invalid_or_used}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Issues a single-use pairing code that belongs to no device workspace yet.
+
+  This is what a worker app calls for itself (`specs/38`). It has never been
+  paired, so it has no workspace to name — acquiring one is what pairing does.
+  The attempt it creates authorizes nothing: every worker-authorizing path needs
+  a bound workspace, and this record has none until an authorized owner redeems
+  its code through `redeem_pairing/3`.
+
+  Takes no caller-supplied identity, workspace, project, or secret. The only
+  input is the caller key the throttle bounds, and that key is HMAC'd before it
+  enters any state.
+  """
+  @spec issue_unbound_code(:inet.ip_address() | String.t() | nil, keyword()) ::
+          {:ok, %{attempt: PairingAttempt.t(), code: String.t()}}
+          | {:error, :throttled | Ecto.Changeset.t()}
+  def issue_unbound_code(caller, opts \\ []) do
+    if PairingIssuanceThrottle.allow?(caller) do
+      ttl = Keyword.get(opts, :ttl_seconds, @code_ttl_seconds)
+      {secret, salt, digest} = new_secret()
+
+      %PairingAttempt{}
+      |> PairingAttempt.create_unbound_changeset(%{
+        code_digest: digest,
+        code_salt: salt,
+        expires_at: seconds_from_now(ttl)
+      })
+      |> Repo.insert()
+      |> case do
+        {:ok, attempt} -> {:ok, %{attempt: attempt, code: encode(attempt.id, secret)}}
+        {:error, _changeset} = error -> error
+      end
+    else
+      {:error, :throttled}
+    end
+    |> PairingSecurityLog.audit(:issue_code)
   end
 
   @doc """

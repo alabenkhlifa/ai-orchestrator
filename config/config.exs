@@ -81,6 +81,17 @@ config :sdd_orchestrator, :passwordless,
     global: [capacity: 100, window_ms: 60 * 1_000]
   ]
 
+# Anonymous pairing-code issuance (specs/38-worker-initiated-pairing). An
+# unpaired worker app replaces its code before the ten-minute expiry, so one app
+# needs roughly six codes an hour; the caller allowance leaves room for several
+# apps behind one address without letting an unidentified caller mint without
+# bound.
+config :sdd_orchestrator, :pairing_issuance,
+  rate_limits: [
+    caller: [capacity: 30, window_ms: 10 * 60 * 1_000],
+    global: [capacity: 300, window_ms: 60 * 1_000]
+  ]
+
 config :sdd_orchestrator, :passwordless_retention,
   magic_link_attempt_grace_seconds: 24 * 60 * 60,
   hosted_session_grace_seconds: 24 * 60 * 60

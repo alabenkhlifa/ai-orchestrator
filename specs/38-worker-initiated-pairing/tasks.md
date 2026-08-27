@@ -91,7 +91,8 @@ Traceability:
   - Owns: AC-04, AC-05, AC-06
   - Proof: Domain and transaction tests cover a valid redemption binding to the redeemer's own workspace and authorizing one worker, a second redemption of the same code being refused, concurrent redemptions where exactly one wins, redemption against a foreign workspace being refused, and expired, canceled, already-redeemed, and never-existed codes returning one indistinguishable answer.
 
-- [ ] Task 3 — Expose anonymous code issuance with its rate limit and audit.
+- [x] Task 3 — Expose anonymous code issuance with its rate limit and audit.
+  - Status: Complete.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
