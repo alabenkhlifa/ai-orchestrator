@@ -1,5 +1,22 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Verification gate passed on the corrected contract; slice Verified
+
+- Every gate command passes with no accepted exceptions.
+- One failure during the first attempt was mine and is recorded rather than accepted: `Delivery.Worker.IsolationTest` failed because I ran `swift test` concurrently with `mix check` in the same worktree, which is this repository's known shared-temporary-fixture collision. It passes alone (53 passed), and the gate was re-run with nothing else touching the tree rather than logged as an exception. An exception describes a limitation of the software; this was a limitation of how I ran the check.
+- Proof receipts, all confirmed on the main thread by real exit status:
+  - `python3 .agents/scripts/run_proof.py slice -- mix check` — exit `0` (4582 passed, 1 excluded `:live` tag, no exceptions).
+  - `python3 .agents/scripts/run_proof.py slice -- mix dialyzer`, `... mix deps.audit`, `... mix sobelow --config` — exit `0`.
+  - `python3 .agents/scripts/run_proof.py slice -- npm --prefix assets ci` and `... npm --prefix assets run test:e2e` — exit `0` (153 passed on each of `chromium` and `mobile-chromium`).
+  - `python3 .agents/scripts/run_proof.py slice -- swift test --package-path native/worker-app/MenuBarApp` — exit `0` (210 passed).
+  - `python3 .agents/scripts/run_proof.py slice -- env MIX_ENV=prod mix assets.deploy` and `... env MIX_ENV=prod mix release --overwrite` — exit `0`.
+- Verified against the built artifact as well as the configuration: the production release contains no `E2E` and no `FakeProvider` module.
+- What this slice now genuinely delivers, verified by reading the app rather than the database: an unpaired app fetches its own code and offers it on the menu bar's status line; the owner pastes it into the dashboard, which binds it to their own workspace and authorizes one worker; and the app notices, stops offering a code, and says the dashboard has taken over.
+- What it deliberately does not deliver, stated so nobody has to discover it: the worker this pairing authorizes has no project, folder, or coding agent, so it cannot connect or run anything. Configuring it is deferred and will need a credential this flow discards.
+- Status: `In Progress` to `Verified`. `capability:worker-initiated-pairing` is ready for implementation and local verification only.
+- Release readiness is separate and remains open: if the control plane is hosted, the processor, region, and transfer safeguards covering anonymous issuance; and confirmation of the retention window for unredeemed attempts and issuance-throttle counters in the accountable privacy review.
+- Spec updates: slice status and the verification gate only.
+
 ### 2026-08-27 - Task 8 complete on the corrected contract, verified by reading the app
 
 - `WorkerStatus.handedOffToDashboard` added, shown as "Paired — continue in the dashboard". The success handler sets that instead of `pairedSettingUp`, so the app never claims a setup it has no project to complete.
