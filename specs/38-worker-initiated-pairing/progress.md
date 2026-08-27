@@ -1,5 +1,24 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-27 - Task 2 complete on the corrected design: binding only
+
+- `Pairing.redeem_pairing/3` is replaced by `Pairing.bind_pairing/2`. It attaches the attempt to the redeemer's workspace with one conditional update and stops. It creates no worker and returns nothing the browser has to hold, which is the whole point of the correction: only the app knows its own versions and only the app should hold its credential.
+- The app finishes through `complete_pairing/2` unchanged, which is the endpoint `POST /worker_pairings` already exposes. A test walks the whole path — bind, then complete with the versions only an app can report — and asserts the worker is discoverable in the workspace only after that second step.
+- The Task 1 guard is now proven rather than assumed. Completing a code nobody has bound raises `Ecto.InvalidChangesetError`, because the worker would need a workspace the attempt does not have, and no worker row is created. That is the property that makes anonymous issuance safe, so it has its own test.
+- Re-submitting a dashboard-issued code for the same workspace is harmless: the conditional update matches the already-bound row and changes nothing, and the code still completes once. This keeps `specs/36`'s deep-link path working when a person also pastes the same code.
+- Concurrency is proven by outcome rather than by timing: exactly one of two bindings succeeds, and the attempt ends up owned by that winner. The sandbox shares a connection so the two serialize; atomicity rests on the single conditional update, as recorded when this test was first written.
+- Task 2's `Size:` is now `Standard`. Binding alone is one update, so the earlier exception no longer applies.
+- Call sites updated with the rename so the tree stays green: the local-onboarding LiveView and two assertions in Task 3's controller test. Task 4 still owns how the screen presents the new waiting state.
+- Proof receipts, both confirmed on the main thread by real exit status. The first is the task's own proof (10 passed); the second is the regression check across every device, pairing, and issuance suite (128 passed).
+
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/pairing_redemption_test.exs` — exit `0`.
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/ test/sdd_orchestrator_web/controllers/worker_pairing_controller_test.exs test/sdd_orchestrator_web/controllers/pairing_code_controller_test.exs test/sdd_orchestrator/worker/pairing_test.exs` — exit `0`.
+
+- Directly applicable safety checks: `mix compile --warnings-as-errors`, `mix format --check-formatted`, and `mix dialyzer` pass, and `mix credo --strict` reports no issues on the changed module.
+- Failed checks: None. Task 4's own proof is still failing by design and is next.
+- Remaining: `Task 4` resumes on the corrected contract and must now show the screen waiting for the app rather than a worker appearing instantly.
+- Spec updates: `Task 2` checked complete. No requirement, design decision, acceptance criterion, or task boundary changed beyond the correction already recorded.
+
 ### 2026-08-27 - Design correction: binding and completion are separate, and Task 2 reopens
 
 - Found by `Task 4`'s own proof, not by review. Four LiveView tests failed: after a valid code was redeemed, the screen never reached `data-worker-status="detected"`. The cause is not the test. `WorkerDiscovery.status/2` reports a worker `:incompatible` when it states no `os_family`, `os_major`, or `protocol_version`, and unreachable when it has no `last_seen_at`. A worker the dashboard creates has none of those, because the dashboard is not the worker.

@@ -148,30 +148,26 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     {:noreply, socket |> assign(:pairing_error, nil) |> assign_worker_status()}
   end
 
-  # With the local worker stand-in on, entering a pairing code completes the
-  # pairing the way the native worker would over its outbound transport, so the
-  # graphical flow can be driven end to end. Replacement-worker pairing reuses the
-  # same path: pairing again simply authorizes another worker for this workspace.
+  # The submitted code is redeemed for real (`specs/38`): redemption is the moment
+  # an attempt the worker app obtained for itself stops being inert, binding to
+  # this browser's own device workspace and authorizing one worker. Replacement
+  # pairing reuses the same path, since pairing again simply authorizes another
+  # worker for this workspace.
+  #
+  # Redemption is attempted first and always. The local worker stand-in only
+  # catches what redemption refused, and only where the stand-in is enabled at
+  # all: development and the browser suite, where there is no native app to hand
+  # out a code and the flow still has to be drivable end to end. A real code
+  # therefore behaves identically in development and in production, and the
+  # stand-in can no longer hide a redemption that genuinely failed.
   def handle_event("pair", %{"pairing" => %{"code" => code}}, socket) do
-    cond do
-      String.trim(code) == "" ->
-        {:noreply,
-         assign(socket, :pairing_error, "Enter the pairing code shown in the worker app.")}
+    trimmed = String.trim(code)
 
-      worker_stub?() ->
-        case stub_complete_pairing(socket.assigns.workspace.id) do
-          :ok ->
-            {:noreply, socket |> assign(:pairing_error, nil) |> assign_worker_status()}
-
-          {:error, _reason} ->
-            {:noreply,
-             assign(socket, :pairing_error, "Pairing couldn't be completed. Try again.")}
-        end
-
-      true ->
-        # Without the stand-in the dashboard waits for the real worker to connect
-        # after the user enters the code in the worker app; re-check its status.
-        {:noreply, socket |> assign(:pairing_error, nil) |> assign_worker_status()}
+    if trimmed == "" do
+      {:noreply,
+       assign(socket, :pairing_error, "Enter the pairing code shown in the worker app.")}
+    else
+      {:noreply, complete_pairing(socket, trimmed)}
     end
   end
 
@@ -454,6 +450,36 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   # Simulates the native worker completing a dashboard-issued pairing and reporting
   # in, so worker discovery resolves to `:detected` without a signed binary.
+  # One safe answer for every refused code. Expired, already used, belonging to
+  # another workspace, malformed, and never issued are indistinguishable here
+  # because `redeem_pairing/3` already makes them indistinguishable, and saying
+  # more would undo that.
+  @refused_pairing "That code didn't work. Get a new one from the worker app and try again."
+
+  defp complete_pairing(socket, code) do
+    case Pairing.bind_pairing(code, socket.assigns.workspace.id) do
+      :ok ->
+        socket |> assign(:pairing_error, nil) |> assign_worker_status()
+
+      {:error, :invalid_code} ->
+        stub_fallback(socket)
+    end
+  end
+
+  # Present only where the stand-in is configured, which is never a production
+  # build. It exists so the graphical flow is drivable with no native app to
+  # issue a code, not to rescue a real code that was refused.
+  defp stub_fallback(socket) do
+    if worker_stub?() do
+      case stub_complete_pairing(socket.assigns.workspace.id) do
+        :ok -> socket |> assign(:pairing_error, nil) |> assign_worker_status()
+        {:error, _reason} -> assign(socket, :pairing_error, @refused_pairing)
+      end
+    else
+      assign(socket, :pairing_error, @refused_pairing)
+    end
+  end
+
   defp stub_complete_pairing(workspace_id) do
     with {:ok, %{code: code}} <- Pairing.start_pairing(workspace_id),
          {:ok, %{worker: worker}} <- Pairing.complete_pairing(code, stub_worker_attrs()),
@@ -773,7 +799,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         name="pairing[code]"
         label="Pairing code"
         error={@pairing_error}
-        placeholder="For example, 4K7Q-2P9X"
+        placeholder="Paste the code from the worker app"
         autocomplete="off"
       />
       <div class="mt-3 flex flex-col gap-2.5 sm:flex-row sm:items-center">

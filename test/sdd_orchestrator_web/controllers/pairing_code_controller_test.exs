@@ -90,9 +90,13 @@ defmodule SddOrchestratorWeb.PairingCodeControllerTest do
       # Nothing was authorized by issuance alone.
       assert Pairing.active_workers(Ecto.UUID.generate()) == []
 
-      # It only becomes real through redemption, which an owner performs.
+      # It becomes attached only when an owner binds it, and becomes a worker
+      # only when the app finishes for itself.
       workspace_id = Ecto.UUID.generate()
-      assert {:ok, %{worker: worker}} = Pairing.redeem_pairing(code, workspace_id)
+      assert :ok = Pairing.bind_pairing(code, workspace_id)
+      assert Pairing.active_workers(workspace_id) == []
+
+      assert {:ok, %{worker: worker}} = Pairing.complete_pairing(code)
       assert worker.device_workspace_id == workspace_id
     end
   end
@@ -130,8 +134,8 @@ defmodule SddOrchestratorWeb.PairingCodeControllerTest do
 
       unredeemed = issue(conn) |> json_response(429)
 
-      # Redeem the first code, then exhaust again and compare the answers.
-      {:ok, _} = Pairing.redeem_pairing(first, Ecto.UUID.generate())
+      # Bind the first code, then exhaust again and compare the answers.
+      :ok = Pairing.bind_pairing(first, Ecto.UUID.generate())
       PairingIssuanceThrottle.reset()
       for _refill <- 1..capacity, do: issue(conn)
       redeemed = issue(conn) |> json_response(429)

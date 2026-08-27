@@ -124,78 +124,57 @@ defmodule SddOrchestrator.Devices.Pairing do
   end
 
   @doc """
-  Redeems a pairing code against the workspace the redeemer owns.
+  Binds a pairing code to the workspace the redeemer owns.
 
   This is the path an authorized owner takes in the dashboard (`specs/38`). It
   is the moment an unbound attempt — one a worker app obtained for itself, with
-  no workspace to name — stops being inert. Binding the workspace and creating
-  the worker happen in one transaction, because an attempt that is bound but not
-  completed would be a workspace-attached credential nobody is holding.
+  no workspace to name — stops being inert and becomes attached to exactly one
+  owner.
 
-  The claim is a conditional update rather than a read followed by a write, so
-  two concurrent redemptions of one code cannot both succeed. The loser's worker
-  row is rolled back with the transaction.
+  Binding is where this stops. It does not create the worker, because the
+  dashboard is not the worker: only the app knows its operating-system and
+  protocol versions, and only the app should hold its credential. The app
+  finishes afterwards through `complete_pairing/2`, exactly as a worker paired
+  from a dashboard-issued code already does. An attempt that is bound and not
+  yet completed is the ordinary waiting state of every pairing, not a loose
+  credential — the code is what completes it, and only its holder has one.
+
+  The bind is a conditional update rather than a read followed by a write, so
+  two concurrent redemptions of one code cannot both succeed.
 
   A code that was issued already bound, by `start_pairing/2` for the dashboard or
-  the deep link, is redeemable here too, but only against the same workspace it
-  was issued for. That is what makes this safe to expose: possessing a code for
+  the deep link, is accepted here too, but only against the same workspace it was
+  issued for. That is what makes this safe to expose: possessing a code for
   someone else's workspace does not let a redeemer pull it into their own.
 
   Every refusal answers `{:error, :invalid_code}`. Expired, canceled, already
-  redeemed, belonging to another workspace, malformed, and never existed are
+  bound, belonging to another workspace, malformed, and never existed are
   deliberately indistinguishable, so no answer reveals whether a code was ever
   real. Callers that need the older, more specific reasons keep using
   `complete_pairing/2`, whose contract is unchanged.
   """
-  @spec redeem_pairing(String.t(), Ecto.UUID.t(), map()) ::
-          {:ok, %{worker: LocalWorker.t(), credential: String.t()}} | {:error, :invalid_code}
-  def redeem_pairing(code, device_workspace_id, worker_attrs \\ %{})
-
-  def redeem_pairing(code, device_workspace_id, worker_attrs)
+  @spec bind_pairing(String.t(), Ecto.UUID.t()) :: :ok | {:error, :invalid_code}
+  def bind_pairing(code, device_workspace_id)
       when is_binary(code) and is_binary(device_workspace_id) do
     now = now()
 
     with {:ok, attempt_id, secret} <- decode(code),
          %PairingAttempt{} = attempt <- Repo.get(PairingAttempt, attempt_id),
-         :ok <- redeemable(attempt, secret, device_workspace_id, now),
-         {:ok, result} <-
-           Repo.transaction(fn ->
-             bind_and_pair(attempt, device_workspace_id, worker_attrs, now)
-           end) do
-      {:ok, result}
+         :ok <- bindable(attempt, secret, device_workspace_id, now),
+         1 <- claim_attempt(attempt.id, device_workspace_id, now) do
+      :ok
     else
       _refused -> {:error, :invalid_code}
     end
   end
 
-  def redeem_pairing(_code, _device_workspace_id, _worker_attrs), do: {:error, :invalid_code}
-
-  # Creates the worker first so the claim can name it, then claims the attempt.
-  # Losing the claim rolls the worker back, so a lost race leaves nothing behind.
-  defp bind_and_pair(attempt, device_workspace_id, worker_attrs, now) do
-    {credential, salt, digest} = new_secret()
-
-    worker =
-      %LocalWorker{}
-      |> LocalWorker.create_changeset(
-        Map.merge(worker_attrs, %{
-          device_workspace_id: device_workspace_id,
-          credential_digest: digest,
-          credential_salt: salt,
-          state: "active"
-        })
-      )
-      |> Repo.insert!()
-
-    case claim_attempt(attempt.id, device_workspace_id, worker.id, now) do
-      1 -> %{worker: worker, credential: encode(worker.id, credential)}
-      _lost -> Repo.rollback(:invalid_code)
-    end
-  end
+  def bind_pairing(_code, _device_workspace_id), do: {:error, :invalid_code}
 
   # The guard lives in the WHERE clause, so the database decides the winner. An
-  # attempt already confirmed, canceled, or bound elsewhere matches no row.
-  defp claim_attempt(attempt_id, device_workspace_id, worker_id, now) do
+  # attempt already confirmed, canceled, or bound elsewhere matches no row. An
+  # attempt already bound to this same workspace matches and is left as it is,
+  # which keeps a repeated submission of a dashboard-issued code harmless.
+  defp claim_attempt(attempt_id, device_workspace_id, now) do
     {claimed, _} =
       PairingAttempt
       |> where([a], a.id == ^attempt_id and is_nil(a.confirmed_at) and is_nil(a.canceled_at))
@@ -203,19 +182,12 @@ defmodule SddOrchestrator.Devices.Pairing do
         [a],
         is_nil(a.device_workspace_id) or a.device_workspace_id == ^device_workspace_id
       )
-      |> Repo.update_all(
-        set: [
-          device_workspace_id: device_workspace_id,
-          confirmed_at: now,
-          worker_id: worker_id,
-          updated_at: now
-        ]
-      )
+      |> Repo.update_all(set: [device_workspace_id: device_workspace_id, updated_at: now])
 
     claimed
   end
 
-  defp redeemable(
+  defp bindable(
          %PairingAttempt{confirmed_at: nil, canceled_at: nil} = attempt,
          secret,
          device_workspace_id,
@@ -229,7 +201,7 @@ defmodule SddOrchestrator.Devices.Pairing do
     end
   end
 
-  defp redeemable(%PairingAttempt{}, _secret, _device_workspace_id, _now), do: :error
+  defp bindable(%PairingAttempt{}, _secret, _device_workspace_id, _now), do: :error
 
   defp bindable_to?(%PairingAttempt{device_workspace_id: nil}, _device_workspace_id), do: true
 
