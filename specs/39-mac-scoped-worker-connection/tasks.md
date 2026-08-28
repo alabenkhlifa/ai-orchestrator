@@ -83,7 +83,7 @@ Traceability:
   - Proof: Focused tests cover a configuration with no project loading and validating, a configuration naming a project continuing to load unchanged, an existing stored file surviving the change, and the worker runtime starting from the projectless shape.
   - Delivered: `Worker.Configuration` now derives `@enforce_keys` and `from_map/1`'s decode check from one `@required_keys` list, so the write and read paths cannot disagree about what is required. `project_id` and `workspace_root` default to `nil`; `from_pairing/2` reads them with `Map.get/2` while every still-required field keeps `Map.fetch!/2`. An absent project or repository folder is written as an absent key rather than a `null`, and absent, `null`, and blank all decode to `nil`, so a file written in the old shape keeps its values. `Worker.Supervisor` deletes `:worker_workspace_root` rather than setting it to `nil`, so a root left by an earlier configuration cannot point a projectless worker's runs at a folder it was never given, and it starts `[State]` alone for a projectless configuration while a configuration with a project starts the same children in the same order as before. `GatewayConnection` was not modified: not starting it is sufficient, so none of its connection-state code was touched.
 
-- [ ] Task 2 — Retain the credential and worker identity a redemption issues.
+- [x] Task 2 — Retain the credential and worker identity a redemption issues.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -91,6 +91,7 @@ Traceability:
   - Owned surfaces: The app's post-redemption completion path, its storage of the issued credential and worker identity, and its state transition out of the handed-off-to-dashboard state.
   - Owns: AC-01
   - Proof: Focused tests cover a completed redemption storing the credential and worker identity with no project, the app no longer reporting that the dashboard has taken over once it holds one, a failed completion storing nothing, and the person never being asked for a project.
+  - Delivered: A redeemed pairing code now writes the credential and worker identity into the release's own `worker.json` through `MacPairingRetention`, and the app reports `Paired, setting up…` instead of sending the person to the dashboard. `WorkerStatus.handedOffToDashboard` is deleted, because the reason specs/38 added it is the reason Task 1 removed. The coding agent is the one required field this task cannot produce, so it arrives through the `MacCodingAgentResolving` seam that Task 3 implements.
 
 - [ ] Task 3 — Set up this Mac's coding agent once.
   - Size: Standard

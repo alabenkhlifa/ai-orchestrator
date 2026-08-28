@@ -1,5 +1,16 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-28 - Task 2 complete: a redeemed code's credential is kept
+
+- Resolved mechanism, and the one real ordering question in this task. `Worker.Configuration` still requires `agent_adapter` and `agent_executable`, which `Task 3` owns, so the store this task delivers cannot run to completion on its own. Rather than invent a second on-device credential store to bridge the two tasks, the coding agent arrives through a `MacCodingAgentResolving` protocol seam whose only implementation for now is inert. This is the same shape `specs/36` verified for its own `Task 4` to `Task 5` handoff. There is still exactly one durable copy of the credential, `worker.json`, so the approved data boundary and the privacy release gate are unchanged.
+- Consequence recorded rather than implied: with the inert resolver wired, a real redemption today stores nothing and the menu sits on `Paired, setting up…` for the rest of the launch. Nothing holds the credential in the meantime. AC-01's stored-credential outcome is only reachable in production once `Task 3` lands, and `Task 8` is where the round trip is proved.
+- `WorkerStatus.handedOffToDashboard` was deleted, not merely left unset. Two `specs/38` tests asserted the agreement this task reverses, including one asserting the app must never say `Paired, setting up…`; both were rewritten against the state that is now true. Leaving an unreachable status whose line tells the person to continue elsewhere would have described work the app now does itself.
+- `specs/36`'s deep-link path stayed byte-identical. `MacPairingConfigurationBuilder` and `MacPairingRPCExpressionBuilder` are separate from their `PostPairing` counterparts rather than widenings of them, because that path is excluded from this slice. `Outcome` and `parse/1` are reused across the two so the release's three answers cannot drift; only the private path-escaping helper is duplicated, since hoisting it would have edited the excluded file.
+- The projectless struct literal sets neither `project_id:` nor `workspace_root:`, so both take the struct's `nil` default and `Configuration` writes them as absent keys. Setting them to `nil` would build the same struct but would read as the app deciding the worker has no project, when this pairing was never told about one.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Executed 233 tests, with 0 failures`. Runner receipt:
+- Proof receipt: `Task 2` — scope `Focused` — command `swift test` — exit `0`.
+- No Elixir file was touched, so no `mix` safety check applies to this task.
+
 ### 2026-08-28 - Task 4 complete: a projectless worker can obtain a gateway credential
 
 - Two claim shapes now share one salt and one lifetime, separated by disjoint keys plus a `map_size(claims) == 2` guard on each `verify/1` clause. A claim carrying both a project and a device workspace matches neither clause, so widening one scope cannot widen the other by accident.
