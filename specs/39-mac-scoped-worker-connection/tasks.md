@@ -143,7 +143,7 @@ Traceability:
   - Proof: Focused tests cover a connected transport with no attachment not reading as Connected, a successful attachment reading as Connected, a refused attachment naming the refusal rather than a connection, a lost attachment reading as disconnected, and the refusal not being retried as though it had succeeded.
   - Delivered: `handle_join/3` is now the only place that reports `:connected`. The transport callback reports `:connecting`, a refused join reports `:refused` and is still never retried, and a topic close that loses an attachment reports `:disconnected`. `establish/2` also dials the Mac-scoped scope for a projectless configuration, omitting `project_id` from the credential request so the workspace exchange accepts it. The menu bar gains `Paired, but the control plane refused the connection`.
 
-- [ ] Task 8 — Prove the round trip and that neither credential leaks.
+- [x] Task 8 — Prove the round trip and that neither credential leaks.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2, Task 3, Task 6, Task 7
@@ -151,6 +151,7 @@ Traceability:
   - Owned surfaces: The end-to-end scenario across redemption, retention, setup, exchange, attachment, and reachability that establishes `capability:mac-scoped-worker-connection`, and the diagnostic exclusion of both credentials across the app and the control plane.
   - Owns: AC-10
   - Proof: An integration scenario drives a menu-bar redemption through to a worker reported reachable by the device-workspace status function with no project opened, then a log and diagnostic review across both sides finds no credential, gateway credential, or fragment of either.
+  - Delivered: One integration scenario drives redemption, a projectless configuration, the exchange, the Mac-scoped attachment, and one liveness pass through to `Devices.worker_status/1` answering `:detected`, with no project created and `Pairing.mark_seen/1` never called. A second scenario repeats the leak review for a refused join. Both capture at `:debug` and scan a sliding window over each secret, and the review asserts the diagnostics it scans are genuinely present.
 
 ## Verification Gate
 
