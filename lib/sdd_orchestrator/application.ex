@@ -123,6 +123,12 @@ defmodule SddOrchestrator.Application do
       # command queue was never in this process anyway.
       {Registry,
        keys: :duplicate, name: SddOrchestrator.Delivery.CommandTransport.Channel.registry()},
+      # Attachments for a Mac are kept apart from the project-keyed registry
+      # above. A worker is attached for its machine before it is attached for
+      # any project, so collapsing the two would either widen what one
+      # credential authorizes or leave liveness unanswerable for a worker that
+      # has joined no project.
+      {Registry, keys: :duplicate, name: SddOrchestrator.Delivery.WorkerAttachment.registry()},
       # One live personal AI connection per paired worker. Unique keys make
       # a reconnect an explicit replacement of the stale channel rather than
       # a second route; losing registrations on restart is correct because

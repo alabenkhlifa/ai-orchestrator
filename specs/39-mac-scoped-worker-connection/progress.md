@@ -1,5 +1,15 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-28 - Task 5 complete: the control plane records a Mac's attachment
+
+- Settled the topic name the specification left open: the `worker_workspace:` topic named for the device workspace, routed as `channel "worker_workspace:*"`. It parallels the `worker:` topic named for the project, names the scope rather than the machine, and cannot be swallowed by the existing `worker:*` route because it does not carry that prefix. The registry is `SddOrchestrator.Delivery.WorkspaceWorkerRegistry`, owned by `Delivery.WorkerAttachment`.
+- Discovery worth recording, and a candidate cleanup for a later slice: a workspace-scoped socket that joins the project-scoped `worker:` topic is refused by a channel crash rather than a named reason. `WorkerChannel.confirm_execution_target/2` reads `socket.assigns.project_id` with dot access, and a workspace socket has no such assign, so Phoenix answers `join crashed`. The security outcome is correct, nothing is attached for either scope, and the captured log carries no credential. Making it a named refusal means editing `worker_channel.ex`, which this slice's boundary excludes, so the crash shape is asserted explicitly instead. The reverse direction is clean: `confirm_device_workspace/2` reads the assign with `Map.get/2`, so a project-scoped socket joining the Mac topic is refused by reason.
+- `id/1` gained a second clause and the project clause still returns the same string. The two id spaces cannot collide because `WorkerProtocol.valid_id?/1` refuses any id containing a colon, which the test asserts directly rather than only asserting the two strings differ.
+- One `Task 4` test was rewritten rather than kept. It asserted that a workspace credential opens no socket at all, which was `Task 4`'s placeholder for exactly the path this task owns. It now asserts the socket opens carrying the workspace assigns and no project. No other existing test changed.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Result: 67 passed`, of which 39 are the unchanged project-scoped suite. Runner receipt:
+- Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator_web/channels/worker_workspace_channel_test.exs test/sdd_orchestrator_web/channels/worker_socket_test.exs test/sdd_orchestrator_web/channels/worker_channel_test.exs` — exit `0`.
+- Directly applicable safety checks: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`.
+
 ### 2026-08-28 - Task 3 complete: this Mac's coding agent is chosen once
 
 - The branch that looks wrong and is not: detection finding two agents still reaches `AgentSelectionPrompting`, which reads like a violation of AC-03's `manual entry only when detection finds none`. It is not, because that prompt offers a typed path only for an empty candidate list. With two candidates the person chooses between executables auto-detection already resolved. The reasoning is written into `MacCodingAgentSetup`'s doc comment, since the code alone reads as a contradiction.

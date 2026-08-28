@@ -113,7 +113,7 @@ Traceability:
   - Proof: Focused tests cover an exchange with no project answering a workspace-scoped credential, the existing project-scoped request answering exactly what it answers today, a credential for another workspace being refused, and no credential reaching a log.
   - Delivered: `WorkerSocket` now signs two claim shapes under one salt and one bounded lifetime: `%{project_id, worker_id}` unchanged, and `%{device_workspace_id, worker_id}` for a worker with no project. `issue/3` takes a bare project id or `{:device_workspace, id}`, so a caller names the scope rather than producing one shape while meaning the other. `verify/1` has one clause per shape, each guarded by `map_size(claims) == 2`, so a claim carrying both keys matches neither and no token can be read under a scope it was not signed for. The controller keeps its project clause byte-identical and adds a clause guarded on the absence of `project_id`, which authenticates the credential and issues against the worker's own `device_workspace_id` with no binding lookup; every failure still answers one uniform `403 refused`. A malformed `project_id` does not fall through to the projectless exchange, because answering a question about a project with a different scope would be a silent substitution. `connect/3` was narrowed to match the project claim explicitly and refuse anything else: it previously read `claims.project_id` unconditionally, which a workspace-scoped token would have turned into a `KeyError` crash logging the claim map instead of a refusal. Its workspace-scoped connect path is left to `Task 5`. No change was needed to guard artifact upload: `Delivery.ArtifactUpload.accept/3` matches `%{project_id: ...}` and answers `{:error, :unauthorized_worker}` for every other claim.
 
-- [ ] Task 5 — Attach a worker for its Mac and record the attachment.
+- [x] Task 5 — Attach a worker for its Mac and record the attachment.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4
@@ -121,6 +121,7 @@ Traceability:
   - Owned surfaces: The Mac-scoped attachment topic, its authorization against the credential's device workspace, the workspace-keyed attachment registry, and its accessor.
   - Owns: AC-05, entity:WorkerAttachment
   - Proof: Focused tests cover a valid attachment being registered against its own workspace, an attachment aimed at another workspace being refused before negotiation, a reconnect overlapping its predecessor without stranding the worker, the entry disappearing when the channel process dies, and the project-keyed registry and its delivery path behaving exactly as before.
+  - Delivered: A worker with a workspace-scoped credential now opens a socket carrying no project and joins the `worker_workspace:` topic named for the device workspace, which checks the topic against the credential before negotiating anything and registers the live channel process in the duplicate-keyed `WorkspaceWorkerRegistry`. `Delivery.WorkerAttachment` owns that registry and its accessor and delivers nothing. The project-keyed registry, `deliver/1`, and the `worker:` topic are untouched.
 
 - [ ] Task 6 — Derive worker liveness from Mac-scoped attachments.
   - Size: Standard

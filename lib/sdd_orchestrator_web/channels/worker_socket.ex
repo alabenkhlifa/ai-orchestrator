@@ -36,6 +36,7 @@ defmodule SddOrchestratorWeb.WorkerSocket do
   @max_age_seconds 24 * 60 * 60
 
   channel "worker:*", SddOrchestratorWeb.WorkerChannel
+  channel "worker_workspace:*", SddOrchestratorWeb.WorkerWorkspaceChannel
 
   @type project_claims :: %{project_id: Ecto.UUID.t(), worker_id: String.t()}
   @type workspace_claims :: %{device_workspace_id: Ecto.UUID.t(), worker_id: String.t()}
@@ -95,10 +96,16 @@ defmodule SddOrchestratorWeb.WorkerSocket do
       {:ok, %{project_id: project_id, worker_id: worker_id}} ->
         {:ok, socket |> assign(:project_id, project_id) |> assign(:worker_id, worker_id)}
 
-      # A workspace-scoped credential authorizes a Mac, not a project. Its
-      # connect-time shape, topic, and registry are owned by a later task, so
-      # this transport refuses it outright rather than letting it in without a
-      # project to be checked against.
+      # A workspace-scoped credential authorizes a Mac, not a project, so the
+      # socket it opens carries no project at all. Nothing downstream can then
+      # mistake it for one: the Mac-scoped topic is the only thing this socket
+      # can be checked against, and the project channel finds nothing to match.
+      {:ok, %{device_workspace_id: device_workspace_id, worker_id: worker_id}} ->
+        {:ok,
+         socket
+         |> assign(:device_workspace_id, device_workspace_id)
+         |> assign(:worker_id, worker_id)}
+
       _refused ->
         :error
     end
@@ -107,9 +114,15 @@ defmodule SddOrchestratorWeb.WorkerSocket do
   def connect(_params, _socket, _connect_info), do: :error
 
   # Identifying the socket by its execution target is what lets the control
-  # plane disconnect one worker's sessions without touching another's.
+  # plane disconnect one worker's sessions without touching another's. The two
+  # scopes are identified in separate spaces: a valid id can never contain the
+  # `:` that separates them, so a project id can never spell a workspace one.
   @impl true
-  def id(socket), do: "worker_socket:#{socket.assigns.project_id}:#{socket.assigns.worker_id}"
+  def id(%{assigns: %{project_id: project_id, worker_id: worker_id}}),
+    do: "worker_socket:#{project_id}:#{worker_id}"
+
+  def id(%{assigns: %{device_workspace_id: device_workspace_id, worker_id: worker_id}}),
+    do: "worker_socket:workspace:#{device_workspace_id}:#{worker_id}"
 
   defp sign(claims, opts), do: Phoenix.Token.sign(Endpoint, @signing_salt, claims, opts)
 

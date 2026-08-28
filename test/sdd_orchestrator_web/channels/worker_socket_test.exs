@@ -7,11 +7,17 @@ defmodule SddOrchestratorWeb.WorkerSocketTest do
   salt and the same bounded lifetime, so the only thing keeping them apart is
   the claim shape `verify/1` accepts. Neither may ever verify as the other, and
   a claim that tries to be both must be refused outright.
+
+  Task 5 adds the other half of that separation. Each scope opens a socket
+  carrying only what its credential named, and the two are identified in
+  separate spaces, so disconnecting one worker's sessions can never reach
+  another's.
   """
   use ExUnit.Case, async: true
 
   import Phoenix.ChannelTest
 
+  alias SddOrchestrator.Delivery.WorkerProtocol
   alias SddOrchestratorWeb.{Endpoint, WorkerSocket}
 
   @endpoint SddOrchestratorWeb.Endpoint
@@ -95,10 +101,15 @@ defmodule SddOrchestratorWeb.WorkerSocketTest do
       assert WorkerSocket.verify(token) == :error
     end
 
-    test "a workspace credential opens no project socket" do
-      token = WorkerSocket.issue({:device_workspace, Ecto.UUID.generate()}, "worker-1")
+    test "a workspace credential opens a socket carrying no project" do
+      device_workspace_id = Ecto.UUID.generate()
+      token = WorkerSocket.issue({:device_workspace, device_workspace_id}, "worker-1")
 
-      assert connect(WorkerSocket, %{"token" => token}) == :error
+      assert {:ok, socket} = connect(WorkerSocket, %{"token" => token})
+
+      assert socket.assigns.device_workspace_id == device_workspace_id
+      assert socket.assigns.worker_id == "worker-1"
+      refute Map.has_key?(socket.assigns, :project_id)
     end
 
     test "a project credential still opens the project socket it names" do
@@ -128,6 +139,38 @@ defmodule SddOrchestratorWeb.WorkerSocketTest do
         })
 
       assert WorkerSocket.verify(token) == :error
+    end
+  end
+
+  describe "socket identity" do
+    test "a project socket keeps the identifier its callers already disconnect by" do
+      project_id = Ecto.UUID.generate()
+      {:ok, socket} = connect(WorkerSocket, %{"token" => WorkerSocket.issue(project_id, "w-1")})
+
+      assert WorkerSocket.id(socket) == "worker_socket:#{project_id}:w-1"
+    end
+
+    test "a workspace socket is identified in its own space" do
+      device_workspace_id = Ecto.UUID.generate()
+      token = WorkerSocket.issue({:device_workspace, device_workspace_id}, "w-1")
+      {:ok, socket} = connect(WorkerSocket, %{"token" => token})
+
+      assert WorkerSocket.id(socket) == "worker_socket:workspace:#{device_workspace_id}:w-1"
+    end
+
+    test "the same id under the two scopes identifies two different sockets" do
+      id = Ecto.UUID.generate()
+      {:ok, project} = connect(WorkerSocket, %{"token" => WorkerSocket.issue(id, "w-1")})
+
+      {:ok, workspace} =
+        connect(WorkerSocket, %{"token" => WorkerSocket.issue({:device_workspace, id}, "w-1")})
+
+      refute WorkerSocket.id(project) == WorkerSocket.id(workspace)
+    end
+
+    test "no accepted id can spell the separator the two spaces are kept apart by" do
+      refute WorkerProtocol.valid_id?("workspace:#{Ecto.UUID.generate()}")
+      refute WorkerProtocol.valid_id?("worker_socket:workspace")
     end
   end
 end
