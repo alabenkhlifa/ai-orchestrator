@@ -1,0 +1,178 @@
+# Worker-Driven Repository Selection Tasks
+
+## Status
+
+Not Started
+
+## Active Slice
+
+Let a dashboard ask the Mac's attached worker to open its native folder picker and answer with only the repository's identity and folder name, so a hosted project's first local-repository connection and accountless onboarding complete against the real worker app; give every list and action one definition of an available worker; and make the onboarding screen report the worker truthfully and offer to pair again.
+
+## Cross-Specification Dependencies
+
+Requires:
+
+- `capability:mac-scoped-worker-connection` — provider `specs/39-mac-scoped-worker-connection#Task 8` — required before `Task 2`.
+- `capability:hosted-local-repository-connection` — provider `specs/37-hosted-local-repository-connection#Task 6` — required before `Task 6`.
+- `capability:worker-initiated-pairing` — provider `specs/38-worker-initiated-pairing#Task 8` — required before `Task 8`.
+
+Provides:
+
+- `capability:worker-repository-selection` — ready after `Task 9`.
+
+## Slice Size Gate
+
+- Slice size: Standard
+
+## Task Size Gate
+
+- Standard tasks deliver one independently provable outcome, normally in one task-boundary commit, with focused proof.
+- Exceptions are allowed only when splitting an atomic migration, transaction, or invariant would create an invalid intermediate state.
+
+## Proof Scope Gate
+
+- Applies to: all tasks.
+
+## Implementation Boundary
+
+Included:
+
+- The `RepositorySelection` request lifecycle on the control plane: correlation, timeout, cancellation, requester exit, and refusal of foreign answers.
+- The `repository_selection` request and `repository_selection_result` messages over the Mac-scoped attachment, with capability negotiation.
+- The worker-side pending request, the app's poll and native picker, the app's answer, and the worker's Git check, identity generation, candidate matching, and folder name.
+- Request-driven selection in the hosted first connection and machine change, in accountless selection, and in `Locate repository`, with shared waiting, cancel, no-answer, and retry states.
+- One availability definition read from the Mac-scoped attachment, used by every worker list and action.
+- Truthful `Check again` and a `Pair again` action on the onboarding screen.
+- The stand-in as a configured adapter present only under `E2E_MODE` and in tests.
+
+Excluded:
+
+- The Mac-scoped attachment topic, registry, and authorization, owned by `specs/39-mac-scoped-worker-connection/` and consumed here through its capability.
+- The project-scoped `worker:` topic, `Delivery.WorkerProtocol`, `ProtocolCodec`, `deliver/1`, and run execution, owned by `specs/33-local-worker-run-execution/`.
+- The hosted connect authority gate, exact-match rule, binding replacement, and disconnect, owned by `specs/37-hosted-local-repository-connection/`.
+- Pairing issuance and redemption, owned by `specs/38-worker-initiated-pairing/`; revoking or unpairing an old worker.
+- Any persistence of a request or a result.
+
+Deferred after this slice:
+
+- Target-folder selection for empty-repository initialization (`specs/16-empty-repository-initialization/`), which reuses the request with an eligibility outcome and keeps the path worker-side for publish and handoff.
+- A push channel from the worker release to the app, if two-second polling ever proves too slow.
+
+Release gates:
+
+- Real macOS signing and notarization of a worker app build carrying the picker poll, which needs an Apple signing identity and the notarization service.
+
+Traceability:
+
+- Deferred criteria: none
+- Release criteria: none
+- Deferred entities: none
+- Release entities: none
+
+## Tasks
+
+- [ ] Task 1 — Own a selection request from creation to one outcome.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: none
+  - Purpose: Give the dashboard one place that asks a worker for a repository and guarantees exactly one outcome reaches exactly one requester.
+  - Owned surfaces: `SddOrchestrator.RepositorySelection` with `request/3`, `cancel/1`, the in-memory request table, the timeout, cancellation on requester exit, delivery of `{:repository_selection, request_id, outcome}`, and refusal of an answer for an unknown, foreign, cancelled, or expired request. The transport push is a behaviour injected by Task 2; this task ships a test transport.
+  - Owns: AC-07, entity:SelectionRequest, entity:SelectionResult
+  - Proof: Focused tests cover a request answered once and delivered to its requester only, a second answer to the same request being refused, an answer naming another request or worker being refused, a cancelled or expired request ignoring a late answer, and the requester's exit cancelling the request.
+
+- [ ] Task 2 — Carry the request and its result over the Mac-scoped attachment.
+  - Size: Standard
+  - Proof scope: Focused
+  - Status: Blocked until `capability:mac-scoped-worker-connection` is ready.
+  - Depends on: Task 1
+  - Purpose: Let a request reach the one worker attached for a workspace and let only that attachment answer it.
+  - Owned surfaces: The `repository_selection` push and `repository_selection_result` inbound event on the Mac-scoped attachment channel, their codec, the `repository_selection` capability declared at attach, refusal of a worker without it as `:worker_needs_update`, refusal of a result from an attachment other than the one pushed to, and the real transport behaviour for Task 1.
+  - Owns: AC-08
+  - Proof: Focused channel tests cover a request pushed to the attached worker for its workspace, a result accepted only from that attachment, a result from another attachment refused, a worker without the capability refused, and the pushed and received payloads holding identities and a folder name only.
+
+- [ ] Task 3 — Answer a request on the worker with identity and folder name only.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 2
+  - Purpose: Do every path-dependent computation on the Mac so the path never has to leave it.
+  - Owned surfaces: `SddOrchestrator.Worker.RepositorySelection` with `pending/0` and `answer/2`, `Worker.GatewayConnection` handling of the inbound request and outbound result, the Git check through `Devices.RepositoryValidation`, generation through `Devices.PortableRepositoryIdentity`, candidate matching, the folder name, and the exclusion of the path from every log line on the worker.
+  - Owns: AC-04
+  - Proof: Focused tests cover a pending request exposed to the app, an answered path yielding matches and a new identity, a non-repository folder answering `not_a_git_repository`, an inaccessible folder answering `inaccessible`, a cancellation answering `cancelled`, and a captured log holding no path.
+
+- [ ] Task 4 — Show the native picker from the app and hand the answer back.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 3
+  - Purpose: Close the reverse hop the app never had, using the poll it already runs.
+  - Owned surfaces: The app's pending-selection poll at a two-second interval while attached, `NSOpenPanel` presentation on the main thread through `WorkspaceFolderPicking`, the `answer/2` rpc call with the path or a cancellation, closing the panel when the request is cancelled, and not retaining the path after answering.
+  - Owns: none
+  - Proof: Focused Swift tests with the fake picker and a fake command runner cover a pending request producing one panel, a chosen folder producing one `answer` rpc with the path, a dismissed panel producing one cancellation rpc, a cancelled request closing the panel without an answer, and no second panel while one is open.
+
+- [ ] Task 5 — Give every list and action one definition of an available worker.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 2
+  - Purpose: Stop a worker from being offered and then refused inside one minute.
+  - Owned surfaces: `Devices.worker_available?/1` read from the Mac-scoped registry, `Devices.WorkerDiscovery.status/2` deriving `:detected` from it, `RepositoryAssessments.authorize_worker/2`, `RepositoryAssessmentLive`'s worker list, the hosted machine picker from `specs/37`, and the stand-in's stub attachment registration under `E2E_MODE` and in tests.
+  - Owns: AC-05
+  - Proof: Focused tests cover a paired worker with a fresh `last_seen_at` and no attachment being neither listed nor authorized, an attached worker being both, the same refusal wording from the list and the action, `WorkerDiscovery` answering `:unavailable` for the first case, and the stub attachment making the test worker `:detected`.
+
+- [ ] Task 6 — Connect a hosted project through the worker's picker.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 1, Task 5
+  - Purpose: Make the first hosted local-repository connection work without the stand-in.
+  - Owned surfaces: `Portability.HostedLocalRepositoryFolder` requesting a selection with the project's identity as the only candidate and answering the connect gate from the result, `ProjectDashboardLive`'s waiting state with cancel, the no-answer and worker-lost states with retry, the `RepositorySelection.Stub` adapter and its configuration under `E2E_MODE` and in tests, and removal of `picker_available?/0`.
+  - Owns: AC-01, AC-03, AC-06
+  - Proof: Focused LiveView tests with the test transport cover a matched result connecting the project, a cancelled result storing nothing and returning to the offer, a timeout and a lost worker each showing the retry state with nothing stored, and the stub adapter connecting the browser suite's seeded project as before.
+
+- [ ] Task 7 — Select and locate an accountless repository through the worker's picker.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 6
+  - Purpose: Let the accountless path choose a repository against the real app and reuse the states Task 6 built.
+  - Owned surfaces: `LocalOnboardingLive`'s `select_folder` and locate mode requesting a selection with the workspace's project identities as candidates, the duplicate outcome from the worker's match list, the folder name as the suggested project name with no location shown, and reuse of the shared waiting, cancel, no-answer, and retry states; removal of the LiveView's own `worker_stub?/0` gate.
+  - Owns: AC-02
+  - Proof: Focused LiveView tests with the test transport cover a new repository suggesting its folder name and continuing to the storage step, a matched existing project being reported as the duplicate with its link, locate mode reconnecting a moved repository on a match and refusing a different one, and no path in any assign or render.
+
+- [ ] Task 8 — Report the worker truthfully and offer to pair again.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 5
+  - Purpose: Remove the two screens that told the person something the control plane did not know.
+  - Owned surfaces: `LocalOnboardingLive`'s session flag for an accepted code, `recheck` deriving the waiting state from that flag, the `Pair again` action on the `:unavailable` state revealing the pairing form and deep-link code, and the result of pairing again being shown as the new worker's state.
+  - Owns: AC-09, AC-10
+  - Proof: Focused LiveView tests cover `Check again` on an unavailable worker staying in the unavailable state, `Code accepted` appearing only after a code is accepted in the session, `Pair again` revealing the form, and a completed re-pairing adding a worker while the old row stays.
+
+- [ ] Task 9 — Prove the round trip against the real app and that no path leaks.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 4, Task 7, Task 8
+  - Purpose: Show the two halves meet and establish `capability:worker-repository-selection`.
+  - Owned surfaces: The integration scenario from a selection request through the worker's answer to a connected hosted project and a created accountless project, which establishes `capability:worker-repository-selection`, and the log and diagnostic review on both sides for a path, remote, history, file name, or content.
+  - Owns: none
+  - Proof: An integration scenario drives a request through a fake app answer to a connected hosted project and to an accountless project with the suggested name, then a log and diagnostic review across the control plane and the worker finds only identities and a folder name.
+
+## Verification Gate
+
+- [ ] Active-slice acceptance criteria pass.
+- [ ] Project-scoped attachment, delivery, and run execution tests pass unchanged.
+- [ ] The hosted exact-match, binding replacement, and disconnect tests pass unchanged.
+- [ ] Availability, waiting, cancel, timeout, and worker-lost transitions pass.
+- [ ] The log, diagnostic, and no-analytics review finds no path, remote, history, file name, or content.
+- [ ] Build, formatting, lint, static checks, and logs review pass.
+- [ ] Required browser scenarios pass through the stub adapter under `E2E_MODE`.
+- [ ] The worker app's own test suite passes.
+- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app, connecting a hosted local-repository project and creating an accountless project, recorded in `progress.md`.
+
+## Blocked Decisions
+
+- None.
+
+## Release Gate
+
+- [ ] Real macOS signing and notarization of a worker app build carrying the picker poll, on supported macOS hosts.
+
+## Progress Log
+
+See [progress.md](progress.md).
