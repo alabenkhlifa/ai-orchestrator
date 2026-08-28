@@ -74,9 +74,9 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
     "users" => "Who is this for?",
     "first_outcome" => "What's the first outcome this should deliver?",
     "constraints" =>
-      "Any hard constraints — a deadline, compliance need, or a tool you must use?",
+      "Any hard constraints (a deadline, compliance need, or a tool you must use)?",
     "technical_foundation" =>
-      "What's the minimum technical foundation this needs — language, framework, or runtime?"
+      "What's the minimum technical foundation this needs (language, framework, or runtime)?"
   }
 
   @field_labels %{
@@ -851,7 +851,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
             Your answers stay on this device and inside SDD Orchestrator's governed runtime. Only
             the minimized purpose, users, first outcome, constraints, and technical-foundation
             answers above are sent to the configured AI provider shown above for read-only planning
-            support — never your source files or the target folder's contents. Kit package files
+            support, never your source files or the target folder's contents. Kit package files
             are vendored and inert; nothing in them executes automatically. This plan is retained
             only for this initialization attempt and is deleted once the repository is created or
             the attempt is canceled.
@@ -965,7 +965,7 @@ defmodule SddOrchestratorWeb.RepositoryInitializationLive do
   defp readiness_state({:blocked, _reason}), do: "blocked"
 
   defp readiness_text(:ready), do: "Ready"
-  defp readiness_text({:blocked, reason}), do: "Blocked — #{reason}"
+  defp readiness_text({:blocked, reason}), do: "Blocked: #{reason}"
 
   defp worker_summary_text({:ok, worker}),
     do: "#{worker.os_family} #{worker.os_major} (worker app #{worker.app_version})"

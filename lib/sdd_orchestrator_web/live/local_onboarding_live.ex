@@ -694,16 +694,16 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         <li class="flex gap-2.5">
           <.lucide name="hard-drive" class="size-4 flex-none mt-0.5 text-primary" />
           <span class="text-[13px] text-ink">
-            <span class="font-semibold">{ProjectStorage.label(:device)}</span>
-            — used by this accountless path. Your project stays on this computer and there's no
-            account to sign in to.
+            <span class="font-semibold">{ProjectStorage.label(:device)}</span>: used by this
+            accountless path. Your project stays on this computer and there's no account to sign
+            in to.
           </span>
         </li>
         <li class="flex gap-2.5">
           <.lucide name="cloud" class="size-4 flex-none mt-0.5 text-ink-muted" />
           <span class="text-[13px] text-ink-muted">
-            <span class="font-semibold">{ProjectStorage.label(:hosted)}</span>
-            — available from any device you sign in on.
+            <span class="font-semibold">{ProjectStorage.label(:hosted)}</span>: available from any
+            device you sign in on.
             <.link
               navigate={~p"/hosted/access?#{[return_to: "/onboarding/local"]}"}
               class="font-semibold text-primary underline underline-offset-2"
@@ -809,7 +809,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     <div data-state="unavailable">
       <.notice variant="warn" icon="unplug">
         Your worker is paired but not running right now, so this Mac can't reach your repositories.
-        Your projects are safe and still listed — they just show an unavailable connection until the
+        Your projects are safe and still listed. They just show an unavailable connection until the
         worker is back.
       </.notice>
 
@@ -919,11 +919,11 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           <p class="mt-1 text-sm leading-relaxed text-ink-muted text-pretty">
             <%= if @locate_project do %>
               Pick where <span class="font-semibold text-ink">{@locate_project.name}</span>'s
-              repository lives now. Only the same repository can reconnect — a different one is kept
+              repository lives now. Only the same repository can reconnect. A different one is kept
               separate.
             <% else %>
               The worker opens your Mac's folder picker. We check the folder is a Git repository right
-              here on your computer — its path, history, and code never leave this Mac.
+              here on your computer. Its path, history, and code never leave this Mac.
             <% end %>
           </p>
         </div>
@@ -1133,7 +1133,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         <p class="font-semibold">This project has no account</p>
         <p class="mt-0.5">
           It lives only on this Mac. If this device's data is lost, its project history can't be
-          recovered by reconnecting the repository — that would start fresh history. Recovery is only
+          recovered by reconnecting the repository. That would start fresh history. Recovery is only
           possible by importing a project export you made earlier (project portability).
         </p>
       </.notice>

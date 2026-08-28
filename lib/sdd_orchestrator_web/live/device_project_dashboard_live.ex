@@ -148,7 +148,7 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
           <p class="text-[13px] font-semibold text-ink">Moved or renamed the repository?</p>
           <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
             Point this project at the repository's new location. Only the same repository can
-            reconnect — a different one is kept as a separate project.
+            reconnect. A different one is kept as a separate project.
           </p>
           <.button
             variant="secondary"
@@ -218,7 +218,7 @@ defmodule SddOrchestratorWeb.DeviceProjectDashboardLive do
 
   defp connection_message("unavailable"),
     do:
-      "The worker on this Mac isn't running, so this project's repository can't be reached right now. Your project is safe — start the worker, then check again."
+      "The worker on this Mac isn't running, so this project's repository can't be reached right now. Your project is safe. Start the worker, then check again."
 
   defp connection_message(_authorization_required),
     do:

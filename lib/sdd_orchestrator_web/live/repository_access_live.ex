@@ -214,7 +214,7 @@ defmodule SddOrchestratorWeb.RepositoryAccessLive do
         GitHub controls which repositories SDD Orchestrator can see. Install the
         <span class="font-semibold text-ink">Orchestra-workflow</span>
         app on the account or organization whose repository you want to connect. This grants
-        read-only access to repository metadata — it never changes your code.
+        read-only access to repository metadata. It never changes your code.
       </p>
 
       <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">

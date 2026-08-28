@@ -152,7 +152,7 @@ defmodule SddOrchestratorWeb.ProjectsLive do
                 class="mt-1 flex items-center gap-1 text-[12px] font-semibold text-err-fg"
               >
                 <.lucide name="triangle-alert" class="size-3.5" />
-                Identity conflict — this project also exists in another storage location.
+                Identity conflict: this project also exists in another storage location.
               </span>
             </span>
             <.connection_badge

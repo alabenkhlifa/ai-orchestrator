@@ -157,7 +157,7 @@ defmodule SddOrchestratorWeb.InvitationAcceptanceLive do
             data-proof-complete
           >
             <.notice variant="info" icon="circle-check">
-              Your email address is confirmed. You are not on this project yet — choose how your
+              Your email address is confirmed. You are not on this project yet. Choose how your
               name appears, then accept or decline.
             </.notice>
           </div>

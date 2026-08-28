@@ -312,8 +312,8 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   # A worker carries no device label, so machines are distinguished by the order
   # they are offered plus whether they can be reached right now. Presenting more
   # worker data is the deferred minimization decision this slice records.
-  defp machine_label(%{available?: true}, index), do: "Machine #{index} — ready"
-  defp machine_label(%{available?: false}, index), do: "Machine #{index} — not reachable"
+  defp machine_label(%{available?: true}, index), do: "Machine #{index} (ready)"
+  defp machine_label(%{available?: false}, index), do: "Machine #{index} (not reachable)"
 
   defp worker_icon(:connected), do: "link"
   defp worker_icon(:temporarily_unavailable), do: "wifi"
@@ -334,7 +334,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   defp worker_detail(:temporarily_unavailable),
     do:
       "The connected machine hasn't checked in recently. Your project, its specifications, and " <>
-        "your repository are unaffected — it reappears as connected once the machine is back."
+        "your repository are unaffected. It reappears as connected once the machine is back."
 
   defp worker_detail(:disconnected),
     do:
@@ -398,7 +398,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           <.notice variant="warn" icon="unplug">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>
-                GitHub access to this repository was lost. Your project is safe — restore access on
+                GitHub access to this repository was lost. Your project is safe. Restore access on
                 GitHub, then check again.
               </span>
               <.button

@@ -65,8 +65,8 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
   @owner_only_message "Only the project owner can build a plan or decline this offer."
 
   @no_worker_message "Building this plan needs a connected worker with this repository " <>
-                       "checked out. That connection is not available from this screen yet " <>
-                       "— nothing was changed."
+                       "checked out. That connection is not available from this screen yet. " <>
+                       "Nothing was changed."
 
   @not_yet_eligible_message "This offer is no longer available right now. Managed runtime " <>
                               "SDD is unaffected."
@@ -517,8 +517,8 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
   defp plan_review_copy(_plan),
     do:
-      "Review the exact plan below, then apply it on a new isolated branch when you're ready " <>
-        "— nothing is applied automatically."
+      "Review the exact plan below, then apply it on a new isolated branch when you're ready. " <>
+        "Nothing is applied automatically."
 
   defp operations(plan, group), do: Enum.filter(plan.operations, &(group_key(&1) == group))
 
@@ -561,7 +561,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
     cond do
       not String.valid?(content) ->
-        "(binary content — preview unavailable, #{size} bytes)"
+        "(binary content: preview unavailable, #{size} bytes)"
 
       size > @max_preview_bytes ->
         preview = String.slice(content, 0, @max_preview_bytes)
@@ -623,7 +623,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
               This optional offer appears once your pilot specification reaches
               <span class="font-semibold text-ink">Ready for review</span>
               or <span class="font-semibold text-ink">Done</span>.
-              Managed runtime SDD already works fully without it — nothing here is required.
+              Managed runtime SDD already works fully without it. Nothing here is required.
             </:description>
           </.empty_state>
         </section>
@@ -631,7 +631,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
         <section :if={@stage == :declined} class="mt-6" data-kit-declined>
           <.empty_state icon="circle-check" title="Declined for now">
             <:description>
-              Managed runtime SDD continues to work fully. Nothing was recorded — come back to
+              Managed runtime SDD continues to work fully. Nothing was recorded. Come back to
               this offer any time.
             </:description>
           </.empty_state>
@@ -711,7 +711,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
             <p class="mt-1 text-sm leading-relaxed text-ink-muted">
               Applying creates one new isolated branch from the base commit above, writes only
               the confirmed operations, and makes one commit. It never writes to or merges into
-              your default branch — your repository's normal review process still applies
+              your default branch. Your repository's normal review process still applies
               afterward.
             </p>
             <div class="mt-4">
@@ -749,7 +749,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
           <.operation_group
             :if={operations(@plan, :safety) != []}
-            title="Blocked — cannot be overridden"
+            title="Blocked: cannot be overridden"
             tone="err"
             note="These paths match a protected safety, secret, or credential pattern."
             operations={operations(@plan, :safety)}
@@ -769,7 +769,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
                 @installation.result_commit,
                 0,
                 12
-              )}</code>. Nothing was merged — your repository's normal review process still
+              )}</code>. Nothing was merged. Your repository's normal review process still
               applies.
             </:description>
           </.empty_state>
@@ -820,7 +820,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
             <h2 class="text-base font-bold text-err-fg">Remove this kit</h2>
             <p class="mt-1 text-sm leading-relaxed text-err-fg">
               Builds a reviewable removal plan on a new isolated branch. Only kit-owned files
-              still proven unchanged since installation are ever removed — anything modified
+              still proven unchanged since installation are ever removed. Anything modified
               stays exactly where it is until you review it.
             </p>
             <div class="mt-4">
@@ -870,7 +870,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
             <p class="mt-1 text-sm leading-relaxed text-ink-muted">
               Applying creates one new isolated branch from the base commit above, writes only
               the confirmed operations, and makes one commit. It never writes to or merges into
-              your default branch — your repository's normal review process still applies
+              your default branch. Your repository's normal review process still applies
               afterward.
             </p>
             <div class="mt-4">
@@ -917,7 +917,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
           <.operation_group
             :if={operations(@plan, :drifted) != []}
-            title="Blocked — file was changed since installation"
+            title="Blocked: file was changed since installation"
             tone="err"
             note="This kit-owned file no longer matches what was recorded at installation. Reconcile it manually, then build a fresh update plan."
             operations={operations(@plan, :drifted)}
@@ -926,7 +926,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
           <.operation_group
             :if={operations(@plan, :safety) != []}
-            title="Blocked — cannot be overridden"
+            title="Blocked: cannot be overridden"
             tone="err"
             note="These paths match a protected safety, secret, or credential pattern."
             operations={operations(@plan, :safety)}
@@ -973,7 +973,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
             <p class="mt-1 text-sm leading-relaxed text-ink-muted">
               Applying creates one new isolated branch from the base commit above, removes only
               the confirmed files, and makes one commit. It never writes to or merges into your
-              default branch — your repository's normal review process still applies afterward.
+              default branch. Your repository's normal review process still applies afterward.
             </p>
             <div class="mt-4">
               <.button phx-click="apply_plan" data-apply-plan>
@@ -1002,7 +1002,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
 
           <.operation_group
             :if={operations(@plan, :drifted) != []}
-            title="Blocked — file was changed since installation"
+            title="Blocked: file was changed since installation"
             tone="err"
             note="This kit-owned file no longer matches what was recorded at installation. Reconcile it manually, then build a fresh removal plan."
             operations={operations(@plan, :drifted)}
@@ -1022,7 +1022,7 @@ defmodule SddOrchestratorWeb.RepositoryKitOfferLive do
                 @installation.result_commit,
                 0,
                 12
-              )}</code>. Nothing was merged — your repository's normal review process still
+              )}</code>. Nothing was merged. Your repository's normal review process still
               applies. Managed runtime SDD continues to work fully.
             </:description>
           </.empty_state>

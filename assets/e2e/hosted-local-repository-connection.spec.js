@@ -32,7 +32,7 @@ async function connectThisMachine(page) {
   await page.waitForSelector(SETTLED);
 
   if (await page.locator("[data-choose-machine]").isVisible()) {
-    await page.locator("[data-machine-option]", { hasText: "— ready" }).first().click();
+    await page.locator("[data-machine-option]", { hasText: "(ready)" }).first().click();
     await page.waitForSelector("[data-worker-connection=connected], [data-connect-error]");
   }
 }

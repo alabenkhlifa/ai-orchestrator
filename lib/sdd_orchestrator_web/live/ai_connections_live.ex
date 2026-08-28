@@ -742,7 +742,7 @@ defmodule SddOrchestratorWeb.AIConnectionsLive do
                     disabled={candidate.state != :ready}
                     selected={@create_values["worker_id"] == candidate.key}
                   >
-                    {candidate.name} — {worker_state_label(candidate.state)}
+                    {candidate.name} ({worker_state_label(candidate.state)})
                   </option>
                 </select>
               </div>

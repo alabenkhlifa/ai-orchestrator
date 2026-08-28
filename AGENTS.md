@@ -39,6 +39,15 @@ Write every message to the user short and straight to the point.
 - Let length follow the question: a status question gets a status answer, not a report.
 - Detail belongs in the specification files, `progress.md`, and the code, not in chat.
 
+## Product Copy
+
+Copy the user reads inside the product follows the same plain-English rules as messages to the user, plus these.
+
+- Do not use em dashes. Use a period, a comma, a colon, or parentheses. An em dash in product copy reads as machine-written, and the user has rejected it on sight.
+- Prefer two short sentences to one sentence joined by punctuation.
+- Do not assert what the product cannot know. State what the control plane actually knows, and offer the rest as a branch the reader picks. A browser cannot see whether a native app is installed, so copy may not claim it is missing.
+- One instruction has one wording. When two surfaces say the same thing, they render one owned value instead of holding two copies that drift.
+
 ## Source Of Truth
 
 `README.md` describes what the project is. Approved behavior and implementation decisions belong in feature specifications.
