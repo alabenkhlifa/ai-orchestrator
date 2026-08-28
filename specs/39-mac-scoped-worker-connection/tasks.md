@@ -101,7 +101,7 @@ Traceability:
   - Owns: AC-03
   - Proof: Focused tests cover auto-detection resolving a supported executable, manual entry offered only when detection finds none, the choice being stored for the Mac, and the step not asking for a repository folder.
 
-- [ ] Task 4 — Issue a gateway credential scoped to the Mac's project space.
+- [x] Task 4 — Issue a gateway credential scoped to the Mac's project space.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -109,6 +109,7 @@ Traceability:
   - Owned surfaces: The gateway credential exchange endpoint, its acceptance of a request naming no project, the device-workspace scope of the credential it answers, and its refusal of a credential that does not authorize the requested space.
   - Owns: AC-04
   - Proof: Focused tests cover an exchange with no project answering a workspace-scoped credential, the existing project-scoped request answering exactly what it answers today, a credential for another workspace being refused, and no credential reaching a log.
+  - Delivered: `WorkerSocket` now signs two claim shapes under one salt and one bounded lifetime: `%{project_id, worker_id}` unchanged, and `%{device_workspace_id, worker_id}` for a worker with no project. `issue/3` takes a bare project id or `{:device_workspace, id}`, so a caller names the scope rather than producing one shape while meaning the other. `verify/1` has one clause per shape, each guarded by `map_size(claims) == 2`, so a claim carrying both keys matches neither and no token can be read under a scope it was not signed for. The controller keeps its project clause byte-identical and adds a clause guarded on the absence of `project_id`, which authenticates the credential and issues against the worker's own `device_workspace_id` with no binding lookup; every failure still answers one uniform `403 refused`. A malformed `project_id` does not fall through to the projectless exchange, because answering a question about a project with a different scope would be a silent substitution. `connect/3` was narrowed to match the project claim explicitly and refuse anything else: it previously read `claims.project_id` unconditionally, which a workspace-scoped token would have turned into a `KeyError` crash logging the claim map instead of a refusal. Its workspace-scoped connect path is left to `Task 5`. No change was needed to guard artifact upload: `Delivery.ArtifactUpload.accept/3` matches `%{project_id: ...}` and answers `{:error, :unauthorized_worker}` for every other claim.
 
 - [ ] Task 5 — Attach a worker for its Mac and record the attachment.
   - Size: Standard

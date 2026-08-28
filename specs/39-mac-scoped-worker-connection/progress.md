@@ -1,5 +1,15 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-28 - Task 4 complete: a projectless worker can obtain a gateway credential
+
+- Two claim shapes now share one salt and one lifetime, separated by disjoint keys plus a `map_size(claims) == 2` guard on each `verify/1` clause. A claim carrying both a project and a device workspace matches neither clause, so widening one scope cannot widen the other by accident.
+- `connect/3` was changed although the task brief said to leave it alone, and the change is kept. It read `claims.project_id` unconditionally, so the moment the controller could hand out a workspace-scoped token, a worker dialing the socket with one would raise `KeyError` and log the claim map rather than being refused. It now matches the project claim explicitly and refuses everything else. `Task 5` still owns the workspace-scoped connect path, its topic, and its registry.
+- Confirmed by reading rather than by running: `Delivery.ArtifactUpload.accept/3` matches `%{project_id: ...}` and answers `{:error, :unauthorized_worker}` for any other claim, so a workspace-scoped credential cannot upload artifacts and needed no new guard.
+- Recorded limitation of the no-credential-in-a-log proof: `Logger.put_process_level/2` cannot strengthen it, because Elixir combines the process level with the primary level by taking the higher, and the module and application overrides that would win are global and would change what every other async test sees. The tests capture at the suite's configured level and assert the response bodies alongside. A genuine debug-level proof needs a non-async test module, which the slice gate's log review covers instead.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Result: 38 passed`. Runner receipt:
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator_web/controllers/worker_gateway_credential_controller_test.exs test/sdd_orchestrator_web/channels/worker_socket_test.exs` — exit `0`.
+- Directly applicable safety checks: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`.
+
 ### 2026-08-28 - Task 1 complete: a configuration is valid with no project
 
 - `workspace_root` had to become optional alongside `project_id`. `design.md`'s Proposed Approach names only the project, but its `The repository folder is not asked for here` decision already states that a worker connected this way has no repository. Leaving `workspace_root` enforced would have left a menu-bar-paired worker with nothing to store, which is the whole defect. This implements the recorded decision rather than changing it.
