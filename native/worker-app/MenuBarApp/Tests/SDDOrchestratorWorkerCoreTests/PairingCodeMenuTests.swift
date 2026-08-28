@@ -53,7 +53,8 @@ final class PairingCodeMenuTests: XCTestCase {
 
     func testEveryPairedStatusIsAPlainStatusLine() {
         let paired: [WorkerStatus] = [
-            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
+            .pairedSettingUp, .pairedConnecting, .connected, .connectionRefused, .disconnected,
+            .updateAvailable
         ]
 
         for status in paired {

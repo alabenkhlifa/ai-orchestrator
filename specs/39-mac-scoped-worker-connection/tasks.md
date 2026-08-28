@@ -133,7 +133,7 @@ Traceability:
   - Proof: Focused tests cover one refresher pass stamping a worker attached only for its Mac, a worker attached for both being stamped once, a revoked or deleted row being skipped without failing the pass, `WorkerDiscovery.status/2` moving to detected across a pass with no worker-initiated call, and reverting to unavailable once the staleness window passes with the attachment gone.
   - Delivered: `attached_worker_ids/0` now unions both registries through one shared selection helper, so a worker attached only for its Mac is stamped and a worker attached for both is stamped once. The reachability policy and the staleness window are unchanged: only the source that stamps `last_seen_at` widened. AC-09's user-visible half is carried to the slice's browser proof.
 
-- [ ] Task 7 — Report Connected only once the control plane has attached the worker.
+- [x] Task 7 — Report Connected only once the control plane has attached the worker.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5
@@ -141,6 +141,7 @@ Traceability:
   - Owned surfaces: `GatewayConnection`'s connection-state reporting, its move off the transport callback onto a successful attachment, its refused-attachment state, its lost-attachment state, and the menu-bar status derived from them.
   - Owns: AC-07, AC-08
   - Proof: Focused tests cover a connected transport with no attachment not reading as Connected, a successful attachment reading as Connected, a refused attachment naming the refusal rather than a connection, a lost attachment reading as disconnected, and the refusal not being retried as though it had succeeded.
+  - Delivered: `handle_join/3` is now the only place that reports `:connected`. The transport callback reports `:connecting`, a refused join reports `:refused` and is still never retried, and a topic close that loses an attachment reports `:disconnected`. `establish/2` also dials the Mac-scoped scope for a projectless configuration, omitting `project_id` from the credential request so the workspace exchange accepts it. The menu bar gains `Paired, but the control plane refused the connection`.
 
 - [ ] Task 8 — Prove the round trip and that neither credential leaks.
   - Size: Standard

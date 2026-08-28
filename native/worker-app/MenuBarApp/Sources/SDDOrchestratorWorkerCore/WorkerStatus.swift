@@ -3,8 +3,9 @@
 ///
 /// `.notPaired` and `.pairedSettingUp` are fully correct as of specs/36
 /// Task 4 (AC-03/04/05 from its Task 2; AC-07/AC-08 from its Task 4).
-/// `.pairedConnecting`, `.connected`, and `.disconnected` become real once
-/// a `Configuration` is stored; `.updateAvailable` becomes reachable as of
+/// `.pairedConnecting`, `.connected`, `.connectionRefused`, and
+/// `.disconnected` become real once a `Configuration` is stored;
+/// `.updateAvailable` becomes reachable as of
 /// specs/36 Task 10 (appcast/updates — see `AppcastUpdateChecker`).
 ///
 /// There is deliberately no separate "handed off to the dashboard" status.
@@ -27,12 +28,20 @@ public enum WorkerStatus: Equatable, Sendable {
     /// gateway connection this app is polling) — see
     /// `PostPairingSetupCoordinator` and `MacPairingRetention`.
     case pairedSettingUp
-    /// Paired, but no connect or disconnect has been observed yet in this
-    /// launch (`GatewayConnectionState.unknown`) — reached once Task 5
-    /// stores a real `Configuration` and a later pairing check reports
-    /// `.paired` from disk.
+    /// Paired, and not attached to the control plane yet: either nothing has
+    /// been observed in this launch (`GatewayConnectionState.unknown`) or the
+    /// transport is up with the join still in flight
+    /// (`GatewayConnectionState.connecting`). Both are honestly
+    /// "Connecting…", and neither may read as connected — a websocket is not
+    /// an attachment (specs/39 Task 7, AC-07).
     case pairedConnecting
     case connected
+    /// [specs/39 Task 7, AC-08] The control plane refused the attachment.
+    /// Named as a refusal rather than shown as a connection or folded into
+    /// `.disconnected`: a refusal is answered the same way every time it is
+    /// retried, so it is a different thing for a person to act on than a
+    /// connection that dropped.
+    case connectionRefused
     case disconnected
     /// [Task 10, AC-11/AC-12] Set once `AppcastUpdateChecker` has fetched a
     /// signed appcast entry, verified its signature, confirmed it reports a
@@ -48,6 +57,7 @@ public enum WorkerStatus: Equatable, Sendable {
         case .pairedSettingUp: return "Paired, setting up…"
         case .pairedConnecting: return "Connecting…"
         case .connected: return "Connected"
+        case .connectionRefused: return "Paired, but the control plane refused the connection"
         case .disconnected: return "Disconnected"
         case .updateAvailable: return "Update available"
         }
@@ -68,8 +78,11 @@ public enum WorkerStatus: Equatable, Sendable {
         case .paired:
             switch connection {
             case .connected: return .connected
+            case .refused: return .connectionRefused
             case .disconnected: return .disconnected
-            case .unknown: return .pairedConnecting
+            // A connected transport the control plane has not attached is
+            // still connecting, never connected.
+            case .connecting, .unknown: return .pairedConnecting
             }
         }
     }

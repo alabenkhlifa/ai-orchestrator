@@ -1,5 +1,18 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-28 - Task 7 complete: Connected now means the control plane attached the worker
+
+- A second real defect was found and fixed here, not just the reported one. `fetch_gateway_credential/1` always posted `project_id`, so a projectless worker sent it as `null`. The controller's workspace clause is guarded on the key being absent rather than empty, so that request fell through to the uniform `403`. A Mac-paired worker could never have obtained a gateway credential at all. `credential_request_body/1` now omits the key entirely, and the test observes `conn.body_params` off endpoint telemetry to assert the key is genuinely absent rather than inferring it from success.
+- The scope is decided once in `establish/2` and carried in a `:scope` assign rather than inferred later from the presence of a project. Every log line that said `for project ...` now names the scope it is actually talking about, which was wrong for a Mac-scoped connection.
+- `ConnectionStatus` gained `:connecting` and `:refused` beside `:connected` and `:disconnected`. `:connecting` is deliberately not folded into `:unknown`: the socket being up with the join in flight is an observation, while `:unknown` means nothing was ever looked at. Each state is written from the callback that actually proves it.
+- `:connecting` cannot be observed from the integration test, because the local join round trip is sub-millisecond. AC-07 is proved instead through the refusal path, where the transport stays connected for the whole test and never reads as Connected, plus the Swift mapping tests. Recorded rather than papered over.
+- Two mechanical facts the tests depend on, found by reading the libraries rather than by guessing. Slipstream's `rejoin/3` schedules its retry with `Process.send_after` at 100 ms, so the lost-attachment window is library-guaranteed and the test is deterministic rather than racy. And `config/test.exs` runs the logger at `:warning` with `capture_log`'s handler below the primary filter, so the refusal test lifts the level to `:info` for its duration to prove the transport really connected before the join was refused.
+- Corrected on the main thread: `connection_status_test.exs` asserted a closed list of three states that Task 7 made incomplete, and the sub-agent had kept it passing by erasing the shared term in the other file's setup. The list now names the module's full set and the two new writers have their own unit tests, including that a refusal never leaves the snapshot reading `:connected`.
+- Focused proof, confirmed on the main thread by real exit status `0` in both languages, `Result: 17 passed` and `Executed 246 tests, with 0 failures`. Runner receipts:
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/connection_status_test.exs test/sdd_orchestrator/worker/gateway_connection_test.exs` — exit `0`.
+- Proof receipt: `Task 7` — scope `Focused` — command `swift test` — exit `0`.
+- Directly applicable safety checks: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`.
+
 ### 2026-08-28 - Task 6 complete: a Mac-attached worker is reported reachable
 
 - The defect has a clean receipt now. With only the project-keyed registry enumerated, a Mac-attached worker's `refresh/0` returns `0` and `Devices.worker_status/1` stays `:unavailable` forever. The union moves it to `:detected` in one pass with no worker-initiated call.

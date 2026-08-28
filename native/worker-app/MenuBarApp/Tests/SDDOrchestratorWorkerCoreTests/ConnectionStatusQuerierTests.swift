@@ -18,6 +18,29 @@ final class ConnectionStatusQuerierTests: XCTestCase {
         XCTAssertEqual(ConnectionStatusQuerier.parse(result(output: "unknown\n")), .unknown)
     }
 
+    // MARK: - specs/39 Task 7: connected means attached
+
+    func test_parse_connecting_isConnectingAndNeverConnected() {
+        let state = ConnectionStatusQuerier.parse(result(output: "connecting\n"))
+
+        XCTAssertEqual(state, .connecting)
+        XCTAssertNotEqual(state, .connected)
+    }
+
+    func test_parse_refused_isRefusedAndNeverConnected() {
+        let state = ConnectionStatusQuerier.parse(result(output: "refused\n"))
+
+        XCTAssertEqual(state, .refused)
+        XCTAssertNotEqual(state, .connected)
+    }
+
+    func test_parse_everyStatusTheWorkerCanReport_isDistinct() {
+        let states = ["connected", "connecting", "refused", "disconnected", "unknown"]
+            .map { ConnectionStatusQuerier.parse(result(output: $0 + "\n")) }
+
+        XCTAssertEqual(states, [.connected, .connecting, .refused, .disconnected, .unknown])
+    }
+
     func test_parse_unrecognizedOutput_isUnknown() {
         XCTAssertEqual(ConnectionStatusQuerier.parse(result(output: "garbage\n")), .unknown)
     }
