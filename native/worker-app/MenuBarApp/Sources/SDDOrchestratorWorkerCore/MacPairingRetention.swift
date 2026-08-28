@@ -29,9 +29,11 @@ import Foundation
 /// one. The two paths stay separate for exactly this reason.)
 ///
 /// The one thing it cannot resolve itself is which coding agent this Mac
-/// runs, which is specs/39 Task 3's task. That arrives through
-/// `MacCodingAgentResolving`; until Task 3 lands, the only implementation
-/// is inert and every retention attempt stops before writing anything.
+/// runs, which is specs/39 Task 3's. That arrives through
+/// `MacCodingAgentResolving`, implemented by `MacCodingAgentSetup`. An
+/// unresolvable agent is answered as `nil` and stops this path before it
+/// writes anything, rather than storing a worker that names an agent this
+/// Mac cannot run.
 public final class MacPairingRetention {
     private let controlPlaneURL: URL
     private let workerBinaryPath: String

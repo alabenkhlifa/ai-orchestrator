@@ -7,11 +7,12 @@ import Foundation
 /// see `SddOrchestrator.Worker.Configuration`'s required fields). Task 3
 /// owns how that is resolved: auto-detection first, a manual-entry
 /// fallback when detection finds none, and the choice stored once for the
-/// Mac.
+/// Mac. `MacCodingAgentSetup` is that implementation, and the one the app
+/// wires in.
 ///
-/// Task 2 only defines where that work plugs in, so the retention path it
-/// does own (`MacPairingRetention`) can be written and proved now without
-/// Task 3's UI existing. Deliberately narrower than
+/// Task 2 only defined where that work plugs in, so the retention path it
+/// does own (`MacPairingRetention`) could be written and proved before
+/// Task 3's UI existed. Deliberately narrower than
 /// `AgentSelectionPrompting`, which takes an already-detected candidate
 /// list because `PostPairingSetupCoordinatorImpl` runs the detection
 /// itself: here the detection *is* Task 3's, so the whole question is one
@@ -24,18 +25,20 @@ public protocol MacCodingAgentResolving {
     func resolveMacCodingAgent() -> DetectedAgent?
 }
 
-/// The only implementation until Task 3 lands: logs once and resolves
-/// nothing. Deliberately inert — no detection, no prompt, no stored
-/// choice — exactly like `UnimplementedPostPairingSetupCoordinator` was
-/// for specs/36 Task 4.
+/// The honest inert double: logs once and resolves nothing. No detection,
+/// no prompt, no stored choice — exactly like
+/// `UnimplementedPostPairingSetupCoordinator` was for specs/36 Task 4.
 ///
-/// With this wired in, a redemption stores nothing and the menu bar stays
-/// on "Paired, setting up…" for the rest of the launch, because the setup
-/// Task 3 owns has not run. Nothing keeps the credential in the meantime:
-/// `MacPairingRetention` returns before it writes, and this app holds no
-/// store of its own. That is the interim state Task 3 closes, and it is why
-/// AC-01's stored-credential outcome is only reachable in production once
-/// Task 3 lands.
+/// It was the app's wiring while Task 3 was outstanding. The app now wires
+/// `MacCodingAgentSetup` instead, so this type is kept only as the "no
+/// agent could be resolved" double that `MacPairingRetention`'s tests drive
+/// the nothing-is-half-stored path with.
+///
+/// What it still describes, exactly, is the shape of that path: with an
+/// unresolvable agent a redemption stores nothing and the menu bar stays on
+/// "Paired, setting up…", and nothing keeps the credential in the meantime,
+/// because `MacPairingRetention` returns before it writes and this app
+/// holds no store of its own.
 public final class UnresolvedMacCodingAgent: MacCodingAgentResolving {
     public init() {}
 

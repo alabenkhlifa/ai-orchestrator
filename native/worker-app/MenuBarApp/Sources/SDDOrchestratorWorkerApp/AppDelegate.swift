@@ -575,15 +575,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         // [specs/39 Task 2] Where a redeemed code's credential and worker
-        // identity go. `UnresolvedMacCodingAgent` is the deliberately inert
-        // stand-in that specs/39 Task 3 replaces with this Mac's real
-        // coding-agent setup; until then every retention attempt stops
-        // before it writes anything.
+        // identity go. [specs/39 Task 3, AC-03] `MacCodingAgentSetup` is
+        // the coding-agent setup step it asks first: it auto-detects a
+        // supported executable, falls back to `AgentSelectionAlertPrompt`
+        // only when detection finds none, and answers once for this Mac.
+        // A canceled prompt leaves nothing stored, so retention stops
+        // before it writes and the next redemption asks again.
         macPairingRetention = MacPairingRetention(
             controlPlaneURL: controlPlane,
             workerBinaryPath: workerBinaryPath,
             commandRunner: commandRunner,
-            agentResolver: UnresolvedMacCodingAgent()
+            agentResolver: MacCodingAgentSetup(
+                commandRunner: commandRunner,
+                selectionPrompt: AgentSelectionAlertPrompt()
+            )
         )
 
         pairingCodeCopier = PairingCodeCopier(pasteboard: SystemPasteboard())

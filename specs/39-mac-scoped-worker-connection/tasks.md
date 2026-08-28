@@ -93,7 +93,7 @@ Traceability:
   - Proof: Focused tests cover a completed redemption storing the credential and worker identity with no project, the app no longer reporting that the dashboard has taken over once it holds one, a failed completion storing nothing, and the person never being asked for a project.
   - Delivered: A redeemed pairing code now writes the credential and worker identity into the release's own `worker.json` through `MacPairingRetention`, and the app reports `Paired, setting up…` instead of sending the person to the dashboard. `WorkerStatus.handedOffToDashboard` is deleted, because the reason specs/38 added it is the reason Task 1 removed. The coding agent is the one required field this task cannot produce, so it arrives through the `MacCodingAgentResolving` seam that Task 3 implements.
 
-- [ ] Task 3 — Set up this Mac's coding agent once.
+- [x] Task 3 — Set up this Mac's coding agent once.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -101,6 +101,7 @@ Traceability:
   - Owned surfaces: The app's coding-agent setup step, its auto-detection of a supported executable, its manual-entry fallback, and the stored choice.
   - Owns: AC-03
   - Proof: Focused tests cover auto-detection resolving a supported executable, manual entry offered only when detection finds none, the choice being stored for the Mac, and the step not asking for a repository folder.
+  - Delivered: `MacCodingAgentSetup` fills the resolver seam Task 2 left. It auto-detects, reaches the prompt's manual entry only when detection finds none, and answers once per Mac by remembering the first resolved agent. The answer lands in this Mac's one `worker.json` through `MacPairingRetention`, and the step holds no folder picker and takes no project.
 
 - [x] Task 4 — Issue a gateway credential scoped to the Mac's project space.
   - Size: Standard

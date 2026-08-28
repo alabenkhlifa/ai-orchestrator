@@ -1,5 +1,15 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-28 - Task 3 complete: this Mac's coding agent is chosen once
+
+- The branch that looks wrong and is not: detection finding two agents still reaches `AgentSelectionPrompting`, which reads like a violation of AC-03's `manual entry only when detection finds none`. It is not, because that prompt offers a typed path only for an empty candidate list. With two candidates the person chooses between executables auto-detection already resolved. The reasoning is written into `MacCodingAgentSetup`'s doc comment, since the code alone reads as a contradiction.
+- Resolved mechanism for `chosen once`: the first resolved agent is remembered for the instance's life, so a second retention attempt in one launch never re-asks. A `nil` is deliberately not remembered, because a cancelled prompt is `not now` rather than a decision.
+- The memo's lock is held only across reading and writing it, never across the prompt. `AgentSelectionAlertPrompt` blocks on the main thread, so a lock held across it would deadlock any main-thread caller. The cost is that two genuinely simultaneous first calls could both prompt, which this app cannot produce: retention runs one call per redemption and `pairingCompletionInFlight` bars a second.
+- Corrected on the main thread: `MacPairingRetention`'s class doc still said the only resolver implementation was inert and every retention attempt stopped before writing. Task 3 made that false, and the sub-agent's brief had put that file out of its reach. The comment now describes the real wiring.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Executed 239 tests, with 0 failures`. Runner receipt:
+- Proof receipt: `Task 3` — scope `Focused` — command `swift test` — exit `0`.
+- No Elixir file was touched, so no `mix` safety check applies to this task.
+
 ### 2026-08-28 - Task 2 complete: a redeemed code's credential is kept
 
 - Resolved mechanism, and the one real ordering question in this task. `Worker.Configuration` still requires `agent_adapter` and `agent_executable`, which `Task 3` owns, so the store this task delivers cannot run to completion on its own. Rather than invent a second on-device credential store to bridge the two tasks, the coding agent arrives through a `MacCodingAgentResolving` protocol seam whose only implementation for now is inert. This is the same shape `specs/36` verified for its own `Task 4` to `Task 5` handoff. There is still exactly one durable copy of the credential, `worker.json`, so the approved data boundary and the privacy release gate are unchanged.
