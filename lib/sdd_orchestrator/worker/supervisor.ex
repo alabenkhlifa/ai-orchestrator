@@ -7,6 +7,10 @@ defmodule SddOrchestrator.Worker.Supervisor do
   instead of starting partially. This tree never opens a database connection
   and never calls a control-plane context module, directly or transitively —
   a genuinely remote worker has neither available.
+
+  A configuration with no project is valid (see
+  `SddOrchestrator.Worker.Configuration`) and starts this tree without the
+  project-scoped `SddOrchestrator.Worker.GatewayConnection` child.
   """
 
   use Supervisor
@@ -53,7 +57,7 @@ defmodule SddOrchestrator.Worker.Supervisor do
     # to `Delivery.Worker.Workspace.root/0`, which reads it from application
     # env rather than a passed-in value — set once, before anything that
     # might prepare a run workspace starts.
-    Application.put_env(:sdd_orchestrator, :worker_workspace_root, config.workspace_root)
+    put_workspace_root(config.workspace_root)
 
     # The only place that turns the paired `agent_adapter`/`agent_executable`
     # strings into what `AgentAdapter.adapter/0` and each adapter's own
@@ -67,13 +71,27 @@ defmodule SddOrchestrator.Worker.Supervisor do
 
     Application.put_env(:sdd_orchestrator, :agent_executable, config.agent_executable)
 
-    children = [
-      {State, config},
-      {GatewayConnection, config}
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(children(config), strategy: :one_for_one)
   end
+
+  # A worker authorized for its Mac alone has no repository folder yet. The key
+  # is cleared rather than set to `nil` so `Workspace.root/0` is answering "no
+  # root was configured" — and so a root left behind by an earlier
+  # configuration can never point this worker's runs at a folder it was never
+  # given.
+  defp put_workspace_root(nil),
+    do: Application.delete_env(:sdd_orchestrator, :worker_workspace_root)
+
+  defp put_workspace_root(workspace_root),
+    do: Application.put_env(:sdd_orchestrator, :worker_workspace_root, workspace_root)
+
+  # `GatewayConnection` joins one project-scoped topic, so a worker with no
+  # project has nothing to join and would only build a topic out of `nil`. The
+  # rest of the tree still starts: an authorized worker without a project is a
+  # running worker waiting for one, not a startup refusal.
+  defp children(%Configuration{project_id: nil} = config), do: [{State, config}]
+
+  defp children(%Configuration{} = config), do: [{State, config}, {GatewayConnection, config}]
 
   @doc "Reads the configuration held by a running worker's `SddOrchestrator.Worker.State` child."
   @spec configuration(pid()) :: Configuration.t() | nil

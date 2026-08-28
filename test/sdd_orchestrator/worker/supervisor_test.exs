@@ -13,6 +13,7 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
   use ExUnit.Case, async: false
 
   alias SddOrchestrator.Worker.Configuration
+  alias SddOrchestrator.Worker.GatewayConnection
   alias SddOrchestrator.Worker.State
   alias SddOrchestrator.Worker.Supervisor, as: WorkerSupervisor
 
@@ -26,6 +27,11 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     project_id: Ecto.UUID.generate(),
     worker_id: Ecto.UUID.generate()
   }
+
+  # A worker paired from the app's menu bar: authorized for its Mac, with no
+  # project and no repository folder.
+  defp mac_only_config,
+    do: struct!(Configuration, Map.drop(@valid_fields, [:workspace_root, :project_id]))
 
   defp tmp_home(context) do
     dir =
@@ -80,6 +86,73 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # `WorkerSupervisor.configuration/1` still relies on.
     assert State in ids
     refute Enum.any?(ids, fn id -> id |> to_string() |> String.contains?("Repo") end)
+  end
+
+  describe "a worker with no project" do
+    setup do
+      previous_root = Application.fetch_env(:sdd_orchestrator, :worker_workspace_root)
+      previous_adapter = Application.get_env(:sdd_orchestrator, :agent_adapter)
+      previous_executable = Application.get_env(:sdd_orchestrator, :agent_executable)
+
+      on_exit(fn ->
+        case previous_root do
+          {:ok, value} -> Application.put_env(:sdd_orchestrator, :worker_workspace_root, value)
+          :error -> Application.delete_env(:sdd_orchestrator, :worker_workspace_root)
+        end
+
+        Application.put_env(:sdd_orchestrator, :agent_adapter, previous_adapter)
+        Application.put_env(:sdd_orchestrator, :agent_executable, previous_executable)
+      end)
+
+      :ok
+    end
+
+    test "starts and holds its configuration", context do
+      home = tmp_home(context)
+      config = mac_only_config()
+      :ok = Configuration.store(config, home)
+
+      pid = start_supervised!({WorkerSupervisor, home: home})
+
+      assert WorkerSupervisor.configuration(pid) == config
+      assert WorkerSupervisor.configuration(pid).project_id == nil
+    end
+
+    # `GatewayConnection` is `restart: :temporary` and dials a real address, so
+    # a started one may already have stopped itself before `which_children/1`
+    # is read. `init/1` is the one place that answers what the tree starts
+    # without that race.
+    test "starts no gateway connection, while a configuration with a project starts one" do
+      assert {:ok, {_flags, mac_only_children}} = WorkerSupervisor.init(mac_only_config())
+      assert Enum.map(mac_only_children, & &1.id) == [State]
+
+      assert {:ok, {_flags, project_children}} =
+               WorkerSupervisor.init(struct!(Configuration, @valid_fields))
+
+      assert Enum.map(project_children, & &1.id) == [State, GatewayConnection]
+    end
+
+    test "leaves the workspace root unset instead of configuring a nil one", context do
+      home = tmp_home(context)
+      :ok = Configuration.store(mac_only_config(), home)
+      Application.put_env(:sdd_orchestrator, :worker_workspace_root, "/left/over/from/before")
+
+      _pid = start_supervised!({WorkerSupervisor, home: home})
+
+      assert Application.fetch_env(:sdd_orchestrator, :worker_workspace_root) == :error
+    end
+
+    test "still wires the paired agent adapter and executable", context do
+      home = tmp_home(context)
+      :ok = Configuration.store(mac_only_config(), home)
+
+      _pid = start_supervised!({WorkerSupervisor, home: home})
+
+      assert Application.get_env(:sdd_orchestrator, :agent_adapter) ==
+               SddOrchestrator.Delivery.AgentAdapter.ClaudeCode
+
+      assert Application.get_env(:sdd_orchestrator, :agent_executable) == "/usr/local/bin/claude"
+    end
   end
 
   describe "agent adapter selection (Task 7)" do

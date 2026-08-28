@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -73,7 +73,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Make the stored worker configuration valid with no project.
+- [x] Task 1 — Make the stored worker configuration valid with no project.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -81,6 +81,7 @@ Traceability:
   - Owned surfaces: `Worker.Configuration`'s required fields, its load and store paths, its optional project, and the migration of an existing stored configuration that names one.
   - Owns: AC-02, entity:WorkerConfiguration
   - Proof: Focused tests cover a configuration with no project loading and validating, a configuration naming a project continuing to load unchanged, an existing stored file surviving the change, and the worker runtime starting from the projectless shape.
+  - Delivered: `Worker.Configuration` now derives `@enforce_keys` and `from_map/1`'s decode check from one `@required_keys` list, so the write and read paths cannot disagree about what is required. `project_id` and `workspace_root` default to `nil`; `from_pairing/2` reads them with `Map.get/2` while every still-required field keeps `Map.fetch!/2`. An absent project or repository folder is written as an absent key rather than a `null`, and absent, `null`, and blank all decode to `nil`, so a file written in the old shape keeps its values. `Worker.Supervisor` deletes `:worker_workspace_root` rather than setting it to `nil`, so a root left by an earlier configuration cannot point a projectless worker's runs at a folder it was never given, and it starts `[State]` alone for a projectless configuration while a configuration with a project starts the same children in the same order as before. `GatewayConnection` was not modified: not starting it is sufficient, so none of its connection-state code was touched.
 
 - [ ] Task 2 — Retain the credential and worker identity a redemption issues.
   - Size: Standard

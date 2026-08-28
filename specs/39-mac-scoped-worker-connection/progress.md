@@ -1,5 +1,14 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-28 - Task 1 complete: a configuration is valid with no project
+
+- `workspace_root` had to become optional alongside `project_id`. `design.md`'s Proposed Approach names only the project, but its `The repository folder is not asked for here` decision already states that a worker connected this way has no repository. Leaving `workspace_root` enforced would have left a menu-bar-paired worker with nothing to store, which is the whole defect. This implements the recorded decision rather than changing it.
+- Resolved mechanism: an absent project or repository folder is stored as an absent key, not a `null`, and `Worker.Supervisor` deletes the workspace-root application key instead of setting it to `nil`. The second matters beyond tidiness: a root left behind by an earlier configuration would otherwise point a projectless worker's runs at a folder it was never given.
+- Discovery worth recording: `Configuration.load/1` has never refused an unrecognized `agent_adapter` string. It refuses only a blank one, and `Worker.Supervisor` deliberately falls back to `AgentAdapter.Unavailable` for anything unknown, which an existing test asserts. `mix worker.pair` is where an unknown adapter is actually refused. No new validation was added, because adding it here would have contradicted that established behavior.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Result: 35 passed`. Runner receipt:
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/configuration_test.exs test/sdd_orchestrator/worker/supervisor_test.exs` — exit `0`.
+- Directly applicable safety checks: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`.
+
 ### 2026-08-28 - Specification created from a real install that could never connect
 
 - Found by the user working on an on-device project: the page showed `Unavailable` and said the worker was not running, while they believed the worker was connected.

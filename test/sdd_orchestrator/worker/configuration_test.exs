@@ -22,7 +22,24 @@ defmodule SddOrchestrator.Worker.ConfigurationTest do
     worker_id: Ecto.UUID.generate()
   }
 
+  @project_fields [:workspace_root, :project_id]
+
+  # What the app's menu-bar pairing supplies: no project, no repository folder.
+  @mac_only_cli_fields %{
+    control_plane_address: "http://localhost:4000",
+    agent_adapter: "claude_code",
+    agent_executable: "/usr/local/bin/claude"
+  }
+
   defp valid_config, do: struct!(Configuration, @valid_fields)
+
+  # A worker paired from the app's menu bar: authorized for its Mac, with no
+  # project and no repository folder.
+  defp mac_only_config, do: struct!(Configuration, Map.drop(@valid_fields, @project_fields))
+
+  defp stored_json(home) do
+    home |> Configuration.path() |> File.read!() |> Jason.decode!()
+  end
 
   defp tmp_home(context) do
     dir =
@@ -102,6 +119,88 @@ defmodule SddOrchestrator.Worker.ConfigurationTest do
     end
   end
 
+  describe "a worker authorized for its Mac alone" do
+    test "builds from pairing with no project and no repository folder" do
+      pairing_result = pairing_result()
+
+      config = Configuration.from_pairing(pairing_result, @mac_only_cli_fields)
+
+      assert config.project_id == nil
+      assert config.workspace_root == nil
+      assert config.worker_id == pairing_result.worker.id
+      assert config.worker_credential == pairing_result.credential
+    end
+
+    test "a field a worker cannot run without is still not optional" do
+      # Dropped at runtime rather than written as a short literal so the
+      # compiler's type checker does not report the deliberate omission this
+      # test exists to prove is refused.
+      without_executable = Map.drop(@mac_only_cli_fields, [:agent_executable])
+
+      assert_raise KeyError, fn ->
+        Configuration.from_pairing(pairing_result(), without_executable)
+      end
+    end
+
+    test "stores and loads back unchanged", context do
+      home = tmp_home(context)
+      config = mac_only_config()
+
+      assert :ok = Configuration.store(config, home)
+      assert {:ok, loaded} = Configuration.load(home)
+
+      assert loaded == config
+      assert loaded.project_id == nil
+      assert loaded.workspace_root == nil
+      assert loaded.worker_credential == config.worker_credential
+    end
+
+    test "the stored file records no project rather than an empty one", context do
+      home = tmp_home(context)
+      :ok = Configuration.store(mac_only_config(), home)
+
+      decoded = stored_json(home)
+
+      refute Map.has_key?(decoded, "project_id")
+      refute Map.has_key?(decoded, "workspace_root")
+      assert decoded["worker_id"] == @valid_fields.worker_id
+    end
+
+    test "a file carrying both keys as null loads as a worker with neither", context do
+      home = tmp_home(context)
+      File.mkdir_p!(home)
+
+      fields =
+        @valid_fields
+        |> Map.merge(%{workspace_root: nil, project_id: nil})
+        |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+
+      File.write!(Configuration.path(home), Jason.encode!(fields))
+
+      assert {:ok, loaded} = Configuration.load(home)
+      assert loaded == mac_only_config()
+    end
+  end
+
+  describe "a configuration written before the project became optional" do
+    test "loads with its project and repository folder intact", context do
+      home = tmp_home(context)
+      File.mkdir_p!(home)
+
+      # The old on-disk shape: every field present, written directly rather
+      # than through `store/2`, so this proves the decode path against a file
+      # this version would no longer write.
+      old_shape = Map.new(@valid_fields, fn {k, v} -> {Atom.to_string(k), v} end)
+      File.write!(Configuration.path(home), Jason.encode!(old_shape))
+
+      assert {:ok, loaded} = Configuration.load(home)
+
+      assert loaded == valid_config()
+      assert loaded.project_id == @valid_fields.project_id
+      assert loaded.workspace_root == @valid_fields.workspace_root
+    end
+  end
+
   describe "load/1 typed refusal" do
     test "a fresh, never-paired home returns {:error, :not_paired}", context do
       home = tmp_home(context)
@@ -148,5 +247,58 @@ defmodule SddOrchestrator.Worker.ConfigurationTest do
       assert {:error, {:invalid_configuration, {:missing_field, "agent_executable"}}} =
                Configuration.load(home)
     end
+
+    # The project and the repository folder became optional; nothing else did.
+    # Each remaining required field is asserted individually so dropping one
+    # from the enforced set can never pass unnoticed.
+    for field <- Map.keys(@valid_fields) -- @project_fields do
+      test "an absent #{field} is still refused", context do
+        home = tmp_home(context)
+        File.mkdir_p!(home)
+
+        fields =
+          @valid_fields
+          |> Map.drop(@project_fields ++ [unquote(field)])
+          |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+
+        File.write!(Configuration.path(home), Jason.encode!(fields))
+
+        assert {:error, {:invalid_configuration, {:missing_field, unquote(to_string(field))}}} =
+                 Configuration.load(home)
+      end
+    end
+  end
+
+  describe "agent adapters" do
+    # An adapter string outside this set is refused where it is chosen — the
+    # `mix worker.pair` CLI checks it against this list before pairing, and
+    # `Worker.Supervisor` falls back to the unavailable adapter for anything
+    # it does not recognize. `load/1` deliberately does not re-refuse it; this
+    # asserts the allowed set itself did not widen.
+    test "the allowed set is unchanged" do
+      assert Configuration.agent_adapters() == ~w(claude_code codex)
+    end
+
+    test "a blank agent adapter is refused at load", context do
+      home = tmp_home(context)
+      File.mkdir_p!(home)
+
+      fields =
+        @valid_fields
+        |> Map.put(:agent_adapter, "")
+        |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+
+      File.write!(Configuration.path(home), Jason.encode!(fields))
+
+      assert {:error, {:invalid_configuration, {:missing_field, "agent_adapter"}}} =
+               Configuration.load(home)
+    end
+  end
+
+  defp pairing_result do
+    %{
+      worker: %{id: Ecto.UUID.generate(), device_workspace_id: Ecto.UUID.generate()},
+      credential: "worker-credential-secret"
+    }
   end
 end
