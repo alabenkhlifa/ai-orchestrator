@@ -63,6 +63,8 @@ Activate this skill as the workflow for restoring agreement between requirements
 
 ## Slice Size Gate
 
+The full slice, task, proof, capability, and product-proof contracts are in `.agents/reference/sdd-gates.md`. Read the section a gate names when its rule here is not enough.
+
 - Add `## Slice Size Gate` after `## Cross-Specification Dependencies` and before `## Task Size Gate` for every new task plan. Do not retrofit an active legacy slice only to satisfy the numeric limits.
 - Use `Slice size: Standard` only when the active slice has one coherent end-to-end outcome, at most 12 tasks total, and a longest `Depends on:` path of at most 8 tasks.
 - Use `Slice size: Exception — <reason>.` only when every smaller boundary duplicates an authoritative contract or creates a concrete invalid lifecycle or verification state; reject complexity, convenience, chronology, a shared release milestone, or one pull request as reasons.

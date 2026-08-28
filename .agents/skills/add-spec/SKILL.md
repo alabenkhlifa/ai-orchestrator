@@ -70,6 +70,8 @@ Activate this skill as the workflow for creating one feature specification witho
 
 ## Slice Size Gate
 
+The full slice, task, proof, capability, and product-proof contracts are in `.agents/reference/sdd-gates.md`. Read the section a gate names when its rule here is not enough.
+
 - Add `## Slice Size Gate` after `## Cross-Specification Dependencies` and before `## Task Size Gate`, with exactly one `Slice size:` declaration.
 - Use `Slice size: Standard` only for one coherent end-to-end outcome with one verification gate, at most 12 tasks total, and a longest `Depends on:` path of at most 8 tasks.
 - Use `Slice size: Exception — <reason>.` only when every smaller boundary would duplicate an authoritative contract or create a concrete invalid lifecycle or verification state. Complexity, convenience, chronology, a shared release milestone, or one pull request is not a reason.

@@ -82,7 +82,7 @@ Traceability:
 - [ ] Acceptance criteria pass
 - [ ] Relevant automated tests pass
 - [ ] Build and type checks pass
-- [ ] Required manual scenario passes
+- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, recorded in `progress.md`
 - [ ] New decisions are written back
 - [ ] Deferred work is recorded
 

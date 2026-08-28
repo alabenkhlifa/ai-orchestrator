@@ -12,19 +12,13 @@ Read `README.md` for the project identity, current direction, and unresolved pro
 
 Codex and Claude Code work in the same repository and follow the same engineering rules.
 
-- Keep `AGENTS.md` and `CLAUDE.md` identical.
-- Update both files in the same change when a shared rule changes.
-- Inspect the working tree before editing.
-- Treat existing uncommitted changes as intentional work from the user or another tool.
-- Do not revert, overwrite, or reformat changes outside the active task.
+- Keep `AGENTS.md` and `CLAUDE.md` identical. Update both in the same change.
+- Inspect the working tree before editing. Treat existing uncommitted changes as intentional work from the user or another tool. Do not revert, overwrite, or reformat changes outside the active task.
 - Stop when another active task owns the same files or responsibility.
 
-Canonical project skills live under `.agents/skills/` and follow the shared Agent Skills `SKILL.md` format.
+Canonical project skills live under `.agents/skills/` in the shared Agent Skills `SKILL.md` format. Codex reads them directly; Claude Code reads them through links under `.claude/skills/` and must be version `2.1.203` or newer. Do not keep a second copy of a skill for one tool.
 
-- Codex discovers the canonical skill folders directly.
-- Claude Code discovers the same folders through links under `.claude/skills/`.
-- Do not maintain a second copy of a skill for one tool.
-- Claude Code must be version `2.1.203` or newer because the project uses linked skill folders.
+The long-form contracts these rules summarize live in `.agents/reference/sdd-gates.md`. The SDD skills read the section they need. Do not paste it back into this file.
 
 ## Communication Style
 
@@ -50,173 +44,83 @@ Copy the user reads inside the product follows the same plain-English rules as m
 
 ## Source Of Truth
 
-`README.md` describes what the project is. Approved behavior and implementation decisions belong in feature specifications.
-
-Before implementation, read the relevant files under `specs/<feature>/`:
+`README.md` describes what the project is. Approved behavior and implementation decisions belong in feature specifications under `specs/<feature>/`:
 
 - `requirements.md` defines expected behavior and product boundaries.
 - `design.md` defines technical decisions and tradeoffs.
-- `tasks.md` defines the active implementation slice and verification state.
-- `progress.md` holds the progress-log entries as `### ...` sections, newest first.
-
-`tasks.md` keeps `## Progress Log` as a heading whose entire body is the pointer line `See [progress.md](progress.md).` Progress entries are compliance evidence — proof receipts, failed checks, status transitions, and environment incidents — and remain mandatory; only the file that holds them changed. Read the last relevant entries rather than the whole log.
+- `tasks.md` defines the active implementation slice and verification state. Its `## Progress Log` body is only the pointer line `See [progress.md](progress.md).`
+- `progress.md` holds the progress-log entries as `### ...` sections, newest first. They are compliance evidence: proof receipts, failed checks, status transitions, and environment incidents. Read the last relevant entries, not the whole log.
 
 Do not replace an explicit project decision with an assumption.
 
 ## Privacy And Data Protection
 
-GDPR compliance is a project-wide requirement for every database schema, backend path, integration, log, export, retention process, deletion process, worker, and agent data flow.
+GDPR compliance is a project-wide requirement for every schema, backend path, integration, log, export, retention and deletion process, worker, and agent data flow.
 
 - Apply data protection by design and by default, purpose limitation, data minimization, storage limitation, least privilege, appropriate security, and auditable lifecycle enforcement from the specification onward.
-- Before adding or changing personal-data storage or processing, use the applicable SDD workflow to record its purpose, lawful basis, necessity, access boundary, retention, deletion, data-subject-rights behavior, processors, transfers, and required privacy review.
-- Analytics must always be aggregate and genuinely anonymous. Do not retain user, device, workspace, project, repository, network, content, or stable pseudonymous identifiers in analytics.
-- Treat pseudonymised, hashed, encrypted, or otherwise linkable data as personal data, not anonymous analytics.
+- Before adding or changing personal-data storage or processing, use the applicable SDD workflow to record purpose, lawful basis, necessity, access boundary, retention, deletion, data-subject-rights behavior, processors, transfers, and required privacy review.
+- Analytics are aggregate and genuinely anonymous. Pseudonymised, hashed, encrypted, or otherwise linkable data is personal data, not analytics.
 - Include derived records, soft-deleted data, logs, caches, indexes, backups, exports, local workers, coding agents, model providers, and other subprocessors in privacy and retention analysis.
-- Automated tests and technical controls provide compliance evidence but do not establish legal compliance by themselves. Keep a stage blocked only when its required privacy or legal decisions are unresolved. Put deployment-specific controller details, vendors, regions, transfer safeguards, notices, and final reviews in an explicit release gate when they are not needed to implement or locally verify the approved contract.
+- Tests and technical controls are compliance evidence, not legal compliance. Keep a stage blocked only when its required privacy or legal decisions are unresolved. Put deployment-specific controller details, vendors, regions, transfer safeguards, notices, and final reviews in an explicit release gate when they are not needed to implement or locally verify the approved contract.
 
-Use the official [GDPR text](https://eur-lex.europa.eu/eli/reg/2016/679/oj) and [European Data Protection Board anonymisation guidance](https://www.edpb.europa.eu/topics/ai-and-technology/anonymisation-pseudonymisation_en) as primary references.
+Primary references: the official [GDPR text](https://eur-lex.europa.eu/eli/reg/2016/679/oj) and the [EDPB anonymisation guidance](https://www.edpb.europa.eu/topics/ai-and-technology/anonymisation-pseudonymisation_en).
+
+## Product Proof
+
+Tests prove the domain. A person clicking proves the product. A slice needs both.
+
+- A slice whose outcome is something a person does is `Verified` only after one click path from `/` in a real browser, with the worker stand-in off and no `/_e2e` seeding, reaches that outcome. Record the path and the screens in `progress.md` at the slice gate.
+- A task that delivers a user action names the screen and the control that triggers it. A domain function with no web-layer caller does not complete a user-facing acceptance criterion.
+- The dev server runs with `:device_worker_stub` off. `E2E_MODE=true` turns it on for the browser suite only.
+- Prefer one working vertical path over a wider set of verified domain modules. Widen after a person can click through.
 
 ## SDD Workflows
 
-The SDD skills are mandatory. Select the matching skill from the user's intent even when the user does not name the skill explicitly:
+The SDD skills are mandatory. Pick the skill from the user's intent even when the user does not name it:
 
-- Always use `add-spec` when defining, scoping, planning, or creating a new specification, feature, or implementation slice.
-- Always use `update-spec` when changing existing requirements, scope, business rules, design decisions, implementation boundaries, acceptance criteria, or verification expectations.
-- Always use `implement-spec` when implementing, continuing, or verifying one approved active slice.
-- Always use `review-spec` when reviewing, auditing, or second-checking the implementation of a slice another agent delivered, including checking for missed behavior, scope drift, privacy or security gaps, or needed refactoring. It re-runs the task proofs and verification gate, reports findings, and routes fixes to `implement-spec` or agreement changes to `update-spec` without editing the code or the specification itself.
+- `add-spec` to define, scope, plan, or create a new specification, feature, or implementation slice.
+- `update-spec` to change existing requirements, scope, business rules, design decisions, implementation boundaries, acceptance criteria, or verification expectations.
+- `implement-spec` to implement, continue, or verify one approved active slice.
+- `review-spec` to review, audit, or second-check a slice another agent delivered. It re-runs proofs and reports; it edits neither code nor specification.
 
-Invoke or activate the matching project skill through the current tool's skill system at the start of every workflow, and execute its canonical `SKILL.md` under `.agents/skills/` rather than reading it as reference and imitating the steps. Codex and Claude Code execute the same canonical instructions. Each skill carries its own decision-ownership, question-batching, product-before-technology, delivery-coverage, workflow, stop-condition, and write-back rules; follow the active skill for that detail.
+Invoke the skill through the current tool's skill system and execute its canonical `SKILL.md` under `.agents/skills/`. Each skill owns its decision, question-batching, coverage, workflow, stop-condition, and write-back rules, and reads the gate contracts it needs from `.agents/reference/sdd-gates.md`.
 
-When one request combines a new or changed specification with implementation, complete the applicable spec workflow and stop. Begin `implement-spec` only after the specification is reviewed and its active slice is approved. Spec-only work must stop after the specification and directly requested project guidance are updated; do not continue into code, migrations, tests, dependencies, or runtime configuration.
-
-When the user asks to implement or complete work, carry every requested task through to completion in one pass. Do not pause to confirm pace, ask permission to continue, or offer to stop for review between tasks; commit at each task boundary for durable progress and proceed to the next. Stop only for a genuine blocker: a decision that is truly the user's to make, an unresolved specification decision, a hard environment or tooling failure, an unrecoverable error, or the context handoff defined under Agent Execution Mode — never for a routine check-in or review request.
-
-### Cross-Specification Capability Dependencies
-
-Slice numbers are stable identifiers, not execution order. Express implementation order through task-level capabilities instead of relying on numbering or broad whole-slice dependencies.
-
-- Every new or changed `tasks.md` must include `## Cross-Specification Dependencies` after `## Active Slice`, with `Requires:` and `Provides:` lists.
-- Use the exact requirement form ``- `capability:<name>` — provider `specs/<feature>#Task <n>` — required before `Task <n>`.`` Use `- None.` when there is no requirement.
-- Use the exact provider form ``- `capability:<name>` — ready after `Task <n>`.`` Use `- None.` when the slice provides no downstream capability.
-- Name one primary provider task for each capability. A consumer may not redefine the provider's schema, interface, authoritative data, or lifecycle.
-- Depend on the smallest stable capability, not an entire slice, when the consumer needs only one provider contract.
-- A provided capability becomes available only after its named task is checked complete, its full proof passes, and the readiness write-back is recorded. Release-only evidence does not delay an implementation capability unless the consumer crosses that release boundary.
-- Keep the earliest affected consumer task `Blocked` while its required capability is unavailable. Keep the slice `Blocked` only when its next executable task is blocked; a later unavailable capability must not prevent independent earlier tasks. Before changing status, confirm the provider paths needed at that stage.
-- Run the repository's global cross-specification dependency validator when available. It must reject missing or ambiguous providers, malformed references, cycles, unavailable prerequisites for active consumers, and provider/consumer contract conflicts.
-- When a capability edge changes, update both provider and consumer specifications in the same specification change and re-run their individual validators plus the global graph check.
-- Treat a capability's provider task moving to a different specification, such as during an umbrella-to-child split, as a scope change, not a reference repair. In that same change, re-justify every existing consumer's edge against that consumer's own `requirements.md` or `design.md`, and repoint it to the smallest still-accurate capability instead of mechanically following the provider to its new specification. Keeping the reference valid does not by itself prove the consumer still needs what the capability now means.
-
-### Slice Size Gate
-
-Adopt the slice-size contract for every new task plan. Do not retrofit an active legacy slice solely to satisfy the numeric limits; when its unfinished work is next materially refined, preserve completed history and move independently executable remaining outcomes into new child specifications that adopt the gate.
-
-- Every new `tasks.md` must include `## Slice Size Gate` after `## Cross-Specification Dependencies` and before `## Task Size Gate`.
-- Declare exactly `- Slice size: Standard` or `- Slice size: Exception — <why no smaller slice can deliver a coherent independently verifiable capability without duplicating authority or creating an invalid lifecycle boundary>.`
-- A standard slice delivers one primary product or platform outcome through one coherent end-to-end workflow and one verification gate, contains at most 12 tasks total, and has a longest `Depends on:` path of at most 8 tasks.
-- Treat 12 total tasks and an 8-task critical path as hard planning limits, not targets. Split earlier when workflows, integrations, trust boundaries, data lifecycles, owners, failure paths, or proof modalities can be implemented and verified independently.
-- Do not evade the slice limit by combining work that fails the Task Size Gate. Every resulting task must still deliver one independently provable outcome.
-- Use a slice-size exception only when every smaller boundary would duplicate one authoritative contract or create a concrete invalid lifecycle or verification state. Complexity, convenience, chronology, a shared release milestone, or a desire for one pull request is not an exception.
-- Express sequencing between smaller slices with capability dependencies. Keep shared rules and release coordination in an umbrella specification only when its executable work lives in focused child specifications.
-
-### Task Size Gate
-
-Adopt the task-size contract when Slice 06 or any later slice is next refined. Do not rewrite completed Slice 05 tasks solely to migrate them.
-
-- Every new `tasks.md` must include `## Task Size Gate` after `## Slice Size Gate` and before `## Implementation Boundary`. Preserve the established position in a legacy plan that has not adopted the Slice Size Gate.
-- Give every task exactly one size declaration: `Size: Standard` or `Size: Exception — <why splitting creates an invalid intermediate state>.`
-- A standard task delivers one independently provable outcome, owns one primary state transition or invariant and normally one adapter or workflow, produces one task-boundary implementation commit, owns at most three acceptance criteria and two entities, and has focused proof expected to run in about ten minutes.
-- Use 30–45 minutes as a planning target, not a promise. Expected work beyond 60 minutes or more than one meaningful implementation commit is a split signal.
-- Split tasks that combine independently testable behaviors, multiple adapter integrations, domain foundation plus UI plus authentication or recovery, source-owned integration from another specification, or proof modalities that can fail independently.
-- Keep the full repository, production, security, and browser-matrix gates at slice verification. Task proof should be focused and include only directly applicable safety checks unless the task owns a broader gate.
-- Allow an exception only when splitting an atomic migration, transaction, or invariant would create a concrete invalid intermediate state. Complexity, convenience, chronology, or test duration is not an exception.
-- Preserve completed task labels and history. When splitting unfinished work, update affected task dependencies and cross-specification capability references together and re-run the individual and global validators.
-
-### Task Proof Gate
-
-Adopt the task-proof contract when an active slice's next unfinished task is refined after the proof runner is available. Do not rewrite completed task history solely to migrate it.
-
-- Every newly created `tasks.md`, and every existing `tasks.md` that adopts the contract prospectively, must include `## Proof Scope Gate` after `## Task Size Gate` and before `## Implementation Boundary`.
-- Declare applicability as exactly `- Applies to: all tasks.` for a new task plan or as a comma-separated list of stable task labels for prospective adoption, such as `- Applies to: Task 36, Task 37.` Unknown or duplicate task labels are invalid.
-- Give every applicable task exactly one declaration: `Proof scope: Focused` or `Proof scope: Broad — <why this task owns a broader gate>.` A broad declaration is an exception and requires a concrete ownership reason.
-- Run each focused task-proof command through `python3 .agents/scripts/run_proof.py task --task <n> -- <command>`. For a validator-approved broad task exception, add `--broad` before `--`. The runner must reject unscoped full tests, full browser matrices, dependency installation, production proof, and repository-wide security or quality gates in focused task scope.
-- Paste every successful runner receipt into the task's entry in `specs/<feature>/progress.md`. An applicable task may not be checked complete, committed, or provide a capability until the specification validator accepts a matching focused or approved broad receipt.
-- The main thread must confirm the same scoped proof by real exit status. Reconciliation does not authorize an additional full-suite run.
-- Run complete repository, browser, security, production, and release commands only through `python3 .agents/scripts/run_proof.py slice -- <command>` at the slice verification gate. Do not use slice scope as a routine task-proof override.
-- If focused proof exposes evidence of a cross-task regression, record the evidence and run the narrowest additional command that can confirm it. Escalate to the slice gate only when the broader gate itself is the affected behavior or a documented stop condition requires it.
+- When one request combines a specification change with implementation, complete the spec workflow and stop. Begin `implement-spec` only after the slice is approved. Spec-only work does not touch code, migrations, tests, dependencies, or runtime configuration.
+- When the user asks to implement or complete work, carry every requested task through in one pass. Commit at each task boundary. Stop only for a genuine blocker: a decision that is the user's, an unresolved specification decision, a hard environment or tooling failure, an unrecoverable error, or the context handoff below.
+- Every new `tasks.md` carries `## Cross-Specification Dependencies`, `## Slice Size Gate`, `## Task Size Gate`, and `## Proof Scope Gate` in that order after `## Active Slice`. Limits: at most 12 tasks, a longest `Depends on:` path of 8, one provable outcome per task, and focused task proof through `python3 .agents/scripts/run_proof.py task --task <n> -- <command>`. Repository-wide gates run once, at the slice, through `run_proof.py slice`. Never re-run a suite to find which test failed; read the first output.
 
 ## Agent Execution Mode
 
-These rules govern how Codex and Claude Code execute work in this repository, in every SDD workflow.
-
-- Delegate task development to a sub-agent by default and keep the main thread on orchestration, review, proof, committing, and specification write-back. The purpose is to spend the main thread's context on judgment rather than on file contents, so a brief must carry the exact files to read, the decided design, and the hard constraints instead of asking the sub-agent to rediscover them.
-- A dispatched sub-agent works from its closed brief. It does not invoke an SDD workflow skill, repeat the specification preflight, or re-read the specification files to rediscover an agreement the brief already carries. The main thread owns the preflight, the gate validation, the capability confirmation, the reconciliation, the proof confirmation, the specification write-back, and the commit. A sub-agent that finds its brief wrong, incomplete, or contradicted by the code stops and reports instead of re-deriving the agreement itself.
-- Run sub-agents in parallel whenever their tasks are genuinely independent. Independence follows from each task's `Depends on:` line together with disjoint ownership of files, surfaces, and proof, not from whether the tasks feel unrelated. Assign explicit path ownership in every brief, and serialize instead when two tasks would touch the same module, migration, or screen.
-- Reconcile every sub-agent result in one place. Confirm each proof by real exit status; a sub-agent's report that a check passed is a claim, not evidence.
-- Manage the main thread's context deliberately. When it passes roughly half its window, finish the task in flight through its proof, write-back, and commit without interrupting it, then stop. Do not start another task in a degraded context, and do not abandon one midway to save room.
-- Hand off by pointing at the repository, never by carrying state. Ask the user to clear the context, then supply the exact prompt for the next session: the branch, the active specification, the next executable task, which tasks to avoid and why, and the instruction to recover state from `specs/<feature>/tasks.md` and the last relevant entries of `specs/<feature>/progress.md`.
-- Exception: when the user says the session is a long or automatic run, do not stop at the context threshold; continue through the task chain.
+- Delegate task development to a sub-agent by default. The main thread keeps preflight, gate validation, reconciliation, proof confirmation, specification write-back, and the commit. A brief carries the exact files, the decided design, the hard constraints, and one task; the sub-agent does not re-run the preflight or re-derive the agreement, and it stops and reports when the brief is wrong.
+- A sub-agent's report that a check passed is a claim. The main thread confirms each proof by real exit status, once.
+- Run sub-agents in parallel only when `Depends on:` and disjoint ownership of files, surfaces, and proof allow it. Name the owned paths in every brief.
+- When the main thread passes roughly half its context, finish the task in flight through proof, write-back, and commit, then stop and hand off with a prompt that names the branch, the active specification, the next task, and the files to recover state from. If the user said the run is long or automatic, continue instead.
 
 ## Readiness And Write-Back
 
-Report product-requirement, technical-design, implementation, verification, and release readiness separately, and name the earliest stage each unresolved item blocks; a later-stage unknown must not make an earlier ready stage look blocked. `Approved` requirements are not thereby implemented or releasable.
-
-- Keep deployment-dependent evidence in a release gate. It blocks release, not implementation or local verification, when the implementation contract is already approved.
-- Distinguish an environment or tooling blocker, such as an unavailable service, daemon, credential, or network, from an implementation defect: pause only the affected proofs, continue independent work, surface it to the user, and record it in `tasks.md` as environment-blocked. Do not fake, skip, or weaken a proof. A canonical check that flags a later task's work may be deferred with a narrow, documented suppression and a recorded follow-up owned by that task.
-- Persist accepted decisions, resolved questions, new blockers, status changes, and progress into the specification files through the matching SDD skill, never an ad hoc edit. A new conversation must recover state from the repository, not a handoff prompt.
-- Record a resolved, non-behavioral engineering mechanism in `specs/<feature>/progress.md`, or in `design.md` when it changes a documented decision. Do not leave it only in the conversation.
+- Report requirement, design, implementation, verification, and release readiness separately, and name the earliest stage each unresolved item blocks. `Approved` is not implemented; `Verified` is not releasable.
+- An unavailable service, daemon, credential, or network is an environment blocker, not a defect: pause only the affected proofs, continue independent work, tell the user, and record it in `tasks.md`. Never fake, skip, or weaken a proof.
+- Persist decisions, blockers, status changes, and progress into the specification files through the matching skill, never an ad hoc edit. A `Delivered:` line in `tasks.md` is at most two sentences; mechanism and receipts go in `progress.md`.
 
 ## File And Commit Rules
 
-- Do not create Markdown files unless the user explicitly asks for them or an invoked SDD workflow requires its defined spec files.
-- Keep changes narrowly scoped to the active task.
-- Inspect the working tree before staging. Another agent or the user may hold concurrent uncommitted or newly committed changes; treat them as intentional and do not stage, revert, or reformat them.
-- When committing, stage only the active task's own paths by explicit path list and create the local commit with one shell command. Never stage with `git add -A`, `git add .`, or a broad glob, and confirm the staged set contains only your files before committing.
-- Always use a conventional semantic prefix such as `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, or `chore:` in commit messages and titles.
-- Do not add assistant, model, or tool authorship to commits or titles.
-- Commit at each task boundary. Once a task's proof passes and its `tasks.md` write-back is recorded, create one local commit scoped to that task; also commit whenever the user explicitly asks. Do not batch multiple completed tasks into a single commit.
-- Branch implementation per slice, not per task. Use one branch per active slice named `slice/<feature-directory>`, such as `slice/02-local-project-onboarding`, and open at most one pull request per slice.
-- Before starting or resuming a slice, fetch and check whether its slice branch already exists locally or on the remote. If it exists, continue on it after rebasing or fast-forwarding onto the latest default branch and never create a second branch for the same slice; only create the branch, from an up-to-date default branch, when none exists.
-- Let task commits accumulate on the slice branch under the scoped, explicit-path, task-boundary rules above, and merge the slice branch into the default branch when the slice passes its verification gate.
-- Coordinate multiple agents or developers within one slice at task granularity through `tasks.md` ownership and the stop condition; use a short-lived per-task branch off the slice branch only for genuine parallel work inside the same slice, then merge it back into the slice branch.
-- When the user says this work will run in parallel with other AI agents, give each agent its own Git worktree and assigned branch, and run each concurrent local server on a distinct port. Never share one working directory or runtime port across parallel agents. This governs independent agent sessions and parallel slices; sub-agents that one main thread dispatches, reconciles, and commits share its working tree and are separated by disjoint path ownership instead.
-- Before running agents on more than one slice in parallel, analyze the surfaces those slices actually share — schemas, migrations, shared contexts and modules, shared UI, and cross-slice foundation — judged by what each slice will modify rather than by filenames, then choose and record a sequencing decision (serialize, partition by ownership, or foundation-first) in the affected slices' `tasks.md` before implementation starts. Do not defer discovering the overlap to an agent's implementation preflight.
+- Do not create Markdown files unless the user asks or an invoked SDD workflow requires its defined spec files.
+- Keep changes scoped to the active task. Inspect the working tree before staging; other changes are intentional.
+- Stage only the active task's own paths by explicit list and commit with one shell command. Never `git add -A`, `git add .`, or a broad glob.
+- Use a conventional prefix (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`). No assistant, model, or tool authorship in commits or titles.
+- Commit at each task boundary once its proof passes and its `tasks.md` write-back is recorded. One task per commit.
+- One branch per slice, `slice/<feature-directory>`, from an up-to-date default branch; continue an existing slice branch after rebasing, never create a second. Merge it when the slice passes its gate. Parallel agent sessions get their own worktree, branch, and server port. Details in `.agents/reference/sdd-gates.md`.
 
 ## Current Project Checks
 
-The repository has the Slice 01 Phoenix toolchain. Run the checks applicable to the change.
+Run the checks that apply to the change.
 
-For instant cross-slice task and readiness questions, run `.agents/scripts/slice_status.py`. It is a read-only report over `main` plus matching active slice worktrees, defaults to Slice 07 through the latest slice with Slice 11 expanded, and accepts `--from <slice>` and `--focus <slice>` overrides. It does not replace the specification validators.
+- Toolchain and database: `mise install`, `docker compose up -d postgres`, `mix setup`; local server `mix phx.server`.
+- Standard developer gate: `mix check`.
+- Explicit code-quality gate: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, `mix test`.
+- Browser proof: `npm --prefix assets ci`, `npm --prefix assets run test:e2e`. Production proof: `MIX_ENV=prod mix assets.deploy`, `MIX_ENV=prod mix release`.
+- Instructions and skills: `cmp -s AGENTS.md CLAUDE.md`; `find -L .claude/skills -type l` returns nothing; `git diff --check`; validate changed skills with the active skill-authoring validator.
+- Specifications: `python3 .agents/scripts/validate_spec.py specs/<feature>`, `python3 .agents/scripts/validate_spec.py --all specs`, `python3 .agents/scripts/split_progress_log.py --check`; script suites `python3 .agents/scripts/test_validate_spec.py` and `python3 .agents/scripts/test_run_proof.py`.
+- Repository tooling (`slice_status.py`, `capability_index.py`, `run_proof.py` partitions, `prime_worktree.sh`, `drop_test_databases.sh`) is described in `.agents/reference/sdd-gates.md` under Repository Tooling.
 
-For cross-specification capability questions, run `python3 .agents/scripts/capability_index.py`. `--capability <name>` reports one capability's provider task, readiness, and consumers without opening the provider's specification, and the full index reports every missing, ambiguous, malformed, and cyclic edge. Its readiness reads the provider task's checkbox only, so it is a fast pointer and not gate approval; `validate_spec.py` remains the authority. Open a provider `tasks.md` only when the index reports a problem or the consuming work would touch the provider's own contract.
-
-`python3 .agents/scripts/split_progress_log.py [<spec> ...]` keeps the progress log out of `tasks.md`, defaulting to every specification under `specs/`. `--check` reports the same work without writing and exits nonzero when any file would change. The tool is permanent and idempotent, not a one-shot migration: a slice branch still carries `tasks.md` in the legacy inline shape, so resolve that rebase conflict in favor of the branch version and re-run the tool. Existing entries are matched by their exact `### ` heading and are never duplicated, reordered, or rewritten.
-
-`python3 .agents/scripts/run_proof.py` derives one stable `MIX_TEST_PARTITION` from the worktree root and injects it into the child environment, so each worktree gets its own test database. Do not hand-write the partition in a proof command; a caller-supplied value still wins, and the rendered receipt is unchanged.
-
-Prime every newly created slice worktree with `.agents/scripts/prime_worktree.sh <target-worktree-path>` before its first build. It clones `_build`, `deps`, `priv/plts`, and `assets/node_modules` from the main worktree, which removes the cold compile and the full PLT rebuild. It is idempotent and refuses to run against the main worktree.
-
-For instruction and skill changes, run the checks that currently apply:
-
-- Shared instructions: `cmp -s AGENTS.md CLAUDE.md`
-- Claude skill links: `find -L .claude/skills -type l` must return no broken links.
-- Patch integrity: `git diff --check`
-- Skills: validate every changed canonical skill under `.agents/skills/` with the validator provided by the active skill-authoring environment.
-- Spec validator: `python3 .agents/scripts/test_validate_spec.py`
-- Proof runner: `python3 .agents/scripts/test_run_proof.py`
-- Specifications: `python3 .agents/scripts/validate_spec.py specs/<feature>`
-- Cross-specification graph: `python3 .agents/scripts/validate_spec.py --all specs`
-- Progress-log layout: `python3 .agents/scripts/split_progress_log.py --check`
-
-Slice 01 is the first approved executable slice. Its application-bootstrap task must establish these canonical commands:
-
-- Toolchain and database: `mise install` and `docker compose up -d postgres`
-- Initial setup: `mix setup`
-- Local server: `mix phx.server`
-- Standard developer gate: `mix check`
-- Explicit code-quality gate: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix dialyzer`, `mix deps.audit`, `mix sobelow --config`, and `mix test`
-- Browser setup and proof: `npm --prefix assets ci` and `npm --prefix assets run test:e2e`
-- Production proof: `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release`
-
-The bootstrap implementation must add `mix check` as the standard formatting, compilation, lint, and test alias. Until the application skeleton exists, missing application commands are work owned by that bootstrap task, not verification exceptions.
-
-Do not mark a slice `Verified` while a required established check is failing or unavailable without an explicit accepted exception.
+Do not mark a slice `Verified` while a required check is failing or unavailable without an explicit accepted exception.

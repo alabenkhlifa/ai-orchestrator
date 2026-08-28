@@ -158,9 +158,11 @@ config :sdd_orchestrator, SddOrchestrator.Devices.DeviceStore.Local,
   start: true,
   path: "priv/device_store/dev.dets"
 
-# Enable the local worker stand-in so the graphical local-onboarding flow (pairing
-# completion and folder selection) is exercisable without the signed native worker.
-config :sdd_orchestrator, :device_worker_stub, true
+# The local worker stand-in (pairing completion and folder selection without the
+# native worker app) is on only for the browser suite, which sets E2E_MODE. A
+# plain dev server runs the real worker path, so a flow that only works with the
+# stand-in is visibly broken here instead of at the first real install.
+config :sdd_orchestrator, :device_worker_stub, e2e_mode?
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
