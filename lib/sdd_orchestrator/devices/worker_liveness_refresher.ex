@@ -18,6 +18,16 @@ defmodule SddOrchestrator.Devices.WorkerLivenessRefresher do
   enumerating it and marking those workers seen is a truthful liveness signal
   that needs no protocol change.
 
+  That project-keyed registry is not the whole record. A worker is attached for
+  its Mac before it is attached for any project, and a worker paired from the
+  app's menu bar may never open a project at all, so a pass over the
+  project-keyed registry alone would leave a genuinely running worker with no
+  `last_seen_at` and report it unavailable forever. `Delivery.WorkerAttachment`'s
+  workspace-keyed registry holds exactly that Mac-scoped attachment, and it is
+  enumerated alongside the project-keyed one. A worker present in both is one
+  worker with one row, so the two enumerations are unioned into a single set of
+  worker ids and it is stamped once per pass.
+
   Each node refreshes the workers attached to itself, which stays correct if the
   control plane ever runs on more than one node — a worker is attached to exactly
   one of them, and `Pairing.mark_seen/1` is idempotent across a brief reconnect
@@ -30,6 +40,7 @@ defmodule SddOrchestrator.Devices.WorkerLivenessRefresher do
   import Ecto.Query
 
   alias SddOrchestrator.Delivery.CommandTransport.Channel, as: WorkerTransport
+  alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Devices.LocalWorker
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Devices.WorkerDiscovery
@@ -77,12 +88,20 @@ defmodule SddOrchestrator.Devices.WorkerLivenessRefresher do
     end
   end
 
+  # The union of the two live-attachment records: a worker attached for a project
+  # and a worker attached only for its Mac are both genuinely connected. `uniq` is
+  # load-bearing rather than tidiness, because a worker attached for both appears
+  # in both registries and must be stamped exactly once per pass.
   defp attached_worker_ids do
-    WorkerTransport.registry()
-    |> Registry.select([{{:_, :_, :"$1"}, [], [:"$1"]}])
+    (registered_contracts(WorkerTransport.registry()) ++
+       registered_contracts(WorkerAttachment.registry()))
     |> Enum.map(& &1.worker_id)
     |> Enum.uniq()
   end
+
+  # One selection shape for both registries, so the two enumerations cannot drift.
+  defp registered_contracts(registry),
+    do: Registry.select(registry, [{{:_, :_, :"$1"}, [], [:"$1"]}])
 
   defp attached_workers(ids), do: Repo.all(from(w in LocalWorker, where: w.id in ^ids))
 

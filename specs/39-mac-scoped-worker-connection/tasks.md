@@ -123,7 +123,7 @@ Traceability:
   - Proof: Focused tests cover a valid attachment being registered against its own workspace, an attachment aimed at another workspace being refused before negotiation, a reconnect overlapping its predecessor without stranding the worker, the entry disappearing when the channel process dies, and the project-keyed registry and its delivery path behaving exactly as before.
   - Delivered: A worker with a workspace-scoped credential now opens a socket carrying no project and joins the `worker_workspace:` topic named for the device workspace, which checks the topic against the credential before negotiating anything and registers the live channel process in the duplicate-keyed `WorkspaceWorkerRegistry`. `Delivery.WorkerAttachment` owns that registry and its accessor and delivers nothing. The project-keyed registry, `deliver/1`, and the `worker:` topic are untouched.
 
-- [ ] Task 6 — Derive worker liveness from Mac-scoped attachments.
+- [x] Task 6 — Derive worker liveness from Mac-scoped attachments.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5
@@ -131,6 +131,7 @@ Traceability:
   - Owned surfaces: `Devices.WorkerLivenessRefresher`'s enumeration of the workspace-keyed registry alongside the project-keyed one, and its handling of a worker present in both.
   - Owns: AC-06, AC-09
   - Proof: Focused tests cover one refresher pass stamping a worker attached only for its Mac, a worker attached for both being stamped once, a revoked or deleted row being skipped without failing the pass, `WorkerDiscovery.status/2` moving to detected across a pass with no worker-initiated call, and reverting to unavailable once the staleness window passes with the attachment gone.
+  - Delivered: `attached_worker_ids/0` now unions both registries through one shared selection helper, so a worker attached only for its Mac is stamped and a worker attached for both is stamped once. The reachability policy and the staleness window are unchanged: only the source that stamps `last_seen_at` widened. AC-09's user-visible half is carried to the slice's browser proof.
 
 - [ ] Task 7 — Report Connected only once the control plane has attached the worker.
   - Size: Standard

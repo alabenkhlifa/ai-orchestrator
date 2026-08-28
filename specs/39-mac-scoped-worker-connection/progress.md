@@ -1,5 +1,16 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-28 - Task 6 complete: a Mac-attached worker is reported reachable
+
+- The defect has a clean receipt now. With only the project-keyed registry enumerated, a Mac-attached worker's `refresh/0` returns `0` and `Devices.worker_status/1` stays `:unavailable` forever. The union moves it to `:detected` in one pass with no worker-initiated call.
+- Anti-vacuity check performed rather than assumed: the union was reverted in a scratch copy and the file re-run. Four of the five new tests failed. The both-registries test passes either way by design, because it guards only the double-stamp direction.
+- `Enum.uniq/1` is load-bearing, not tidiness. A worker attached for both its Mac and a project appears in both registries and must be stamped exactly once, so the comment says so and the test asserts `refresh/0`'s count rather than only the timestamp.
+- `WorkerDiscovery.reachable?/2` is private, so the tests assert through `Devices.worker_status/1`, which is what the existing suite already did. Staleness is driven by ageing `last_seen_at` from `WorkerDiscovery.staleness_seconds/0` rather than by sleeping or by a hardcoded window.
+- Recorded gap rather than a claimed pass: AC-09's second half, that every project on that Mac stays visible, is not assertable at this layer without inventing a device-store fixture. What the test proves instead is the layer-true mechanism: after the attachment is gone and the window passes the worker reads `:unavailable` rather than `:missing`, and `Pairing.active_workers/1` still returns it as active. The user-visible half belongs to the slice's browser proof.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Result: 12 passed`. Runner receipt:
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator/devices/worker_liveness_refresher_test.exs` — exit `0`.
+- Directly applicable safety checks: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`.
+
 ### 2026-08-28 - Task 5 complete: the control plane records a Mac's attachment
 
 - Settled the topic name the specification left open: the `worker_workspace:` topic named for the device workspace, routed as `channel "worker_workspace:*"`. It parallels the `worker:` topic named for the project, names the scope rather than the machine, and cannot be swallowed by the existing `worker:*` route because it does not carry that prefix. The registry is `SddOrchestrator.Delivery.WorkspaceWorkerRegistry`, owned by `Delivery.WorkerAttachment`.
