@@ -12,9 +12,18 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
   This channel carries no command delivery, no acknowledgements, no events, no
   heartbeats, and no reconciliation. It exists so the control plane knows this
   Mac's worker is live, which is a question every dashboard already asks of a
-  worker that has joined no project. Anything a worker may actually execute
-  stays on the project-scoped `worker:` topic, where a project-scoped
-  credential is what authorizes it.
+  worker that has joined no project. It carries exactly one request and answer
+  pair beyond that: a `repository_selection` push asks the worker to open its
+  folder picker, and a `repository_selection_result` frame brings back which
+  identities matched and the folder's own name. That is not execution. The
+  worker shows a panel and reports identities, and anything a worker may
+  actually execute still stays on the project-scoped `worker:` topic, where a
+  project-scoped credential is what authorizes it.
+
+  The workspace and the worker an answer is credited to are read from this
+  socket's own authenticated assigns and never from the frame. An attachment
+  can therefore only ever close a request that was pushed to it, and a frame
+  naming somebody else's request is refused rather than delivered.
 
   Unknown inbound messages are therefore refused rather than interpreted. The
   session stays open through a refusal, so one unexpected frame does not cost a
@@ -24,6 +33,8 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
 
   alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Delivery.WorkerProtocol
+  alias SddOrchestrator.RepositorySelection
+  alias SddOrchestrator.RepositorySelection.AttachmentCodec
 
   @impl true
   def join("worker_workspace:" <> device_workspace_id, params, socket) do
@@ -39,8 +50,46 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
   def join(_topic, _params, _socket), do: {:error, %{reason: "unknown_topic"}}
 
   @impl true
+  def handle_in("repository_selection_result", payload, socket) do
+    case answer(payload, socket) do
+      :ok -> {:reply, :ok, socket}
+      {:error, reason} -> {:reply, {:error, %{reason: to_string(reason)}}, socket}
+    end
+  end
+
   def handle_in(_event, _payload, socket),
     do: {:reply, {:error, %{reason: "unsupported_message"}}, socket}
+
+  @impl true
+  def handle_info({:repository_selection, payload}, socket) do
+    push(socket, "repository_selection", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:repository_selection_cancel, payload}, socket) do
+    push(socket, "repository_selection_cancel", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # The attachment that answers is the socket, not the frame. Reading the
+  # workspace and the worker from the authenticated assigns is what makes a
+  # result from another attachment refusable: the request lifecycle compares
+  # them against the attachment the push actually went to.
+  defp answer(payload, socket) do
+    case AttachmentCodec.decode_result(payload) do
+      {:ok, attrs} -> RepositorySelection.answer(attachment(socket), attrs)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp attachment(socket) do
+    %{
+      device_workspace_id: socket.assigns.device_workspace_id,
+      worker_id: socket.assigns.worker_id
+    }
+  end
 
   # The socket authenticated one device workspace; the topic is where a worker
   # would otherwise reach across Macs, so it is checked before negotiation and

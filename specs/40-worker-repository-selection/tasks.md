@@ -81,15 +81,15 @@ Traceability:
   - Proof: Focused tests cover a request answered once and delivered to its requester only, a second answer to the same request being refused, an answer naming another request or worker being refused, a cancelled or expired request ignoring a late answer, and the requester's exit cancelling the request.
   - Delivered: `SddOrchestrator.RepositorySelection` opens a request, pushes it through a configured transport behaviour, and guarantees one `{:repository_selection, request_id, outcome}` message per request. A foreign, repeat, cancelled, or expired answer is refused and changes nothing.
 
-- [ ] Task 2 — Carry the request and its result over the Mac-scoped attachment.
+- [x] Task 2 — Carry the request and its result over the Mac-scoped attachment.
   - Size: Standard
   - Proof scope: Focused
-  - Status: Blocked until `capability:mac-scoped-worker-connection` is ready.
   - Depends on: Task 1
   - Purpose: Let a request reach the one worker attached for a workspace and let only that attachment answer it.
   - Owned surfaces: The `repository_selection` push and `repository_selection_result` inbound event on the Mac-scoped attachment channel, their codec, the `repository_selection` capability declared at attach, refusal of a worker without it as `:worker_needs_update`, refusal of a result from an attachment other than the one pushed to, and the real transport behaviour for Task 1.
   - Owns: AC-08
   - Proof: Focused channel tests cover a request pushed to the attached worker for its workspace, a result accepted only from that attachment, a result from another attachment refused, a worker without the capability refused, and the pushed and received payloads holding identities and a folder name only.
+  - Delivered: `RepositorySelection.Transport.Attachment` pushes a request to the named worker attached for its workspace, and the Mac-scoped channel answers with `repository_selection_result` credited to its own authenticated socket. `AttachmentCodec` closes both directions to their allowed fields.
 
 - [ ] Task 3 — Answer a request on the worker with identity and folder name only.
   - Size: Standard

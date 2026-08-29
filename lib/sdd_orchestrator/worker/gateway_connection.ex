@@ -80,6 +80,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     agent.thread_resume
     evidence.screenshot
     preview.request
+    repository_selection
   )
 
   @capabilities Enum.sort(@required_capabilities ++ @optional_capabilities)
