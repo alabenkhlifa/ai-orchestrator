@@ -1,5 +1,17 @@
 # Distribution-Free Worker Control Progress Log
 
+### 2026-08-29 - Slice gate: proved on the machine that could not run the app at all
+
+- `capability:distribution-free-worker-control` is ready.
+- The product proof ran under the real condition rather than a simulation of it. Erlang distribution was confirmed broken first, by two fresh unrelated nodes with a matching cookie answering `pang`, and only then was the app installed and paired. This is the same machine on which the previous build could not finish pairing at all.
+- States seen, in order: the menu offering a pairing code; the code redeemed in the dashboard; the app's own coding-agent step; `worker.json` written by the app itself; `connection_status.json` reading `connected`; the menu reading `Connected`; and after Quit, no worker process left. That covers AC-01, AC-02 and AC-03 on a machine where every one of them failed before.
+- The negative half of AC-05 holds two ways: a direct search for an rpc argument array across both targets' sources returns nothing, and the guard test that enforces it was proved to fail by mutation rather than assumed to work.
+- Verification gate result: every item passes. `mix check` `4681 passed`, the worker app suite `261 passed`, and the product proof above.
+- Runner receipts:
+- Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `swift test` — exit `0`.
+- Release readiness is separate and unchanged. This slice adds no release gate; distributing a build carrying it stays governed by `specs/36-local-worker-native-distribution`'s signing and notarization gate, and the build proved here is unsigned.
+
 ### 2026-08-29 - Task 5 complete: the last call is gone and a guard keeps it that way
 
 - `capability:distribution-free-worker-control` is ready. No call the app makes into its embedded release needs a name service, a listening socket, or an incoming connection.

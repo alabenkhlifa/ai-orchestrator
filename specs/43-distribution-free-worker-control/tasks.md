@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 ## Active Slice
 
@@ -116,11 +116,11 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
-- [ ] The worker app's own test suite passes.
-- [ ] The worker release's own tests pass, including the configuration and connection-status suites.
-- [ ] Build, formatting, lint, and static checks pass.
-- [ ] Product proof, run on a machine with Erlang distribution unavailable, because that is the condition this slice exists for: pair the app from the menu bar, watch the menu reach `Connected`, then quit and confirm the release stops. Record the states seen in `progress.md`.
+- [x] Acceptance criteria pass.
+- [x] The worker app's own test suite passes.
+- [x] The worker release's own tests pass, including the configuration and connection-status suites.
+- [x] Build, formatting, lint, and static checks pass.
+- [x] Product proof, run on a machine with Erlang distribution unavailable, because that is the condition this slice exists for: pair the app from the menu bar, watch the menu reach `Connected`, then quit and confirm the release stops. Record the states seen in `progress.md`.
 
 ## Blocked Decisions
 
