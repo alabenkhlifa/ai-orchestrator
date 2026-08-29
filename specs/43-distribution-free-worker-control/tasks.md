@@ -84,7 +84,7 @@ Traceability:
   - Proof: Focused tests cover every state transition writing the file, the file carrying the same state and reason `status/0` reports, the write being atomic and owner-only, and `status/0`'s own in-process answer staying unchanged.
   - Delivered: `ConnectionStatus` publishes `connection_status.json` beside `worker.json` on every transition, written to a temporary file and renamed over the target so only a complete file is ever visible. `status/0` still reads `:persistent_term` and is unchanged. A publish failure is rescued and the caller still gets `:ok`.
 
-- [ ] Task 3 — Read the connection state from that file instead of the node.
+- [x] Task 3 — Read the connection state from that file instead of the node.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -92,6 +92,7 @@ Traceability:
   - Owned surfaces: `ConnectionStatusQuerier`'s source of truth, and its handling of a missing, unreadable, or unparseable file.
   - Owns: AC-02
   - Proof: Focused tests cover each written state being read back as the matching connection state, a missing file reading as unknown, an unreadable or malformed file reading as unknown, and no state ever reading as connected without the file saying so.
+  - Delivered: `ConnectionStatusQuerier` is a file read with no subprocess, no command runner, and no Elixir expression. Every failure answers unknown and each failing case also asserts it is not connected. The path comes from `WorkerPaths.workerHome/1`, so it cannot drift from the release's.
 
 - [x] Task 4 — Store the configuration and start the runtime without a live node.
   - Size: Standard

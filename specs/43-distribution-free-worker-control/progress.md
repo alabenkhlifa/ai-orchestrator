@@ -1,5 +1,15 @@
 # Distribution-Free Worker Control Progress Log
 
+### 2026-08-29 - Task 3 complete: the menu reads the state from the file
+
+- The status path is now distribution-free end to end. Reading is a plain file read: no subprocess, no command runner, no Elixir expression, so nothing here can be refused by a firewall.
+- Every failure answers unknown, and each failing case also asserts it is not connected: missing file, unreadable file, bytes that are not JSON, an empty file, a JSON array rather than an object, an object with no `status`, a non-string `status`, and an unrecognised status string. A stale claim of health is the one outcome this must never produce.
+- The two sides are pinned to one byte shape by a fixture taken from the Elixir encoder rather than written by hand, which caught two things a guess would have got wrong: `Jason.encode!(pretty: true)` sorts the keys, and it emits no trailing newline.
+- The file path comes from `WorkerPaths.workerHome/1`, and a test asserts the status file lands in the same directory as the configuration, so the app's mirror of the release's storage root cannot drift silently.
+- One test skips as root, because root can read a `0600`-denied file and the case would then fail for a reason unrelated to the code. It did not skip in this run.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Executed 252 tests, with 0 failures`, and `swift build` exit `0`. Runner receipt:
+- Proof receipt: `Task 3` — scope `Focused` — command `swift test` — exit `0`.
+
 ### 2026-08-29 - Task 4 complete: pairing no longer calls into the running node
 
 - The call whose failure made the app unusable rather than merely uninformative. Both pairing paths now write `worker.json` themselves through one `WorkerConfigurationStore`, which holds the single app-side copy of the permission rules, and then restart the release. `MacPairingRetention` runs no command at all any more and lost its binary path, command runner, and rpc timeout.

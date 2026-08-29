@@ -439,11 +439,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func pollConnectionStatus() {
-        let binaryPath = workerBinaryPath
-        let runner = commandRunner
-
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let state = ConnectionStatusQuerier.query(workerBinaryPath: binaryPath, runner: runner)
+            let state = ConnectionStatusQuerier.query()
 
             DispatchQueue.main.async {
                 self?.connectionState = state
