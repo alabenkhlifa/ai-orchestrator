@@ -27,9 +27,16 @@ public enum ConnectionStatusQuerier {
     static func parse(_ result: CommandResult) -> GatewayConnectionState {
         guard !result.timedOut, result.exitCode == 0 else { return .unknown }
 
+        // Each state the worker can report is named here on purpose. An
+        // unrecognized string falls to `.unknown` rather than to anything
+        // stronger, so a worker running a newer status set can never be read
+        // as connected by an older app.
         switch result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "connected": return .connected
+        case "connecting": return .connecting
+        case "refused": return .refused
         case "disconnected": return .disconnected
+        case "unknown": return .unknown
         default: return .unknown
         }
     }

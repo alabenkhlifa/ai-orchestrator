@@ -40,22 +40,57 @@ final class WorkerStatusTests: XCTestCase {
         XCTAssertEqual(WorkerStatus.from(pairing: .paired, connection: .unknown), .pairedConnecting)
     }
 
-    func test_allCasesHaveNonEmptyMenuStatusLines() {
-        let allCases: [WorkerStatus] = [
-            .notPaired, .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
-        ]
+    // MARK: - AC-07: a connected transport is not an attachment
 
-        for status in allCases {
+    func test_from_paired_connectingTransport_neverReadsAsConnected() {
+        let status = WorkerStatus.from(pairing: .paired, connection: .connecting)
+
+        XCTAssertEqual(status, .pairedConnecting)
+        XCTAssertNotEqual(status, .connected)
+        XCTAssertEqual(status.menuStatusLine, "Connecting…")
+        XCTAssertNotEqual(status.menuStatusLine, "Connected")
+    }
+
+    // MARK: - AC-08: a refusal is named, never presented as a connection
+
+    func test_from_paired_refusedAttachment_readsAsTheRefusal() {
+        let status = WorkerStatus.from(pairing: .paired, connection: .refused)
+
+        XCTAssertEqual(status, .connectionRefused)
+        XCTAssertNotEqual(status, .connected)
+        XCTAssertNotEqual(status, .disconnected)
+    }
+
+    func test_connectionRefused_showsTheRefusalStatusLine() {
+        XCTAssertEqual(
+            WorkerStatus.connectionRefused.menuStatusLine,
+            "Paired, but the control plane refused the connection"
+        )
+    }
+
+    func test_connectionRefused_lineNamesNoControlPlaneDetail() {
+        // The worker reports one atom, so there is no reason to render; the
+        // line says a refusal happened and nothing it cannot know.
+        let line = WorkerStatus.connectionRefused.menuStatusLine
+
+        XCTAssertFalse(line.contains("—"), "product copy must not use an em dash")
+        XCTAssertFalse(line.lowercased().contains("connected"))
+    }
+
+    func test_allCasesHaveNonEmptyMenuStatusLines() {
+        for status in Self.allCases {
             XCTAssertFalse(status.menuStatusLine.isEmpty, "\(status) must have a non-empty menu status line")
         }
     }
 
     func test_menuStatusLines_areDistinctPerCase() {
-        let allCases: [WorkerStatus] = [
-            .notPaired, .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
-        ]
-        let lines = Set(allCases.map(\.menuStatusLine))
+        let lines = Set(Self.allCases.map(\.menuStatusLine))
 
-        XCTAssertEqual(lines.count, allCases.count, "each WorkerStatus case must render distinct menu text")
+        XCTAssertEqual(lines.count, Self.allCases.count, "each WorkerStatus case must render distinct menu text")
     }
+
+    private static let allCases: [WorkerStatus] = [
+        .notPaired, .pairedSettingUp, .pairedConnecting, .connected, .connectionRefused,
+        .disconnected, .updateAvailable
+    ]
 }

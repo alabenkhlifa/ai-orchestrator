@@ -7,6 +7,12 @@ defmodule SddOrchestrator.Worker.Supervisor do
   instead of starting partially. This tree never opens a database connection
   and never calls a control-plane context module, directly or transitively —
   a genuinely remote worker has neither available.
+
+  A configuration with no project is valid (see
+  `SddOrchestrator.Worker.Configuration`) and starts the same children as one
+  naming a project. `SddOrchestrator.Worker.GatewayConnection` decides which
+  scope to dial from the configuration it is given, so a worker authorized for
+  its Mac alone connects for that Mac rather than not connecting at all.
   """
 
   use Supervisor
@@ -53,7 +59,7 @@ defmodule SddOrchestrator.Worker.Supervisor do
     # to `Delivery.Worker.Workspace.root/0`, which reads it from application
     # env rather than a passed-in value — set once, before anything that
     # might prepare a run workspace starts.
-    Application.put_env(:sdd_orchestrator, :worker_workspace_root, config.workspace_root)
+    put_workspace_root(config.workspace_root)
 
     # The only place that turns the paired `agent_adapter`/`agent_executable`
     # strings into what `AgentAdapter.adapter/0` and each adapter's own
@@ -67,13 +73,27 @@ defmodule SddOrchestrator.Worker.Supervisor do
 
     Application.put_env(:sdd_orchestrator, :agent_executable, config.agent_executable)
 
-    children = [
-      {State, config},
-      {GatewayConnection, config}
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(children(config), strategy: :one_for_one)
   end
+
+  # A worker authorized for its Mac alone has no repository folder yet. The key
+  # is cleared rather than set to `nil` so `Workspace.root/0` is answering "no
+  # root was configured" — and so a root left behind by an earlier
+  # configuration can never point this worker's runs at a folder it was never
+  # given.
+  defp put_workspace_root(nil),
+    do: Application.delete_env(:sdd_orchestrator, :worker_workspace_root)
+
+  defp put_workspace_root(workspace_root),
+    do: Application.put_env(:sdd_orchestrator, :worker_workspace_root, workspace_root)
+
+  # Both scopes start the same children. `GatewayConnection` reads the scope off
+  # the configuration and joins either the project topic or the Mac-scoped one,
+  # so there is no longer a configuration it cannot dial. Withholding it from a
+  # projectless worker is what left a genuinely paired worker connected to
+  # nothing, which is the defect specs/39-mac-scoped-worker-connection exists to
+  # close.
+  defp children(%Configuration{} = config), do: [{State, config}, {GatewayConnection, config}]
 
   @doc "Reads the configuration held by a running worker's `SddOrchestrator.Worker.State` child."
   @spec configuration(pid()) :: Configuration.t() | nil

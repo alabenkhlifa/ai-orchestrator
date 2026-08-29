@@ -3,6 +3,23 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   Dials the control plane's `/worker` gateway, joins this worker's execution
   target, and reports refusal or reconnects on drop.
 
+  Two scopes are dialled, decided once in `establish/2` and carried in the
+  socket's `:scope` assign so no later callback has to guess from the presence
+  of a project (specs/39-mac-scoped-worker-connection Task 7):
+
+    * a worker configured with a project asks for a project-scoped gateway
+      credential and joins `worker:<project id>`;
+    * a worker paired from the Mac app has no project yet. It asks for a
+      workspace-scoped credential — omitting `project_id` from the request
+      entirely, because a body naming a project it cannot fill in is still
+      asking about a project and is refused — and joins
+      `worker_workspace:<device workspace id>`.
+
+  Connected means attached. The transport callback never claims it: only a
+  successful join proves the control plane recorded this worker, and only that
+  reports `:connected` into `SddOrchestrator.Worker.ConnectionStatus`. A
+  refused join is reported as a refusal, never as a connection.
+
   This is the worker-runtime side of the protocol negotiation implemented by
   `SddOrchestratorWeb.WorkerSocket` and `SddOrchestratorWeb.WorkerChannel`. A
   genuinely remote worker has no in-process access to those control-plane
@@ -123,7 +140,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
       {:error, reason} ->
         Logger.error(
-          "worker gateway refused to start for project #{inspect(config.project_id)}: " <>
+          "worker gateway refused to start for #{describe_scope(scope(config))}: " <>
             inspect(reason)
         )
 
@@ -131,17 +148,21 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     end
   end
 
+  # A connected transport is not an attached worker: the join has not been
+  # answered yet and can still be refused. So this records "connected, not yet
+  # attached" and nothing stronger — `handle_join/3` below is the only place
+  # that may claim a connection.
   @impl Slipstream
   def handle_connect(socket) do
     Logger.info(
-      "worker gateway connected for project #{socket.assigns.project_id}; " <>
-        "joining #{socket.assigns.topic}"
+      "worker gateway transport connected for #{describe_scope(socket.assigns.scope)}; " <>
+        "joining #{socket.assigns.topic} (not attached until the join is accepted)"
     )
 
     # specs/36-local-worker-native-distribution Task 2: reported into
     # `ConnectionStatus` as a side effect only — does not influence this
     # callback's own control flow or return value. See its moduledoc.
-    ConnectionStatus.set_connected()
+    ConnectionStatus.set_connecting()
 
     {:ok, join(socket, socket.assigns.topic, socket.assigns.join_params)}
   end
@@ -153,6 +174,12 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   @impl Slipstream
   def handle_join(topic, response, socket) do
     Logger.info("worker gateway joined #{topic} and is reachable; contract=#{inspect(response)}")
+
+    # The one place a connection may be claimed: an accepted join is exactly
+    # the control plane having attached this worker. Side effect only, like
+    # every other `ConnectionStatus` write here.
+    ConnectionStatus.set_connected()
+
     socket = push_reconcile_snapshot(topic, socket)
     {:ok, socket}
   end
@@ -165,16 +192,26 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   # a successful join) is a different shape and is rejoined instead.
   @impl Slipstream
   def handle_topic_close(topic, {:failed_to_join, response}, socket) do
+    reason = refusal_reason(response)
+
     Logger.error(
-      "worker gateway JOIN REFUSED for #{topic}: reason=#{refusal_reason(response)} " <>
+      "worker gateway JOIN REFUSED for #{topic}: reason=#{reason} " <>
         "(control plane rejected the protocol version or a required capability; not retrying)"
     )
+
+    # Reported as the refusal it is. Never `:connected`, and never retried as
+    # though it had succeeded — the return value below is unchanged.
+    ConnectionStatus.set_refused(reason)
 
     {:ok, socket}
   end
 
   def handle_topic_close(topic, reason, socket) do
     Logger.warning("worker gateway topic closed for #{topic}: #{inspect(reason)}; rejoining")
+
+    # The transport may still be up, but the attachment is gone, so this stops
+    # reading as connected until a rejoin is accepted.
+    ConnectionStatus.set_disconnected({:topic_closed, reason})
 
     case rejoin(socket, topic) do
       {:ok, rejoining_socket} -> {:ok, rejoining_socket}
@@ -758,10 +795,10 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   defp now_iso8601, do: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
   defp establish(%Configuration{} = config, opts) do
+    scope = scope(config)
+
     with {:ok, token} <- fetch_gateway_credential(config),
          {:ok, uri} <- websocket_uri(config.control_plane_address, token) do
-      topic = "worker:" <> config.project_id
-
       join_params = %{
         "protocol_version" => Keyword.get(opts, :protocol_version, @protocol_version),
         "capabilities" => Keyword.get(opts, :capabilities, @capabilities)
@@ -770,8 +807,9 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
       socket =
         new_socket()
         |> assign(:config, config)
-        |> assign(:project_id, config.project_id)
-        |> assign(:topic, topic)
+        |> assign(:scope, scope)
+        |> assign_scope_target(scope)
+        |> assign(:topic, topic(scope))
         |> assign(:join_params, join_params)
         |> assign(:home, Keyword.get(opts, :home))
         |> assign(:observe_interval, Keyword.get(opts, :observe_interval, @observe_interval))
@@ -786,6 +824,32 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     end
   end
 
+  # The scope this worker is configured for, decided once from the stored
+  # configuration. A worker paired from the Mac app has no project and is
+  # authorized for its device workspace alone.
+  defp scope(%Configuration{project_id: project_id}) when is_binary(project_id),
+    do: {:project, project_id}
+
+  defp scope(%Configuration{device_workspace_id: device_workspace_id}),
+    do: {:device_workspace, device_workspace_id}
+
+  defp topic({:project, project_id}), do: "worker:" <> project_id
+
+  # Must match `SddOrchestratorWeb.WorkerWorkspaceChannel`'s own topic prefix.
+  defp topic({:device_workspace, device_workspace_id}),
+    do: "worker_workspace:" <> device_workspace_id
+
+  defp assign_scope_target(socket, {:project, project_id}),
+    do: assign(socket, :project_id, project_id)
+
+  defp assign_scope_target(socket, {:device_workspace, device_workspace_id}),
+    do: assign(socket, :device_workspace_id, device_workspace_id)
+
+  defp describe_scope({:project, project_id}), do: "project #{project_id}"
+
+  defp describe_scope({:device_workspace, device_workspace_id}),
+    do: "device workspace #{device_workspace_id}"
+
   # A worker whose own credential is refused (revoked, rotated away, or
   # unbound for this project) can never connect — this is a hard startup
   # refusal, not a connection that dropped, so it never reaches the socket.
@@ -794,7 +858,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
     case Req.post(url,
            auth: {:bearer, config.worker_credential},
-           json: %{"project_id" => config.project_id}
+           json: credential_request_body(config)
          ) do
       {:ok, %{status: 200, body: %{"token" => token}}} when is_binary(token) ->
         {:ok, token}
@@ -806,6 +870,15 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
         {:error, {:gateway_credential_transport_error, reason}}
     end
   end
+
+  # The control plane's workspace exchange is guarded on `project_id` being
+  # absent, not empty: a request carrying `"project_id" => nil` is still asking
+  # about a project it cannot name, and is refused. A projectless worker
+  # therefore omits the key rather than sending it blank.
+  defp credential_request_body(%Configuration{project_id: nil}), do: %{}
+
+  defp credential_request_body(%Configuration{project_id: project_id}),
+    do: %{"project_id" => project_id}
 
   # Slipstream requires a ws(s):// URI. A missing or unrecognized scheme in
   # the stored control-plane address is a configuration problem, refused the

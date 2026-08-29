@@ -69,8 +69,7 @@ final class PairingLoopTests: XCTestCase {
 
     func testEveryPairedStatusIdles() {
         let paired: [WorkerStatus] = [
-            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable,
-            .handedOffToDashboard
+            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable
         ]
 
         for status in paired {
@@ -84,11 +83,13 @@ final class PairingLoopTests: XCTestCase {
         }
     }
 
-    func testAfterHandingOffTheAppStopsAndOffersNoCode() {
-        // The state the app reaches when an owner redeems its code. It must not
-        // resume polling or start offering a new code.
+    func testAfterARedemptionTheAppStopsAndOffersNoCode() {
+        // The state the app reaches when an owner redeems its code. specs/39
+        // Task 2 keeps the credential the redemption issued, so the app is
+        // setting up rather than handing off, but the loop's answer is the
+        // same: it must not resume polling or start offering a new code.
         let action = PairingLoop.next(
-            status: .handedOffToDashboard,
+            status: .pairedSettingUp,
             codeState: .none,
             now: now
         )

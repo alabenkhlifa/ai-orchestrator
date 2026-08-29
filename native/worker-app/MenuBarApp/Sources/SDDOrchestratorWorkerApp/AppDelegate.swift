@@ -34,6 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pairingCodeCopier: PairingCodeCopier?
     private var pairingCodeJustCopied = false
 
+    // [specs/39 Task 2, AC-01] Keeps the credential and worker identity a
+    // redemption issues, instead of specs/38's discard. See
+    // `setUpPairingCode()` for the wiring and `MacPairingRetention` for why
+    // the only durable copy is the release's own `worker.json`.
+    private var macPairingRetention: MacPairingRetention?
+
     // The loop that actually closes the round trip. Without it the app fetched
     // one code at startup, never replaced it, and never tried to finish, so a
     // code the person pasted was never acted on.
@@ -289,6 +295,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.pairingStatus = pairing
+
+                // [specs/39 Task 7] `.pairedSettingUp` is an override set the
+                // moment a credential is obtained, and it outranks the real
+                // status in `refreshStatus()`. Once a configuration is stored
+                // on disk the setup it describes is over, so the override has
+                // to stand down or the menu would say "Paired, setting up…"
+                // for the rest of the launch, even while the control plane has
+                // the worker attached. Only a stored configuration clears it:
+                // that is precisely the condition `.pairedSettingUp` was
+                // waiting on.
+                if pairing == .paired, self.urlPairingOverrideStatus == .pairedSettingUp {
+                    self.urlPairingOverrideStatus = nil
+                }
+
                 self.refreshStatus()
 
                 if pairing == .paired {
@@ -568,6 +588,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controlPlaneURL: controlPlane
         )
 
+        // [specs/39 Task 2] Where a redeemed code's credential and worker
+        // identity go. [specs/39 Task 3, AC-03] `MacCodingAgentSetup` is
+        // the coding-agent setup step it asks first: it auto-detects a
+        // supported executable, falls back to `AgentSelectionAlertPrompt`
+        // only when detection finds none, and answers once for this Mac.
+        // A canceled prompt leaves nothing stored, so retention stops
+        // before it writes and the next redemption asks again.
+        macPairingRetention = MacPairingRetention(
+            controlPlaneURL: controlPlane,
+            workerBinaryPath: workerBinaryPath,
+            commandRunner: commandRunner,
+            agentResolver: MacCodingAgentSetup(
+                commandRunner: commandRunner,
+                selectionPrompt: AgentSelectionAlertPrompt()
+            )
+        )
+
         pairingCodeCopier = PairingCodeCopier(pasteboard: SystemPasteboard())
         startPairingLoop()
     }
@@ -641,18 +678,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     data: data,
                     transportError: error
                 ) {
-                case .success:
-                    // An owner redeemed it, so the control plane has authorized
-                    // a worker and the dashboard can see it. This app says so
-                    // and stops. It does not claim `.pairedSettingUp`: this
-                    // pairing carries no project, the worker configuration
-                    // requires one, and there is nothing here to finish. See
-                    // specs/38's "the app hands off" decision.
+                case .success(let completed):
+                    // [specs/39 Task 2, AC-01] An owner redeemed it, so the
+                    // control plane issued this Mac a credential and a worker
+                    // identity. specs/38 threw both away and told the person to
+                    // continue in the dashboard, because a worker paired this
+                    // way has no project and the worker configuration required
+                    // one. Task 1 of this slice made a projectless
+                    // configuration valid, so the app keeps what it was issued
+                    // and finishes the setup itself. It reports
+                    // `.pairedSettingUp` like every other pairing does.
                     self.pairingCodeHolder?.discard()
                     self.pairingCodeJustCopied = false
-                    self.urlPairingOverrideStatus = .handedOffToDashboard
+                    self.urlPairingOverrideStatus = .pairedSettingUp
                     self.stopPairingLoop()
                     self.refreshStatus()
+
+                    // `retain` shells out to `bin/worker rpc` and blocks until
+                    // the release answers, so it runs off the main thread —
+                    // the same split `refreshPairingStatus()` and the
+                    // `RunStateQuerier` poll already use. Every status and menu
+                    // mutation stays above, on the main thread.
+                    if let retention = self.macPairingRetention {
+                        let credential = completed.credential
+                        let worker = completed.worker
+
+                        DispatchQueue.global(qos: .utility).async {
+                            retention.retain(credential: credential, worker: worker)
+                        }
+                    }
 
                 case .failure:
                     // Not yet. Keep the code and keep waiting.

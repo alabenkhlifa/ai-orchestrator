@@ -53,8 +53,8 @@ final class PairingCodeMenuTests: XCTestCase {
 
     func testEveryPairedStatusIsAPlainStatusLine() {
         let paired: [WorkerStatus] = [
-            .pairedSettingUp, .pairedConnecting, .connected, .disconnected, .updateAvailable,
-            .handedOffToDashboard
+            .pairedSettingUp, .pairedConnecting, .connected, .connectionRefused, .disconnected,
+            .updateAvailable
         ]
 
         for status in paired {
@@ -65,16 +65,31 @@ final class PairingCodeMenuTests: XCTestCase {
         }
     }
 
-    func testTheHandOffStateSaysWhereToContinueAndNeverClaimsASetup() {
+    func testAfterARedemptionTheLineSaysSetUpIsUnderWayAndOffersNoCode() {
+        // specs/39 Task 2 keeps the credential a redemption issues, so the
+        // app now has something to store and finish. "Paired, setting up…"
+        // is the honest line; the app no longer sends the person to the
+        // dashboard to continue work it does itself.
         let line = PairingCodeMenu.statusLine(
-            status: .handedOffToDashboard,
+            status: .pairedSettingUp,
             codeState: .none
         )
 
-        XCTAssertEqual(line.title, "Paired — continue in the dashboard")
+        XCTAssertEqual(line.title, "Paired, setting up…")
         XCTAssertFalse(line.isCopyAction)
-        // The wording a real install got stuck on. It must not come back.
-        XCTAssertNotEqual(line.title, "Paired, setting up…")
+    }
+
+    func testAfterARedemptionNoCodeIsOfferedEvenWhileOneIsStillHeld() {
+        // The held code is discarded on success, but nothing may offer it
+        // in the window before that lands either.
+        let line = PairingCodeMenu.statusLine(
+            status: .pairedSettingUp,
+            codeState: .held(code)
+        )
+
+        XCTAssertEqual(line.title, "Paired, setting up…")
+        XCTAssertFalse(line.isCopyAction)
+        XCTAssertNil(line.copyableCode)
     }
 
     // MARK: - The clipboard is only ever written on purpose

@@ -7,19 +7,32 @@ defmodule SddOrchestrator.Worker.Configuration do
   (see `home/1`). This module never opens a database connection or calls a
   control-plane context — it is plain struct and file I/O, so the worker
   runtime can load it without starting the application.
+
+  A worker is authorized for its Mac, not for a project: pairing from the
+  app's menu bar produces a worker that is fully authorized and has no
+  project and no repository folder yet. `project_id` and `workspace_root`
+  are therefore optional, and a stored configuration carrying neither is
+  valid and loads exactly like any other. Everything the worker needs to
+  reach the control plane and prove who it is — the address, the device
+  workspace, the credential, the agent, and the worker id — stays required,
+  because without any one of them there is nothing to run.
   """
 
-  @enforce_keys [
+  # The fields without which a stored configuration means nothing. Both the
+  # struct's enforcement and `from_map/1`'s decode check read this one list,
+  # so the write path and the read path can never disagree about what is
+  # required.
+  @required_keys [
     :control_plane_address,
     :device_workspace_id,
     :worker_credential,
     :agent_adapter,
     :agent_executable,
-    :workspace_root,
-    :project_id,
     :worker_id
   ]
-  defstruct @enforce_keys
+
+  @enforce_keys @required_keys
+  defstruct @required_keys ++ [workspace_root: nil, project_id: nil]
 
   @type t :: %__MODULE__{
           control_plane_address: String.t(),
@@ -27,8 +40,8 @@ defmodule SddOrchestrator.Worker.Configuration do
           worker_credential: String.t(),
           agent_adapter: String.t(),
           agent_executable: String.t(),
-          workspace_root: String.t(),
-          project_id: String.t(),
+          workspace_root: String.t() | nil,
+          project_id: String.t() | nil,
           worker_id: String.t()
         }
 
@@ -65,8 +78,14 @@ defmodule SddOrchestrator.Worker.Configuration do
 
   `pairing_result` is the `%{worker: worker, credential: credential}` map
   returned by completing pairing. `cli_fields` must have
-  `:control_plane_address`, `:agent_adapter`,
-  `:agent_executable`, `:workspace_root`, and `:project_id`.
+  `:control_plane_address`, `:agent_adapter`, and `:agent_executable`.
+
+  `:workspace_root` and `:project_id` are optional. The `mix worker.pair`
+  path pairs against one project and supplies both; a worker paired from the
+  app's menu bar is authorized for the Mac alone and supplies neither, which
+  builds a configuration whose project and repository folder are `nil`. A
+  required field that is genuinely absent still raises rather than storing a
+  half-configured worker.
   """
   @spec from_pairing(map(), map()) :: t()
   def from_pairing(%{worker: worker, credential: credential}, cli_fields) do
@@ -76,8 +95,8 @@ defmodule SddOrchestrator.Worker.Configuration do
       worker_credential: credential,
       agent_adapter: Map.fetch!(cli_fields, :agent_adapter),
       agent_executable: Map.fetch!(cli_fields, :agent_executable),
-      workspace_root: Map.fetch!(cli_fields, :workspace_root),
-      project_id: Map.fetch!(cli_fields, :project_id),
+      workspace_root: Map.get(cli_fields, :workspace_root),
+      project_id: Map.get(cli_fields, :project_id),
       worker_id: worker.id
     }
   end
@@ -150,7 +169,7 @@ defmodule SddOrchestrator.Worker.Configuration do
   end
 
   defp from_map(decoded) do
-    fields = Enum.map(@enforce_keys, &Atom.to_string/1)
+    fields = Enum.map(@required_keys, &Atom.to_string/1)
 
     case Enum.find(fields, fn field -> blank?(decoded[field]) end) do
       nil ->
@@ -161,8 +180,12 @@ defmodule SddOrchestrator.Worker.Configuration do
            worker_credential: decoded["worker_credential"],
            agent_adapter: decoded["agent_adapter"],
            agent_executable: decoded["agent_executable"],
-           workspace_root: decoded["workspace_root"],
-           project_id: decoded["project_id"],
+           # Absent, `null`, and blank all mean the same thing here: this
+           # worker has no project or no repository folder. A file written
+           # before either field became optional always carries both, and
+           # keeps its values.
+           workspace_root: optional(decoded["workspace_root"]),
+           project_id: optional(decoded["project_id"]),
            worker_id: decoded["worker_id"]
          }}
 
@@ -171,11 +194,18 @@ defmodule SddOrchestrator.Worker.Configuration do
     end
   end
 
+  defp optional(value) do
+    if blank?(value), do: nil, else: value
+  end
+
   defp blank?(nil), do: true
   defp blank?(""), do: true
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(_value), do: false
 
+  # An absent project or repository folder is written as an absent key rather
+  # than a `null`, so the stored file says plainly that this worker has none
+  # instead of recording an empty one.
   defp to_map(%__MODULE__{} = config) do
     %{
       "control_plane_address" => config.control_plane_address,
@@ -183,9 +213,12 @@ defmodule SddOrchestrator.Worker.Configuration do
       "worker_credential" => config.worker_credential,
       "agent_adapter" => config.agent_adapter,
       "agent_executable" => config.agent_executable,
-      "workspace_root" => config.workspace_root,
-      "project_id" => config.project_id,
       "worker_id" => config.worker_id
     }
+    |> put_optional("workspace_root", config.workspace_root)
+    |> put_optional("project_id", config.project_id)
   end
+
+  defp put_optional(map, _key, nil), do: map
+  defp put_optional(map, key, value), do: Map.put(map, key, value)
 end

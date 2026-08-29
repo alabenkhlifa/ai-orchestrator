@@ -14,6 +14,11 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
   becomes reachable, reconnect rejoins the same topic without a new
   credential) and [AC-05] (an unsupported version or a withheld required
   capability is reported to the operator and not retried as a success).
+
+  specs/39-mac-scoped-worker-connection Task 7 adds [AC-07] (a connected
+  transport the control plane has not attached does not read as connected) and
+  [AC-08] (a refused attachment is named as a refusal, never presented as a
+  connection), both over the same real listener and the same real channels.
   """
 
   use SddOrchestrator.DataCase, async: false
@@ -24,12 +29,14 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Delivery.CommandTransport.Channel, as: Transport
+  alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Delivery.WorkerProtocol
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Portability.HostedLocalRepositoryBindings
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
   alias SddOrchestrator.Worker.Configuration
+  alias SddOrchestrator.Worker.ConnectionStatus
   alias SddOrchestrator.Worker.GatewayConnection
 
   setup do
@@ -43,6 +50,13 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
       )
 
     {:ok, {_address, port}} = ThousandIsland.listener_info(bandit)
+
+    # Every test here drives the real callbacks that write `ConnectionStatus`,
+    # which is `:persistent_term`-backed and therefore VM-global. Clearing it
+    # on both sides gives each test the genuine "nothing observed yet" reading
+    # and leaves nothing behind for another module to read.
+    reset_connection_status()
+    on_exit(&reset_connection_status/0)
 
     %{control_plane_address: "http://127.0.0.1:#{port}"}
   end
@@ -154,6 +168,148 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
     end
   end
 
+  describe "AC-07/AC-08: connected means the control plane attached this worker" do
+    test "a projectless worker attaches for its Mac and only then reads as connected",
+         %{control_plane_address: base} do
+      %{device_workspace: device_workspace, worker: worker, credential: credential} =
+        paired_workspace_worker()
+
+      config = build_workspace_config(base, credential, device_workspace.id, worker.id)
+
+      # Nothing observed yet, and nothing may claim otherwise.
+      assert ConnectionStatus.status().status == :unknown
+
+      {:ok, pid} = GatewayConnection.start_link(config)
+      on_exit(fn -> stop_gateway(pid) end)
+
+      wait_until(fn -> WorkerAttachment.attached(device_workspace.id) != [] end)
+
+      assert [{_channel_pid, contract}] = WorkerAttachment.attached(device_workspace.id)
+      assert contract.worker_id == worker.id
+      assert contract.protocol_version == WorkerProtocol.version()
+      assert contract.capabilities == WorkerProtocol.capabilities()
+
+      wait_until(fn -> ConnectionStatus.status().status == :connected end)
+
+      # Connected is only ever written with an attachment standing behind it.
+      assert WorkerAttachment.attached(device_workspace.id) != []
+    end
+
+    test "the gateway-credential request for a projectless worker omits project_id entirely",
+         %{control_plane_address: base} do
+      %{device_workspace: device_workspace, worker: worker, credential: credential} =
+        paired_workspace_worker()
+
+      config = build_workspace_config(base, credential, device_workspace.id, worker.id)
+
+      # This asserts on the request the controller actually received, not on
+      # the outcome: the endpoint's own `:stop` telemetry carries the parsed
+      # body, so an absent key and a `nil` one are told apart directly rather
+      # than inferred from the exchange succeeding.
+      handler_id = {:gateway_credential_bodies, make_ref()}
+      test_pid = self()
+
+      :telemetry.attach(
+        handler_id,
+        [:phoenix, :endpoint, :stop],
+        fn _event, _measurements, %{conn: conn}, _config ->
+          if conn.request_path == "/worker/gateway_credentials" do
+            send(test_pid, {:gateway_credential_body, conn.body_params})
+          end
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      {:ok, pid} = GatewayConnection.start_link(config)
+      on_exit(fn -> stop_gateway(pid) end)
+
+      assert_receive {:gateway_credential_body, body}, 3_000
+      refute Map.has_key?(body, "project_id")
+      assert body == %{}
+
+      # And the exchange the omission unlocks really did produce a usable
+      # credential, so the worker reaches an attachment.
+      wait_until(fn -> WorkerAttachment.attached(device_workspace.id) != [] end)
+    end
+
+    test "a connected transport whose join is refused reads as refused, never as connected",
+         %{control_plane_address: base} do
+      %{device_workspace: device_workspace, worker: worker, credential: credential} =
+        paired_workspace_worker()
+
+      config = build_workspace_config(base, credential, device_workspace.id, worker.id)
+
+      # The "transport connected" line is `Logger.info`, and `config/test.exs`
+      # runs the logger at `:warning`, so the primary level is lifted for this
+      # one test and restored after it. Without it the event never reaches
+      # `capture_log`'s handler at all, and the proof that the socket really
+      # came up would be missing.
+      previous_level = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: previous_level) end)
+
+      log =
+        capture_log(fn ->
+          {:ok, pid} = GatewayConnection.start_link(config, protocol_version: 999)
+          on_exit(fn -> stop_gateway(pid) end)
+          Process.sleep(500)
+        end)
+
+      # The transport genuinely came up: this is a connected socket the control
+      # plane attached nothing for.
+      assert log =~ "transport connected for device workspace #{device_workspace.id}"
+      assert log =~ "not attached until the join is accepted"
+      assert log =~ "JOIN REFUSED"
+      assert log =~ "unsupported_protocol_version"
+      assert WorkerAttachment.attached(device_workspace.id) == []
+
+      refused = ConnectionStatus.status()
+      assert refused.status == :refused
+      assert refused.reason == "unsupported_protocol_version"
+
+      # Reported once, and not retried as though it had succeeded: nothing
+      # attaches later and the reading never turns into a connection.
+      assert log |> String.split("JOIN REFUSED") |> length() == 2
+      assert log =~ "not retrying"
+
+      Process.sleep(300)
+      assert ConnectionStatus.status().status == :refused
+      assert WorkerAttachment.attached(device_workspace.id) == []
+    end
+
+    test "a lost attachment stops reading as connected while the transport is still up",
+         %{control_plane_address: base} do
+      %{device_workspace: device_workspace, worker: worker, credential: credential} =
+        paired_workspace_worker()
+
+      config = build_workspace_config(base, credential, device_workspace.id, worker.id)
+
+      {:ok, pid} = GatewayConnection.start_link(config)
+      on_exit(fn -> stop_gateway(pid) end)
+
+      wait_until(fn -> ConnectionStatus.status().status == :connected end)
+      assert [{channel_pid, _contract}] = WorkerAttachment.attached(device_workspace.id)
+
+      # Killing the control-plane channel loses the attachment without
+      # dropping the websocket. Slipstream schedules the rejoin at least
+      # `rejoin_after_msec` (100ms) later, so the window this samples is a
+      # real interval the library guarantees, not a race.
+      ref = Process.monitor(channel_pid)
+      Process.exit(channel_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^channel_pid, _reason}, 1_000
+
+      wait_until(fn -> ConnectionStatus.status().status != :connected end, 1_000, 5)
+      assert ConnectionStatus.status().status == :disconnected
+
+      # The rejoin then re-attaches, and only that turns the reading back into
+      # a connection.
+      wait_until(fn -> ConnectionStatus.status().status == :connected end)
+      assert WorkerAttachment.attached(device_workspace.id) != []
+    end
+  end
+
   describe "the hardcoded protocol contract" do
     test "matches SddOrchestrator.Delivery.WorkerProtocol exactly" do
       assert GatewayConnection.protocol_version() == WorkerProtocol.version()
@@ -174,6 +330,32 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
       project_id: project_id,
       worker_id: Ecto.UUID.generate()
     }
+  end
+
+  # A worker paired from the Mac app: authorized for its device workspace,
+  # with no project and no repository folder yet.
+  defp build_workspace_config(
+         control_plane_address,
+         worker_credential,
+         device_workspace_id,
+         worker_id
+       ) do
+    %Configuration{
+      control_plane_address: control_plane_address,
+      device_workspace_id: device_workspace_id,
+      worker_credential: worker_credential,
+      agent_adapter: "claude_code",
+      agent_executable: "/usr/local/bin/claude",
+      worker_id: worker_id
+    }
+  end
+
+  # The key is `ConnectionStatus`'s own private one, restated here because
+  # erasing it is the only way back to the genuine "nothing observed yet"
+  # reading; the module exposes writers, not a reset.
+  defp reset_connection_status do
+    :persistent_term.erase({ConnectionStatus, :status})
+    :ok
   end
 
   defp stop_gateway(pid) do
@@ -207,12 +389,15 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
     end
   end
 
-  defp wait_until(fun, timeout \\ 3_000) do
+  # `interval` is optional and defaults to the original 20ms, so every existing
+  # caller is unchanged; a shorter one is used only where the window being
+  # sampled is short and library-guaranteed.
+  defp wait_until(fun, timeout \\ 3_000, interval \\ 20) do
     deadline = System.monotonic_time(:millisecond) + timeout
-    do_wait_until(fun, deadline)
+    do_wait_until(fun, deadline, interval)
   end
 
-  defp do_wait_until(fun, deadline) do
+  defp do_wait_until(fun, deadline, interval) do
     cond do
       fun.() ->
         :ok
@@ -221,8 +406,8 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
         flunk("condition not met within timeout")
 
       true ->
-        Process.sleep(20)
-        do_wait_until(fun, deadline)
+        Process.sleep(interval)
+        do_wait_until(fun, deadline, interval)
     end
   end
 
@@ -250,6 +435,13 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
       device_workspace: device_workspace,
       binding: binding
     }
+  end
+
+  defp paired_workspace_worker do
+    device_workspace = %DeviceWorkspace{id: Ecto.UUID.generate()}
+    {worker, credential} = available_worker_fixture(device_workspace)
+
+    %{device_workspace: device_workspace, worker: worker, credential: credential}
   end
 
   defp local_project_fixture(personal_workspace, repository_id) do
