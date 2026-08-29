@@ -1,5 +1,12 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-29 - The menu transition is proved live, and the blocker is cleared
+
+- The environment blocker recorded in the previous entry is gone. `specs/43-distribution-free-worker-control` removed the app's dependency on Erlang distribution, so a machine that blocks it can now store a configuration and finish pairing. Distribution is still blocked here, which is what makes this proof worth more than the one it replaces.
+- Proved live, on a redemption where the app was never restarted afterwards: the menu offered a code, the code was redeemed in the dashboard, the coding-agent step was answered, and the menu then read `Connected` on its own. `worker.json` was written and the status file read `connected` at the same moment.
+- This is the transition the earlier proof missed. Without the fix the `.pairedSettingUp` override is never cleared, because `refreshPairingStatus()` runs only at launch, and the menu would have stayed on `Paired, setting up…` for the rest of the launch. Reading `Connected` without a restart is exactly the evidence that was absent before.
+- The verification item is no longer blocked and no longer unproven.
+
 ### 2026-08-29 - Defect: the menu never left `Paired, setting up…`, and its proof was misleading
 
 - Reported by the user from the running product: the menu showed `Paired, setting up…` with the amber dot long after the worker was attached. The dot was correct for that state. The state was wrong.

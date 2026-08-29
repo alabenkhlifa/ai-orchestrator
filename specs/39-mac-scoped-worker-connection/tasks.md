@@ -168,7 +168,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- None blocking a decision. One verification item is environment-blocked: the menu bar reaching `Connected` after a live redemption, without relaunching the app, is fixed but unproven. Erlang distribution is currently broken on the development Mac, so `bin/worker rpc` cannot reach the running release and no worker can store its configuration. See the environment incident in `progress.md`.
+- None.
 
 ## Release Gate
 
