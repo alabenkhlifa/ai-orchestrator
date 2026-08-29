@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+Verified
 
 ## Active Slice
 
@@ -64,7 +64,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Read the run state without a live node.
+- [x] Task 1 — Read the run state without a live node.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -72,8 +72,9 @@ Traceability:
   - Owned surfaces: `RunStateQuerier`'s invocation of the release start script.
   - Owns: AC-04
   - Proof: Focused tests cover the querier reading a run state through the command that needs no running node, the same lifecycle answers as today for an active run, no run, and an unreadable state, and the quit-time active-run check behaving unchanged.
+  - Delivered: `RunStateQuerier` now uses `eval`. The run state is a file under `Configuration.home/1`, so a fresh VM reads what the running release would. Expression and parsing are unchanged.
 
-- [ ] Task 2 — Publish the connection state to a file the app can read.
+- [x] Task 2 — Publish the connection state to a file the app can read.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -81,8 +82,9 @@ Traceability:
   - Owned surfaces: `Worker.ConnectionStatus`'s writing of the status file, the file's location and owner-only permissions, and its atomic replacement on each transition.
   - Owns: entity:RuntimeStatusFile
   - Proof: Focused tests cover every state transition writing the file, the file carrying the same state and reason `status/0` reports, the write being atomic and owner-only, and `status/0`'s own in-process answer staying unchanged.
+  - Delivered: `ConnectionStatus` publishes `connection_status.json` beside `worker.json` on every transition, written to a temporary file and renamed over the target so only a complete file is ever visible. `status/0` still reads `:persistent_term` and is unchanged. A publish failure is rescued and the caller still gets `:ok`.
 
-- [ ] Task 3 — Read the connection state from that file instead of the node.
+- [x] Task 3 — Read the connection state from that file instead of the node.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -90,8 +92,9 @@ Traceability:
   - Owned surfaces: `ConnectionStatusQuerier`'s source of truth, and its handling of a missing, unreadable, or unparseable file.
   - Owns: AC-02
   - Proof: Focused tests cover each written state being read back as the matching connection state, a missing file reading as unknown, an unreadable or malformed file reading as unknown, and no state ever reading as connected without the file saying so.
+  - Delivered: `ConnectionStatusQuerier` is a file read with no subprocess, no command runner, and no Elixir expression. Every failure answers unknown and each failing case also asserts it is not connected. The path comes from `WorkerPaths.workerHome/1`, so it cannot drift from the release's.
 
-- [ ] Task 4 — Store the configuration and start the runtime without a live node.
+- [x] Task 4 — Store the configuration and start the runtime without a live node.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -99,8 +102,9 @@ Traceability:
   - Owned surfaces: `MacPairingRetention`'s and `PostPairingSetupCoordinatorImpl`'s writing of the worker configuration, and their restart of the release through `WorkerProcessController`.
   - Owns: AC-01
   - Proof: Focused tests cover a completed pairing writing a configuration the release accepts, the file being owner-only with no credential anywhere else, the release being restarted rather than called into, a failed write leaving nothing behind, and the deep-link path storing the same shape it stores today.
+  - Delivered: Both pairing paths write `worker.json` themselves through one `WorkerConfigurationStore`, then restart the release through a `WorkerRuntimeRestarting` seam instead of calling into it. `MacPairingRetention` now runs no command at all. Both RPC expression builders are deleted.
 
-- [ ] Task 5 — Stop the release by signal, and prove nothing needs distribution.
+- [x] Task 5 — Stop the release by signal, and prove nothing needs distribution.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 3, Task 4
@@ -108,14 +112,15 @@ Traceability:
   - Owned surfaces: `WorkerProcessController`'s stop path, the check that no app-to-release call uses the release's `rpc` command, and the end-to-end scenario that establishes `capability:distribution-free-worker-control`.
   - Owns: AC-03, AC-05
   - Proof: Focused tests cover the release stopping without a remote call, a run in progress still being noticed before the stop, and an assertion across the app's sources that no call site invokes the release's `rpc` command.
+  - Delivered: `stop` is now SIGTERM, then SIGKILL, with `timeout` as the whole budget. SIGTERM is the graceful step the BEAM already handles, so removing the rpc call changed the mechanism rather than only the transport. A guard walks both targets' sources and fails if any call site passes `rpc` to the release; it was proved to fail by mutation and to fail loudly if it cannot find the sources.
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
-- [ ] The worker app's own test suite passes.
-- [ ] The worker release's own tests pass, including the configuration and connection-status suites.
-- [ ] Build, formatting, lint, and static checks pass.
-- [ ] Product proof, run on a machine with Erlang distribution unavailable, because that is the condition this slice exists for: pair the app from the menu bar, watch the menu reach `Connected`, then quit and confirm the release stops. Record the states seen in `progress.md`.
+- [x] Acceptance criteria pass.
+- [x] The worker app's own test suite passes.
+- [x] The worker release's own tests pass, including the configuration and connection-status suites.
+- [x] Build, formatting, lint, and static checks pass.
+- [x] Product proof, run on a machine with Erlang distribution unavailable, because that is the condition this slice exists for: pair the app from the menu bar, watch the menu reach `Connected`, then quit and confirm the release stops. Record the states seen in `progress.md`.
 
 ## Blocked Decisions
 

@@ -40,6 +40,28 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
   alias SddOrchestrator.Worker.GatewayConnection
 
   setup do
+    # [specs/43 Task 2] `ConnectionStatus` now publishes every transition to a
+    # file under `Configuration.home/1`. These tests drive the real callbacks,
+    # so without redirecting the home they would write into the developer's own
+    # `~/.sdd_orchestrator/worker` and could disturb a worker actually running
+    # on this machine.
+    worker_home =
+      Path.join(System.tmp_dir!(), "sdd_worker_home_#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(worker_home)
+    previous_home = Application.get_env(:sdd_orchestrator, :worker_home)
+    Application.put_env(:sdd_orchestrator, :worker_home, worker_home)
+
+    on_exit(fn ->
+      if previous_home do
+        Application.put_env(:sdd_orchestrator, :worker_home, previous_home)
+      else
+        Application.delete_env(:sdd_orchestrator, :worker_home)
+      end
+
+      File.rm_rf!(worker_home)
+    end)
+
     # Started via `start_supervised!/1` (not a bare `Bandit.start_link/1` plus
     # a manual `on_exit`) so ExUnit's own per-test supervisor owns shutdown
     # ordering; a directly-linked Bandit supervisor stopped from `on_exit`

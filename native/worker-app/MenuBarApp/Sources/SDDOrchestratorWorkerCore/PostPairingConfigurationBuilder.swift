@@ -9,9 +9,9 @@ import Foundation
 /// Field names match `Configuration`'s own `to_map/1`/`from_map/1` exactly
 /// (`control_plane_address`, `device_workspace_id`, `worker_credential`,
 /// `agent_adapter`, `agent_executable`, `workspace_root`, `project_id`,
-/// `worker_id`) so the `bin/worker rpc`-side `Jason.decode!` + struct
-/// literal (`PostPairingRPCExpressionBuilder`) can read this object without
-/// any renaming.
+/// `worker_id`) so the release loads what `WorkerConfigurationStore` writes
+/// without any renaming. [specs/43 Task 4] The eight fields are unchanged:
+/// only who writes them moved from the release to this app.
 enum PostPairingConfigurationBuilder {
     static func buildJSONObject(
         controlPlaneAddress: String,

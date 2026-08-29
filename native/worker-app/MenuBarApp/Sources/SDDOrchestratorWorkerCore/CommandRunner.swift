@@ -19,9 +19,14 @@ public struct CommandResult: Equatable, Sendable {
 /// Runs one external command and waits (up to a timeout) for it to finish.
 ///
 /// Every place this app shells out to the embedded release's
-/// `bin/worker rpc`/`eval` (pairing status, run-state, gateway connection
-/// status) goes through this seam so those decisions can be unit tested
-/// against a fake implementation instead of a real running process.
+/// `bin/worker eval` (pairing status, run state, protocol version) goes
+/// through this seam so those decisions can be unit tested against a fake
+/// implementation instead of a real running process.
+///
+/// [specs/43 Task 5, AC-05] `eval` is the only release command left on this
+/// seam. It boots a short-lived VM that reads a file, so it needs no name
+/// service, no listening socket, and no incoming connection.
+/// `DistributionFreeCallSitesTests` holds that line.
 public protocol CommandRunning {
     func run(executable: String, arguments: [String], timeout: TimeInterval) -> CommandResult
 }

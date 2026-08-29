@@ -1,13 +1,23 @@
 import Foundation
 
-/// Asks the already-running embedded release, over `bin/worker rpc`, for
-/// its current run-state entry's lifecycle —
+/// Asks the embedded release for its current run-state entry's lifecycle —
 /// `SddOrchestrator.Worker.RunState.load/1`
 /// (`lib/sdd_orchestrator/worker/run_state.ex`), read but not modified by
 /// this task.
 ///
-/// This is the AC-05 "is a run active" check the Quit flow makes before
-/// deciding whether to warn (see `ActiveRunChecker`).
+/// Uses `bin/worker eval`, not `bin/worker rpc`, exactly as
+/// `PairingStatusChecker` does: the run state is a file, not memory.
+/// `RunState.load/1` reads `Configuration.home/1`'s directory, which falls
+/// back to `~/.sdd_orchestrator/worker` when the application env is unset,
+/// so a fresh, non-booted "clean" VM reads the same file the running
+/// release would. `rpc` needs Erlang distribution (epmd plus a listening
+/// socket), which a managed Mac's firewall blocks, and this check must
+/// still answer there (`specs/43-distribution-free-worker-control`
+/// Task 1, AC-04).
+///
+/// This is the `specs/36-local-worker-native-distribution` AC-05 "is a run
+/// active" check the Quit flow makes before deciding whether to warn (see
+/// `ActiveRunChecker`).
 public enum RunStateQuerier {
     static let expression = """
     try do
@@ -26,7 +36,7 @@ public enum RunStateQuerier {
         runner: CommandRunning,
         timeout: TimeInterval = 5
     ) -> RunStateQueryResult {
-        let result = runner.run(executable: workerBinaryPath, arguments: ["rpc", expression], timeout: timeout)
+        let result = runner.run(executable: workerBinaryPath, arguments: ["eval", expression], timeout: timeout)
         return parse(result)
     }
 

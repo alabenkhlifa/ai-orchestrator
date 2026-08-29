@@ -4,44 +4,50 @@ import Foundation
 /// workspace folder (AC-19), resolves a coding-agent executable (AC-20),
 /// and — once both are known — stores the full
 /// `SddOrchestrator.Worker.Configuration` and starts
-/// `SddOrchestrator.Worker.Supervisor` under the already-running embedded
-/// release (AC-21).
+/// `SddOrchestrator.Worker.Supervisor` (AC-21).
+///
+/// [specs/43 Task 4, AC-01] It stores that configuration by writing the
+/// file itself and starts the worker by restarting the embedded release,
+/// the same way `MacPairingRetention` does and for the same reason: the
+/// `bin/worker rpc` call both paths used needs Erlang distribution, which a
+/// managed Mac's firewall blocks. The eight-field JSON it writes is
+/// unchanged, because the release reading it is unchanged.
 ///
 /// `folderPicker`/`agentSelectionPrompt` are the two AppKit-backed seams
 /// (`NSOpenPanel`/`NSAlert`, in the `SDDOrchestratorWorkerApp` target) this
 /// Core-side orchestration depends on only through their protocols, so the
 /// whole decision — cancel-aborts-cleanly, detection-count branching,
-/// JSON-building, idempotent-start handling — is unit-testable against
-/// fakes, matching this package's "thin AppKit glue over a testable Core"
-/// split (see `ActiveRunChecker`, `PairingFlowController`).
+/// JSON-building, store-then-restart — is unit-testable against fakes,
+/// matching this package's "thin AppKit glue over a testable Core" split
+/// (see `ActiveRunChecker`, `PairingFlowController`).
 public final class PostPairingSetupCoordinatorImpl: PostPairingSetupCoordinator {
     private let dashboardURL: URL
-    private let workerBinaryPath: String
     private let commandRunner: CommandRunning
+    private let runtimeRestarter: WorkerRuntimeRestarting
     private let executableChecker: ExecutableChecking
     private let folderPicker: WorkspaceFolderPicking
     private let agentSelectionPrompt: AgentSelectionPrompting
+    private let workerHome: String
     private let fileManager: FileManager
-    private let rpcTimeout: TimeInterval
 
     public init(
         dashboardURL: URL,
-        workerBinaryPath: String,
         commandRunner: CommandRunning,
+        runtimeRestarter: WorkerRuntimeRestarting,
         executableChecker: ExecutableChecking = FileManagerExecutableChecker(),
         folderPicker: WorkspaceFolderPicking,
         agentSelectionPrompt: AgentSelectionPrompting,
-        fileManager: FileManager = .default,
-        rpcTimeout: TimeInterval = 10
+        workerHome: String = WorkerPaths.workerHome(),
+        fileManager: FileManager = .default
     ) {
         self.dashboardURL = dashboardURL
-        self.workerBinaryPath = workerBinaryPath
         self.commandRunner = commandRunner
+        self.runtimeRestarter = runtimeRestarter
         self.executableChecker = executableChecker
         self.folderPicker = folderPicker
         self.agentSelectionPrompt = agentSelectionPrompt
+        self.workerHome = workerHome
         self.fileManager = fileManager
-        self.rpcTimeout = rpcTimeout
     }
 
     /// Called on `PairingFlowController`'s background scheduler once
@@ -84,54 +90,26 @@ public final class PostPairingSetupCoordinatorImpl: PostPairingSetupCoordinator 
     }
 
     private func storeAndStart(jsonObject: [String: String]) {
-        let written: (directory: URL, file: URL)
         do {
-            written = try writeTemporaryConfigFile(jsonObject)
+            try WorkerConfigurationStore.write(
+                jsonObject: jsonObject,
+                workerHome: workerHome,
+                fileManager: fileManager
+            )
         } catch {
-            log("failed to write the temporary post-pairing configuration file: \(error)")
+            log("failed to write the worker configuration: \(error)")
             return
         }
 
-        defer { try? fileManager.removeItem(at: written.directory) }
-
-        let expression = PostPairingRPCExpressionBuilder.build(configFilePath: written.file.path)
-        let result = commandRunner.run(executable: workerBinaryPath, arguments: ["rpc", expression], timeout: rpcTimeout)
-
-        switch PostPairingRPCExpressionBuilder.parse(result) {
-        case .started:
-            log("worker configuration stored; Worker.Supervisor started")
-        case .alreadyStarted:
-            // [Idempotency] DynamicSupervisor.start_child on an
-            // already-started Worker.Supervisor means setup already
-            // completed — success, not a failure to surface.
-            log("Worker.Supervisor already running; post-pairing setup already completed")
-        case .failure(let reason):
-            log("post-pairing setup failed: \(reason)")
-        case .commandFailed:
-            log("post-pairing setup failed: bin/worker rpc did not complete")
+        // Stored before the restart on purpose: a boot that fails leaves a
+        // configuration the next launch starts against, and the menu keeps
+        // saying the setup is unfinished until a worker is actually up.
+        guard runtimeRestarter.restartWorkerRuntime() else {
+            log("worker configuration stored, but the embedded release did not restart")
+            return
         }
-    }
 
-    /// Writes the configuration JSON to a private temporary file: a
-    /// per-run temp directory (owner-only, `0700`) containing one file
-    /// (owner-only, `0600`), cleaned up by `storeAndStart`'s `defer`
-    /// regardless of outcome. Never logged.
-    private func writeTemporaryConfigFile(_ jsonObject: [String: String]) throws -> (directory: URL, file: URL) {
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("sdd-orchestrator-worker-setup-\(UUID().uuidString)", isDirectory: true)
-
-        try fileManager.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-
-        let file = directory.appendingPathComponent("config.json", isDirectory: false)
-        let data = try JSONSerialization.data(withJSONObject: jsonObject)
-        try data.write(to: file, options: [.atomic])
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-
-        return (directory, file)
+        log("worker configuration stored; the embedded release was restarted")
     }
 
     private func log(_ message: String) {
