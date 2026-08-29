@@ -40,7 +40,7 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 3. The person clicks the status line in the menu bar. The full code is copied to the clipboard and the app confirms the copy.
 4. The person opens the dashboard, starts connecting a repository on this Mac, and pastes the code into the pairing field.
 5. The dashboard accepts the code and attaches it to this browser's Mac project space. The app finishes on its own moments later and comes online. The person continues choosing their repository without touching the app again.
-6. The app notices the code was taken, stops showing one, and says the dashboard has taken over. The person stays in the dashboard; nothing more is asked of them in the app.
+6. The app notices the code was taken, stops showing one, and keeps what the redemption issued so it can finish its own setup. The person stays in the dashboard; nothing more is asked of them in the app.
 
 ## Business Rules
 
@@ -64,7 +64,7 @@ Someone who has installed the worker app can pair it to their Mac's project spac
 - [AC-05] Given a code was already attached to a Mac project space, when the same code is submitted again, then it is refused and no second workspace is attached.
 - [AC-06] Given a code has expired, canceled, or never existed, when it is submitted, then it is refused with one answer that does not reveal which of those it was.
 - [AC-07] Given the shown code is approaching expiry, when the app refreshes it, then the menu bar shows a code the dashboard still accepts and the replaced code no longer works.
-- [AC-08] Given the person redeemed the code in the dashboard, when the app next checks, then it stops offering a code and reports that the dashboard has taken over, without claiming a setup it cannot finish and without the person reopening it.
+- [AC-08] Given the person redeemed the code in the dashboard, when the app next checks, then it stops offering a code and keeps the issued credential and worker identity, without asking the person for anything and without them reopening it.
 - [AC-09] Given an unidentified caller requests codes repeatedly, when the allowed rate is exceeded, then further requests are refused without revealing whether any earlier code was redeemed.
 - [AC-10] Given a code was never redeemed, when it can no longer be used, then it is discarded and retains nothing describing a person or a machine.
 - [AC-11] Given a pairing succeeds or fails, when the app's and the control plane's diagnostics are inspected, then no code, credential, or fragment of either appears in any of them.
