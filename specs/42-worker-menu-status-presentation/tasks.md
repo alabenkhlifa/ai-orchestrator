@@ -37,7 +37,7 @@ Included:
 
 - A semantic status indicator on `WorkerStatus` and its mapping for all seven states.
 - The AppKit drawing that turns one indicator into one coloured dot on the menu item.
-- The menu's enabled-state handling, so the status line is never drawn greyed.
+- The menu's enabled-state handling, so no line that merely reports information is drawn greyed, while an action a person cannot take yet still is.
 
 Excluded:
 
@@ -72,14 +72,14 @@ Traceability:
   - Owns: AC-01, AC-02
   - Proof: Focused tests cover every status answering exactly one indicator, connected answering the healthy kind, disconnected and the refused state answering the same problem kind, connecting and setting up answering the same in-progress kind, not paired answering the idle kind, update available answering its own kind rather than a health one, and every `menuStatusLine` string remaining byte-identical.
 
-- [ ] Task 2 — Stop drawing the status line as a disabled row.
+- [ ] Task 2 — Reserve grey for an action a person cannot take.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
-  - Purpose: Remove the greyed row a person reads as broken, without inventing an action the line does not have.
-  - Owned surfaces: The menu's automatic-enabling setting and the status item's enabled state in `AppDelegate.rebuildMenu()`.
-  - Owns: AC-03, AC-04
-  - Proof: Focused tests cover `PairingCodeMenu.statusLine/3` still offering a copyable code only in the code-offering state and still refusing to offer one in every paired state, so the one signal that decides whether a click does anything is unchanged. The enabled rendering itself is AppKit glue with no unit-test seam and is proved by the slice's product proof.
+  - Purpose: Remove the greyed rows a person reads as broken, without inventing an action a line does not have and without hiding that a deferred install really is unavailable.
+  - Owned surfaces: The menu's automatic-enabling setting in `AppDelegate.rebuildMenu()`, and the enabled state of the status item, the pairing-failure detail item, the update-version detail item, and the install item.
+  - Owns: AC-03, AC-04, AC-05
+  - Proof: Focused tests cover `PairingCodeMenu.statusLine/3` still offering a copyable code only in the code-offering state and still refusing to offer one in every paired state, so the one signal that decides whether a click does anything is unchanged. The enabled rendering itself is AppKit glue with no unit-test seam and is proved by the slice's product proof, which reads a menu carrying a pairing failure, an available version, and a deferred install.
 
 ## Verification Gate
 
