@@ -12,9 +12,28 @@ import Foundation
 /// this controller itself requested). No auto-restart — that is explicitly
 /// deferred. A restart this controller is *asked* for is a different thing
 /// and is what `restartWorkerRuntime()` answers.
+///
+/// [specs/43 Task 5, AC-03/AC-05] Stopping is a signal to that child, not a
+/// call into it. It used to ask the release to shut itself down with
+/// `bin/worker rpc "System.stop()"`, which is Erlang distribution and so
+/// fails outright on a Mac whose firewall blocks incoming `epmd`; worse, it
+/// failed slowly, burning its whole timeout before the signal path ran at
+/// all. SIGTERM is the graceful step now: the BEAM installs its own handler
+/// for it and runs the same orderly `init:stop` shutdown the remote call
+/// asked for, so nothing was traded away except the round trip.
 public final class WorkerProcessController: WorkerRuntimeRestarting {
+    /// [specs/43 Task 5, AC-03] The slice of the stop budget held back to
+    /// reap a child that ignored SIGTERM. SIGKILL cannot be refused, so
+    /// this only has to cover noticing the exit, not waiting for
+    /// cooperation.
+    private static let killReapBudget: TimeInterval = 1
+
+    /// The least graceful time worth giving, so a caller passing a very
+    /// small budget still lets the BEAM shut down in order rather than
+    /// going straight to SIGKILL.
+    private static let minimumTerminationGrace: TimeInterval = 0.5
+
     private let workerBinaryPath: String
-    private let runner: CommandRunning
     private let lock = NSLock()
 
     // The child in hand. A `var`, and created per launch rather than once
@@ -35,9 +54,12 @@ public final class WorkerProcessController: WorkerRuntimeRestarting {
     /// requested it.
     public var onUnexpectedExit: ((Int32) -> Void)?
 
-    public init(workerBinaryPath: String, runner: CommandRunning = ProcessCommandRunner()) {
+    // [specs/43 Task 5] No `CommandRunning` here any more. This controller
+    // launches and signals a child; it never runs a command against the
+    // release, and the absence is now structural rather than a rule to
+    // remember.
+    public init(workerBinaryPath: String) {
         self.workerBinaryPath = workerBinaryPath
-        self.runner = runner
     }
 
     /// Whether the embedded process is currently believed to be running.
@@ -114,10 +136,20 @@ public final class WorkerProcessController: WorkerRuntimeRestarting {
         }
     }
 
-    /// Stops the embedded release: `bin/worker rpc "System.stop()"` for a
-    /// graceful shutdown, then SIGTERM, then SIGKILL if it still has not
-    /// exited within `timeout`. A no-op if the process is not running.
-    public func stop(timeout: TimeInterval = 10) {
+    /// [specs/43 Task 5, AC-03] Stops the embedded release with signals
+    /// only: SIGTERM, then SIGKILL if it has not exited in time. A no-op if
+    /// the process is not running.
+    ///
+    /// SIGTERM is the graceful step. The BEAM handles it itself and runs an
+    /// orderly shutdown, so the release still stops the way it did when this
+    /// asked it to over `rpc` — and it stops on a machine where Erlang
+    /// distribution is unavailable, which is the point.
+    ///
+    /// `timeout` is the whole budget for the stop. SIGTERM gets all of it
+    /// but the last second, which is reserved to reap a child that ignored
+    /// the signal. The default is short because a signal has no round trip
+    /// to wait for: the old 10 seconds existed to give the remote call room.
+    public func stop(timeout: TimeInterval = 5) {
         lock.lock()
         let process = self.process
         let isRunning = process?.isRunning ?? false
@@ -126,15 +158,13 @@ public final class WorkerProcessController: WorkerRuntimeRestarting {
 
         guard let process, isRunning else { return }
 
-        _ = runner.run(executable: workerBinaryPath, arguments: ["rpc", "System.stop()"], timeout: timeout)
-
-        if waitUntilStopped(process, timeout: timeout) { return }
-
         process.terminate()
-        if waitUntilStopped(process, timeout: 2) { return }
+
+        let terminationGrace = max(timeout - Self.killReapBudget, Self.minimumTerminationGrace)
+        if waitUntilStopped(process, timeout: terminationGrace) { return }
 
         kill(process.processIdentifier, SIGKILL)
-        _ = waitUntilStopped(process, timeout: 2)
+        _ = waitUntilStopped(process, timeout: Self.killReapBudget)
     }
 
     private func waitUntilStopped(_ process: Process, timeout: TimeInterval) -> Bool {

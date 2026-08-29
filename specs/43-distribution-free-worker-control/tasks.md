@@ -104,7 +104,7 @@ Traceability:
   - Proof: Focused tests cover a completed pairing writing a configuration the release accepts, the file being owner-only with no credential anywhere else, the release being restarted rather than called into, a failed write leaving nothing behind, and the deep-link path storing the same shape it stores today.
   - Delivered: Both pairing paths write `worker.json` themselves through one `WorkerConfigurationStore`, then restart the release through a `WorkerRuntimeRestarting` seam instead of calling into it. `MacPairingRetention` now runs no command at all. Both RPC expression builders are deleted.
 
-- [ ] Task 5 — Stop the release by signal, and prove nothing needs distribution.
+- [x] Task 5 — Stop the release by signal, and prove nothing needs distribution.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 3, Task 4
@@ -112,6 +112,7 @@ Traceability:
   - Owned surfaces: `WorkerProcessController`'s stop path, the check that no app-to-release call uses the release's `rpc` command, and the end-to-end scenario that establishes `capability:distribution-free-worker-control`.
   - Owns: AC-03, AC-05
   - Proof: Focused tests cover the release stopping without a remote call, a run in progress still being noticed before the stop, and an assertion across the app's sources that no call site invokes the release's `rpc` command.
+  - Delivered: `stop` is now SIGTERM, then SIGKILL, with `timeout` as the whole budget. SIGTERM is the graceful step the BEAM already handles, so removing the rpc call changed the mechanism rather than only the transport. A guard walks both targets' sources and fails if any call site passes `rpc` to the release; it was proved to fail by mutation and to fail loudly if it cannot find the sources.
 
 ## Verification Gate
 

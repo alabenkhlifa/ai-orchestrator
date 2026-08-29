@@ -846,9 +846,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// [AC-04] Stops the embedded worker process, then finishes
     /// termination. Never touches `Configuration`'s storage (see
     /// `WorkerProcessController.stop(timeout:)`, which only signals the
-    /// running process and shells out to `bin/worker rpc`/`terminate`/
-    /// `SIGKILL` — no file under the worker's home directory is written or
-    /// deleted by this path).
+    /// running process, SIGTERM then SIGKILL — no command is run and no
+    /// file under the worker's home directory is written or deleted by this
+    /// path).
+    ///
+    /// [specs/43 Task 5, AC-03] The active-run check above runs before this,
+    /// and this stop is signals only, so quitting works on a machine where
+    /// Erlang distribution is unavailable.
     private func stopEmbeddedWorkerAndReply() {
         let controller = workerProcessController
 

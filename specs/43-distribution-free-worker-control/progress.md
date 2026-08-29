@@ -1,5 +1,16 @@
 # Distribution-Free Worker Control Progress Log
 
+### 2026-08-29 - Task 5 complete: the last call is gone and a guard keeps it that way
+
+- `capability:distribution-free-worker-control` is ready. No call the app makes into its embedded release needs a name service, a listening socket, or an incoming connection.
+- The rpc line was the entire graceful-shutdown path, so removing it changed the mechanism and not just the transport. SIGTERM is now the graceful step, which the BEAM already handles as an orderly shutdown, with SIGKILL as the last resort. `timeout` became the whole budget: grace is `max(timeout - 1, 0.5)` and the kill gets a one second reap, so the default stop dropped from ten seconds to five. On a distribution-blocked Mac this also removes the timeout every pairing restart used to pay.
+- The `CommandRunning` dependency left `WorkerProcessController` entirely, which made a stronger test possible than a fake would have: the tests run a real child, a shell stand-in that logs its own arguments, so `start` being the only invocation is observed rather than asserted against a double.
+- The guard is not decorative. It walks both targets' `Sources` from the test file's own path, matches an argument array whose first element is the literal `rpc` rather than the substring, and refuses to pass if it cannot find the sources or sees implausibly few files. It was proved three ways by mutation: reintroducing an rpc call failed it and named the file, pointing it at a missing directory failed it loudly rather than vacuously, and deleting the SIGKILL line failed the stop test.
+- Discovery worth keeping: because `start` deliberately inherits the app's stdio, a child that survives a stop holds that pipe open, so with SIGKILL removed the test run hung rather than merely failing. The shipped code always fires SIGKILL, so this cannot happen in the product, but it explains why the last resort matters beyond tidiness.
+- Recorded limit: the quit ordering, that the active-run check happens before the stop, lives in `AppDelegate` behind an `NSAlert` and `.terminateLater`. The decision itself is unit-tested; the wiring belongs to the slice's product proof.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Executed 261 tests, with 0 failures`, and `swift build` exit `0`. A direct search for `["rpc"` across both targets' sources returns nothing. Runner receipt:
+- Proof receipt: `Task 5` — scope `Focused` — command `swift test` — exit `0`.
+
 ### 2026-08-29 - Task 3 complete: the menu reads the state from the file
 
 - The status path is now distribution-free end to end. Reading is a plain file read: no subprocess, no command runner, no Elixir expression, so nothing here can be refused by a firewall.
