@@ -170,7 +170,11 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelTest do
 
       ref = push(channel, "heartbeat", DeliveryProtocolFixtures.heartbeat())
 
-      assert_reply ref, :error, %{reason: "unsupported_message"}
+      # Explicit timeout: `assert_reply`'s 100 ms default is generous when this
+      # file runs alone and too tight under a loaded full-suite pass, where it
+      # failed on an empty mailbox. The refusal itself is what is being proved,
+      # not how fast a busy scheduler delivers it.
+      assert_reply ref, :error, %{reason: "unsupported_message"}, 2_000
     end
 
     test "a refused message leaves the attachment in place" do
@@ -179,7 +183,11 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelTest do
 
       ref = push(channel, "provision", %{"anything" => true})
 
-      assert_reply ref, :error, %{reason: "unsupported_message"}
+      # Explicit timeout: `assert_reply`'s 100 ms default is generous when this
+      # file runs alone and too tight under a loaded full-suite pass, where it
+      # failed on an empty mailbox. The refusal itself is what is being proved,
+      # not how fast a busy scheduler delivers it.
+      assert_reply ref, :error, %{reason: "unsupported_message"}, 2_000
       assert [{_pid, _contract}] = WorkerAttachment.attached(workspace)
     end
   end

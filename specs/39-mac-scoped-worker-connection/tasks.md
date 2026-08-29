@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 ## Active Slice
 
@@ -155,15 +155,16 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] A configuration naming a project, and the deep-link path that produces one, behave exactly as before.
-- [ ] Project-scoped attachment, delivery, and run execution tests pass unchanged.
-- [ ] Cross-workspace attachment and credential-scope isolation tests pass.
-- [ ] Liveness, staleness, and connection-state transitions pass, including the refused and lost cases.
-- [ ] The log, diagnostic, and no-analytics review finds no credential or fragment of one.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass.
-- [ ] The worker app's own test suite passes.
+- [x] Active-slice acceptance criteria pass.
+- [x] A configuration naming a project, and the deep-link path that produces one, behave exactly as before.
+- [x] Project-scoped attachment, delivery, and run execution tests pass unchanged.
+- [x] Cross-workspace attachment and credential-scope isolation tests pass.
+- [x] Liveness, staleness, and connection-state transitions pass, including the refused and lost cases.
+- [x] The log, diagnostic, and no-analytics review finds no credential or fragment of one.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass.
+- [x] Product proof click path, run against the paired worker app with `:device_worker_stub` off and no `/_e2e` seeding: open `/`, click `Work without GitHub`, copy the pairing code from the worker app's menu bar, paste it into `Pairing code`, click `Pair worker`, answer the app's coding-agent step, then click `Check again` and read `Connected` with `Worker connected on this Mac.`
+- [x] The worker app's own test suite passes.
 
 ## Blocked Decisions
 

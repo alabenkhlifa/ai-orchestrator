@@ -122,9 +122,15 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # a started one may already have stopped itself before `which_children/1`
     # is read. `init/1` is the one place that answers what the tree starts
     # without that race.
-    test "starts no gateway connection, while a configuration with a project starts one" do
+    # Task 1 of specs/39 started `[State]` alone here, because
+    # `GatewayConnection` could then only build a project topic. Task 7 taught
+    # it the Mac-scoped scope, so withholding it became the very defect the
+    # slice exists to close: a paired worker that connects to nothing. A real
+    # browser pairing found it, because every other test starts
+    # `GatewayConnection` itself and never asks the supervisor.
+    test "starts the gateway connection for both scopes" do
       assert {:ok, {_flags, mac_only_children}} = WorkerSupervisor.init(mac_only_config())
-      assert Enum.map(mac_only_children, & &1.id) == [State]
+      assert Enum.map(mac_only_children, & &1.id) == [State, GatewayConnection]
 
       assert {:ok, {_flags, project_children}} =
                WorkerSupervisor.init(struct!(Configuration, @valid_fields))

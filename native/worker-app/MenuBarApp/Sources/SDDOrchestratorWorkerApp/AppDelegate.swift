@@ -295,6 +295,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.pairingStatus = pairing
+
+                // [specs/39 Task 7] `.pairedSettingUp` is an override set the
+                // moment a credential is obtained, and it outranks the real
+                // status in `refreshStatus()`. Once a configuration is stored
+                // on disk the setup it describes is over, so the override has
+                // to stand down or the menu would say "Paired, setting up…"
+                // for the rest of the launch, even while the control plane has
+                // the worker attached. Only a stored configuration clears it:
+                // that is precisely the condition `.pairedSettingUp` was
+                // waiting on.
+                if pairing == .paired, self.urlPairingOverrideStatus == .pairedSettingUp {
+                    self.urlPairingOverrideStatus = nil
+                }
+
                 self.refreshStatus()
 
                 if pairing == .paired {

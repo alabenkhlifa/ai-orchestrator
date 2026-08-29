@@ -9,8 +9,10 @@ defmodule SddOrchestrator.Worker.Supervisor do
   a genuinely remote worker has neither available.
 
   A configuration with no project is valid (see
-  `SddOrchestrator.Worker.Configuration`) and starts this tree without the
-  project-scoped `SddOrchestrator.Worker.GatewayConnection` child.
+  `SddOrchestrator.Worker.Configuration`) and starts the same children as one
+  naming a project. `SddOrchestrator.Worker.GatewayConnection` decides which
+  scope to dial from the configuration it is given, so a worker authorized for
+  its Mac alone connects for that Mac rather than not connecting at all.
   """
 
   use Supervisor
@@ -85,12 +87,12 @@ defmodule SddOrchestrator.Worker.Supervisor do
   defp put_workspace_root(workspace_root),
     do: Application.put_env(:sdd_orchestrator, :worker_workspace_root, workspace_root)
 
-  # `GatewayConnection` joins one project-scoped topic, so a worker with no
-  # project has nothing to join and would only build a topic out of `nil`. The
-  # rest of the tree still starts: an authorized worker without a project is a
-  # running worker waiting for one, not a startup refusal.
-  defp children(%Configuration{project_id: nil} = config), do: [{State, config}]
-
+  # Both scopes start the same children. `GatewayConnection` reads the scope off
+  # the configuration and joins either the project topic or the Mac-scoped one,
+  # so there is no longer a configuration it cannot dial. Withholding it from a
+  # projectless worker is what left a genuinely paired worker connected to
+  # nothing, which is the defect specs/39-mac-scoped-worker-connection exists to
+  # close.
   defp children(%Configuration{} = config), do: [{State, config}, {GatewayConnection, config}]
 
   @doc "Reads the configuration held by a running worker's `SddOrchestrator.Worker.State` child."
