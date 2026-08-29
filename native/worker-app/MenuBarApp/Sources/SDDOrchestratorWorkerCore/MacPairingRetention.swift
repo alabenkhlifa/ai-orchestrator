@@ -10,14 +10,20 @@ import Foundation
 /// are all a stored configuration now needs. So the credential and the
 /// worker identity `POST /worker_pairings` answered are written to the one
 /// durable store this project has for them:
-/// `SddOrchestrator.Worker.Configuration`'s `worker.json`, through the
-/// embedded release's `bin/worker rpc`.
+/// `SddOrchestrator.Worker.Configuration`'s `worker.json`.
 ///
 /// That single store is the point. This app keeps no credential file of its
 /// own and no keychain item: a second copy of the secret would widen the
 /// approved data boundary and the retention and revocation path the slice's
 /// privacy release gate is written against, for no behavior the worker
 /// runtime does not already get from `worker.json`.
+///
+/// [specs/43 Task 4, AC-01] It writes that file itself and then restarts
+/// the embedded release, instead of asking the release's already-booted
+/// node to do both through `bin/worker rpc`. `rpc` is Erlang distribution,
+/// and a managed Mac's firewall blocks it, so the old path could not finish
+/// pairing there at all. Writing a file needs no second process, and the
+/// release loads its configuration at boot, so the restart is the start.
 ///
 /// **It never asks the person for a project or a repository folder.** It
 /// takes no project id and holds no `WorkspaceFolderPicking` — the type's
@@ -36,40 +42,38 @@ import Foundation
 /// Mac cannot run.
 public final class MacPairingRetention {
     private let controlPlaneURL: URL
-    private let workerBinaryPath: String
-    private let commandRunner: CommandRunning
+    private let workerHome: String
+    private let runtimeRestarter: WorkerRuntimeRestarting
     private let agentResolver: MacCodingAgentResolving
     private let fileManager: FileManager
-    private let rpcTimeout: TimeInterval
 
     public init(
         controlPlaneURL: URL,
-        workerBinaryPath: String,
-        commandRunner: CommandRunning,
+        runtimeRestarter: WorkerRuntimeRestarting,
         agentResolver: MacCodingAgentResolving,
-        fileManager: FileManager = .default,
-        rpcTimeout: TimeInterval = 10
+        workerHome: String = WorkerPaths.workerHome(),
+        fileManager: FileManager = .default
     ) {
         self.controlPlaneURL = controlPlaneURL
-        self.workerBinaryPath = workerBinaryPath
-        self.commandRunner = commandRunner
+        self.runtimeRestarter = runtimeRestarter
         self.agentResolver = agentResolver
+        self.workerHome = workerHome
         self.fileManager = fileManager
-        self.rpcTimeout = rpcTimeout
     }
 
     /// Stores the issued credential and worker identity as a projectless
-    /// worker configuration, then starts `Worker.Supervisor`. Returns
-    /// whether the configuration was actually stored, so the caller never
-    /// has to infer it from a log line.
+    /// worker configuration, then starts `Worker.Supervisor` by restarting
+    /// the release that loads it. Returns whether the configuration was
+    /// stored *and* the runtime was started, so the caller never has to
+    /// infer it from a log line.
     ///
-    /// Shells out to `bin/worker rpc` and blocks until it answers, so the
-    /// caller runs it off the main thread (see `AppDelegate`'s completion
-    /// handler). Nothing here touches AppKit or the menu.
+    /// Writes a file and waits for a process restart, so the caller runs it
+    /// off the main thread (see `AppDelegate`'s completion handler).
+    /// Nothing here touches AppKit or the menu.
     ///
     /// Stores nothing at all unless every required field is in hand: an
-    /// unresolved coding agent stops the whole thing before the temporary
-    /// file is written and before any command runs. A half-written
+    /// unresolved coding agent stops the whole thing before the file is
+    /// written and before the release is touched. A half-written
     /// `worker.json` naming an agent this Mac cannot run would be worse
     /// than no configuration, because the worker runtime would start
     /// against it.
@@ -93,61 +97,28 @@ public final class MacPairingRetention {
     }
 
     private func storeAndStart(jsonObject: [String: String]) -> Bool {
-        let written: (directory: URL, file: URL)
         do {
-            written = try writeTemporaryConfigFile(jsonObject)
+            try WorkerConfigurationStore.write(
+                jsonObject: jsonObject,
+                workerHome: workerHome,
+                fileManager: fileManager
+            )
         } catch {
-            log("failed to write the temporary worker configuration file: \(error)")
+            log("failed to write this Mac's worker configuration: \(error)")
             return false
         }
 
-        defer { try? fileManager.removeItem(at: written.directory) }
-
-        let expression = MacPairingRPCExpressionBuilder.build(configFilePath: written.file.path)
-        let result = commandRunner.run(executable: workerBinaryPath, arguments: ["rpc", expression], timeout: rpcTimeout)
-
-        switch MacPairingRPCExpressionBuilder.parse(result) {
-        case .started:
-            log("worker configuration stored for this Mac; Worker.Supervisor started")
-            return true
-        case .alreadyStarted:
-            // [Idempotency] The pairing loop can complete more than once
-            // across a launch, and `store/2` overwrites. An
-            // already-started Worker.Supervisor means the configuration
-            // was stored and the runtime is up — success, not a failure to
-            // surface.
-            log("Worker.Supervisor already running; the stored configuration was refreshed")
-            return true
-        case .failure(let reason):
-            log("storing this Mac's worker configuration failed: \(reason)")
-            return false
-        case .commandFailed:
-            log("storing this Mac's worker configuration failed: bin/worker rpc did not complete")
+        // The configuration is stored before the restart on purpose: if the
+        // new boot fails, the next launch starts against a configuration
+        // that is already on disk, and until then the menu keeps saying the
+        // setup is unfinished rather than claiming a connected worker.
+        guard runtimeRestarter.restartWorkerRuntime() else {
+            log("worker configuration stored for this Mac, but the embedded release did not restart")
             return false
         }
-    }
 
-    /// Writes the configuration JSON to a private temporary file: a
-    /// per-run temp directory (owner-only, `0700`) containing one file
-    /// (owner-only, `0600`), cleaned up by `storeAndStart`'s `defer`
-    /// regardless of outcome. The credential passes through here and
-    /// nowhere else on disk outside `worker.json` itself.
-    private func writeTemporaryConfigFile(_ jsonObject: [String: String]) throws -> (directory: URL, file: URL) {
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("sdd-orchestrator-mac-pairing-\(UUID().uuidString)", isDirectory: true)
-
-        try fileManager.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-
-        let file = directory.appendingPathComponent("config.json", isDirectory: false)
-        let data = try JSONSerialization.data(withJSONObject: jsonObject)
-        try data.write(to: file, options: [.atomic])
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-
-        return (directory, file)
+        log("worker configuration stored for this Mac; the embedded release was restarted")
+        return true
     }
 
     /// Never carries the credential, the worker id, or the configuration

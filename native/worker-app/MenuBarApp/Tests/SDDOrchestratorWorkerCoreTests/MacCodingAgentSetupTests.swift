@@ -117,8 +117,7 @@ final class MacCodingAgentSetupTests: XCTestCase {
 
     // MARK: - AC-03: the resolved choice reaches this Mac's stored configuration
 
-    func test_resolvedAgent_isStoredForTheMac_withNoProjectAndNoRepositoryFolder() {
-        let workerBinaryPath = "/path/to/bin/worker"
+    func test_resolvedAgent_isStoredForTheMac_withNoProjectAndNoRepositoryFolder() throws {
         let worker = WorkerIdentity(
             id: "worker-1",
             deviceWorkspaceID: "ws-1",
@@ -129,29 +128,17 @@ final class MacCodingAgentSetupTests: XCTestCase {
             state: "active"
         )
 
-        // The same runner serves both roles the real app gives it:
-        // `CodingAgentDetector`'s `which` shell-outs (answered "not found",
-        // so detection is driven by the executable checker below) and the
-        // one `bin/worker rpc` call that stores the configuration.
-        let runner = FakeWorkerRPCCommandRunner(
-            workerBinaryPath: workerBinaryPath,
-            rpcResult: CommandResult(exitCode: 0, standardOutput: "ok:started\n", standardError: "", timedOut: false)
-        )
+        // Detection's own `which` shell-outs, answered "not found" so that
+        // detection is driven by the executable checker below.
+        let runner = FakeWhichCommandRunner(paths: [:])
         let prompt = FakeAgentSelectionPrompt(result: nil)
 
-        var storedConfig: [String: Any]?
-        // The temp file only exists while rpc is being invoked, so it is
-        // read here, the way `MacPairingRetentionTests` does.
-        runner.onRPCCall = { arguments in
-            guard
-                let expression = arguments.last,
-                let range = expression.range(of: "File.read(\""),
-                let endQuote = expression[range.upperBound...].firstIndex(of: "\""),
-                let data = FileManager.default.contents(atPath: String(expression[range.upperBound..<endQuote]))
-            else { return XCTFail("expected a readable config file while rpc runs") }
-
-            storedConfig = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        }
+        // [specs/43 Task 4] Retention writes the configuration itself now,
+        // so this reads the real file at a storage root pointed into a temp
+        // directory, instead of the temp file the old `rpc` call read.
+        let workerHome = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("mac-coding-agent-setup-tests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: workerHome) }
 
         let setup = MacCodingAgentSetup(
             executableChecker: FakeExecutableChecker(executablePaths: [codexPath]),
@@ -161,15 +148,18 @@ final class MacCodingAgentSetupTests: XCTestCase {
 
         let retention = MacPairingRetention(
             controlPlaneURL: URL(string: "http://localhost:4000")!,
-            workerBinaryPath: workerBinaryPath,
-            commandRunner: runner,
-            agentResolver: setup
+            runtimeRestarter: FakeWorkerRuntimeRestarter(),
+            agentResolver: setup,
+            workerHome: workerHome
         )
 
         XCTAssertTrue(retention.retain(credential: "worker-1.super-secret-credential", worker: worker))
         XCTAssertEqual(prompt.callCount, 0, "one detected agent needs no prompt")
 
-        guard let storedConfig else { return XCTFail("expected the rpc call to see a decodable config file") }
+        let data = try XCTUnwrap(
+            FileManager.default.contents(atPath: WorkerPaths.workerConfigurationPath(homeOverride: workerHome))
+        )
+        let storedConfig = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         XCTAssertEqual(storedConfig["agent_adapter"] as? String, "codex")
         XCTAssertEqual(storedConfig["agent_executable"] as? String, codexPath)

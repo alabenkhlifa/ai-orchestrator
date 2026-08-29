@@ -93,7 +93,7 @@ Traceability:
   - Owns: AC-02
   - Proof: Focused tests cover each written state being read back as the matching connection state, a missing file reading as unknown, an unreadable or malformed file reading as unknown, and no state ever reading as connected without the file saying so.
 
-- [ ] Task 4 — Store the configuration and start the runtime without a live node.
+- [x] Task 4 — Store the configuration and start the runtime without a live node.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -101,6 +101,7 @@ Traceability:
   - Owned surfaces: `MacPairingRetention`'s and `PostPairingSetupCoordinatorImpl`'s writing of the worker configuration, and their restart of the release through `WorkerProcessController`.
   - Owns: AC-01
   - Proof: Focused tests cover a completed pairing writing a configuration the release accepts, the file being owner-only with no credential anywhere else, the release being restarted rather than called into, a failed write leaving nothing behind, and the deep-link path storing the same shape it stores today.
+  - Delivered: Both pairing paths write `worker.json` themselves through one `WorkerConfigurationStore`, then restart the release through a `WorkerRuntimeRestarting` seam instead of calling into it. `MacPairingRetention` now runs no command at all. Both RPC expression builders are deleted.
 
 - [ ] Task 5 — Stop the release by signal, and prove nothing needs distribution.
   - Size: Standard

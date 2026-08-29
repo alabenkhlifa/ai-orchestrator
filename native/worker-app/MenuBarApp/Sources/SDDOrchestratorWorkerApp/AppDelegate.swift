@@ -387,10 +387,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             },
             httpPoster: URLSessionPairingHTTPPoster(),
+            // [specs/43 Task 4, AC-01] The coordinator stores the
+            // configuration itself and asks for a restart of the release
+            // this delegate already owns. It gets the controller only as a
+            // `WorkerRuntimeRestarting`, so process supervision stays in
+            // one place.
             setupCoordinator: PostPairingSetupCoordinatorImpl(
                 dashboardURL: dashboardURL,
-                workerBinaryPath: binaryPath,
                 commandRunner: runner,
+                runtimeRestarter: workerProcessController,
                 folderPicker: NSOpenPanelWorkspaceFolderPicker(),
                 agentSelectionPrompt: AgentSelectionAlertPrompt()
             ),
@@ -624,10 +629,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // only when detection finds none, and answers once for this Mac.
         // A canceled prompt leaves nothing stored, so retention stops
         // before it writes and the next redemption asks again.
+        // [specs/43 Task 4, AC-01] Retention writes `worker.json` itself and
+        // then restarts the embedded release, which loads it at boot. The
+        // controller is handed over as a `WorkerRuntimeRestarting` so
+        // retention can start the worker without owning the process.
         macPairingRetention = MacPairingRetention(
             controlPlaneURL: controlPlane,
-            workerBinaryPath: workerBinaryPath,
-            commandRunner: commandRunner,
+            runtimeRestarter: workerProcessController,
             agentResolver: MacCodingAgentSetup(
                 commandRunner: commandRunner,
                 selectionPrompt: AgentSelectionAlertPrompt()
@@ -723,11 +731,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.stopPairingLoop()
                     self.refreshStatus()
 
-                    // `retain` shells out to `bin/worker rpc` and blocks until
-                    // the release answers, so it runs off the main thread —
-                    // the same split `refreshPairingStatus()` and the
-                    // `RunStateQuerier` poll already use. Every status and menu
-                    // mutation stays above, on the main thread.
+                    // `retain` writes the configuration file and restarts the
+                    // embedded release, blocking until the old process is
+                    // gone, so it runs off the main thread — the same split
+                    // `refreshPairingStatus()` and the `RunStateQuerier` poll
+                    // already use. Every status and menu mutation stays above,
+                    // on the main thread.
                     if let retention = self.macPairingRetention {
                         let credential = completed.credential
                         let worker = completed.worker

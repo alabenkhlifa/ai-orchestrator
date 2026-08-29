@@ -1,5 +1,17 @@
 # Distribution-Free Worker Control Progress Log
 
+### 2026-08-29 - Task 4 complete: pairing no longer calls into the running node
+
+- The call whose failure made the app unusable rather than merely uninformative. Both pairing paths now write `worker.json` themselves through one `WorkerConfigurationStore`, which holds the single app-side copy of the permission rules, and then restart the release. `MacPairingRetention` runs no command at all any more and lost its binary path, command runner, and rpc timeout.
+- The storage root is one owned value. `WorkerPaths.workerHome/1` mirrors `Configuration.home/1` and resolves `$HOME` first, because the release reads `System.user_home!/0` from the environment and is this app's own child, so both sides agree by construction rather than by coincidence.
+- Two changes inside `WorkerProcessController` that the restart forced, both worth keeping. A `Process` is single use, so the child became a per-launch `var` rather than one instance built in `init`. And the single `expectedStop` flag became a set keyed by child identity, because a restart starts the new child while the old child's termination handler may still be in flight, and one flag would either let the new child inherit the old expectation or blame the old child's exit on nobody.
+- Both RPC expression builders and their tests are deleted; nothing else referenced them.
+- Honest limit of the assertion here: with no command runner left, `MacPairingRetention`'s "nothing reaches `rpc`" is an argument from the type's shape rather than a runtime check. The executable version lives in the deep-link path's tests, which still have a command runner for agent detection and assert that nothing that ran carried `rpc`, a credential, a repository path, or a project id.
+- Known slowness until `Task 5`: `WorkerProcessController.stop` still calls `rpc "System.stop()"` first, so on a distribution-blocked Mac every pairing restart waits out that call's timeout before falling through to a signal. AC-01 is still reached, just slowly, and `Task 5` removes it.
+- Recorded difference, not a defect: the app writes `worker.json` compact while the release writes it pretty. Same content, and the release stays the only reader and still validates what it loads.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Executed 246 tests, with 0 failures`, and `swift build` exit `0`. Runner receipt:
+- Proof receipt: `Task 4` — scope `Focused` — command `swift test` — exit `0`.
+
 ### 2026-08-29 - Task 2 complete: the release reports its connection state to a file
 
 - `connection_status.json` sits beside `worker.json` under `Configuration.home/1`, reached through a new `ConnectionStatus.path/1` that mirrors `Configuration.path/1` rather than resolving the path a second way. It carries the state, the reason, and when it changed, and nothing else.

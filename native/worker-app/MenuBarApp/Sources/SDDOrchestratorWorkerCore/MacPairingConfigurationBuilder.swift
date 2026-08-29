@@ -8,10 +8,11 @@ import Foundation
 ///
 /// Field names match `Configuration`'s own `to_map/1`/`from_map/1` exactly
 /// (`control_plane_address`, `device_workspace_id`, `worker_credential`,
-/// `agent_adapter`, `agent_executable`, `worker_id`) so the
-/// `bin/worker rpc`-side `Jason.decode!` + struct literal
-/// (`MacPairingRPCExpressionBuilder`) can read this object without any
-/// renaming.
+/// `agent_adapter`, `agent_executable`, `worker_id`) so the release loads
+/// what `WorkerConfigurationStore` writes without any renaming. [specs/43
+/// Task 4] That file is now written by this app and read by the release,
+/// which is why these names are a contract between two codebases rather
+/// than one app-side detail.
 ///
 /// `project_id` and `workspace_root` are absent keys, never empty strings
 /// and never explicit nulls. Task 1 made both optional and made an absent
