@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -63,7 +63,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Give every status a coloured dot in one colour language.
+- [x] Task 1 — Give every status a coloured dot in one colour language.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -71,6 +71,7 @@ Traceability:
   - Owned surfaces: `WorkerStatus`'s semantic status indicator and its mapping for all seven states, the AppKit helper that draws one indicator as one dot, and the menu item's image in `AppDelegate.rebuildMenu()`.
   - Owns: AC-01, AC-02
   - Proof: Focused tests cover every status answering exactly one indicator, connected answering the healthy kind, disconnected and the refused state answering the same problem kind, connecting and setting up answering the same in-progress kind, not paired answering the idle kind, update available answering its own kind rather than a health one, and every `menuStatusLine` string remaining byte-identical.
+  - Delivered: `StatusIndicator` names five kinds of state in the AppKit-free Core target and `WorkerStatus.indicator` maps all seven states to them through an exhaustive switch, so a new state cannot compile without choosing a kind. `StatusIndicatorImage` is the only place that knows a colour, drawing the dot through a handler that re-runs so the system colours resolve under the menu's current appearance. Every status string is unchanged and pinned by a test.
 
 - [ ] Task 2 — Reserve grey for an action a person cannot take.
   - Size: Standard

@@ -89,6 +89,31 @@ final class WorkerStatusTests: XCTestCase {
         XCTAssertEqual(lines.count, Self.allCases.count, "each WorkerStatus case must render distinct menu text")
     }
 
+    // MARK: - [specs/42 Task 1, AC-01] The dot sits beside the words, never in them
+
+    func test_menuStatusLines_areByteIdenticalToTheApprovedWording() {
+        // specs/42 shows the status as a coloured dot plus text. The dot is
+        // the menu item's image, so every line here must stay exactly what
+        // specs/36, specs/38 and specs/39 approved: no glyph, no marker, no
+        // leading space, no rewording. This test is the wall that keeps
+        // presentation out of the product copy.
+        let approved: [(WorkerStatus, String)] = [
+            (.notPaired, "Not paired"),
+            (.pairedSettingUp, "Paired, setting up…"),
+            (.pairedConnecting, "Connecting…"),
+            (.connected, "Connected"),
+            (.connectionRefused, "Paired, but the control plane refused the connection"),
+            (.disconnected, "Disconnected"),
+            (.updateAvailable, "Update available")
+        ]
+
+        XCTAssertEqual(approved.count, Self.allCases.count, "every WorkerStatus case must be pinned here")
+
+        for (status, line) in approved {
+            XCTAssertEqual(status.menuStatusLine, line, "\(status)'s wording is not this slice's to change")
+        }
+    }
+
     private static let allCases: [WorkerStatus] = [
         .notPaired, .pairedSettingUp, .pairedConnecting, .connected, .connectionRefused,
         .disconnected, .updateAvailable

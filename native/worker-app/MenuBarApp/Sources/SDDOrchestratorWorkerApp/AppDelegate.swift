@@ -191,6 +191,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusLineItem.isEnabled = false
         }
 
+        // [specs/42 Task 1, AC-01/AC-02] One coloured dot beside the words,
+        // in the one colour language `StatusIndicator` defines. The title is
+        // untouched: the dot reinforces the line, it does not replace any of
+        // it. `currentStatus` answers an indicator for every state, so this
+        // line can never leave the status without a dot.
+        statusLineItem.image = StatusIndicatorImage.image(for: currentStatus.indicator)
+
         menu.addItem(statusLineItem)
 
         // [AC-08] The specific reason the last URL-scheme pairing attempt
