@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -64,7 +64,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Read the run state without a live node.
+- [x] Task 1 — Read the run state without a live node.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -72,6 +72,7 @@ Traceability:
   - Owned surfaces: `RunStateQuerier`'s invocation of the release start script.
   - Owns: AC-04
   - Proof: Focused tests cover the querier reading a run state through the command that needs no running node, the same lifecycle answers as today for an active run, no run, and an unreadable state, and the quit-time active-run check behaving unchanged.
+  - Delivered: `RunStateQuerier` now uses `eval`. The run state is a file under `Configuration.home/1`, so a fresh VM reads what the running release would. Expression and parsing are unchanged.
 
 - [ ] Task 2 — Publish the connection state to a file the app can read.
   - Size: Standard

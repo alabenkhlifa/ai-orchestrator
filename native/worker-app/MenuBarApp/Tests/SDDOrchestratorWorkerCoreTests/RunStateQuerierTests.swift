@@ -32,14 +32,28 @@ final class RunStateQuerierTests: XCTestCase {
         XCTAssertEqual(RunStateQuerier.parse(result(output: "accepted\n", timedOut: true)), .queryFailed)
     }
 
-    func test_query_invokesRpcWithTheWorkerBinaryAndTheExpectedArguments() {
+    func test_query_invokesEvalWithTheWorkerBinaryAndTheExpectedArguments() {
         let runner = FakeCommandRunner(result: result(output: "none\n"))
 
         _ = RunStateQuerier.query(workerBinaryPath: "/path/to/bin/worker", runner: runner, timeout: 3)
 
         XCTAssertEqual(runner.callCount, 1)
         XCTAssertEqual(runner.lastExecutable, "/path/to/bin/worker")
-        XCTAssertEqual(runner.lastArguments?.first, "rpc")
+        XCTAssertEqual(runner.lastArguments?.first, "eval")
         XCTAssertEqual(runner.lastArguments?.count, 2)
+        XCTAssertEqual(runner.lastArguments?.last, RunStateQuerier.expression)
+    }
+
+    /// `rpc` needs Erlang distribution, which is the thing this slice
+    /// removes, so no answer this querier gives may come from it — not for
+    /// an active run, not for none, and not for an unreadable state.
+    func test_query_neverUsesRpcForAnyAnswer() {
+        for output in ["none\n", "accepted\n", "error\n", ""] {
+            let runner = FakeCommandRunner(result: result(output: output))
+
+            _ = RunStateQuerier.query(workerBinaryPath: "/path/to/bin/worker", runner: runner, timeout: 3)
+
+            XCTAssertFalse(runner.lastArguments?.contains("rpc") ?? true, "rpc used for output \(output)")
+        }
     }
 }
