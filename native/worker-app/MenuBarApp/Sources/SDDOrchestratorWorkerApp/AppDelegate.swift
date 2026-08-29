@@ -169,10 +169,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func rebuildMenu() {
         let menu = NSMenu()
 
+        // [specs/42 Task 2, AC-03] Grey means an action the person cannot take
+        // right now, and nothing else. With automatic enabling on, AppKit greys
+        // out every item that has no action, which made the menu's plain
+        // information lines read as broken or as access lost. Off, each item
+        // below owns its own `isEnabled`, and the default is enabled.
+        menu.autoenablesItems = false
+
         // [specs/38, AC-02] The line a person already reads for status is also
         // the one they click to copy the pairing code, so the single action
-        // pairing asks of them needs no second place to look. It stays a plain
-        // disabled line whenever there is nothing to copy.
+        // pairing asks of them needs no second place to look. When there is
+        // nothing to copy it keeps its normal look and simply does nothing on
+        // a click, because it reports a status rather than offering an action.
         let line = PairingCodeMenu.statusLine(
             status: currentStatus,
             codeState: pairingCodeHolder?.state ?? .none,
@@ -185,38 +193,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         )
 
+        // [AC-04] Only the code-offering state gets a target, so only there
+        // does a click copy. Every other state leaves the line without an
+        // action and a click changes nothing. No do-nothing selector stands in
+        // for that: having no action is the honest way to say there is nothing
+        // to do, and a stub could later be given a body by accident.
         if line.isCopyAction {
             statusLineItem.target = self
-        } else {
-            statusLineItem.isEnabled = false
         }
+
+        // [specs/42 Task 1, AC-01/AC-02] One coloured dot beside the words,
+        // in the one colour language `StatusIndicator` defines. The title is
+        // untouched: the dot reinforces the line, it does not replace any of
+        // it. `currentStatus` answers an indicator for every state, so this
+        // line can never leave the status without a dot.
+        statusLineItem.image = StatusIndicatorImage.image(for: currentStatus.indicator)
 
         menu.addItem(statusLineItem)
 
         // [AC-08] The specific reason the last URL-scheme pairing attempt
-        // failed, surfaced as its own disabled line rather than folded into
+        // failed, surfaced as its own line rather than folded into
         // `currentStatus.menuStatusLine` — keeps `WorkerStatus` a small,
         // fixed set of display strings while still reporting the real
         // reason (never the raw pairing code or credential) in the menu.
+        // [specs/42 Task 2, AC-03] It reports a reason, so it is drawn like
+        // any other line. It has no action because there is nothing to click.
         if currentStatus == .notPaired, let pairingFailureDetail {
             let detailItem = NSMenuItem(
                 title: "Pairing failed: \(pairingFailureDetail)",
                 action: nil,
                 keyEquivalent: ""
             )
-            detailItem.isEnabled = false
             menu.addItem(detailItem)
         }
 
         // [Task 10, AC-12] Describes the verified, downloaded update — a
         // menu-bar prompt, not an automatic install.
+        // [specs/42 Task 2, AC-03] It reports a version, so it is drawn like
+        // any other line. The install item right below it is the action.
         if currentStatus == .updateAvailable, let pendingUpdate {
             let updateDetailItem = NSMenuItem(
                 title: "Version \(pendingUpdate.version) is available",
                 action: nil,
                 keyEquivalent: ""
             )
-            updateDetailItem.isEnabled = false
             menu.addItem(updateDetailItem)
 
             // [Task 11, AC-13/AC-14] The actionable confirm-and-install
@@ -229,10 +249,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 action: #selector(installUpdate(_:)),
                 keyEquivalent: ""
             )
+            // [specs/42 Task 2, AC-05] The one honest grey in this menu: while
+            // a run is still active, or while the handoff is already under
+            // way, installing is an action the person genuinely cannot take
+            // yet.
             switch updateInstallCoordinator?.state {
             case .some(.awaitingActiveRunToFinish), .some(.installHandedOff):
                 installItem.isEnabled = false
             default:
+                installItem.isEnabled = true
                 installItem.target = self
             }
             menu.addItem(installItem)
@@ -257,8 +282,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // through the responder chain to `NSApp`, which routes it to
         // `applicationShouldTerminate(_:)` below — the single place the
         // AC-04/AC-05 confirmation decision is made, regardless of what
-        // triggers termination.
+        // triggers termination. Giving this item a target would move
+        // termination to some other object, so it keeps none. With
+        // `autoenablesItems` off nothing validates it any more, so it says
+        // enabled itself; dispatch through the responder chain is unaffected.
         let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.isEnabled = true
         menu.addItem(quitItem)
 
         statusItem.menu = menu

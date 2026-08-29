@@ -33,6 +33,7 @@ final class PairingCodeMenuTests: XCTestCase {
         XCTAssertEqual(line.title, "Pairing code copied — paste it in the dashboard")
         // Still copyable, so a person who missed the clipboard can click again.
         XCTAssertTrue(line.isCopyAction)
+        XCTAssertEqual(line.copyableCode, code.value)
     }
 
     func testAnUnreachableControlPlaneIsNamedRatherThanSilent() {
@@ -90,6 +91,38 @@ final class PairingCodeMenuTests: XCTestCase {
         XCTAssertEqual(line.title, "Paired, setting up…")
         XCTAssertFalse(line.isCopyAction)
         XCTAssertNil(line.copyableCode)
+    }
+
+    // MARK: - What a click does, in every state (specs/42 Task 2, AC-04)
+
+    func testOnlyAnUnpairedHeldCodeGivesTheStatusLineSomethingToDo() {
+        // The menu no longer greys the status line when it has nothing to
+        // copy, so `copyableCode` is the only thing left that decides whether
+        // clicking it does anything at all. Sweep every status against every
+        // code state and prove one pair offers a code and no other does.
+        let statuses: [WorkerStatus] = [
+            .notPaired, .pairedSettingUp, .pairedConnecting, .connected,
+            .connectionRefused, .disconnected, .updateAvailable
+        ]
+        let codeStates: [PairingCodeState] = [.none, .held(code), .unreachable]
+
+        for status in statuses {
+            for codeState in codeStates {
+                for justCopied in [false, true] {
+                    let line = PairingCodeMenu.statusLine(
+                        status: status,
+                        codeState: codeState,
+                        justCopied: justCopied
+                    )
+
+                    let offersCode = status == .notPaired && codeState == .held(code)
+                    let situation = "\(status) / \(codeState) / justCopied: \(justCopied)"
+
+                    XCTAssertEqual(line.copyableCode, offersCode ? code.value : nil, situation)
+                    XCTAssertEqual(line.isCopyAction, offersCode, situation)
+                }
+            }
+        }
     }
 
     // MARK: - The clipboard is only ever written on purpose

@@ -68,6 +68,12 @@ Required boundaries:
 - Reason: AppKit disables an item with no action by default, which is exactly what produces the greyed row. Turning that automatic behavior off is the direct way to keep the row readable while leaving the click inert.
 - Consequence: every other item in this menu now owns its enabled state explicitly. The menu has three items and both others carry a real action and target, so nothing changes for them today, but a future item must set its own state rather than inheriting one.
 
+### Grey is reserved for an action a person cannot take
+
+- Choice: the status line, the pairing-failure reason, and the available-version line all stop being disabled. The install item keeps its disabled state while an install is deferred.
+- Reason: those first three only report information, and greying them tells the person something is wrong or unreachable when nothing is. The install item is the opposite case: it offers a real action that genuinely cannot run while a run is active, which is exactly what grey should mean. Fixing only the status line would have left two greyed rows directly beneath it, which reads as more inconsistent than the menu is today.
+- Consequence: grey now carries one meaning in this menu instead of two. The cost is that three call sites must each stop setting `isEnabled = false`, rather than one.
+
 ### A click on an inert line does nothing at all
 
 - Choice: the status line has no action outside the code-offering state, so a click closes the menu and changes nothing.
