@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 ## Active Slice
 
@@ -85,11 +85,11 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass.
-- [ ] The worker app's own test suite passes.
-- [ ] Every existing menu and status test passes unchanged, proving no status wording moved.
-- [ ] Build and static checks pass.
-- [ ] Product proof, read on the real menu bar of an installed build rather than in a browser, because this slice's whole outcome lives in the native menu and no web surface changes: open the worker app's menu in each reachable state and confirm the dot's colour and that the status line is not greyed. Record the states seen in `progress.md`.
+- [x] Acceptance criteria pass.
+- [x] The worker app's own test suite passes.
+- [x] Every existing menu and status test passes unchanged, proving no status wording moved.
+- [x] Build and static checks pass.
+- [x] Product proof, read on the real menu bar of an installed build rather than in a browser, because this slice's whole outcome lives in the native menu and no web surface changes: open the worker app's menu in each reachable state and confirm the dot's colour, that no information-only line is greyed, and that `Quit` still works now that the menu no longer enables its items automatically. Record the states seen, and any state that could not be reached, in `progress.md`.
 
 ## Blocked Decisions
 

@@ -1,5 +1,20 @@
 # Worker Menu Status Presentation Progress Log
 
+### 2026-08-29 - Slice gate: read on a real menu bar, four of five colours reachable
+
+- Product proof, read on the installed build's own menu bar rather than in a browser, because this slice's whole outcome lives in the native menu and no web surface changed. Each state was reached for real, never simulated.
+- Colours seen: amber on `Connecting…` with the control plane down, green on `Connected` after the dev server came up and the worker attached, red on `Disconnected` after the server was stopped, and grey on `Not paired` after the stored configuration was removed. Each was captured as a screenshot of the open menu.
+- Blue on `Update available` was not reachable. It needs a signed appcast entry newer than the running build, which is update infrastructure this slice does not touch. Its mapping is covered by the Core tests, and the colour is one line in the same switch as the four that were seen. Recorded as not reachable rather than claimed.
+- Both information lines were confirmed enabled through the accessibility API, not by eye alone: the status line reads `enabled=true` in every state seen, and a deliberately malformed deep link produced `Pairing failed: malformed pairing link`, also `enabled=true`. Both render in the same full white as `Open Dashboard`. Before this slice the status line read `enabled=false`.
+- The deferred install item was not reachable either, for the same reason as the blue dot: it only appears once a verified update has been downloaded. Its grey is the one this slice deliberately kept, and the code path is unchanged apart from making its enabled branch explicit.
+- `Quit` was clicked, not just looked at. It is the only item whose dispatch rather than appearance depends on turning automatic enabling off, because it carries no target and resolves through the responder chain to `applicationShouldTerminate/1`. The launcher and the embedded release both terminated, leaving only the shared `epmd` daemon, so the change cost it nothing.
+- Unrelated observation, recorded because it was seen and is not this slice's to fix: a worker whose first connection attempt happens while the control plane is unreachable never retries, because `GatewayConnection` is `restart: :temporary` and its startup refusal stops it for good. Reaching the connected state during this proof needed an app restart after the server came up. That behavior predates this slice and belongs to the specifications that own the gateway connection.
+- The machine was left as it was found: the worker is paired again and reports connected.
+- Verification gate result: every item passes. Runner receipt:
+- Proof receipt: slice — scope `Broad` — command `swift test` — exit `0`.
+- `swift build` exits `0`, which is the only automated signal for the app target the test suite does not compile.
+- Release readiness is unchanged and separate. This slice adds no release gate of its own; distributing any build carrying it stays governed by `specs/36-local-worker-native-distribution`'s signing and notarization gate, and the build read in this proof is unsigned.
+
 ### 2026-08-29 - Task 2 complete: grey now means one thing
 
 - The scope of this task grew before it was written, and the reason is worth keeping. The specification originally changed the status line alone, and its design claimed the menu had three items. Reading `rebuildMenu()` showed five, three of them greyed. Fixing only the status line would have left two greyed rows directly beneath a normal one, which reads as more inconsistent than the menu was before. The user chose to make all three information lines normal and to keep the install item's grey, so grey now reports an action a person cannot take and nothing else. The agreement was recorded before any code was written.
