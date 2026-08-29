@@ -732,8 +732,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         let credential = completed.credential
                         let worker = completed.worker
 
-                        DispatchQueue.global(qos: .utility).async {
-                            retention.retain(credential: credential, worker: worker)
+                        DispatchQueue.global(qos: .utility).async { [weak self] in
+                            let stored = retention.retain(credential: credential, worker: worker)
+
+                            // A stored configuration is exactly the condition
+                            // `.pairedSettingUp` was waiting on, and nothing
+                            // else observes it: `refreshPairingStatus()` runs
+                            // once at launch, when this app was still unpaired.
+                            // Without re-checking here the menu would sit on
+                            // "Paired, setting up…" for the rest of the launch
+                            // while the control plane had the worker attached,
+                            // and the connection polling that turns an
+                            // attachment into "Connected" would never start.
+                            // Re-checking is what makes the person see the
+                            // pairing finish without relaunching the app.
+                            guard stored else { return }
+
+                            DispatchQueue.main.async { self?.refreshPairingStatus() }
                         }
                     }
 
