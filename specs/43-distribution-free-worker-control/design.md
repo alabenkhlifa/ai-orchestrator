@@ -87,7 +87,7 @@ Required boundaries:
 
 - A restart during pairing could leave the worker down if the new boot fails. Reduced by storing the configuration before restarting, so a failed boot is retried by the next launch against a configuration that is already on disk; detected by the menu staying on its setting-up line rather than claiming connected.
 - Two writers of the configuration file could drift apart in shape. Reduced by keeping the release the only reader and keeping its validation unchanged; detected by the existing configuration tests, which already refuse a file missing a required field.
-- A status file could be read mid-write and parse as garbage. Reduced by writing it atomically the way the configuration already is; detected by the unknown fallback, which is the safe answer either way.
+- A status file could be read mid-write and parse as garbage. Reduced by writing to a temporary file and renaming it over the target, so only a complete file is ever published; detected by the unknown fallback, which is the safe answer either way. `Configuration.store/2` beside it is a plain write and is not atomic, so the status file is deliberately the stricter of the two; bringing the configuration up to the same bar is worth deciding separately and is not this slice's.
 - Someone later adds a sixth `rpc` call and reintroduces the problem on managed machines. Reduced by the end-to-end task asserting the absence rather than trusting review.
 
 ## Open Questions

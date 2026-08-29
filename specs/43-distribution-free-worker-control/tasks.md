@@ -74,7 +74,7 @@ Traceability:
   - Proof: Focused tests cover the querier reading a run state through the command that needs no running node, the same lifecycle answers as today for an active run, no run, and an unreadable state, and the quit-time active-run check behaving unchanged.
   - Delivered: `RunStateQuerier` now uses `eval`. The run state is a file under `Configuration.home/1`, so a fresh VM reads what the running release would. Expression and parsing are unchanged.
 
-- [ ] Task 2 — Publish the connection state to a file the app can read.
+- [x] Task 2 — Publish the connection state to a file the app can read.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -82,6 +82,7 @@ Traceability:
   - Owned surfaces: `Worker.ConnectionStatus`'s writing of the status file, the file's location and owner-only permissions, and its atomic replacement on each transition.
   - Owns: entity:RuntimeStatusFile
   - Proof: Focused tests cover every state transition writing the file, the file carrying the same state and reason `status/0` reports, the write being atomic and owner-only, and `status/0`'s own in-process answer staying unchanged.
+  - Delivered: `ConnectionStatus` publishes `connection_status.json` beside `worker.json` on every transition, written to a temporary file and renamed over the target so only a complete file is ever visible. `status/0` still reads `:persistent_term` and is unchanged. A publish failure is rescued and the caller still gets `:ok`.
 
 - [ ] Task 3 — Read the connection state from that file instead of the node.
   - Size: Standard
