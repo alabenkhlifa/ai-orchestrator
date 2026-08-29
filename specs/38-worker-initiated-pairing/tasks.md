@@ -59,7 +59,7 @@ Excluded:
 
 Deferred after this slice:
 
-- Configuring a worker paired this way: giving it a project, a repository folder, and a coding agent so it can actually connect. It will need a credential this flow does not retain.
+- Configuring a worker paired this way so it can actually connect. Delivered by `specs/39-mac-scoped-worker-connection`, which made a configuration valid with no project, kept the credential this flow used to discard, and set up the Mac's coding agent. A repository folder is still not asked for here.
 - Retiring the deep link, or unifying the two entry points behind one surface, if usage later shows one is redundant.
 - Showing the person which worker a redemption authorized, beyond the connection state the app already reports.
 

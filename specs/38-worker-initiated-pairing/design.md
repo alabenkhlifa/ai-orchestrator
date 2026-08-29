@@ -106,12 +106,12 @@ Required boundaries:
 - Consequence: An unpaired app makes a request per tick, which the issuance rate limit and this schedule have to stay consistent about. The loop stops as soon as the app is paired, so a paired app polls nothing.
 - Recorded because assuming it was already true is what let this slice be called `Verified` while the app performed none of these calls.
 
-### The app hands off rather than claiming a setup it cannot finish
+### The app keeps what the redemption issued and finishes its own setup
 
-- Choice: On a successful completion the app stops offering a code and says the dashboard has taken over. It does not report itself paired, connecting, or setting up.
-- Reason: A worker-initiated pairing has no project, and the worker configuration requires one, so there is no configuration the app can store. Reporting `pairedSettingUp` describes a setup that will never complete, which is what the first implementation did and what left a real install stuck on that line forever.
-- Consequence, stated plainly because it is a real limitation and not a detail: the credential this pairing issues is not retained by the app. The worker row exists and the dashboard sees it, which is enough for onboarding to continue, but that worker cannot connect or run anything. Giving it a project, a repository folder, and a coding agent is deferred, and doing so will need a credential this flow currently discards.
-- Rejected: storing the credential now with an unset project. That needs a storage contract for a partially configured worker, which is a larger decision than this slice should make on its own.
+- Choice: On a successful completion the app stops offering a code, keeps the issued credential and worker identity, and continues its own setup.
+- Reason: The original choice here was the opposite, and it was right at the time: a worker-initiated pairing has no project, the worker configuration then required one, so there was nothing the app could store and claiming a setup would have described one that never completed. `specs/39-mac-scoped-worker-connection` removed that constraint by making a configuration valid with no project, so the app now has somewhere to put the credential and something real to finish.
+- Consequence: this slice's own limitation is gone. A worker paired this way reaches a genuinely connected state rather than an authorized but unusable one.
+- Superseded: the earlier hand-off decision, and with it the deferred boundary that said this flow discards its credential. Both were replaced by `specs/39-mac-scoped-worker-connection` Task 2, which is where the retention and its proof live. This slice's own tasks and proofs are unchanged and still `Verified`.
 
 ## Risks
 

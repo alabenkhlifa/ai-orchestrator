@@ -1,5 +1,12 @@
 # Worker-Initiated Pairing Progress Log
 
+### 2026-08-29 - AC-08 superseded by specs/39, not re-proved here
+
+- `specs/39-mac-scoped-worker-connection` Task 2 removed the hand-off state this slice's `AC-08` described. The app no longer says the dashboard has taken over; it keeps the issued credential and worker identity and finishes its own setup, and `WorkerStatus.handedOffToDashboard` no longer exists.
+- The workflow step, `AC-08`, and the design decision that named the hand-off were corrected to describe what the product now does. Older entries in this log are left exactly as they were: they record what was true and why, and the replacement belongs here rather than rewritten over them.
+- The 2026-08-27 decision recorded below is superseded, not reversed by error. It was correct while `Worker.Configuration` required a project. `specs/39` Task 1 made a configuration valid with no project, which is what changed the answer.
+- No code and no proof changed in this update. The new behavior is proved in `specs/39`, by its Task 2 focused tests and by the product proof click path recorded at its slice gate. This slice stays `Verified` on its own tasks.
+
 ### 2026-08-27 - Verification gate passed on the corrected contract; slice Verified
 
 - Every gate command passes with no accepted exceptions.
