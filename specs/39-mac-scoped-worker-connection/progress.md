@@ -1,5 +1,14 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-08-29 - Defect: the menu never left `Paired, setting up…`, and its proof was misleading
+
+- Reported by the user from the running product: the menu showed `Paired, setting up…` with the amber dot long after the worker was attached. The dot was correct for that state. The state was wrong.
+- Cause: `refreshPairingStatus()` is called once, at launch, when the app is still unpaired. Nothing re-runs it after a redemption, so the `.pairedSettingUp` override set on success is never cleared and `startConnectionPolling()` never starts. The menu is pinned to that line for the rest of the launch.
+- The Task 7 fix that cleared the override was real but unreachable, because the only place it runs is that launch-time check. `MacPairingRetention.retain/2` already returns whether it stored the configuration and the result was being discarded; it now re-runs `refreshPairingStatus()` on success, which clears the override and starts the polling that turns an attachment into `Connected`.
+- The earlier product proof was misleading and is corrected here. The menu did read `Connected`, but only because the app had been rebuilt, reinstalled and restarted, and the restart re-ran the launch-time check against an already-stored configuration. The live transition was never exercised. The entry recorded the observation without recording that a restart produced it.
+- Environment incident, and the reason the fix is unproven. Erlang distribution is broken machine-wide on this development Mac: two fresh, unrelated nodes with the same cookie answer `pang`, so this is not the worker app. `bin/worker rpc` therefore cannot reach the running release, and `MacPairingRetention` cannot store `worker.json`, so no worker can finish pairing here at all. The application firewall carries an `epmd` block-incoming rule and the machine is managed, so it cannot be changed from the command line. Forcing `ERL_EPMD_ADDRESS=127.0.0.1` did not restore it. The breakage began after epmd and the release beams were killed with `-9` during the specs/42 product proof.
+- What is proved: the app target compiles and the worker app suite passes 256 tests. What is not: the live menu transition, which needs a machine where the release can be reached over distribution.
+
 ### 2026-08-29 - Slice gate: the product proof found two defects the tests could not
 
 - `capability:mac-scoped-worker-connection` is ready. `Task 8` is complete and the round trip is proved both by integration test and by a person clicking.
