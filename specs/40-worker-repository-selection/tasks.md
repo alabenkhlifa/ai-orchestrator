@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -71,7 +71,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Own a selection request from creation to one outcome.
+- [x] Task 1 — Own a selection request from creation to one outcome.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -79,6 +79,7 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositorySelection` with `request/3`, `cancel/1`, the in-memory request table, the timeout, cancellation on requester exit, delivery of `{:repository_selection, request_id, outcome}`, and refusal of an answer for an unknown, foreign, cancelled, or expired request. The transport push is a behaviour injected by Task 2; this task ships a test transport.
   - Owns: AC-07, entity:SelectionRequest, entity:SelectionResult
   - Proof: Focused tests cover a request answered once and delivered to its requester only, a second answer to the same request being refused, an answer naming another request or worker being refused, a cancelled or expired request ignoring a late answer, and the requester's exit cancelling the request.
+  - Delivered: `SddOrchestrator.RepositorySelection` opens a request, pushes it through a configured transport behaviour, and guarantees one `{:repository_selection, request_id, outcome}` message per request. A foreign, repeat, cancelled, or expired answer is refused and changes nothing.
 
 - [ ] Task 2 — Carry the request and its result over the Mac-scoped attachment.
   - Size: Standard

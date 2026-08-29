@@ -133,7 +133,11 @@ defmodule SddOrchestrator.Application do
       # a reconnect an explicit replacement of the stale channel rather than
       # a second route; losing registrations on restart is correct because
       # every worker reconnects and re-registers.
-      {Registry, keys: :unique, name: SddOrchestrator.AIRuntime.PersonalWorkerRPC.registry()}
+      {Registry, keys: :unique, name: SddOrchestrator.AIRuntime.PersonalWorkerRPC.registry()},
+      # Open folder-selection requests, held in memory only. Losing them on
+      # restart is correct: the native panel on the Mac is gone too, nothing
+      # was promised, and the person simply asks again.
+      SddOrchestrator.RepositorySelection.Server
     ] ++
       retention_children() ++
       dispatcher_children() ++

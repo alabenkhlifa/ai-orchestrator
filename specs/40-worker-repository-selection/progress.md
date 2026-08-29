@@ -1,5 +1,19 @@
 # Worker-Driven Repository Selection Progress Log
 
+### 2026-08-29 - Task 1: the selection request lifecycle
+
+- `SddOrchestrator.RepositorySelection` is the one entry point. `request/3` validates the scope, the worker, and the candidates, pushes through `RepositorySelection.Transport`, and returns a request id without waiting. `cancel/1` closes the caller's own request. `answer/2` is the seam Task 2's channel will call.
+- `RepositorySelection.Server` is a control-plane-only `GenServer` holding the in-memory table. It monitors the requester and the pushed-to channel pid, arms one expiry timer, and removes the entry before sending, so a requester receives exactly one `{:repository_selection, request_id, outcome}` and never a second.
+- Outcome mapping: worker `selected` becomes `{:selected, result}`, `cancelled` becomes `:cancelled`, and `not_a_git_repository`, `empty_repository`, and `inaccessible` become `{:refused, reason}`. A dead channel gives `:worker_lost`; expiry gives `:timeout`; a requester exit cancels the panel and tells nobody, because nobody is left.
+- Refusals answer only `:unknown_request`, `:foreign_answer`, or `:invalid_result`. An already-answered request is indistinguishable from an unknown one on purpose, so a repeat answer cannot learn it lost a race.
+- Privacy: `SelectionRequest` has no field that could hold a location. `SelectionResult.new/1` refuses any key outside its allowlist, so `path`, `folder_path`, and `remote_url` are refused by the same check that refuses any stray key, and a `folder_name` containing `/` or `\` is refused as a path. No `Logger` call in the new modules.
+- `RepositorySelection.Transport` is the behaviour Task 2 implements, following the `Delivery.CommandTransport` idiom. `push/1` answers with the attached channel's pid so the server can monitor it. The default `Transport.Unavailable` refuses with `:no_worker`, which is the honest answer until Task 2 lands.
+- Test transport: `SddOrchestrator.RepositorySelectionTransportDouble` keeps its recording in an unlinked `Agent` reached through application environment, not the process dictionary, because the server is a different process from the test. Unlinked on purpose, so the agent does not die with the test process and crash the server mid-cancel.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_selection_test.exs` — exit `0`.
+- That run was 8 tests, 8 passed, and the main thread confirmed it by real exit status rather than by the sub-agent's report.
+- Safety checks at the same commit: `mix format --check-formatted` exit `0`, `mix compile --warnings-as-errors` exit `0`, `git diff --check` exit `0`.
+- Noted for Task 2: `capability:mac-scoped-worker-connection` now reports `ready` (`specs/39` Task 8 is complete and merged), so Task 2's recorded `Status: Blocked` line is stale and is cleared when Task 2 starts.
+
 ### 2026-08-28 - Specification created from a browser walk-through of the local setup
 
 - Found by clicking through `http://localhost:4000` with the installed worker app running: `/onboarding/local` reported the worker as paired but not running while the app answered `Configuration.load() => {:error, :not_paired}`; `Check again` then showed `Code accepted. Finishing on your Mac…` with no code entered; the assessment page listed `Available worker 1` and refused it as no longer available; and every `Open folder picker` was answered by the development stand-in only.
