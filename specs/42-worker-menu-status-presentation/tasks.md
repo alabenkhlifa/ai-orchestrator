@@ -73,7 +73,7 @@ Traceability:
   - Proof: Focused tests cover every status answering exactly one indicator, connected answering the healthy kind, disconnected and the refused state answering the same problem kind, connecting and setting up answering the same in-progress kind, not paired answering the idle kind, update available answering its own kind rather than a health one, and every `menuStatusLine` string remaining byte-identical.
   - Delivered: `StatusIndicator` names five kinds of state in the AppKit-free Core target and `WorkerStatus.indicator` maps all seven states to them through an exhaustive switch, so a new state cannot compile without choosing a kind. `StatusIndicatorImage` is the only place that knows a colour, drawing the dot through a handler that re-runs so the system colours resolve under the menu's current appearance. Every status string is unchanged and pinned by a test.
 
-- [ ] Task 2 — Reserve grey for an action a person cannot take.
+- [x] Task 2 — Reserve grey for an action a person cannot take.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -81,6 +81,7 @@ Traceability:
   - Owned surfaces: The menu's automatic-enabling setting in `AppDelegate.rebuildMenu()`, and the enabled state of the status item, the pairing-failure detail item, the update-version detail item, and the install item.
   - Owns: AC-03, AC-04, AC-05
   - Proof: Focused tests cover `PairingCodeMenu.statusLine/3` still offering a copyable code only in the code-offering state and still refusing to offer one in every paired state, so the one signal that decides whether a click does anything is unchanged. The enabled rendering itself is AppKit glue with no unit-test seam and is proved by the slice's product proof, which reads a menu carrying a pairing failure, an available version, and a deferred install.
+  - Delivered: The menu stops enabling items automatically, so the status line, the pairing-failure reason, and the available-version line keep their normal look, while the install item still greys out when a run blocks it. The status line gains a target only in the code-offering state, so a click elsewhere does nothing without a stub selector standing in for it.
 
 ## Verification Gate
 

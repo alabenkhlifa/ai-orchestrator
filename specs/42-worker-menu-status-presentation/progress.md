@@ -1,5 +1,17 @@
 # Worker Menu Status Presentation Progress Log
 
+### 2026-08-29 - Task 2 complete: grey now means one thing
+
+- The scope of this task grew before it was written, and the reason is worth keeping. The specification originally changed the status line alone, and its design claimed the menu had three items. Reading `rebuildMenu()` showed five, three of them greyed. Fixing only the status line would have left two greyed rows directly beneath a normal one, which reads as more inconsistent than the menu was before. The user chose to make all three information lines normal and to keep the install item's grey, so grey now reports an action a person cannot take and nothing else. The agreement was recorded before any code was written.
+- The cause was AppKit's own default, not three separate mistakes. With `autoenablesItems` on, an item with no action is greyed automatically, which is exactly what the three information lines are. Turning it off and letting each item own its state fixes all three at once.
+- Two items had been leaning on that default and now say so. The install item's enabled branch sets `isEnabled` explicitly beside its target, and `Quit` sets its own enabled state while deliberately keeping `target` nil, because a target would move termination off the responder chain and away from `applicationShouldTerminate/1`, which is the single place the active-run confirmation is decided.
+- No do-nothing selector was added to the inert status line. Having no action is the honest way to say there is nothing to do, and a stub could later be given a body by accident.
+- `PairingCodeMenuTests` already proved most of the copyable-code signal, because `isCopyAction` is a computed `copyableCode != nil`. Two real gaps were closed: the just-copied line never asserted it still carries the full code, and nothing swept the whole matrix. A sweep across all seven statuses, three code states, and both just-copied values now pins that only an unpaired held code gives the line something to do.
+- Recorded limitation: the enabled rendering has no test seam at all, because `AppDelegate` lives in the app target and the package has no test target for it. `swift build` proves only that it compiles. AC-03 and AC-05 are visual and rest entirely on the slice's product proof. `Quit` is the one item to actually click there, since it is the only one whose dispatch rather than appearance depends on this change.
+- Focused proof, confirmed on the main thread by real exit status `0` with `Executed 256 tests, with 0 failures`, and `swift build` exit `0`. Runner receipt:
+- Proof receipt: `Task 2` — scope `Focused` — command `swift test` — exit `0`.
+- No Elixir file was touched, so no `mix` safety check applies to this task.
+
 ### 2026-08-29 - Task 1 complete: every status carries one dot
 
 - The dot's colour never enters the Core target. `StatusIndicator` names the kind of state and `StatusIndicatorImage` alone maps a kind to a colour, which is what lets the grouping be unit-tested while the palette stays presentation. The grouping is the part worth a test: that a refused connection and a dropped one are the same kind of problem is a product rule, and that the healthy dot is exactly this green is not.
