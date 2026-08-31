@@ -55,6 +55,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var connectionPollTimer: Timer?
     private let connectionPollInterval: TimeInterval = 5
 
+    // [specs/40 Task 4] Answers the release's repository-selection requests:
+    // reads `pending_selection.json`, shows the native folder picker, writes
+    // the answer back. Started with the connection poll and for the same
+    // reason, since a request can only arrive over an attachment.
+    //
+    // Two seconds, because this interval is the delay a person sees between
+    // asking in the dashboard and the panel appearing. The release looks for
+    // their answer twice a second, so the release is never the slow half.
+    private var repositorySelectionResponder: RepositorySelectionResponder?
+    private var repositorySelectionPollTimer: Timer?
+    private let repositorySelectionPollInterval: TimeInterval = 2
+
     // MARK: - Periodic signed-appcast check (Task 10, AC-11 / AC-12)
 
     private var appcastUpdateChecker: AppcastUpdateChecker?
@@ -342,6 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 if pairing == .paired {
                     self.startConnectionPolling()
+                    self.startRepositorySelectionPolling()
                 }
             }
         }
@@ -447,6 +460,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.refreshStatus()
             }
         }
+    }
+
+    // MARK: - Repository selection polling (specs/40 Task 4)
+
+    /// Starts answering the release's folder-picker requests. Same shape as
+    /// `startConnectionPolling()` above, and started from the same place, so
+    /// the app polls for a request only once it is paired: with no
+    /// configuration the release never attaches, and a request can only reach
+    /// it over an attachment.
+    ///
+    /// The tick returns at once. `RepositorySelectionResponder` reads the file
+    /// on its own queue, and the picker hops back to the main thread for the
+    /// panel itself, so the main thread is never blocked by a file read or by
+    /// a person deciding.
+    private func startRepositorySelectionPolling() {
+        guard repositorySelectionPollTimer == nil else { return }
+
+        let responder = RepositorySelectionResponder(picker: NSOpenPanelWorkspaceFolderPicker())
+        repositorySelectionResponder = responder
+
+        let timer = Timer(timeInterval: repositorySelectionPollInterval, repeats: true) { [weak self] _ in
+            self?.repositorySelectionResponder?.respondToPendingSelection()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        repositorySelectionPollTimer = timer
+
+        responder.respondToPendingSelection()
     }
 
     // MARK: - Periodic signed-appcast check (Task 10, AC-11 / AC-12)
