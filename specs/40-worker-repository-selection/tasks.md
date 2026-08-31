@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 ## Active Slice
 
@@ -162,7 +162,7 @@ Traceability:
   - Proof: Focused LiveView tests cover `Check again` on an unavailable worker staying in the unavailable state, `Code accepted` appearing only after a code is accepted in the session, `Pair again` revealing the form, and a completed re-pairing adding a worker while the old row stays.
   - Delivered: `Check again` reports only what the control plane knows, because the waiting panel now derives from a code accepted in this session rather than from the status. An unavailable worker offers `Pair again`, which reveals the same pairing form and deep link.
 
-- [ ] Task 9 — Prove the round trip against the real app and that no path leaks.
+- [x] Task 9 — Prove the round trip against the real app and that no path leaks.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4, Task 7, Task 8
@@ -170,22 +170,28 @@ Traceability:
   - Owned surfaces: The integration scenario from a selection request through the worker's answer to a connected hosted project and a created accountless project, which establishes `capability:worker-repository-selection`, and the log and diagnostic review on both sides for a path, remote, history, file name, or content.
   - Owns: none
   - Proof: An integration scenario drives a request through a fake app answer to a connected hosted project and to an accountless project with the suggested name, then a log and diagnostic review across the control plane and the worker finds only identities and a folder name.
+  - Delivered: An end-to-end scenario drives a real attached worker over a real websocket, answers with the file the Mac app would write, and asserts the leak review as assertions over captured logs and traced channel frames. `capability:worker-repository-selection` is established.
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Project-scoped attachment, delivery, and run execution tests pass unchanged.
-- [ ] The hosted exact-match, binding replacement, and disconnect tests pass unchanged.
-- [ ] Availability, waiting, cancel, timeout, and worker-lost transitions pass.
-- [ ] The log, diagnostic, and no-analytics review finds no path, remote, history, file name, or content, and no answer file survives a completed selection.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass through the stub adapter under `E2E_MODE`.
-- [ ] The worker app's own test suite passes.
-- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app, connecting a hosted local-repository project and creating an accountless project, recorded in `progress.md`.
+- [x] Active-slice acceptance criteria pass.
+- [x] Project-scoped attachment, delivery, and run execution tests pass unchanged.
+- [x] The hosted exact-match, binding replacement, and disconnect tests pass unchanged.
+- [x] Availability, waiting, cancel, timeout, and worker-lost transitions pass.
+- [x] The log, diagnostic, and no-analytics review finds no path, remote, history, file name, or content, and no answer file survives a completed selection.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass through the stub adapter under `E2E_MODE`.
+- [x] The worker app's own test suite passes.
+- [x] Product proof, accountless half: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app, creating a project from the worker's own folder picker. Recorded in `progress.md`.
+- [x] Product proof, hosted half: accepted exception. No screen creates a hosted local-repository project in this build, so the path cannot be clicked. See the exception below.
 
 ## Blocked Decisions
 
 - None.
+
+## Accepted Exceptions
+
+- The hosted half of the Product Proof Gate is accepted as unproven by clicking, agreed with the user on 2026-08-31. A hosted local-repository project has no creation path in this build: the accountless flow answers "Saving local projects to a hosted account is coming soon", GitHub sign-in creates `github`-provider projects, and the only such project in the repository comes from `/_e2e` seeding, which this gate forbids. The selection code the hosted seam runs is the code the accountless click path proved against the real worker app, and the hosted seam additionally holds domain tests and a passing browser scenario through the stub adapter. What stays unproven by a click is the upstream project-creation path, owned by the hosted-storage slice that message names.
 
 ## Release Gate
 

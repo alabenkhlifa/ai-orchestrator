@@ -29,9 +29,15 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
   alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
-  alias SddOrchestrator.Devices.PortableRepositoryIdentity
-  alias SddOrchestrator.Devices.RepositoryValidation
-  alias SddOrchestrator.Devices.{Pairing, PairingIssuanceThrottle, WorkerDiscovery}
+
+  alias SddOrchestrator.Devices.{
+    Pairing,
+    PairingIssuanceThrottle,
+    PortableRepositoryIdentity,
+    RepositoryValidation,
+    WorkerDiscovery
+  }
+
   alias SddOrchestrator.Projects
   alias SddOrchestratorWeb.RepositoryAssessmentLive
 

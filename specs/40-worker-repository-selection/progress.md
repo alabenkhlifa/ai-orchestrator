@@ -1,5 +1,52 @@
 # Worker-Driven Repository Selection Progress Log
 
+### 2026-08-31 - Slice gate: verified, with the hosted product proof as an accepted exception
+
+**Task 9.** `test/sdd_orchestrator/repository_selection_end_to_end_test.exs` drives a real `Worker.GatewayConnection` over a real websocket against a `Bandit` listener, redeems a real pairing, joins the workspace topic, and negotiates the `repository_selection` capability. The only stand-in is the Mac app: the answer file is written with the same two keys, `0600` mode, and create-then-rename that `SelectionAnswerWriter.swift` uses.
+
+- The leak review is assertions, not a person reading output. Logs are captured at `:debug` and channel traffic is captured with `:erlang.trace(channel, [:send, :receive])`, giving the verbatim outbound and inbound payloads. Both are refuted against the repository's absolute path, its parent path, a distinctively named file inside it, its remote URL, and every commit id plus each id's leading twelve characters.
+- Both absence proofs are guarded against vacuity: the captured log must contain the worker's own `CONNECTED TO`, `JOINED`, and `HANDLED repository_selection_result` lines and a `QUERY OK`, and the frame transcript must contain the request id, the folder name, and the identity. A throwaway copy that logged the path failed the review, so the review can fail.
+- Proof receipt: `Task 9` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_selection_end_to_end_test.exs` — exit `0`.
+- That run was 3 tests, 3 passed, stable across four seeds, and the main thread confirmed it by real exit status.
+- `capability:worker-repository-selection` is ready. `Task 9` is complete, and the round trip is proved both by the end-to-end scenario and by a person clicking from `/` against the real worker app.
+- Latent flake fixed in `Task 3`'s test file on the same finding: `write_answer!` used a plain `File.write!` while the release deletes the answer before decoding it, so a half-written file would be lost rather than retried. It now renames a complete neighbour, as the app does.
+
+**Repository-wide gates.**
+
+- Proof receipt: `slice` — command `env MIX_TEST_PARTITION=slice40 mix check` — exit `0` is not claimed. `mix check` reached `4760/4761` and stopped at one failure, `SddOrchestrator.Delivery.Worker.IsolationTest` "one current process refuses to act on a lock record it cannot read". That file passes alone, 53 tests, exit `0`. It is one of the two known full-suite-load flakes, recorded as gate evidence rather than re-run until green.
+- Because `mix check` aborts at its test stage, the remaining tools were run explicitly and each returned exit `0`: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` (through the check run), `mix dialyzer` (25 errors, 25 skipped, passed), `mix deps.audit`, `mix sobelow --config`.
+- One credo finding of this slice's own was fixed rather than excused: an alias group in `local_onboarding_live_test.exs` was not alphabetically ordered.
+- Browser suite: `npm --prefix assets ci` exit `0`, then `npm --prefix assets run test:e2e` exit `0`, 153 passed and 2 skipped, after dropping `sdd_orchestrator_e2e_desktop` and `sdd_orchestrator_e2e_mobile`. The async selection flow settles through the `Stub` transport without a single spec change.
+- Worker app suite: `swift test` exit `0`, 293 tests. `DistributionFreeCallSitesTests` passes, so nothing in this slice reintroduced an `rpc` call site.
+- Second known flake seen once and recorded, not chased: `WorkerProcessControllerTests.test_stop_endsTheRunningChildWithoutRunningAnyCommand` failed on one intermediate Swift run and passed alone and on the two runs after.
+- A third failure was investigated properly rather than accepted: a sub-agent reported `project_assistant_panel_test.exs:277` as pre-existing, a `main` worktree appeared to contradict that, and running `main` again on the seeds this branch had actually used reproduced it there. Pre-existing and seed-dependent, unrelated to this slice.
+
+**Product proof, accountless half, done against the real worker app.**
+
+The installed app predated `Task 3`, `Task 4`, and `Task 10`, so it was rebuilt with `native/worker-app/build.sh` and reinstalled to `~/Applications`, keeping the paired `worker.json`. The old app and its orphaned release beam were stopped with `SIGTERM`, never `kill -9`, because that is what broke Erlang distribution on this Mac before. The dev server ran plain `mix phx.server` on `:4000`, where `:device_worker_stub` is `false` and `:repository_selection_transport` is `Transport.Attachment`. Both were read back and confirmed before clicking.
+
+Click path, from `/` with no `/_e2e` seeding:
+
+1. `/` to `Work without GitHub`. The screen reported `Connected. Worker connected on this Mac.` from a real attachment, which is the state `specs/40` was written to fix.
+2. `Choose repository`, then `Open folder picker`. The screen showed `Waiting for the worker. We asked the worker app to open a folder picker.` and offered `Cancel`.
+3. On disk at that moment: `pending_selection.json`, mode `0600`, holding exactly `request_id` and `expires_at`. No path, no candidates.
+4. The real `NSOpenPanel` opened on the Mac. Picking the orchestrator repository answered with the duplicate outcome, `This repository is already connected as Portability browser proof`, computed from the worker's own match list.
+5. Picking a fresh repository answered `Connected` with the folder name `product-proof-repo` and no path anywhere on screen.
+6. `Continue` reached the storage step, `On this device`, `Connect and create project`, and the project page opened at `/local/projects/c1b879d5-...` titled `product-proof-repo`.
+
+Evidence gathered on the real machine, not from tests:
+
+- After the completed selection, neither `selection_answer.json` nor `pending_selection.json` remained under `~/.sdd_orchestrator/worker/`. That is `AC-11` proven on the real filesystem.
+- The transported payload in the server log was exactly `%{"folder_name" => "product-proof-repo", "identity" => "local-repo:v1..."}`. That is `AC-08` proven on real traffic.
+- The device store, `priv/device_store/dev.dets`, contains the folder name twice and no absolute path at all: a grep for `/private/tmp` and `/Users/alabenkhlifa` returns nothing.
+- The server log contains no absolute repository path, and shows the worker declaring `repository_selection` at attach.
+
+**Product proof, hosted half, accepted as an exception by the user on 2026-08-31.**
+
+It cannot be clicked in this build. The accountless flow refuses hosted storage with `Saving local projects to a hosted account is coming soon. On-device projects are ready now.`; `Projects.build_and_run/4` defaults a project's provider to `github`; and `assets/e2e/hosted-local-repository-connection.spec.js` obtains its project through `bootstrap(page, "hosted_local_repository_project")`, which is the `/_e2e` seeding this gate forbids. A hosted local-repository project therefore has no creation path a person can click, which is a gap owned by the hosted-storage slice that message names, not by this slice. The hosted seam's own code is the code the accountless click path exercised against the real worker, and it additionally holds domain tests and a passing browser scenario through the stub adapter. Recorded under `## Accepted Exceptions` in `tasks.md`.
+
+**Readiness.** Requirements, design, implementation, and verification are complete for the active slice. Release is not: the gate still needs a signed and notarized worker app build carrying the picker poll, which needs an Apple signing identity and the notarization service. The build made for this proof is deliberately unsigned and un-notarized.
+
 ### 2026-08-31 - Task 7: accountless selection and locate ask the worker
 
 - `LocalOnboardingLive` no longer receives a path. Selection requests every existing project's identity as a candidate with `generate: true`, so the worker's match list is the duplicate outcome `Devices.select_repository/2` used to compute from a path, its generated identity is the new project's fingerprint, and its folder name is the suggested project name. `location` is gone from the `selected` map and its rendered paragraph is deleted, so no path can be shown.

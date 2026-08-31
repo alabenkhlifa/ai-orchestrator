@@ -80,8 +80,16 @@ defmodule SddOrchestrator.Worker.RepositorySelectionTest do
     dir
   end
 
+  # Written the way the Mac app writes it, by renaming a complete neighbour over
+  # the target. The release deletes the answer before decoding it, so a
+  # half-written file would be lost rather than retried; a plain `File.write!`
+  # here is a flake waiting for a slow machine.
   defp write_answer!(home, contents) do
-    File.write!(RepositorySelection.answer_path(home), Jason.encode!(contents))
+    path = RepositorySelection.answer_path(home)
+    temporary = path <> ".partial"
+
+    File.write!(temporary, Jason.encode!(contents))
+    File.rename!(temporary, path)
   end
 
   # A paired worker, stored the way pairing stores it, so the release reads its
