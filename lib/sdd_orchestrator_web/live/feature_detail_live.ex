@@ -94,6 +94,16 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   @requirements_unsaved "That did not save, and nothing changed. Try again."
 
+  # Three readiness states the section shows and the lifecycle actions answer
+  # with. Each is written once and rendered wherever it applies, so the note a
+  # person reads and the refusal a press returns cannot drift apart.
+  @readiness_check_first "Check readiness first."
+
+  @readiness_stale_note "The requirements changed after this check. Check readiness again."
+
+  @readiness_blocked_note "Something still blocks this feature. " <>
+                            "Clear the blockers above, then check readiness again."
+
   # A refused check leaves the last verdict exactly as it was. Each sentence
   # says what to do next, because the reader can act on the words in the form
   # or on pressing again, never on the shape of the failure.
@@ -103,7 +113,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     guidance_unavailable: "The guidance model could not be reached. Try again.",
     not_dismissible: "That one blocks development, so it cannot be dismissed.",
     stale_assessment: "This changed while you were reading it. Check readiness again.",
-    not_found: "Check readiness first."
+    not_found: @readiness_check_first
   }
 
   @readiness_unchecked "Readiness could not be checked, and nothing changed. Try again."
@@ -112,6 +122,12 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   # not the reader's computer, and it never implies a model judged anything.
   @readiness_not_configured "No guidance model is configured here. " <>
                               "These findings come from the guided parts alone."
+
+  # A lifecycle move this page can no longer make. Naming the shape of the
+  # refusal would describe a race to somebody who can only act on one thing:
+  # reading where the feature actually is now.
+  @lifecycle_refused "This feature changed while you were looking at it. " <>
+                       "Reload the page and try again."
 
   @retry_messages %{
     no_failed_run: "This run is going again already.",
@@ -411,6 +427,46 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
+  # Ready is a decision, so the press is answered against the verdict the page
+  # is showing. What the screen does not offer is refused here too: a page left
+  # open can still send this event after the words moved on.
+  def handle_event("make_ready", _params, socket) do
+    case make_ready_state(
+           socket.assigns.feature,
+           socket.assigns.readiness,
+           socket.assigns.requirements_revision_id,
+           socket.assigns.requirements_digest
+         ) do
+      :ready -> promote_feature(socket)
+      refused -> {:noreply, assign(socket, :lifecycle_error, make_ready_refusal(refused))}
+    end
+  end
+
+  # The way back out of `Ready for development`. It moves the column and nothing
+  # else: the written words, the verdict, and its findings stay exactly as they
+  # are, so the person picks up where they left off.
+  def handle_event("back_to_draft", _params, socket) do
+    feature = socket.assigns.feature
+
+    socket.assigns.project_id
+    |> Features.transition(socket.assigns.actor, feature, "draft",
+      expected_state_version: feature.state_version
+    )
+    |> case do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(:lifecycle_error, nil)
+         |> assign_feature(socket.assigns.project_id, socket.assigns.actor, updated)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :lifecycle_error, @lifecycle_refused)}
+    end
+  end
+
   def handle_event("retry", _params, socket) do
     socket
     |> storage_authority()
@@ -707,6 +763,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp saved_requirements(socket, %{revision: revision}) do
     socket
     |> assign(:requirements_revision_id, revision.id)
+    |> assign(:requirements_digest, revision.content_digest)
     |> assign(:requirements_carried, carried_documents(revision))
     |> assign(:requirements_parts, GuidedRequirements.parse(revision.requirements_document))
     |> assign(:requirements_error, nil)
@@ -749,6 +806,59 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     do: Map.get(@readiness_messages, reason, @readiness_unchecked)
 
   defp readiness_message(_reason), do: @readiness_unchecked
+
+  # The state version travels in the operation key, so a double press from one
+  # screen is absorbed while a feature that went back to draft can be made ready
+  # again rather than answering with the first press's result.
+  defp promote_feature(socket) do
+    feature = socket.assigns.feature
+
+    socket
+    |> storage_authority()
+    |> Suggestions.promote(
+      socket.assigns.actor,
+      %{project: socket.assigns.project, feature: feature},
+      "ready:#{feature.id}:#{feature.state_version}"
+    )
+    |> case do
+      # The absorbed repeat carries the earlier activity and no feature, so the
+      # feature is read back either way and both presses land on one screen.
+      {:ok, _outcome} ->
+        reload_feature(socket)
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :lifecycle_error, promote_message(reason))}
+    end
+  end
+
+  defp reload_feature(socket) do
+    project_id = socket.assigns.project_id
+    actor = socket.assigns.actor
+
+    case Features.fetch(project_id, actor, socket.assigns.feature.id) do
+      {:ok, feature} ->
+        {:noreply,
+         socket
+         |> assign(:lifecycle_error, nil)
+         |> assign_feature(project_id, actor, feature)}
+
+      {:error, _reason} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects/#{project_id}/features")}
+    end
+  end
+
+  # The domain refuses a blocker on its own, and it says the same thing the
+  # screen already says, so the reader gets one instruction either way.
+  defp promote_message(:not_ready), do: @readiness_blocked_note
+  defp promote_message(_reason), do: @lifecycle_refused
+
+  defp make_ready_refusal(:unchecked), do: @readiness_check_first
+  defp make_ready_refusal(:stale), do: @readiness_stale_note
+  defp make_ready_refusal(:blocked), do: @readiness_blocked_note
+  defp make_ready_refusal(:not_draft), do: @lifecycle_refused
 
   defp review_subject(socket),
     do: %{project: socket.assigns.project, feature: socket.assigns.feature}
@@ -839,6 +949,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
     |> assign(:specification_link_error, socket.assigns[:specification_link_error])
+    |> assign(:lifecycle_error, socket.assigns[:lifecycle_error])
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
@@ -904,11 +1015,15 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
+  # The revision's digest is held beside its id because a verdict is bound to
+  # both. That pair is what lets the readiness section tell a verdict about the
+  # words on screen from one about words that have since changed.
   defp load_requirements(socket, feature) do
     case current_specification(socket, feature) do
       {:ok, %{revision: revision}} ->
         socket
         |> assign(:requirements_revision_id, revision.id)
+        |> assign(:requirements_digest, revision.content_digest)
         |> assign(:requirements_carried, carried_documents(revision))
         |> assign(:requirements_parts, GuidedRequirements.parse(revision.requirements_document))
         |> assign(:requirements_error, nil)
@@ -916,6 +1031,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       :error ->
         socket
         |> assign(:requirements_revision_id, nil)
+        |> assign(:requirements_digest, nil)
         |> assign(:requirements_carried, nil)
         |> assign(:requirements_parts, GuidedRequirements.parse(""))
         |> assign(:requirements_error, nil)
@@ -1192,6 +1308,42 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     do: not ReadinessAssessment.guidance_configured?(assessment)
 
   defp readiness_not_configured, do: @readiness_not_configured
+
+  defp readiness_stale_note, do: @readiness_stale_note
+
+  # A verdict judged one exact revision. Once the specification has moved past
+  # it, the findings on screen describe words nobody is looking at any more, so
+  # the section says so instead of letting an old answer stand for a new one.
+  defp readiness_stale?(nil, _revision_id, _digest), do: false
+
+  defp readiness_stale?(assessment, revision_id, digest)
+       when is_binary(revision_id) and is_binary(digest),
+       do: not ReadinessAssessment.current_for?(assessment, revision_id, digest)
+
+  defp readiness_stale?(_assessment, _revision_id, _digest), do: true
+
+  # Whether this feature may be made ready, and when it may not, which state
+  # says so. The control and the press read this one answer, so nothing is
+  # offered that would be refused and nothing is refused that was offered.
+  defp make_ready_state(%{lifecycle_column: "draft"}, nil, _revision_id, _digest), do: :unchecked
+
+  defp make_ready_state(%{lifecycle_column: "draft"}, assessment, revision_id, digest) do
+    cond do
+      readiness_stale?(assessment, revision_id, digest) -> :stale
+      not ReadinessAssessment.start_available?(assessment) -> :blocked
+      true -> :ready
+    end
+  end
+
+  defp make_ready_state(_feature, _assessment, _revision_id, _digest), do: :not_draft
+
+  defp make_ready?(feature, assessment, revision_id, digest),
+    do: make_ready_state(feature, assessment, revision_id, digest) == :ready
+
+  # The only column a feature comes back from. `In development` is a running
+  # agent's, and ending that is cancellation rather than a change of mind.
+  defp back_to_draft?(%{lifecycle_column: "ready_for_development"}), do: true
+  defp back_to_draft?(_feature), do: false
 
   defp column_label(column), do: Map.fetch!(@column_labels, column)
   defp status_label(status), do: Map.get(@status_labels, status)
@@ -1524,6 +1676,18 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           </p>
 
           <div :if={@readiness} data-readiness-checked>
+            <%!-- The verdict comes first when it is about older words, because
+            everything under it is then a judgement of text nobody can see. --%>
+            <div
+              :if={readiness_stale?(@readiness, @requirements_revision_id, @requirements_digest)}
+              class="mt-3"
+              data-readiness-stale
+            >
+              <.notice variant="warn" icon="triangle-alert">
+                {readiness_stale_note()}
+              </.notice>
+            </div>
+
             <p
               :if={guidance_unconfigured?(@readiness)}
               class="mt-3 text-[13px] leading-relaxed text-ink-muted"
@@ -1592,6 +1756,46 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             >
               Nothing is blocking this feature.
             </p>
+          </div>
+
+          <%!-- The two moves the board withholds. They live with the findings
+          because the findings are what decides whether either is offered. --%>
+          <p
+            :if={@lifecycle_error}
+            class="mt-4 flex items-start gap-1.5 text-xs text-err-fg"
+            data-lifecycle-error
+          >
+            <.lucide name="circle-alert" class="size-3.5 flex-none" />
+            {@lifecycle_error}
+          </p>
+
+          <div
+            :if={
+              make_ready?(@feature, @readiness, @requirements_revision_id, @requirements_digest) or
+                back_to_draft?(@feature)
+            }
+            class="mt-4 flex flex-col gap-3 sm:flex-row"
+          >
+            <.button
+              :if={make_ready?(@feature, @readiness, @requirements_revision_id, @requirements_digest)}
+              type="button"
+              phx-click="make_ready"
+              class="w-full sm:w-auto"
+              data-make-ready
+            >
+              <.lucide name="check" class="size-4" /> Make ready
+            </.button>
+
+            <.button
+              :if={back_to_draft?(@feature)}
+              type="button"
+              variant="secondary"
+              phx-click="back_to_draft"
+              class="w-full sm:w-auto"
+              data-back-to-draft
+            >
+              <.lucide name="arrow-left" class="size-4" /> Back to draft
+            </.button>
           </div>
         </section>
 

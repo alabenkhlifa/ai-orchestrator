@@ -1,5 +1,17 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-08-31 - Task 4 complete: the two lifecycle moves the board withholds
+
+- `Make ready` calls `Suggestions.promote/4` with the operation key `ready:` plus the feature id and its state version. The state version belongs in the key: a bare feature-id key would absorb a second press, but it would also silently replay the first press's result for a feature that had since gone back to draft.
+- `Back to draft` calls `Features.transition/5` with the feature's expected state version, and renders only from `ready_for_development`.
+- The page now holds the head revision's digest beside its id, so `ReadinessAssessment.current_for?/3` can answer whether the verdict still judges the document in front of the person. A stale verdict renders a notice and withholds `Make ready`.
+- `make_ready_state/4` is the single answer both the control and the event read, so a press from a page left open is refused rather than merely hidden. That is the difference between a hidden button and a guarded action.
+- The copy is single-sourced in module attributes, and the existing `Check readiness first.` literal now references the attribute rather than holding a second copy that could drift.
+- No domain module changed. This task is the first product caller of `Suggestions.promote/4`, which had none under `lib/`.
+- The stale test asserts `[data-start-development]` is absent as a forward guard, since `Task 8` has not built that control yet. `Task 8` must use that attribute for the guard to keep meaning anything.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/feature_lifecycle_actions_test.exs` — exit `0`.
+- Confirmed on the main thread by real exit status. 5 tests passed, and 131 neighbouring page tests pass unchanged.
+
 ### 2026-08-31 - Tasks 3 and 10 complete, and a fixture that lied about production
 
 `Task 3`, readiness from the feature's own specification.

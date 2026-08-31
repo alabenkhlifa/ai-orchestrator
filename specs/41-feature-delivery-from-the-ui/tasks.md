@@ -106,7 +106,7 @@ Traceability:
   - Proof: Focused tests cover an empty part producing one blocking finding, a full document producing none, a fake configured adapter's blocking and suggestion findings merged and the suggestion dismissible, the unconfigured adapter recorded as not configured and shown as such, and a feature without a linked specification refused.
   - Delivered: `Readiness` reads the feature's own linked specification, adds one blocking `missing` finding per empty guided part, and records a `guidance` flag so the page can say no model is configured. `DeliveryFixtures.feature_fixture/3` now creates features through `Features.create/3`, so a test feature holds the specification production gives it.
 
-- [ ] Task 4 — Make a feature ready or return it to draft from its page.
+- [x] Task 4 — Make a feature ready or return it to draft from its page.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
@@ -114,6 +114,7 @@ Traceability:
   - Owned surfaces: `Make ready` through `Suggestions.promote/4`, `Back to draft` through `Features.transition/5`, the stale-verdict rendering when a newer revision exists, and hiding `Make ready` until readiness is checked again.
   - Owns: AC-04, AC-05
   - Proof: Focused LiveView tests cover `Make ready` moving a blocker-free feature to `Ready for development`, a blocker refusing it with the blocker named, a save after ready rendering the verdict stale and hiding both `Make ready` and the start action, and `Back to draft` returning the column.
+  - Delivered: `Make ready` and `Back to draft` are on the feature page, and a save after ready renders the verdict stale and withholds `Make ready` until readiness is checked again. One function answers both the control and the event, so a press from a stale page is refused rather than only hidden.
 
 - [x] Task 5 — Build the started run's manifest from the approved execution profile.
   - Size: Standard
