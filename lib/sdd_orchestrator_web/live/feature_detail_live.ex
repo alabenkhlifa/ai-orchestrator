@@ -30,9 +30,12 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     PreviewPresentation,
     ProcessingDisclosure,
     QuestionRouting,
+    Readiness,
+    ReadinessAssessment,
     Retry,
     Review,
-    ReviewDecision
+    ReviewDecision,
+    Suggestions
   }
 
   alias SddOrchestrator.SpecificationStore
@@ -90,6 +93,25 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   }
 
   @requirements_unsaved "That did not save, and nothing changed. Try again."
+
+  # A refused check leaves the last verdict exactly as it was. Each sentence
+  # says what to do next, because the reader can act on the words in the form
+  # or on pressing again, never on the shape of the failure.
+  @readiness_messages %{
+    no_specification: "This feature has no specification to check.",
+    guidance_timeout: "The guidance model did not answer in time. Try again.",
+    guidance_unavailable: "The guidance model could not be reached. Try again.",
+    not_dismissible: "That one blocks development, so it cannot be dismissed.",
+    stale_assessment: "This changed while you were reading it. Check readiness again.",
+    not_found: "Check readiness first."
+  }
+
+  @readiness_unchecked "Readiness could not be checked, and nothing changed. Try again."
+
+  # What the page may say when no model took part. It states this deployment,
+  # not the reader's computer, and it never implies a model judged anything.
+  @readiness_not_configured "No guidance model is configured here. " <>
+                              "These findings come from the guided parts alone."
 
   @retry_messages %{
     no_failed_run: "This run is going again already.",
@@ -350,6 +372,43 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     socket
     |> assign(:requirements_parts, GuidedRequirements.parse(document))
     |> save_requirements(document)
+  end
+
+  # Readiness is checked when the person asks for it, never as a side effect of
+  # opening the page. A verdict that appeared on its own would be about words
+  # somebody was still writing.
+  def handle_event("check_readiness", _params, socket) do
+    socket
+    |> storage_authority()
+    |> Readiness.assess(socket.assigns.actor, %{
+      project: socket.assigns.project,
+      feature: socket.assigns.feature
+    })
+    |> case do
+      {:ok, assessment} ->
+        {:noreply,
+         socket
+         |> assign(:readiness, assessment)
+         |> assign(:readiness_error, nil)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :readiness_error, readiness_message(reason))}
+    end
+  end
+
+  # The stored version travels with the press, so a dismissal aimed at the list
+  # that was on screen is refused once readiness has been checked again.
+  def handle_event("dismiss_suggestion", %{"id" => finding_id}, socket) do
+    case socket.assigns.readiness do
+      nil ->
+        {:noreply, assign(socket, :readiness_error, readiness_message(:not_found))}
+
+      assessment ->
+        dismiss_suggestion(socket, assessment, finding_id)
+    end
   end
 
   def handle_event("retry", _params, socket) do
@@ -663,6 +722,34 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   defp requirements_message(_reason), do: @requirements_unsaved
 
+  defp dismiss_suggestion(socket, assessment, finding_id) do
+    socket.assigns.project_id
+    |> Suggestions.dismiss(
+      socket.assigns.actor,
+      socket.assigns.feature.id,
+      finding_id,
+      assessment.version
+    )
+    |> case do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(:readiness, updated)
+         |> assign(:readiness_error, nil)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :readiness_error, readiness_message(reason))}
+    end
+  end
+
+  defp readiness_message(reason) when is_atom(reason),
+    do: Map.get(@readiness_messages, reason, @readiness_unchecked)
+
+  defp readiness_message(_reason), do: @readiness_unchecked
+
   defp review_subject(socket),
     do: %{project: socket.assigns.project, feature: socket.assigns.feature}
 
@@ -747,6 +834,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign_review(actor, feature)
     |> assign_available_specifications(project_id, actor, feature)
     |> assign_requirements(feature)
+    |> assign_readiness(project_id, actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
@@ -787,6 +875,21 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       end
 
     assign(socket, :available_specifications, available)
+  end
+
+  # The verdict already on record, if there is one. A reader who cannot see it
+  # sees nothing rather than an error, which is the answer the rest of this
+  # screen gives someone outside the project.
+  defp assign_readiness(socket, project_id, actor, feature) do
+    assessment =
+      case Readiness.current(project_id, actor, feature.id) do
+        {:ok, assessment} -> assessment
+        {:error, _reason} -> nil
+      end
+
+    socket
+    |> assign(:readiness, assessment)
+    |> assign(:readiness_error, socket.assigns[:readiness_error])
   end
 
   # The feature's own requirements, read once and then held. Every later action
@@ -1076,6 +1179,20 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   defp requirements_body(parts, key), do: Map.get(parts, key, "")
 
+  # Read only inside the block the checked verdict guards, so there is no
+  # absent-assessment clause to keep in step with it.
+  defp readiness_blockers(assessment), do: ReadinessAssessment.blockers(assessment)
+
+  defp readiness_suggestions(assessment), do: ReadinessAssessment.suggestions(assessment)
+
+  # The page says a model was not asked only when the stored verdict says so.
+  # It never infers it from an empty finding list, which is also what a model
+  # that found nothing answers.
+  defp guidance_unconfigured?(assessment),
+    do: not ReadinessAssessment.guidance_configured?(assessment)
+
+  defp readiness_not_configured, do: @readiness_not_configured
+
   defp column_label(column), do: Map.fetch!(@column_labels, column)
   defp status_label(status), do: Map.get(@status_labels, status)
   defp gated_action(column), do: Map.fetch!(@gated_actions, column)
@@ -1364,6 +1481,118 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
               <.lucide name="check" class="size-4" /> Save
             </.button>
           </form>
+        </section>
+
+        <%!-- What the words above still need. Blockers first, because they are
+        the only ones that stop development. --%>
+        <section
+          class="mt-6 rounded-lg border border-line bg-surface p-4"
+          aria-labelledby="readiness-heading"
+          data-readiness
+        >
+          <h2 id="readiness-heading" class="text-[13px] font-semibold text-ink">
+            What is still missing
+          </h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Check this before development starts. Every empty part is a blocker.
+          </p>
+
+          <.button
+            type="button"
+            phx-click="check_readiness"
+            class="mt-3 w-full sm:w-auto"
+            data-check-readiness
+          >
+            <.lucide name="circle-check" class="size-4" /> Check readiness
+          </.button>
+
+          <p
+            :if={@readiness_error}
+            class="mt-3 flex items-start gap-1.5 text-xs text-err-fg"
+            data-readiness-error
+          >
+            <.lucide name="circle-alert" class="size-3.5 flex-none" />
+            {@readiness_error}
+          </p>
+
+          <p
+            :if={is_nil(@readiness)}
+            class="mt-3 text-[13px] leading-relaxed text-ink-muted"
+            data-readiness-unchecked
+          >
+            This has not been checked yet.
+          </p>
+
+          <div :if={@readiness} data-readiness-checked>
+            <p
+              :if={guidance_unconfigured?(@readiness)}
+              class="mt-3 text-[13px] leading-relaxed text-ink-muted"
+              data-readiness-guidance="not_configured"
+            >
+              {readiness_not_configured()}
+            </p>
+
+            <div :if={readiness_blockers(@readiness) != []} class="mt-4" data-readiness-blockers>
+              <h3 class="text-[13px] font-semibold text-ink">Blockers</h3>
+              <ul class="mt-2 flex flex-col gap-2">
+                <li
+                  :for={finding <- readiness_blockers(@readiness)}
+                  class="rounded-lg border border-err-fg/40 bg-err-bg p-3"
+                  data-readiness-blocker={finding["id"]}
+                >
+                  <p class="flex items-start gap-1.5 text-[13px] font-semibold text-err-fg">
+                    <.lucide name="circle-alert" class="size-3.5 flex-none" />
+                    {finding["summary"]}
+                  </p>
+                  <p class="mt-1 text-[13px] leading-relaxed text-ink">
+                    {finding["explanation"]}
+                  </p>
+                </li>
+              </ul>
+            </div>
+
+            <div
+              :if={readiness_suggestions(@readiness) != []}
+              class="mt-4"
+              data-readiness-suggestions
+            >
+              <h3 class="text-[13px] font-semibold text-ink">Suggestions</h3>
+              <ul class="mt-2 flex flex-col gap-2">
+                <li
+                  :for={finding <- readiness_suggestions(@readiness)}
+                  class="rounded-lg border border-line p-3"
+                  data-readiness-suggestion={finding["id"]}
+                >
+                  <p class="flex items-start gap-1.5 text-[13px] font-semibold text-ink">
+                    <.lucide name="info" class="size-3.5 flex-none" />
+                    {finding["summary"]}
+                  </p>
+                  <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                    {finding["explanation"]}
+                  </p>
+                  <.button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    phx-click="dismiss_suggestion"
+                    phx-value-id={finding["id"]}
+                    class="mt-3 w-full sm:w-auto"
+                    data-dismiss-suggestion={finding["id"]}
+                  >
+                    <.lucide name="x" class="size-4" /> Dismiss
+                  </.button>
+                </li>
+              </ul>
+            </div>
+
+            <p
+              :if={readiness_blockers(@readiness) == [] and readiness_suggestions(@readiness) == []}
+              class="mt-3 text-[13px] leading-relaxed text-ink"
+              data-readiness-clear
+            >
+              Nothing is blocking this feature.
+            </p>
+          </div>
         </section>
 
         <section

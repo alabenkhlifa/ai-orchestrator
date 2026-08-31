@@ -96,7 +96,7 @@ Traceability:
   - Proof: Focused LiveView tests cover a save producing one new revision holding the four parts, the form showing them back after reload, a concurrent revision being refused with a reload notice, and the design and tasks documents unchanged across saves.
   - Delivered: `Delivery.GuidedRequirements` owns the four-part document shape, derived from `Readiness.guided_structure/0` so the headings cannot drift. The feature page's form saves one revision against the head it loaded and carries the design and tasks documents forward.
 
-- [ ] Task 3 — Judge readiness from the feature's specification with structural findings.
+- [x] Task 3 — Judge readiness from the feature's specification with structural findings.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -104,6 +104,7 @@ Traceability:
   - Owned surfaces: `Readiness.assess/3` and `start_available?/4` reading the linked specification, the structural `missing` finding per empty part, the merge with adapter findings, the `guidance` flag and `ReadinessGuidance.Unconfigured` answering `:not_configured`, and the readiness section with `Check readiness`, blockers, suggestions, dismiss, and the not-configured statement.
   - Owns: AC-03
   - Proof: Focused tests cover an empty part producing one blocking finding, a full document producing none, a fake configured adapter's blocking and suggestion findings merged and the suggestion dismissible, the unconfigured adapter recorded as not configured and shown as such, and a feature without a linked specification refused.
+  - Delivered: `Readiness` reads the feature's own linked specification, adds one blocking `missing` finding per empty guided part, and records a `guidance` flag so the page can say no model is configured. `DeliveryFixtures.feature_fixture/3` now creates features through `Features.create/3`, so a test feature holds the specification production gives it.
 
 - [ ] Task 4 — Make a feature ready or return it to draft from its page.
   - Size: Standard
@@ -129,9 +130,9 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 4, Task 5
   - Purpose: Tell the person why they cannot start yet, and where to go.
-  - Owned surfaces: `Start.preconditions/3` with ready, boundary, approved profile, attached bound worker, and AI connection choice, `Start.available?/3` derived from it, and the start section rendering each item with its resolving route while keeping the existing disclosure and `confirm_boundary` control.
+  - Owned surfaces: `Start.preconditions/3` with ready, boundary, approved profile, attached bound worker, and AI connection choice, `Start.available?/3` derived from it, `Start.current_revision/2` reading the feature's own linked specification rather than the project's first, and the start section rendering each item with its resolving route while keeping the existing disclosure and `confirm_boundary` control.
   - Owns: AC-06, entity:StartReadout
-  - Proof: Focused tests cover each unmet item rendered with its route and the button absent, all items met rendering the button, the worker item unmet for a bound worker that is not attached now, and the readout and `available?/3` agreeing on every combination tested.
+  - Proof: Focused tests cover each unmet item rendered with its route and the button absent, all items met rendering the button, the worker item unmet for a bound worker that is not attached now, the readout and `available?/3` agreeing on every combination tested, and a project holding two specifications starting against the feature's own.
 
 - [x] Task 7 — Join a bound project's run topic when the control plane says so.
   - Size: Standard
@@ -161,7 +162,7 @@ Traceability:
   - Owns: AC-10
   - Proof: An integration scenario drives the full path as owner and again as participant to a delivered `RunCommand`, a non-member is refused on every new event and page, and a log review finds no requirements text.
 
-- [ ] Task 10 — Move the four continuation manifests onto the profile and delete the configuration key.
+- [x] Task 10 — Move the four continuation manifests onto the profile and delete the configuration key.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5
@@ -169,6 +170,7 @@ Traceability:
   - Owned surfaces: The manifest builders in `Delivery.Answers`, `Delivery.Retry`, `Delivery.Reconciliation`, and `Delivery.ReviewContinuation` reading the approved profile through the authority they already hold, removal of `Start.execution_config/0` and the `:delivery_execution` application key, the delivery test fixtures seeding a connected repository and an approved profile, and the browser-suite bootstrap seeding an approved profile for its delivery scenarios instead of setting the key.
   - Owns: none
   - Proof: Focused tests cover a continuation manifest from each of the four paths carrying the profile's values, a repository-wide search finding no `:delivery_execution` and no `execution_config`, and the bootstrap's delivery scenarios still seeding a startable feature.
+  - Delivered: `Delivery.ExecutionProfile` maps an authority to the profile viewer and answers the five manifest values, and the four continuation builders read it. `Start.execution_config/0` and the `:delivery_execution` key are gone.
 
 ## Verification Gate
 

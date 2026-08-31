@@ -12,6 +12,7 @@ defmodule SddOrchestrator.Delivery.ReadinessTest do
 
   alias SddOrchestrator.Delivery.{
     ActivityEntry,
+    GuidedRequirements,
     Readiness,
     ReadinessAssessment
   }
@@ -27,23 +28,20 @@ defmodule SddOrchestrator.Delivery.ReadinessTest do
     on_exit(restore)
 
     context = DeliveryFixtures.delivery_project_fixture()
-    feature = DeliveryFixtures.feature_fixture(context.project, context.account)
 
-    specification_attrs =
-      SpecificationFixtures.specification_attrs(%{
-        title: "Delivery",
-        documents:
-          SpecificationFixtures.documents(%{
-            requirements: "# Requirements\n\nThe catalog must be searchable."
-          })
+    # Readiness reads the feature's own specification, so that is the one these
+    # tests judge. Every guided part is written, which leaves the guidance
+    # double's scripted findings as the only ones in play.
+    feature =
+      DeliveryFixtures.feature_fixture(context.project, context.account, %{
+        requirements: :filled
       })
 
     {:ok, current} =
-      SpecificationStore.create(
+      SpecificationStore.get_current(
         context.workspace,
         context.project.id,
-        specification_attrs,
-        actor_ref: "owner"
+        feature.specification_id
       )
 
     %{
@@ -52,7 +50,6 @@ defmodule SddOrchestrator.Delivery.ReadinessTest do
       project: context.project,
       feature: feature,
       current: current,
-      specification_attrs: specification_attrs,
       owner: context.owner_actor,
       participant: context.participant_actor
     }
@@ -267,7 +264,13 @@ defmodule SddOrchestrator.Delivery.ReadinessTest do
             revision_id: Ecto.UUID.generate(),
             documents:
               SpecificationFixtures.documents(%{
-                requirements: "# Requirements\n\nSearchable by name and owner."
+                # Still every guided part, so the verdict is refused for being
+                # stale rather than for a part having gone empty.
+                requirements:
+                  GuidedRequirements.render(%{
+                    DeliveryFixtures.filled_requirements()
+                    | "outcome" => "Searchable by name and owner."
+                  })
               }),
             actor_ref: "owner"
           }

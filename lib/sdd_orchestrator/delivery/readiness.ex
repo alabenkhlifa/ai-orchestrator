@@ -12,10 +12,24 @@ defmodule SddOrchestrator.Delivery.Readiness do
   never overrides a blocker. `assess/3` replaces the current assessment rather
   than appending another, because a feature has one readiness answer and a
   history of contradictory verdicts would tell the user nothing.
+
+  Two things are judged here, not one. The structural part is this module's own
+  work: a guided part with nothing under it blocks, and no model is needed to
+  see that. The guidance part is the adapter's, and it adds to the structural
+  findings rather than replacing them. That is what lets a deployment with no
+  guidance model still answer, and it is why an unconfigured adapter is recorded
+  as a fact about the deployment instead of raised as a failure. A configured
+  adapter that fails is a failure: nobody judged the feature, and an empty list
+  would claim otherwise.
+
+  Only the feature's own linked specification is read. Judging one feature by
+  another feature's words would be a wrong answer that looks like a right one.
   """
 
   alias SddOrchestrator.Delivery.{
     Activity,
+    Feature,
+    GuidedRequirements,
     ParticipantGuard,
     ReadinessAssessment,
     ReadinessGuidance
@@ -24,6 +38,10 @@ defmodule SddOrchestrator.Delivery.Readiness do
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationStore
+
+  # Structural finding ids carry their own prefix so they cannot be confused
+  # with an id a guidance model chose.
+  @structural_prefix "structural-"
 
   @type actor :: ParticipantGuard.actor()
   @type authority :: PersonalWorkspace.t() | DeviceWorkspace.t()
@@ -46,10 +64,12 @@ defmodule SddOrchestrator.Delivery.Readiness do
   def assess(authority, actor, %{project: project, feature: feature}) do
     with {:ok, member} <-
            ParticipantGuard.authorize_action(project.id, actor, :view_feature),
-         {:ok, current} <- current_revision(authority, project.id),
+         {:ok, current} <- current_revision(authority, project.id, feature),
          {:ok, input} <- project_input(feature, current),
-         {:ok, assessment} <- ReadinessGuidance.assess(input) do
-      record(project, feature, current, assessment, member)
+         {:ok, guided, guidance} <- guidance_findings(input) do
+      findings = merge_findings(structural_findings(requirements(current)), guided)
+
+      record(project, feature, current, findings, guidance, member)
     end
   end
 
@@ -88,7 +108,8 @@ defmodule SddOrchestrator.Delivery.Readiness do
           boolean()
   def start_available?(authority, project_id, actor, feature_id) do
     with {:ok, assessment} <- current(project_id, actor, feature_id),
-         {:ok, current} <- current_revision(authority, project_id),
+         {:ok, feature} <- feature(project_id, feature_id),
+         {:ok, current} <- current_revision(authority, project_id, feature),
          true <-
            ReadinessAssessment.current_for?(
              assessment,
@@ -128,14 +149,63 @@ defmodule SddOrchestrator.Delivery.Readiness do
     ]
   end
 
-  defp record(project, feature, current, assessment, member) do
+  # An unconfigured deployment is a fact about this control plane, so the
+  # structural verdict still stands and the flag records what judged it. Every
+  # other reason means nobody judged the feature at all, and an empty finding
+  # list would read as "nothing blocks this", which is a claim nothing earned.
+  defp guidance_findings(input) do
+    case ReadinessGuidance.assess(input) do
+      {:ok, assessment} -> {:ok, Map.get(assessment, "findings", []), "configured"}
+      {:error, :not_configured} -> {:ok, [], "not_configured"}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # One blocking finding per guided part with nothing under it. This is the
+  # readiness a deployment always has: it needs no model, and it is the part a
+  # person can always act on by writing the missing words.
+  defp structural_findings(requirements) do
+    parts = GuidedRequirements.parse(requirements)
+
+    GuidedRequirements.structure()
+    |> Enum.filter(&blank?(Map.get(parts, &1.key)))
+    |> Enum.map(&structural_finding/1)
+  end
+
+  # The id is derived from the part key so it is the same id on every
+  # assessment. A dismissal or a rendering keyed to a random id would point at
+  # nothing the next time readiness ran.
+  defp structural_finding(part) do
+    %{
+      "id" => @structural_prefix <> part.key,
+      "category" => "missing",
+      "blocking" => true,
+      "summary" => "Nothing is written under \"#{part.label}\".",
+      "explanation" => "Fill this part in before development starts. " <> part.hint
+    }
+  end
+
+  # Structural findings win an id collision. A guidance finding that reused one
+  # of their ids could otherwise present itself as a dismissible suggestion
+  # carrying a blocker's identity.
+  defp merge_findings(structural, guided) do
+    ids = MapSet.new(structural, & &1["id"])
+
+    structural ++ Enum.reject(guided, &MapSet.member?(ids, &1["id"]))
+  end
+
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_absent), do: true
+
+  defp record(project, feature, current, findings, guidance, member) do
     attrs = %{
       project_id: project.id,
       feature_id: feature.id,
       specification_id: specification_id(current),
       revision_id: revision_id(current),
       revision_digest: revision_digest(current),
-      findings: %{"findings" => Map.get(assessment, "findings", [])}
+      findings: %{"findings" => findings},
+      guidance: guidance
     }
 
     existing = Repo.get_by(ReadinessAssessment, feature_id: feature.id) || %ReadinessAssessment{}
@@ -166,16 +236,26 @@ defmodule SddOrchestrator.Delivery.Readiness do
     })
   end
 
-  # The snapshot deliberately carries no digest, so the revision binding is read
-  # through `get_current/3`. Binding to a digest rather than an identity is what
-  # makes an edited revision invalidate its verdict.
-  defp current_revision(authority, project_id) do
-    with {:ok, %{specifications: [entry | _rest]}} <-
-           SpecificationStore.current_snapshot(authority, project_id),
-         {:ok, current} <- SpecificationStore.get_current(authority, project_id, entry.id) do
-      {:ok, current}
-    else
+  # The feature's own specification and no other. A feature that has none is
+  # refused, because guessing which specification describes it would produce a
+  # verdict about somebody else's words.
+  #
+  # Binding to a digest rather than an identity is what makes an edited revision
+  # invalidate its verdict, so the revision is read through `get_current/3`.
+  defp current_revision(authority, project_id, %{specification_id: specification_id})
+       when is_binary(specification_id) do
+    case SpecificationStore.get_current(authority, project_id, specification_id) do
+      {:ok, current} -> {:ok, current}
       _unavailable -> {:error, :no_specification}
+    end
+  end
+
+  defp current_revision(_authority, _project_id, _feature), do: {:error, :no_specification}
+
+  defp feature(project_id, feature_id) do
+    case Repo.get_by(Feature, id: feature_id, project_id: project_id) do
+      nil -> {:error, :no_specification}
+      feature -> {:ok, feature}
     end
   end
 

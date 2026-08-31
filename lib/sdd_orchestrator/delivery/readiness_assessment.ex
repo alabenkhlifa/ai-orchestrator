@@ -23,6 +23,11 @@ defmodule SddOrchestrator.Delivery.ReadinessAssessment do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  # Whether a guidance model took part in this verdict. It is recorded rather
+  # than inferred, because "a model found nothing" and "no model was asked" are
+  # the same empty list and mean opposite things to the person reading them.
+  @guidance_values ~w(configured not_configured)
+
   @type t :: %__MODULE__{}
 
   schema "readiness_assessments" do
@@ -30,6 +35,7 @@ defmodule SddOrchestrator.Delivery.ReadinessAssessment do
     field :revision_id, :string
     field :revision_digest, :string
     field :findings, :map, default: %{}
+    field :guidance, :string
     field :dismissed_ids, {:array, :string}, default: []
     field :version, :integer, default: 1
     field :assessed_at, :utc_datetime_usec
@@ -50,6 +56,7 @@ defmodule SddOrchestrator.Delivery.ReadinessAssessment do
       :revision_id,
       :revision_digest,
       :findings,
+      :guidance,
       :assessed_at
     ])
     |> put_default_assessed_at()
@@ -62,8 +69,10 @@ defmodule SddOrchestrator.Delivery.ReadinessAssessment do
       :revision_id,
       :revision_digest,
       :findings,
+      :guidance,
       :assessed_at
     ])
+    |> validate_inclusion(:guidance, @guidance_values)
     |> unique_constraint(:feature_id)
     |> foreign_key_constraint(:project_id)
     |> foreign_key_constraint(:feature_id)
@@ -134,6 +143,20 @@ defmodule SddOrchestrator.Delivery.ReadinessAssessment do
   @spec current_for?(t(), String.t(), String.t()) :: boolean()
   def current_for?(%__MODULE__{} = assessment, revision_id, revision_digest),
     do: assessment.revision_id == revision_id and assessment.revision_digest == revision_digest
+
+  @doc """
+  Whether a guidance model took part in this verdict.
+
+  A verdict recorded with no model configured answers false, so the screen can
+  say what actually judged the feature instead of implying a model did.
+  """
+  @spec guidance_configured?(t()) :: boolean()
+  def guidance_configured?(%__MODULE__{guidance: "not_configured"}), do: false
+  def guidance_configured?(%__MODULE__{}), do: true
+
+  @doc "The values the guidance flag may carry."
+  @spec guidance_values() :: [String.t()]
+  def guidance_values, do: @guidance_values
 
   @doc "The guidance categories a finding may carry."
   @spec categories() :: [String.t()]

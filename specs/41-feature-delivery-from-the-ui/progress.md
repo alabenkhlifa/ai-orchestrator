@@ -1,5 +1,30 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-08-31 - Tasks 3 and 10 complete, and a fixture that lied about production
+
+`Task 3`, readiness from the feature's own specification.
+
+- `assess/3` and `start_available?/4` read `SpecificationStore.get_current/3` on `feature.specification_id`. A feature with no link is refused with `:no_specification` rather than falling back to the project's first specification.
+- One blocking `missing` finding per empty guided part, id `structural-` plus the part key, merged with the adapter's findings; a structural finding wins an id collision and is never dismissible.
+- `ReadinessGuidance.Unconfigured` now answers `{:error, :not_configured}`, which `assess/3` records as a `guidance` flag rather than an error. A configured adapter that fails still errors, so readiness cannot be judged until it answers. Migration `20260831090000_add_guidance_flag_to_readiness_assessments` adds the nullable column; a null reads as `configured`, since no row could exist before an adapter answered.
+- The page says: "No guidance model is configured here. These findings come from the guided parts alone."
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/feature_readiness_findings_test.exs test/sdd_orchestrator_web/live/feature_readiness_section_test.exs test/sdd_orchestrator/delivery/readiness_test.exs test/sdd_orchestrator/delivery/suggestions_test.exs test/sdd_orchestrator/delivery/readiness_guidance_test.exs test/sdd_orchestrator/delivery/feature_specification_link_test.exs test/sdd_orchestrator_web/live/feature_specification_link_live_test.exs` — exit `0`.
+
+`Task 10`, one source for every manifest.
+
+- `Delivery.ExecutionProfile` maps an authority to the profile viewer and answers the five manifest values, so the four continuation builders and `Start` share one mapping. `Start.execution_config/0` and the `:delivery_execution` key are gone; a repository-wide search finds neither.
+- `ReviewContinuation.manifest/3` became `manifest/4` to take the authority it now needs.
+- Removing the key broke 31 more tests than the 18 expected, because `review_test` and `review_continuation_test` run every behavior twice and the device half needs a device profile. `DeliveryFixtures.approve_device_profile!/3` restores the project onto the device through the portability path and walks the real approval.
+- The governance end-to-end test could not keep `git rev-parse HEAD` as its required check, because the profile payload's command allowlist rejects `git`. It now approves a profile carrying `make revision` against a two-line `Makefile` in the fixture repository. Same deterministic check, now one a profile can actually hold.
+- Proof receipt: `Task 10` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/answers_test.exs test/sdd_orchestrator/delivery/retry_test.exs test/sdd_orchestrator/delivery/reconciliation_test.exs test/sdd_orchestrator/delivery/review_continuation_test.exs test/sdd_orchestrator/delivery/review_test.exs test/sdd_orchestrator/delivery/run_notifications_test.exs test/sdd_orchestrator/delivery/cancellation_test.exs test/sdd_orchestrator/delivery/start_test.exs test/sdd_orchestrator/privacy/local_worker_run_governance_privacy_test.exs test/sdd_orchestrator/worker/local_worker_runtime_governance_end_to_end_test.exs test/sdd_orchestrator_web/controllers/e2e_bootstrap_controller_test.exs test/sdd_orchestrator_web/live/feature_detail_live_test.exs test/sdd_orchestrator/project_assistant/turn_orchestrator_test.exs test/sdd_orchestrator/project_assistant/project_context_store_test.exs` — exit `0`.
+
+Two findings that outlived their tasks.
+
+- `DeliveryFixtures.feature_fixture/3` built features production can no longer produce: `specification_id` was nil, while `Features.create/3` has linked one since `Task 1`. It now routes through `Features.create/3`, with a `requirements: :filled` option for tests that need a clean verdict. Roughly 40 call sites deliberately attribute a feature to someone the participant guard refuses, so those create under `ParticipantGuard.owner/1` and correct `creator_account_id` afterwards. This also exposed a latent flake in `start_test`: a stale-revision test edited whichever specification sorted first by id, which was a coin flip.
+- The fixture's new repository connection sent `RepositorySourceAuthorization` down its GitHub branch for five `TurnOrchestratorTest` cases whose own helper claims a `test` provider. The helper now deletes the connection it is replacing, which is what naming a different provider means. One further case asserted the citation named the specification its setup created; the feature now owns one too, so it resolves the cited specification and asserts the answer names that one. No assertion was weakened.
+- Still open: `Start.current_revision/2` binds a run's starting revision to the project's first specification while readiness reads the feature's own, which contradicts the business rule that both read the feature's linked specification. `Task 6` now owns that surface and proves it against a project holding two specifications.
+- Both receipts were confirmed on the main thread by real exit status, after the regression fix.
+
 ### 2026-08-31 - Tasks 2, 5, and 7 complete
 
 `Task 2`, the guided requirements form.

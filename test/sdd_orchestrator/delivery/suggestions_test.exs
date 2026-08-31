@@ -48,7 +48,14 @@ defmodule SddOrchestrator.Delivery.SuggestionsTest do
     end)
 
     context = DeliveryFixtures.delivery_project_fixture()
-    feature = DeliveryFixtures.feature_fixture(context.project, context.account)
+
+    # Every guided part is written, so the only findings these tests see are the
+    # ones the guidance double scripts. Dismissal and promotion are what is
+    # being proven here, not the structural gate.
+    feature =
+      DeliveryFixtures.feature_fixture(context.project, context.account, %{
+        requirements: :filled
+      })
 
     {:ok, _current} =
       SpecificationStore.create(

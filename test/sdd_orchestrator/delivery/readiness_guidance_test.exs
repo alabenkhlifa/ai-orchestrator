@@ -12,9 +12,9 @@ defmodule SddOrchestrator.Delivery.ReadinessGuidanceTest do
   """
 
   describe "configured adapter resolution" do
-    test "defaults to the unconfigured stand-in and reports unavailability, not readiness" do
+    test "defaults to the unconfigured stand-in and reports that, not readiness" do
       assert ReadinessGuidance.adapter() == ReadinessGuidance.Unconfigured
-      assert ReadinessGuidance.assess(input()) == {:error, :guidance_unavailable}
+      assert ReadinessGuidance.assess(input()) == {:error, :not_configured}
     end
 
     test "resolves the module configured for the application" do
