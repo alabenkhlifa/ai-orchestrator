@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -76,7 +76,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Create a feature with its own linked specification.
+- [x] Task 1 — Create a feature with its own linked specification.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -84,6 +84,7 @@ Traceability:
   - Owned surfaces: `Features.create/3` creating the specification under the owner's authority in the same transaction as the feature, the empty four-heading requirements document and the agent-owned design and tasks placeholders, the link set at creation, and the participant path resolving the owner's authority.
   - Owns: AC-01
   - Proof: Focused tests cover a created feature answering a linked specification with the four empty headings, a participant creating one under the owner's authority with the participant recorded as actor, a failed specification creation leaving no feature, and the board still listing the feature as before.
+  - Delivered: `Features.create/3` now creates the feature and its own specification in one transaction under the owner's authority, with the acting person recorded as the revision's actor. A refused specification leaves no feature.
 
 - [ ] Task 2 — Edit the four guided parts and save a revision.
   - Size: Standard
@@ -124,7 +125,6 @@ Traceability:
 - [ ] Task 6 — Show every start precondition with a way to resolve it.
   - Size: Standard
   - Proof scope: Focused
-  - Status: Blocked until `capability:worker-repository-selection` is ready.
   - Depends on: Task 4, Task 5
   - Purpose: Tell the person why they cannot start yet, and where to go.
   - Owned surfaces: `Start.preconditions/3` with ready, boundary, approved profile, attached bound worker, and AI connection choice, `Start.available?/3` derived from it, and the start section rendering each item with its resolving route while keeping the existing disclosure and `confirm_boundary` control.
@@ -134,7 +134,6 @@ Traceability:
 - [ ] Task 7 — Join a bound project's run topic when the control plane says so.
   - Size: Standard
   - Proof scope: Focused
-  - Status: Blocked until `capability:mac-scoped-worker-connection` and `capability:worker-repository-selection` are ready.
   - Depends on: none
   - Purpose: Let a run reach a worker that was paired for its Mac and only later connected to the project.
   - Owned surfaces: `project_bound` and `project_unbound` pushes over the Mac-scoped attachment on connect, disconnect, and attach with existing bindings, `Worker.GatewayConnection` exchanging the project credential and joining or leaving the project's `worker:` topic on its socket, and idempotent handling for a project already joined from configuration.
