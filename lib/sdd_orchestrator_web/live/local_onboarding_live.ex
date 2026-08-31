@@ -11,7 +11,17 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
        (`Devices.worker_status/1`). Each of the four states — missing, incompatible,
        unavailable, detected — gets graphical, terminal-free guidance. Missing and
        incompatible carry install/update guidance plus a pairing-code entry (which
-       also covers replacement-worker pairing). Unavailable keeps projects visible.
+       also covers replacement-worker pairing). Unavailable keeps projects visible
+       and offers `Pair again`, which reveals that same pairing entry and its
+       deep link, so a person whose worker record is stale still has a way
+       forward. Pairing again authorizes another worker for this workspace and
+       keeps the old record.
+
+       The waiting state is session state, not a reading of the status. It says a
+       code was accepted, so it appears only after this session accepted one
+       (`code_accepted?`). Any other not-detected status renders its own state
+       instead, because the control plane knows nothing about a code that was
+       never entered.
     2. `:selection` — the native folder picker (the local worker stand-in in
        dev/test) yields a path validated entirely on the worker boundary through
        `Devices.select_repository/2`. Existing workspace-authorized identities
@@ -50,6 +60,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
+  alias SddOrchestratorWeb.RepositoryAssessmentLive
 
   # A device-readiness receipt from the detected worker stays valid for this
   # window while the user completes the storage step.
@@ -72,7 +83,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:deep_link_code, nil)
      |> assign(:onboarding_attempt, nil)
      |> assign(:pairing_error, nil)
-     |> assign(:awaiting_worker, false)
+     |> assign(:code_accepted?, false)
+     |> assign(:pair_again?, false)
      |> assign(:selection_error, nil)
      |> assign(:selected, nil)
      |> assign(:project_name, "")
@@ -80,7 +92,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:duplicate, nil)
      |> assign(:disclosure_required, Devices.list_projects() == [])
      |> assign(:disclosure_confirmed, false)
-     |> assign_worker_status()}
+     |> assign_worker_status()
+     |> assign_awaiting_worker()}
   end
 
   @impl true
@@ -147,10 +160,28 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
+  # Re-reads the worker and reports what the control plane knows at that moment.
+  # It never invents the waiting state: that state says a code was accepted, and
+  # only this session's own accepted code can make it true.
   @impl true
   def handle_event("recheck", _params, socket) do
-    socket = socket |> assign(:pairing_error, nil) |> assign_worker_status()
-    {:noreply, assign(socket, :awaiting_worker, socket.assigns.worker_status != :detected)}
+    {:noreply,
+     socket
+     |> assign(:pairing_error, nil)
+     |> assign_worker_status()
+     |> assign_awaiting_worker()}
+  end
+
+  # An unavailable worker is a paired record with nothing attached, which is also
+  # what a worker that was reinstalled or removed looks like. Pairing again is the
+  # ordinary pairing flow: it authorizes another worker for this same workspace
+  # and keeps the old record, so nothing here changes pairing itself.
+  def handle_event("pair_again", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:pair_again?, true)
+     |> assign(:pairing_error, nil)
+     |> maybe_issue_deep_link_code()}
   end
 
   # The submitted code is redeemed for real (`specs/38`): redemption is the moment
@@ -259,18 +290,14 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   @impl true
   def handle_info(:check_worker, socket) do
-    socket = assign_worker_status(socket)
+    socket = socket |> assign_worker_status() |> assign_awaiting_worker()
 
-    cond do
-      socket.assigns.worker_status == :detected ->
-        {:noreply, assign(socket, :awaiting_worker, false)}
-
-      socket.assigns.awaiting_worker ->
-        {:noreply, schedule_worker_check(socket)}
-
-      # The person moved on, so stop polling rather than run a timer forever.
-      true ->
-        {:noreply, socket}
+    if socket.assigns.awaiting_worker do
+      {:noreply, schedule_worker_check(socket)}
+    else
+      # The worker arrived, or the person moved on. Either way stop polling
+      # rather than run a timer forever.
+      {:noreply, socket}
     end
   end
 
@@ -426,6 +453,23 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     assign(socket, :worker_status, status)
   end
 
+  # The one derivation of the waiting state, so every caller reads the same rule.
+  # Waiting means a code this session accepted has not produced a worker yet. A
+  # status alone can never make it true, because the control plane cannot know
+  # about a code the person never entered.
+  defp assign_awaiting_worker(socket) do
+    awaiting? = socket.assigns.code_accepted? and socket.assigns.worker_status != :detected
+    assign(socket, :awaiting_worker, awaiting?)
+  end
+
+  # The one rule for the pairing entry being on screen, so the deep-link code is
+  # minted exactly where the form that carries it renders: this workspace has no
+  # usable worker, or the person asked to pair again from the unavailable state.
+  defp pairing_offered?(assigns) do
+    assigns.worker_status in [:missing, :incompatible] or
+      (assigns.pair_again? and assigns.worker_status == :unavailable)
+  end
+
   # ---- project-scoped device setup (`?project=<id>`) ----
 
   defp apply_project_param(socket, project_id) do
@@ -444,22 +488,25 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # The deep link needs a real single-use pairing code to hand the native app, the
   # same code the graphical pairing form itself is built around
   # (`Devices.Pairing.start_pairing/1`, already used by this file's worker
-  # stand-in). Issued once per mount and only when the discovery step would
-  # actually show the missing/incompatible pairing UI, so visiting with a
-  # `project` param never issues an attempt that goes unused.
+  # stand-in). Issued once per session, and only when the screen actually shows
+  # the pairing entry the link sits in, so no attempt is created that goes unused.
+  # `Pair again` reaches the same issuance rather than repeating it.
+  defp maybe_issue_deep_link_code(%{assigns: %{project_id: nil}} = socket), do: socket
+
   defp maybe_issue_deep_link_code(%{assigns: %{deep_link_code: code}} = socket)
        when is_binary(code),
        do: socket
 
-  defp maybe_issue_deep_link_code(%{assigns: %{worker_status: status}} = socket)
-       when status in [:missing, :incompatible] do
-    case Pairing.start_pairing(socket.assigns.workspace.id) do
-      {:ok, %{code: code}} -> assign(socket, :deep_link_code, code)
-      {:error, _reason} -> socket
+  defp maybe_issue_deep_link_code(socket) do
+    if pairing_offered?(socket.assigns) do
+      case Pairing.start_pairing(socket.assigns.workspace.id) do
+        {:ok, %{code: code}} -> assign(socket, :deep_link_code, code)
+        {:error, _reason} -> socket
+      end
+    else
+      socket
     end
   end
-
-  defp maybe_issue_deep_link_code(socket), do: socket
 
   defp create_enabled?(assigns) do
     String.trim(assigns.project_name) != "" and
@@ -481,7 +528,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   defp complete_pairing(socket, code) do
     case Pairing.bind_pairing(code, socket.assigns.workspace.id) do
       :ok ->
-        socket |> assign(:pairing_error, nil) |> await_worker()
+        # The one moment a code is accepted in this session, and the only thing
+        # that entitles the screen to say so.
+        socket
+        |> assign(:pairing_error, nil)
+        |> assign(:code_accepted?, true)
+        |> await_worker()
 
       {:error, :invalid_code} ->
         refused(socket)
@@ -513,12 +565,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
       stub_complete_pairing(socket.assigns.workspace.id)
     end
 
-    socket = assign_worker_status(socket)
+    socket = socket |> assign_worker_status() |> assign_awaiting_worker()
 
-    if socket.assigns.worker_status == :detected do
-      assign(socket, :awaiting_worker, false)
+    if socket.assigns.awaiting_worker do
+      schedule_worker_check(socket)
     else
-      socket |> assign(:awaiting_worker, true) |> schedule_worker_check()
+      socket
     end
   end
 
@@ -571,6 +623,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           :if={@step == :discovery}
           worker_status={@worker_status}
           awaiting_worker={@awaiting_worker}
+          pair_again={@pair_again?}
           pairing_error={@pairing_error}
           project_id={@project_id}
           deep_link_code={@deep_link_code}
@@ -601,6 +654,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   attr :worker_status, :atom, required: true
   attr :awaiting_worker, :boolean, default: false
+  attr :pair_again, :boolean, default: false
   attr :pairing_error, :string, default: nil
   attr :project_id, :string, default: nil
   attr :deep_link_code, :string, default: nil
@@ -645,7 +699,13 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           project_id={@project_id}
           deep_link_code={@deep_link_code}
         />
-        <.worker_unavailable :if={!@awaiting_worker and @worker_status == :unavailable} />
+        <.worker_unavailable
+          :if={!@awaiting_worker and @worker_status == :unavailable}
+          pair_again={@pair_again}
+          pairing_error={@pairing_error}
+          project_id={@project_id}
+          deep_link_code={@deep_link_code}
+        />
         <.worker_detected :if={@worker_status == :detected} />
       </div>
     </div>
@@ -804,31 +864,67 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     """
   end
 
+  # A paired worker with nothing attached. The screen states only that, in the one
+  # owned wording every unavailable surface renders, and never claims the app is
+  # missing or stopped: a browser cannot see either. The second route matters as
+  # much as the first, because a worker record left over from a reinstall looks
+  # exactly like this and only pairing again clears it.
+  attr :pair_again, :boolean, default: false
+  attr :pairing_error, :string, default: nil
+  attr :project_id, :string, default: nil
+  attr :deep_link_code, :string, default: nil
+
   defp worker_unavailable(assigns) do
     ~H"""
     <div data-state="unavailable">
       <.notice variant="warn" icon="unplug">
-        Your worker is paired but not running right now, so this Mac can't reach your repositories.
-        Your projects are safe and still listed. They just show an unavailable connection until the
-        worker is back.
+        <p>{RepositoryAssessmentLive.worker_unavailable_message()}</p>
+        <p class="mt-0.5">
+          Your projects are safe and still listed. They show an unavailable connection until a
+          worker is back.
+        </p>
       </.notice>
 
       <ul class="mt-5 flex flex-col gap-3 text-sm text-ink-muted">
         <li class="flex gap-2">
           <.lucide name="play" class="size-4 flex-none mt-0.5 text-ink-muted" />
-          <span>Open the worker app from Applications so it can reconnect.</span>
+          <span>Open the worker app on this Mac so it can attach again.</span>
         </li>
         <li class="flex gap-2">
           <.lucide name="wifi" class="size-4 flex-none mt-0.5 text-ink-muted" />
-          <span>Once it's running, check again to continue.</span>
+          <span>Then check again to continue.</span>
+        </li>
+        <li class="flex gap-2">
+          <.lucide name="link" class="size-4 flex-none mt-0.5 text-ink-muted" />
+          <span>
+            Installed the worker again on this Mac? Pair it again. The worker you paired before is
+            kept.
+          </span>
         </li>
       </ul>
 
-      <div class="mt-5">
+      <div class="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center">
         <.button phx-click="recheck" data-recheck class="w-full sm:w-auto">
           <.lucide name="refresh-cw" class="size-4" /> Check again
         </.button>
+        <.button
+          :if={!@pair_again}
+          variant="secondary"
+          phx-click="pair_again"
+          data-pair-again
+          class="w-full sm:w-auto"
+        >
+          <.lucide name="link" class="size-4" /> Pair again
+        </.button>
       </div>
+
+      <.pairing_form
+        :if={@pair_again}
+        pairing_error={@pairing_error}
+        label="Pair worker"
+        project_id={@project_id}
+        deep_link_code={@deep_link_code}
+      />
     </div>
     """
   end

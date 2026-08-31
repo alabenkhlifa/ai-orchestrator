@@ -1,5 +1,35 @@
 # Worker-Driven Repository Selection Progress Log
 
+### 2026-08-31 - Tasks 4, 6 and 8: the picker, the hosted connection, and a truthful screen
+
+Run in parallel over disjoint files: the Swift app, the hosted dashboard, and the onboarding screen.
+
+**Task 4, the app side.** `PendingSelectionQuerier`, `SelectionAnswerWriter`, and `RepositorySelectionResponder` follow `ConnectionStatusQuerier`'s idiom exactly, including its stance that every way of not knowing answers the safe value. The two-second poll sits beside the connection poll in `AppDelegate`. The answer file is created at `0600` and renamed into place, so it is never briefly world readable.
+
+- Two panels can never open for one request: the in-flight mark is set and only ever replaced by a different request id, never cleared. Clearing it after writing would open a second panel during the up-to-500ms window before the release takes the answer.
+- Corrected after the first pass, on `AC-11`: the app now re-reads the pending file after the panel returns and writes nothing when the request is gone. The first version wrote the answer anyway and let the release refuse it, which left a file holding a path on disk until the next request or the next release start. `design.md` says that file exists for at most one poll interval, so withholding the write is what the agreement requires. The test that asserted the old behaviour was renamed and inverted, with its doc comment saying plainly that this is a deliberate contract change.
+- `DistributionFreeCallSitesTests` stays green: nothing added invokes the release's `rpc` command.
+
+**Task 6, the hosted connection.** `HostedLocalRepositoryFolder` no longer opens a picker or closes over a path. `request/3` asks the worker with the project's identity as the only candidate, and `proof/2` turns the worker's verdict into the matcher `HostedLocalRepositoryConnection.connect/6` expects. `picker_available?/0` is deleted. `ProjectDashboardLive` now waits, offers Cancel, and handles the five outcomes, with the LiveView process as the requester so a closed tab cancels the panel.
+
+- Corrected after the first pass: the pre-check read `Devices.worker_available?/1` while the gate read `WorkerDiscovery.status/2`, so a worker attached with a stale heartbeat passed the pre-check, was sent to a folder picker, and was refused after picking. That is the two-readings defect `Task 5` closed, reappearing one layer up, and the business rule says every list and every action apply one test. Both now read `status/2`.
+- Corrected in the same pass: `proof/1` ignored the identity it was handed, so an identity that changed between the request and the answer could have connected on a stale verdict. It is now `proof/2` and answers only for the identity the request was made with.
+- `RepositorySelection.Stub` replaces the three per-screen `:device_worker_stub` gates. It computes a real answer through `RepositoryValidation` and `PortableRepositoryIdentity` over the stub folder and returns it through `answer/2`, so the stand-in cannot drift from the real contract. `push/1` spawns a process because answering inline would be the request server calling itself: confirmed by reading `server.ex`, where `push/1` runs inside `handle_call({:open, ...})` and `answer/2` is a call to that same server.
+- Selected in `config/test.exs` always and in `config/dev.exs` only under `e2e_mode?`. A plain development server keeps the real attachment transport, so a machine with no worker attached says so.
+
+**Task 8, the truthful screen.** The waiting panel now derives from `code_accepted?`, a session flag set only where a code is actually redeemed. All four `awaiting_worker` assignment sites route through one derivation, so the defect cannot return at a site that was missed. `Pair again` on the unavailable state reveals the existing pairing form and deep link through the existing issuance path; pairing itself is unchanged and the old worker record is kept.
+
+- The unavailable copy claimed the worker was "paired but not running", which a browser cannot know. It now renders `RepositoryAssessmentLive.worker_unavailable_message/0`, the value `Task 5` established, and the test asserts against that owned value rather than a literal, so a reworded message cannot leave a stale assertion passing.
+
+**Proof receipts, each confirmed in the main thread by real exit status.**
+
+- Proof receipt: `Task 4` — scope `Focused` — command `swift test` — exit `0`.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator/portability/hosted_local_repository_folder_test.exs test/sdd_orchestrator/repository_selection/stub_test.exs test/sdd_orchestrator_web/live/project_connect_machine_live_test.exs` — exit `0`.
+- Proof receipt: `Task 8` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/local_onboarding_live_test.exs` — exit `0`.
+- Counts: Task 4, 293 Swift tests; Task 6, 29; Task 8, 17. Combined Elixir regression across the hosted, onboarding, portability, selection, and devices suites: exit `0`, 354 passed. `mix format --check-formatted` and `mix compile --warnings-as-errors` both exit `0`.
+
+**Environment note for the slice gate.** One pre-existing Swift test, `WorkerProcessControllerTests.test_stop_endsTheRunningChildWithoutRunningAnyCommand`, failed once under a full run and passed alone and on the two runs after. It is a spawn-timing flake in a test this slice does not touch. Recorded here rather than re-run until green.
+
 ### 2026-08-31 - Task 5: one definition of an available worker
 
 - `Devices.worker_available?/1` reads `Delivery.WorkerAttachment.attached/1` for the worker's own `device_workspace_id` and matches the registry entry's `worker_id`. It is the one definition. `WorkerDiscovery.status/2` now derives `:detected` from it, so `:unavailable` covers a paired, compatible worker that is not attached.

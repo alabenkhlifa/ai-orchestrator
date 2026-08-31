@@ -102,7 +102,7 @@ Traceability:
   - Proof: Focused tests cover a pending request published to its file and removed when the request ends, an answered path yielding matches and a new identity, the answer file being gone after the answer is read, a stale answer deleted unread at start, a non-repository folder answering `not_a_git_repository`, an inaccessible folder answering `inaccessible`, a cancellation answering `cancelled`, and a captured log holding no path.
   - Delivered: `Worker.RepositorySelection` holds one request, publishes it to `pending_selection.json`, and answers from `selection_answer.json` after deleting it. The Git check, matching, and identity all run on the Mac, and no path enters state, a payload, or a log line.
 
-- [ ] Task 4 — Show the native picker from the app and hand the answer back.
+- [x] Task 4 — Show the native picker from the app and hand the answer back.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
@@ -110,6 +110,7 @@ Traceability:
   - Owned surfaces: The app's poll of `pending_selection.json` at a two-second interval while attached, `NSOpenPanel` presentation on the main thread through `WorkspaceFolderPicking`, writing `selection_answer.json` with the path or a cancellation, closing the panel when the pending file disappears, and not retaining the path after writing it.
   - Owns: none
   - Proof: Focused Swift tests with the fake picker and a fake file store cover a pending file producing one panel, a chosen folder producing one answer file holding the path, a dismissed panel producing one cancellation answer, the pending file disappearing closing the panel without an answer, no second panel while one is open, and no source invoking the release's `rpc` command.
+  - Delivered: The app polls `pending_selection.json` every two seconds, shows one `NSOpenPanel` per request, and writes `selection_answer.json`. It withholds the answer when the request is gone, so no orphan file holds a path.
 
 - [x] Task 5 — Give every list and action one definition of an available worker.
   - Size: Standard
@@ -121,7 +122,7 @@ Traceability:
   - Proof: Focused tests cover a paired worker with a fresh `last_seen_at` and no attachment being neither listed nor authorized, an attached worker being both, the same refusal wording from the list and the action, `WorkerDiscovery` answering `:unavailable` for the first case, and the stub attachment making the test worker `:detected`.
   - Delivered: `Devices.worker_available?/1` reads the Mac-scoped registry and is the one definition. `WorkerDiscovery.status/2` derives `:detected` from it, so the assessment list and `authorize_worker/2` read one answer and share one refusal wording.
 
-- [ ] Task 6 — Connect a hosted project through the worker's picker.
+- [x] Task 6 — Connect a hosted project through the worker's picker.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1, Task 5
@@ -129,6 +130,7 @@ Traceability:
   - Owned surfaces: `Portability.HostedLocalRepositoryFolder` requesting a selection with the project's identity as the only candidate and answering the connect gate from the result, `ProjectDashboardLive`'s waiting state with cancel, the no-answer and worker-lost states with retry, the `RepositorySelection.Stub` adapter and its configuration under `E2E_MODE` and in tests, and removal of `picker_available?/0`.
   - Owns: AC-01, AC-03, AC-06
   - Proof: Focused LiveView tests with the test transport cover a matched result connecting the project, a cancelled result storing nothing and returning to the offer, a timeout and a lost worker each showing the retry state with nothing stored, and the stub adapter connecting the browser suite's seeded project as before.
+  - Delivered: `HostedLocalRepositoryFolder.request/3` asks the worker with the project's identity as the only candidate, and `proof/2` answers the connect gate from the worker's verdict for that identity only. `ProjectDashboardLive` waits, cancels, and retries. The stand-in is now the `RepositorySelection.Stub` transport.
 
 - [ ] Task 7 — Select and locate an accountless repository through the worker's picker.
   - Size: Standard
@@ -139,7 +141,7 @@ Traceability:
   - Owns: AC-02
   - Proof: Focused LiveView tests with the test transport cover a new repository suggesting its folder name and continuing to the storage step, a matched existing project being reported as the duplicate with its link, locate mode reconnecting a moved repository on a match and refusing a different one, and no path in any assign or render.
 
-- [ ] Task 8 — Report the worker truthfully and offer to pair again.
+- [x] Task 8 — Report the worker truthfully and offer to pair again.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5
@@ -147,6 +149,7 @@ Traceability:
   - Owned surfaces: `LocalOnboardingLive`'s session flag for an accepted code, `recheck` deriving the waiting state from that flag, the `Pair again` action on the `:unavailable` state revealing the pairing form and deep-link code, and the result of pairing again being shown as the new worker's state.
   - Owns: AC-09, AC-10
   - Proof: Focused LiveView tests cover `Check again` on an unavailable worker staying in the unavailable state, `Code accepted` appearing only after a code is accepted in the session, `Pair again` revealing the form, and a completed re-pairing adding a worker while the old row stays.
+  - Delivered: `Check again` reports only what the control plane knows, because the waiting panel now derives from a code accepted in this session rather than from the status. An unavailable worker offers `Pair again`, which reveals the same pairing form and deep link.
 
 - [ ] Task 9 — Prove the round trip against the real app and that no path leaks.
   - Size: Standard

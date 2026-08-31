@@ -10,14 +10,21 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
 
   The device store is a singleton GenServer not started in test, so each test
   starts its own isolated instance on a unique path in an `async: false` case.
+
+  `specs/40-worker-repository-selection` Task 8 adds the truthful-report proof at
+  the bottom: `Check again` reports only what the control plane knows, the
+  `Code accepted` panel appears only after this session accepted a code, and an
+  unavailable worker can be paired again without losing the worker it has.
   """
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
+  alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
-  alias SddOrchestrator.Devices.{Pairing, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{Pairing, PairingIssuanceThrottle, WorkerDiscovery}
+  alias SddOrchestratorWeb.RepositoryAssessmentLive
 
   # Shell-command shapes that would mean the user was asked to use a terminal.
   @terminal_markers [
@@ -106,7 +113,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       html = render(view)
       assert has_element?(view, "[data-worker-status=unavailable]")
       assert has_element?(view, "[data-state=unavailable]")
-      assert html =~ "not running"
+      # The one owned wording, read from its owner: the screen states that no
+      # worker is attached, never that the app is stopped or missing.
+      assert html =~ RepositoryAssessmentLive.worker_unavailable_message()
       assert html =~ "still listed"
       assert has_element?(view, "[data-recheck]")
 
@@ -284,7 +293,159 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     end
   end
 
+  # `specs/40-worker-repository-selection` Task 8. The stand-in answers "attached"
+  # for any paired worker, so every test here turns it off and reads the real
+  # availability definition. That is what makes `:unavailable` reachable at all.
+  describe "a truthful worker report (AC-09, AC-10)" do
+    setup do
+      PairingIssuanceThrottle.reset()
+      :ok
+    end
+
+    test "Check again on an unavailable worker never claims a code was accepted", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
+
+      without_stub(fn ->
+        {:ok, view, _html} = live(conn, ~p"/onboarding/local")
+        assert has_element?(view, "[data-worker-status=unavailable]")
+        refute has_element?(view, "[data-worker-awaiting]")
+
+        render_click(view, "recheck")
+
+        # The defect: any not-detected status used to render the waiting panel.
+        assert has_element?(view, "[data-worker-status=unavailable]")
+        assert has_element?(view, "[data-state=unavailable]")
+        refute has_element?(view, "[data-worker-awaiting]")
+        refute render(view) =~ "Code accepted"
+      end)
+    end
+
+    test "the accepted-code panel appears only after this session accepted one", %{conn: conn} do
+      {:ok, %{code: code}} = Pairing.issue_unbound_code(caller())
+
+      without_stub(fn ->
+        {:ok, view, _html} = live(conn, ~p"/onboarding/local")
+        refute has_element?(view, "[data-worker-awaiting]")
+
+        view |> form("[data-pairing-form]", pairing: %{code: code}) |> render_submit()
+
+        assert has_element?(view, "[data-worker-awaiting]")
+        assert render(view) =~ "Code accepted"
+      end)
+    end
+
+    test "Pair again reveals the pairing form and its deep-link code", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
+      {:ok, project} = register_project()
+
+      without_stub(fn ->
+        {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[project: project.id]}")
+
+        assert has_element?(view, "[data-state=unavailable]")
+        refute has_element?(view, "[data-pairing-form]")
+        refute has_element?(view, "[data-open-in-app]")
+
+        render_click(view, "pair_again")
+
+        assert has_element?(view, "[data-pairing-form]")
+        assert has_element?(view, "[data-state=unavailable]")
+
+        link_html = view |> element("[data-open-in-app]") |> render()
+        assert link_html =~ ~s(href="sddworker://pair?code=)
+        assert link_html =~ "project_id=#{project.id}"
+      end)
+    end
+
+    test "pairing again authorizes another worker and keeps the one already paired", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      existing = workspace.id |> pair(%{os_major: "26"}) |> seen_now()
+      assert [^existing] = Pairing.active_workers(workspace.id)
+
+      {:ok, %{code: code}} = Pairing.issue_unbound_code(caller())
+
+      without_stub(fn ->
+        {:ok, view, _html} = live(conn, ~p"/onboarding/local")
+        assert has_element?(view, "[data-state=unavailable]")
+
+        render_click(view, "pair_again")
+        view |> form("[data-pairing-form]", pairing: %{code: code}) |> render_submit()
+        assert has_element?(view, "[data-worker-awaiting]")
+
+        # The new worker finishes for itself and attaches, exactly as the app does.
+        app_finishes(code)
+        render_click(view, "recheck")
+
+        # The screen reports the new worker's own state, not a remembered one.
+        assert has_element?(view, "[data-worker-status=detected]")
+        refute has_element?(view, "[data-worker-awaiting]")
+      end)
+
+      workers = Pairing.active_workers(workspace.id)
+      assert length(workers) == 2
+      assert existing.id in Enum.map(workers, & &1.id)
+    end
+  end
+
   # ---- helpers ----
+
+  # The stand-in reports every paired worker as attached, which hides the
+  # unavailable state entirely. Turning it off is what makes these proofs real.
+  defp without_stub(fun) do
+    previous = Application.get_env(:sdd_orchestrator, :device_worker_stub)
+    Application.put_env(:sdd_orchestrator, :device_worker_stub, false)
+
+    try do
+      fun.()
+    after
+      Application.put_env(:sdd_orchestrator, :device_worker_stub, previous)
+    end
+  end
+
+  # What the worker app does once its code is bound: report the versions only it
+  # knows, then attach. The attachment is what makes it available, so a screen
+  # that said `detected` without one would be reading the old rule.
+  defp app_finishes(code) do
+    policy = WorkerDiscovery.compatibility_policy()
+
+    {:ok, %{worker: worker}} =
+      Pairing.complete_pairing(code, %{
+        os_family: policy.os_family,
+        os_major: List.last(policy.os_majors),
+        protocol_version: List.first(policy.protocol_versions),
+        app_version: "0.0.0-test"
+      })
+
+    {:ok, _seen} = Pairing.mark_seen(worker)
+
+    {:ok, _owner} =
+      WorkerAttachment.attach(worker.device_workspace_id, %{
+        worker_id: worker.id,
+        protocol_version: 1,
+        capabilities: ["repository_selection"]
+      })
+
+    worker
+  end
+
+  defp register_project do
+    Devices.register_project(%{
+      name: "Ledger #{System.unique_integer([:positive])}",
+      repository_fingerprint: "fingerprint-#{System.unique_integer([:positive])}",
+      status: "connected"
+    })
+  end
+
+  # A caller key of its own per test, so the shared issuance throttle cannot make
+  # one proof depend on another.
+  defp caller, do: "onboarding-#{System.unique_integer([:positive])}"
 
   defp pair(workspace_id, worker_attrs) do
     {:ok, %{code: code}} = Pairing.start_pairing(workspace_id)
