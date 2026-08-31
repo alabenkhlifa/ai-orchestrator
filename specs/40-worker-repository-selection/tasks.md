@@ -132,7 +132,7 @@ Traceability:
   - Proof: Focused LiveView tests with the test transport cover a matched result connecting the project, a cancelled result storing nothing and returning to the offer, a timeout and a lost worker each showing the retry state with nothing stored, and the stub adapter connecting the browser suite's seeded project as before.
   - Delivered: `HostedLocalRepositoryFolder.request/3` asks the worker with the project's identity as the only candidate, and `proof/2` answers the connect gate from the worker's verdict for that identity only. `ProjectDashboardLive` waits, cancels, and retries. The stand-in is now the `RepositorySelection.Stub` transport.
 
-- [ ] Task 10 — Compare a legacy identity on the worker as the control plane would.
+- [x] Task 10 — Compare a legacy identity on the worker as the control plane would.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
@@ -140,6 +140,7 @@ Traceability:
   - Owned surfaces: Candidate comparison in `Worker.RepositorySelection` and in `RepositorySelection.Stub` dispatching on the identity's own format, portable through `PortableRepositoryIdentity.match/2` and legacy through `match_legacy/3` against the worker's configured device workspace id, matching `Devices.matches_repository?/3`.
   - Owns: none
   - Proof: Focused tests cover a legacy candidate matching its own repository on the worker, the same legacy candidate not matching a different repository, a legacy candidate salted for another workspace not matching, a portable candidate still matching as before, and the stand-in giving the same answers as the worker.
+  - Delivered: The worker and the stand-in dispatch on the identity's own format, so a legacy candidate is compared against the workspace salt exactly as `Devices.matches_repository?/3` compares it. The worker reads that salt from its own paired configuration.
 
 - [ ] Task 7 — Select and locate an accountless repository through the worker's picker.
   - Size: Standard

@@ -1,5 +1,14 @@
 # Worker-Driven Repository Selection Progress Log
 
+### 2026-08-31 - Task 10: the worker compares a legacy identity as the control plane does
+
+- `Worker.RepositorySelection` and `RepositorySelection.Stub` now parse each candidate and dispatch: a portable identity through `PortableRepositoryIdentity.match/2`, a legacy one through `match_legacy/3`, an invalid one never a match. That is the same dispatch `Devices.matches_repository?/3` makes, which is the point: the worker must answer exactly what the control plane would have answered, or the duplicate rule changes meaning depending on who asks.
+- The worker gets the salt with no new plumbing. It already holds its storage root, so `workspace_salt/1` calls `Configuration.load/1` and takes `device_workspace_id`. An unpaired or unreadable configuration yields `nil`, and `match_legacy/3`'s non-binary-salt clause then answers `{:error, :invalid_identifier}`, so an unpaired worker reports no match rather than guessing. The stand-in uses the request's own `device_workspace_id`, which is the same value.
+- The defect was confirmed by mutation, not assumed: replacing the `:legacy_identifier` branch with `{:ok, false}` in both modules failed exactly the two new legacy assertions and nothing else. The original code was then restored and re-verified.
+- Coverage is one request carrying five candidates at once (own-repository legacy, other-repository legacy, own repository salted for a foreign workspace, own-repository portable, other-repository portable), asserting the answer names only the two that genuinely match. A second test proves the salt really comes from the stored configuration by removing `worker.json` and watching the legacy candidate stop matching while the portable one still matches.
+- Proof receipt: `Task 10` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/repository_selection_test.exs test/sdd_orchestrator/repository_selection/stub_test.exs` — exit `0`.
+- That run was 20 tests, 20 passed. Regression: `mix test test/sdd_orchestrator/worker/ test/sdd_orchestrator/repository_selection/ test/sdd_orchestrator/repository_selection_test.exs` exit `0`, 182 passed. `mix format --check-formatted` and `mix compile --warnings-as-errors` both exit `0`.
+
 ### 2026-08-31 - Task 10 added: the worker must compare a legacy identity too
 
 - Found while preflighting `Task 7`. `Devices.select_repository/2` and `locate_repository/3` both reach `Devices.matches_repository?/3`, which parses each stored identity and compares a portable one with `PortableRepositoryIdentity.match/2` and a legacy one with `match_legacy/3` against the workspace salt. The worker built in `Task 3` only ever calls `match/2`, so every legacy candidate silently answers "no match".

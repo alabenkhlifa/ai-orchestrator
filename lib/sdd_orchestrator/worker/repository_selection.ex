@@ -322,7 +322,7 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
       "request_id" => request.id,
       "outcome" => "selected",
       "folder_name" => Path.basename(path),
-      "matches" => matching_refs(request.candidates, path)
+      "matches" => matching_refs(request.candidates, path, workspace_salt(request.home))
     }
 
     if identity, do: Map.put(payload, "identity", identity), else: payload
@@ -334,18 +334,65 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
   # A candidate whose stored identity cannot be parsed is simply not a match. A
   # single malformed value in the requester's own table must not fail the whole
   # selection, and reporting it as a match would be worse still.
-  defp matching_refs(candidates, path) do
+  defp matching_refs(candidates, path, workspace_salt) do
     candidates
-    |> Enum.filter(&matching_candidate?(&1, path))
+    |> Enum.filter(&matching_candidate?(&1, path, workspace_salt))
     |> Enum.map(fn %{"ref" => ref} -> ref end)
   end
 
-  defp matching_candidate?(%{"ref" => ref, "identity" => identity}, path)
+  defp matching_candidate?(%{"ref" => ref, "identity" => identity}, path, workspace_salt)
        when is_binary(ref) and is_binary(identity) do
-    match?({:ok, true}, PortableRepositoryIdentity.match(path, identity))
+    match?({:ok, true}, compare_identity(path, identity, workspace_salt))
   end
 
-  defp matching_candidate?(_candidate, _path), do: false
+  defp matching_candidate?(_candidate, _path, _workspace_salt), do: false
+
+  # The same dispatch the control plane's own `Devices.matches_repository?/3`
+  # makes, and it has to be the same one. The control plane decides from this
+  # answer whether the chosen repository is already linked to a project, so a
+  # worker that reports "no match" where the control plane would have reported a
+  # match turns one repository into two projects. Projects onboarded before the
+  # portable format still carry a workspace-scoped fingerprint, which `match/2`
+  # refuses outright: only `match_legacy/3`, with the workspace the identity was
+  # salted with, can answer for one.
+  defp compare_identity(path, identity, workspace_salt) do
+    case PortableRepositoryIdentity.parse(identity) do
+      {:ok, _portable} ->
+        PortableRepositoryIdentity.match(path, identity)
+
+      {:error, :legacy_identifier} ->
+        PortableRepositoryIdentity.match_legacy(path, identity, workspace_salt)
+
+      # A non-canonical placeholder from before the contract. It cannot
+      # authorize a match and is never treated as portable.
+      {:error, :invalid_identifier} ->
+        {:ok, false}
+    end
+  end
+
+  # Every legacy fingerprint was salted with the device workspace that owns the
+  # repository, which is this worker's own workspace: the control plane only
+  # ever sends candidates belonging to the workspace it paired this worker for.
+  # It is read from the configuration already on disk under the same home the
+  # request came with, so no new value has to travel in the request. An
+  # unpaired or unreadable configuration yields no salt, and `match_legacy/3`
+  # then reports no match rather than guessing one.
+  defp workspace_salt(home) do
+    case Configuration.load(home) do
+      {:ok, config} -> config.device_workspace_id
+      {:error, _reason} -> nil
+    end
+  rescue
+    error -> unsalted(error.__struct__)
+  end
+
+  # Only the exception's name is reported, for the same reason `discarded/1`
+  # reports only that: a `File.Error` message carries the path.
+  defp unsalted(reason) do
+    Logger.warning("worker could not read its workspace for a legacy match (#{inspect(reason)})")
+
+    nil
+  end
 
   # The three refusals `RepositoryValidation` reports, named exactly as the
   # control plane's own `SelectionResult` accepts them.

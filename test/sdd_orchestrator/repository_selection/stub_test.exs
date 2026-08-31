@@ -14,6 +14,7 @@ defmodule SddOrchestrator.RepositorySelection.StubTest do
   use ExUnit.Case, async: false
 
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
+  alias SddOrchestrator.Devices.RepositoryValidation
   alias SddOrchestrator.RepositorySelection
   alias SddOrchestrator.RepositorySelection.SelectionRequest
   alias SddOrchestrator.RepositorySelection.SelectionResult
@@ -73,6 +74,42 @@ defmodule SddOrchestrator.RepositorySelection.StubTest do
     assert_receive {:repository_selection, ^request_id, {:selected, result}}, 2_000
     assert result.matches == []
     assert result.identity == nil
+  end
+
+  test "a legacy candidate is answered the way a real worker answers it", context do
+    point_at(context.repository)
+
+    legacy = legacy_identity!(context.repository, context.scope.device_workspace_id)
+    # The same repository, salted for a workspace this request does not belong
+    # to. A legacy identity is valid only for its own workspace.
+    foreign = legacy_identity!(context.repository, Ecto.UUID.generate())
+
+    {:ok, request_id} =
+      RepositorySelection.request(context.scope, context.worker_id,
+        candidates: [
+          %{ref: :legacy, identity: legacy},
+          %{ref: :other_workspace, identity: foreign},
+          %{ref: :portable, identity: context.identity}
+        ]
+      )
+
+    assert_receive {:repository_selection, ^request_id, {:selected, result}}, 2_000
+    assert result.matches == ["legacy", "portable"]
+  end
+
+  test "a legacy candidate for another repository is not matched", context do
+    other = init_repo!(Path.join(context.root, "another-legacy-repository"))
+    point_at(context.repository)
+
+    {:ok, request_id} =
+      RepositorySelection.request(context.scope, context.worker_id,
+        candidates: [
+          %{ref: :elsewhere, identity: legacy_identity!(other, context.scope.device_workspace_id)}
+        ]
+      )
+
+    assert_receive {:repository_selection, ^request_id, {:selected, result}}, 2_000
+    assert result.matches == []
   end
 
   test "a folder that is not a Git repository is refused, not matched", context do
@@ -135,6 +172,14 @@ defmodule SddOrchestrator.RepositorySelection.StubTest do
         Application.delete_env(:sdd_orchestrator, :device_worker_stub_folder)
       end
     end)
+  end
+
+  # A workspace-scoped fingerprint, made the way a project onboarded before the
+  # portable format still carries one.
+  defp legacy_identity!(path, workspace_id) do
+    {:ok, %{fingerprint: fingerprint}} = RepositoryValidation.validate(path, workspace_id)
+
+    fingerprint
   end
 
   defp init_repo!(path) do

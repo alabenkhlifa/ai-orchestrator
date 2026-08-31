@@ -19,7 +19,9 @@ defmodule SddOrchestrator.Worker.RepositorySelectionTest do
   import ExUnit.CaptureLog
 
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
+  alias SddOrchestrator.Devices.RepositoryValidation
   alias SddOrchestrator.RepositorySelection.AttachmentCodec
+  alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.RepositorySelection
 
   # Short enough that a test waiting for the answer file to be picked up does
@@ -80,6 +82,37 @@ defmodule SddOrchestrator.Worker.RepositorySelectionTest do
 
   defp write_answer!(home, contents) do
     File.write!(RepositorySelection.answer_path(home), Jason.encode!(contents))
+  end
+
+  # A paired worker, stored the way pairing stores it, so the release reads its
+  # own device workspace from disk exactly as it does in production. That
+  # workspace is the salt every legacy fingerprint was computed with.
+  defp pair!(home, device_workspace_id) do
+    Configuration.store(
+      %Configuration{
+        control_plane_address: "http://localhost:4000",
+        device_workspace_id: device_workspace_id,
+        worker_credential: "credential-#{System.unique_integer([:positive])}",
+        agent_adapter: "claude_code",
+        agent_executable: "/usr/bin/true",
+        worker_id: Ecto.UUID.generate()
+      },
+      home
+    )
+
+    device_workspace_id
+  end
+
+  defp legacy_identity!(path, workspace_id) do
+    {:ok, %{fingerprint: fingerprint}} = RepositoryValidation.validate(path, workspace_id)
+
+    fingerprint
+  end
+
+  defp portable_identity!(path) do
+    {:ok, identity} = PortableRepositoryIdentity.generate(path)
+
+    identity
   end
 
   describe "the pending request file" do
@@ -228,6 +261,64 @@ defmodule SddOrchestrator.Worker.RepositorySelectionTest do
 
       assert_receive {:selection_result, result}
       assert result == %{"request_id" => payload["request_id"], "outcome" => "inaccessible"}
+    end
+  end
+
+  describe "a candidate that still carries a legacy identity" do
+    test "matches its own repository, and only that repository", %{home: home} do
+      workspace_id = pair!(home, Ecto.UUID.generate())
+      start_selection(home)
+
+      chosen = init_repo!(Path.join(home, "legacy-chosen"))
+      other = init_repo!(Path.join(home, "legacy-other"))
+
+      payload =
+        request_payload(%{
+          "candidates" => [
+            %{"ref" => "legacy-same", "identity" => legacy_identity!(chosen, workspace_id)},
+            %{"ref" => "legacy-other", "identity" => legacy_identity!(other, workspace_id)},
+            # The same repository, salted for a workspace this worker was never
+            # paired for. A legacy identity is only ever valid for its own
+            # workspace, so this must not match either.
+            %{
+              "ref" => "legacy-foreign",
+              "identity" => legacy_identity!(chosen, Ecto.UUID.generate())
+            },
+            %{"ref" => "portable-same", "identity" => portable_identity!(chosen)},
+            %{"ref" => "portable-other", "identity" => portable_identity!(other)}
+          ]
+        })
+
+      :ok = RepositorySelection.open(payload, reply_to(self()), home)
+      assert :ok = RepositorySelection.answer(payload["request_id"], chosen)
+
+      assert_receive {:selection_result, result}
+      assert result["outcome"] == "selected"
+      assert result["matches"] == ["legacy-same", "portable-same"]
+    end
+
+    test "cannot be matched by a worker that has no stored workspace", %{home: home} do
+      workspace_id = Ecto.UUID.generate()
+      start_selection(home)
+
+      chosen = init_repo!(Path.join(home, "legacy-unpaired"))
+
+      payload =
+        request_payload(%{
+          "candidates" => [
+            %{"ref" => "legacy", "identity" => legacy_identity!(chosen, workspace_id)},
+            %{"ref" => "portable", "identity" => portable_identity!(chosen)}
+          ]
+        })
+
+      :ok = RepositorySelection.open(payload, reply_to(self()), home)
+      assert :ok = RepositorySelection.answer(payload["request_id"], chosen)
+
+      # No configuration on disk means no salt, so a legacy candidate is
+      # reported as no match rather than guessed at. A portable identity needs
+      # no workspace and still matches.
+      assert_receive {:selection_result, result}
+      assert result["matches"] == ["portable"]
     end
   end
 
