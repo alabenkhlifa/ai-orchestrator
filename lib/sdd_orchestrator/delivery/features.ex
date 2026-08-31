@@ -12,7 +12,7 @@ defmodule SddOrchestrator.Delivery.Features do
   import Ecto.Query
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
-  alias SddOrchestrator.Delivery.{Feature, ParticipantGuard, Readiness}
+  alias SddOrchestrator.Delivery.{Feature, GuidedRequirements, ParticipantGuard}
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationStore
@@ -278,12 +278,10 @@ defmodule SddOrchestrator.Delivery.Features do
     Ecto.Query.CastError -> nil
   end
 
-  # The four guided headings, with nothing under them yet. Reading the labels
-  # from `Readiness.guided_structure/0` keeps the document the person fills in
-  # and the parts readiness judges from drifting apart.
-  defp empty_requirements_document do
-    Enum.map_join(Readiness.guided_structure(), "\n\n", &"## #{&1.label}") <> "\n"
-  end
+  # The four guided headings, with nothing under them yet. The document's shape
+  # has one owner, so the form a person fills in and the document a feature
+  # starts with cannot disagree.
+  defp empty_requirements_document, do: GuidedRequirements.empty()
 
   defp normalize_link_error({:ok, feature}), do: {:ok, feature}
 

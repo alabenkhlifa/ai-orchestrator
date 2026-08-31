@@ -24,6 +24,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     DeliveryStore,
     EvidencePresentation,
     Features,
+    GuidedRequirements,
     LocalWorkerRuntimeProjection,
     ParticipantGuard,
     PreviewPresentation,
@@ -33,6 +34,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     Review,
     ReviewDecision
   }
+
+  alias SddOrchestrator.SpecificationStore
 
   @column_labels %{
     "draft" => "Draft",
@@ -70,6 +73,23 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     revision_conflict: "The specification changed while you were answering. Try again.",
     no_specification: "This project has no specification to write the answer into."
   }
+
+  # A refused save always leaves the stored revision exactly as it was, so every
+  # sentence here says what to do next rather than what broke. The head moving
+  # is the one a person can act on: their words are still in the form, and a
+  # reload shows what the other save wrote.
+  @requirements_messages %{
+    stale_revision:
+      "This feature was saved by someone else while you were writing. Reload the page to " <>
+        "read that version, then make your change again.",
+    revision_conflict:
+      "This save could not be recorded. Reload the page and make your change again.",
+    no_specification: "This feature has no specification to save into.",
+    document_too_large: "That is too long to save. Shorten it and try again.",
+    revision_too_large: "That is too long to save. Shorten it and try again."
+  }
+
+  @requirements_unsaved "That did not save, and nothing changed. Try again."
 
   @retry_messages %{
     no_failed_run: "This run is going again already.",
@@ -315,6 +335,23 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
+  # The typed words are kept in the form and nowhere else until the person
+  # saves. Nothing here writes them to a log or an activity entry.
+  def handle_event("validate_requirements", %{"requirements" => parts}, socket) do
+    {:noreply,
+     socket
+     |> assign(:requirements_parts, normalize_requirements(parts))
+     |> assign(:requirements_error, nil)}
+  end
+
+  def handle_event("save_requirements", %{"requirements" => parts}, socket) do
+    document = GuidedRequirements.render(parts)
+
+    socket
+    |> assign(:requirements_parts, GuidedRequirements.parse(document))
+    |> save_requirements(document)
+  end
+
   def handle_event("retry", _params, socket) do
     socket
     |> storage_authority()
@@ -555,6 +592,77 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp specification_link_message(_reason),
     do: "This feature changed while you were looking at it. It has been refreshed."
 
+  # Only the four guided parts are carried, exactly as typed. Trimming happens
+  # when the document is rendered, so a person is not fighting the field for a
+  # blank line while they are still writing in it.
+  defp normalize_requirements(parts) do
+    Map.new(GuidedRequirements.keys(), fn key -> {key, requirements_value(parts, key)} end)
+  end
+
+  defp requirements_value(parts, key) do
+    case Map.get(parts, key) do
+      value when is_binary(value) -> value
+      _absent -> ""
+    end
+  end
+
+  # The save goes against the revision the page read, never against whatever is
+  # current now. A head that moved is somebody else's save, and appending over
+  # it would drop their words with nobody seeing it happen.
+  defp save_requirements(socket, document) do
+    project_id = socket.assigns.project_id
+
+    with {:ok, member} <-
+           ParticipantGuard.authorize_action(project_id, socket.assigns.actor, :answer_question),
+         {:ok, expected, carried} <- requirements_base(socket),
+         {:ok, appended} <-
+           SpecificationStore.append_revision(
+             storage_authority(socket),
+             project_id,
+             socket.assigns.feature.specification_id,
+             expected,
+             %{
+               revision_id: Ecto.UUID.generate(),
+               documents: Map.put(carried, :requirements, document),
+               actor_ref: member.account_id
+             }
+           ) do
+      {:noreply, saved_requirements(socket, appended)}
+    else
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :requirements_error, requirements_message(reason))}
+    end
+  end
+
+  defp requirements_base(%{assigns: %{requirements_revision_id: nil}}),
+    do: {:error, :no_specification}
+
+  defp requirements_base(%{assigns: assigns}),
+    do: {:ok, assigns.requirements_revision_id, assigns.requirements_carried}
+
+  # The stored document is read back rather than the typed text kept, so the
+  # form shows what was actually written.
+  defp saved_requirements(socket, %{revision: revision}) do
+    socket
+    |> assign(:requirements_revision_id, revision.id)
+    |> assign(:requirements_carried, carried_documents(revision))
+    |> assign(:requirements_parts, GuidedRequirements.parse(revision.requirements_document))
+    |> assign(:requirements_error, nil)
+  end
+
+  # The design and tasks documents belong to the coding agent. The form carries
+  # them forward exactly as they are, so writing requirements never edits them.
+  defp carried_documents(revision),
+    do: %{design: revision.design_document, tasks: revision.tasks_document}
+
+  defp requirements_message(reason) when is_atom(reason),
+    do: Map.get(@requirements_messages, reason, @requirements_unsaved)
+
+  defp requirements_message(_reason), do: @requirements_unsaved
+
   defp review_subject(socket),
     do: %{project: socket.assigns.project, feature: socket.assigns.feature}
 
@@ -638,6 +746,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign_preview(actor, feature)
     |> assign_review(actor, feature)
     |> assign_available_specifications(project_id, actor, feature)
+    |> assign_requirements(feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
@@ -678,6 +787,51 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       end
 
     assign(socket, :available_specifications, available)
+  end
+
+  # The feature's own requirements, read once and then held. Every later action
+  # on this screen leaves them alone, so words typed and not yet saved survive a
+  # comment or an answer, and the revision the save is checked against stays the
+  # one the page actually showed.
+  defp assign_requirements(socket, feature) do
+    if Map.has_key?(socket.assigns, :requirements_parts) do
+      socket
+    else
+      load_requirements(socket, feature)
+    end
+  end
+
+  defp load_requirements(socket, feature) do
+    case current_specification(socket, feature) do
+      {:ok, %{revision: revision}} ->
+        socket
+        |> assign(:requirements_revision_id, revision.id)
+        |> assign(:requirements_carried, carried_documents(revision))
+        |> assign(:requirements_parts, GuidedRequirements.parse(revision.requirements_document))
+        |> assign(:requirements_error, nil)
+
+      :error ->
+        socket
+        |> assign(:requirements_revision_id, nil)
+        |> assign(:requirements_carried, nil)
+        |> assign(:requirements_parts, GuidedRequirements.parse(""))
+        |> assign(:requirements_error, nil)
+    end
+  end
+
+  # Only the feature's own linked specification is ever read here. A feature
+  # created before it owned one, or a store that refuses, reads as nothing to
+  # write into rather than as another specification of the project.
+  defp current_specification(_socket, %{specification_id: nil}), do: :error
+
+  defp current_specification(socket, feature) do
+    socket
+    |> storage_authority()
+    |> SpecificationStore.get_current(socket.assigns.project_id, feature.specification_id)
+    |> case do
+      {:ok, current} -> {:ok, current}
+      {:error, _reason} -> :error
+    end
   end
 
   # The stopped run this reader may restart, if any. Resolved after the project
@@ -918,6 +1072,10 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp failure_message(reason),
     do: Map.get(@failure_messages, reason, "The run stopped: #{reason}")
 
+  defp guided_parts, do: GuidedRequirements.structure()
+
+  defp requirements_body(parts, key), do: Map.get(parts, key, "")
+
   defp column_label(column), do: Map.fetch!(@column_labels, column)
   defp status_label(status), do: Map.get(@status_labels, status)
   defp gated_action(column), do: Map.fetch!(@gated_actions, column)
@@ -1131,6 +1289,82 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             {status_label(@feature.status)}
           </span>
         </div>
+
+        <%!-- The feature's own words come first: this is what a person opens
+        the page to write, and everything below it judges or acts on it. --%>
+        <section
+          class="mt-6 rounded-lg border border-line bg-surface p-4"
+          aria-labelledby="requirements-heading"
+          data-requirements
+        >
+          <h2 id="requirements-heading" class="text-[13px] font-semibold text-ink">
+            What this feature should do
+          </h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Write it in your own words. Each save keeps a new version, so nothing you wrote
+            before is lost.
+          </p>
+
+          <p
+            :if={is_nil(@requirements_revision_id)}
+            class="mt-3 text-[13px] leading-relaxed text-ink-muted"
+            data-requirements-unavailable
+          >
+            This feature has no specification of its own, so there is nowhere to write this
+            down yet.
+          </p>
+
+          <form
+            :if={@requirements_revision_id}
+            id="requirements-form"
+            phx-change="validate_requirements"
+            phx-submit="save_requirements"
+            class="mt-4"
+            data-requirements-form
+          >
+            <div :for={part <- guided_parts()} class="mt-4 first:mt-0">
+              <label
+                for={"requirements-#{part.key}"}
+                class="block text-[13px] font-semibold text-ink"
+              >
+                {part.label}
+              </label>
+              <textarea
+                id={"requirements-#{part.key}"}
+                name={"requirements[#{part.key}]"}
+                rows="3"
+                aria-describedby={"requirements-#{part.key}-hint"}
+                class={[
+                  "mt-1.5 w-full rounded-lg border bg-surface px-3 py-2 text-sm text-ink outline-none",
+                  "focus:outline-solid focus:outline-2 focus:outline-offset-0 focus:outline-focus",
+                  (@requirements_error && "border-err-fg") || "border-line-strong focus:border-focus"
+                ]}
+                phx-debounce="200"
+                data-requirements-part={part.key}
+              >{requirements_body(@requirements_parts, part.key)}</textarea>
+              <p
+                id={"requirements-#{part.key}-hint"}
+                class="mt-2 text-xs text-ink-muted"
+                data-requirements-hint={part.key}
+              >
+                {part.hint}
+              </p>
+            </div>
+
+            <p
+              :if={@requirements_error}
+              class="mt-4 flex items-start gap-1.5 text-xs text-err-fg"
+              data-requirements-error
+            >
+              <.lucide name="circle-alert" class="size-3.5 flex-none" />
+              {@requirements_error}
+            </p>
+
+            <.button type="submit" class="mt-4 w-full sm:w-auto" data-save-requirements>
+              <.lucide name="check" class="size-4" /> Save
+            </.button>
+          </form>
+        </section>
 
         <section
           :if={@feature.lifecycle_column == "ready_for_review" or @review_decision}
