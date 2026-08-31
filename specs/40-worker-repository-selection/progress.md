@@ -1,5 +1,13 @@
 # Worker-Driven Repository Selection Progress Log
 
+### 2026-08-31 - Task 10 added: the worker must compare a legacy identity too
+
+- Found while preflighting `Task 7`. `Devices.select_repository/2` and `locate_repository/3` both reach `Devices.matches_repository?/3`, which parses each stored identity and compares a portable one with `PortableRepositoryIdentity.match/2` and a legacy one with `match_legacy/3` against the workspace salt. The worker built in `Task 3` only ever calls `match/2`, so every legacy candidate silently answers "no match".
+- Consequence had it shipped: a repository already linked to a legacy project would not be reported as a duplicate, so one repository could become two projects. `Locate repository` for a legacy project could never reconnect or upgrade it. `design.md` already promises under Interfaces that "the accountless duplicate and naming rules stay exactly as their specifications already state", so this is a defect against the agreement rather than new scope.
+- Legacy identities are live, not dead code: `test/sdd_orchestrator/devices/repository_identity_integration_test.exs` and `test/sdd_orchestrator_web/live/local_onboarding_flow_test.exs` both drive the legacy upgrade path through `locate_repository/3`.
+- Mechanism, decided as an engineering choice because it preserves the accepted product outcome rather than changing it: the worker dispatches on the identity's own format, exactly as the control plane does. A legacy comparison needs the workspace salt, which is the device workspace id the worker already holds in its own configuration, so nothing new travels in a request and no salt is sent. `design.md`'s candidate boundary and worker bullet now say this.
+- Recorded as `Task 10` rather than folded into `Task 7`, because it is separately provable and `Task 7` would otherwise own two adapters. Listed before `Task 7` in the file so the dependency reads forward; the label stays `Task 10`. Slice totals stay inside the gate: ten tasks against a limit of twelve, longest `Depends on:` path six against a limit of eight.
+
 ### 2026-08-31 - Tasks 4, 6 and 8: the picker, the hosted connection, and a truthful screen
 
 Run in parallel over disjoint files: the Swift app, the hosted dashboard, and the onboarding screen.
