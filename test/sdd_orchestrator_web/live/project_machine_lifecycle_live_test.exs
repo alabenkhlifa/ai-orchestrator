@@ -9,6 +9,7 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import SddOrchestrator.SelectionSettling, only: [settle: 2, settled: 1]
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{DeviceStore.Local, Pairing, PortableRepositoryIdentity}
@@ -60,8 +61,8 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
              SpecificationStore.current_snapshot(context.workspace, context.project.id)
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
-    html = view |> element("[data-connect-machine]") |> render_click()
-    assert html =~ ~s(data-worker-connection="connected")
+    view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
 
     html = view |> element("[data-disconnect-machine]") |> render_click()
 
@@ -84,6 +85,7 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
     view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
 
     html = view |> element("[data-disconnect-machine]") |> render_click()
     assert html =~ ~s(data-worker-connection="disconnected")
@@ -101,6 +103,7 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
     view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
     assert Repo.get!(HostedLocalRepositoryBinding, context.project.id).worker_id == first.id
 
     second = available_worker_fixture(context.device_workspace)
@@ -108,9 +111,11 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
     html = view |> element("[data-connect-machine]") |> render_click()
     assert html =~ "data-choose-machine"
 
-    html = view |> element("[data-machine-option='#{second.id}']") |> render_click()
+    # The page was already connected to the first machine, so what this click
+    # waits on is the page no longer asking, not the connected state.
+    view |> element("[data-machine-option='#{second.id}']") |> render_click()
+    assert settled(view) =~ ~s(data-worker-connection="connected")
 
-    assert html =~ ~s(data-worker-connection="connected")
     assert Repo.aggregate(HostedLocalRepositoryBinding, :count) == 1
 
     binding = Repo.get!(HostedLocalRepositoryBinding, context.project.id)
@@ -124,6 +129,7 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
     view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
     original = Repo.get!(HostedLocalRepositoryBinding, context.project.id)
     assert original.worker_id == first.id
 
@@ -133,9 +139,9 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
     html = view |> element("[data-connect-machine]") |> render_click()
     assert html =~ "data-choose-machine"
 
-    html = view |> element("[data-machine-option='#{second.id}']") |> render_click()
+    view |> element("[data-machine-option='#{second.id}']") |> render_click()
+    html = settle(view, "data-connect-error")
 
-    assert html =~ "data-connect-error"
     assert html =~ "isn&#39;t this project&#39;s repository"
     assert html =~ ~s(data-worker-connection="connected")
 
@@ -149,12 +155,14 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
     view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
     original = Repo.get!(HostedLocalRepositoryBinding, context.project.id)
 
     unreachable = paired_worker_fixture(context.device_workspace)
 
     view |> element("[data-connect-machine]") |> render_click()
-    html = view |> element("[data-machine-option='#{unreachable.id}']") |> render_click()
+    view |> element("[data-machine-option='#{unreachable.id}']") |> render_click()
+    html = settle(view, "data-connect-error")
 
     assert html =~ "isn&#39;t reachable right now"
     assert Repo.get!(HostedLocalRepositoryBinding, context.project.id) == original
@@ -165,7 +173,8 @@ defmodule SddOrchestratorWeb.ProjectMachineLifecycleLiveTest do
     _worker = available_worker_fixture(context.device_workspace)
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
-    html = view |> element("[data-connect-machine]") |> render_click()
+    view |> element("[data-connect-machine]") |> render_click()
+    html = settle(view, ~s(data-worker-connection="connected"))
 
     assert html =~ "Connect a different machine"
     assert html =~ "data-disconnect-machine"

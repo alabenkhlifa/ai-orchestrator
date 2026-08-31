@@ -15,6 +15,7 @@ defmodule SddOrchestratorWeb.HostedLocalRepositoryRunReachabilityTest do
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import SddOrchestrator.SelectionSettling, only: [settle: 2]
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{DeviceStore.Local, Pairing, PortableRepositoryIdentity}
@@ -70,8 +71,8 @@ defmodule SddOrchestratorWeb.HostedLocalRepositoryRunReachabilityTest do
     refute RepositoryWorkerAvailability.available?(context.workspace, context.project.id)
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
-    html = view |> element("[data-connect-machine]") |> render_click()
-    assert html =~ ~s(data-worker-connection="connected")
+    view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
 
     issued = exchange(context.project.id, context.credential)
     assert %{"token" => token} = json_response(issued, 200)
@@ -88,6 +89,7 @@ defmodule SddOrchestratorWeb.HostedLocalRepositoryRunReachabilityTest do
        context do
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
     view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
 
     assert %{"token" => token} =
              context.project.id
@@ -105,6 +107,7 @@ defmodule SddOrchestratorWeb.HostedLocalRepositoryRunReachabilityTest do
   test "disconnecting the project returns the exchange to refusing", context do
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
     view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
 
     assert %{"token" => _token} =
              context.project.id
@@ -127,6 +130,7 @@ defmodule SddOrchestratorWeb.HostedLocalRepositoryRunReachabilityTest do
 
     {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.id}/overview")
     view |> element("[data-connect-machine]") |> render_click()
+    settle(view, ~s(data-worker-connection="connected"))
 
     assert %{"token" => _token} =
              context.project.id

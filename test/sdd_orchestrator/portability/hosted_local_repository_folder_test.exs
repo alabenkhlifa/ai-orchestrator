@@ -1,154 +1,152 @@
 defmodule SddOrchestrator.Portability.HostedLocalRepositoryFolderTest do
   @moduledoc """
-  Task 7 proof for pointing the selected machine at the repository folder.
+  Proof for pointing the selected machine at the repository folder (specs/37
+  Task 7, reshaped by specs/40 Task 6).
 
-  The owner names the folder; the machine never searches for it. The chosen path
-  is held only in the returned proof's closure, so nothing that crosses back to
-  the control plane can carry a path, remote URL, filename, or Git object.
+  The owner names the folder and the machine never searches for it. The folder
+  is on that machine, so this module asks for it and never opens it: the request
+  carries one identity, the answer carries one reference, and no path, remote
+  URL, file name, or Git object crosses in either direction.
   """
 
-  use ExUnit.Case, async: true
+  # `async: false`: the transport double swaps application environment, and the
+  # request server is one process shared by the whole node.
+  use ExUnit.Case, async: false
 
-  alias SddOrchestrator.Devices.PortableRepositoryIdentity
   alias SddOrchestrator.Portability.HostedLocalRepositoryFolder
+  alias SddOrchestrator.RepositorySelection
+  alias SddOrchestrator.RepositorySelection.SelectionRequest
+  alias SddOrchestrator.RepositorySelection.SelectionResult
+  alias SddOrchestrator.RepositorySelectionTransportDouble, as: TransportDouble
+
+  @identity "local-repo:v1:c2FsdA:ZGlnZXN0"
 
   setup do
-    root = git_root()
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(TransportDouble.install())
 
-    repository = init_repo!(Path.join(root, "chosen-folder"))
-    {:ok, repository_id} = PortableRepositoryIdentity.generate(repository)
+    workspace_id = Ecto.UUID.generate()
+    worker_id = Ecto.UUID.generate()
 
-    %{root: root, repository: repository, repository_id: repository_id}
-  end
-
-  test "a selected folder yields a proof of the project-held identity only", context do
-    assert {:ok, proof} = HostedLocalRepositoryFolder.select(picker: picker(context.repository))
-
-    assert is_function(proof, 1)
-    assert proof.(context.repository_id) == {:ok, true}
-
-    {:ok, other_id} =
-      context.root |> Path.join("other") |> init_repo!() |> PortableRepositoryIdentity.generate()
-
-    assert proof.(other_id) == {:ok, false}
-  end
-
-  test "the chosen path never leaves the device", context do
-    assert {:ok, proof} = HostedLocalRepositoryFolder.select(picker: picker(context.repository))
-
-    refute inspect(proof) =~ context.repository
-    refute inspect(proof) =~ Path.basename(context.repository)
-    refute inspect(proof) =~ "README"
-
-    verdict = proof.(context.repository_id)
-    assert verdict == {:ok, true}
-
-    rendered = inspect(verdict)
-    refute rendered =~ context.repository
-    refute rendered =~ "README"
-    refute rendered =~ "example.test"
-  end
-
-  test "a cancelled selection attempts no connection and stores nothing", context do
-    assert {:error, :cancelled} =
-             HostedLocalRepositoryFolder.select(picker: fn -> :cancelled end)
-
-    assert {:error, :picker_unavailable} =
-             HostedLocalRepositoryFolder.select(picker: fn -> :unavailable end)
-
-    assert File.dir?(context.repository)
-  end
-
-  test "a folder that is not a Git repository is refused at selection", context do
-    plain = Path.join(context.root, "plain-folder")
-    File.mkdir_p!(plain)
-
-    assert {:error, :not_a_git_repository} =
-             HostedLocalRepositoryFolder.select(picker: picker(plain))
-
-    missing = Path.join(context.root, "does-not-exist")
-
-    assert {:error, :repository_unavailable} =
-             HostedLocalRepositoryFolder.select(picker: picker(missing))
-
-    empty = init_bare_repo!(Path.join(context.root, "empty-repository"))
-
-    assert {:error, :repository_unavailable} =
-             HostedLocalRepositoryFolder.select(picker: picker(empty))
-  end
-
-  test "selecting and proving never writes to the repository", context do
-    before = git_snapshot(context.repository)
-
-    assert {:ok, proof} = HostedLocalRepositoryFolder.select(picker: picker(context.repository))
-    assert proof.(context.repository_id) == {:ok, true}
-
-    {:ok, unrelated_id} =
-      context.root
-      |> Path.join("unrelated")
-      |> init_repo!()
-      |> PortableRepositoryIdentity.generate()
-
-    assert proof.(unrelated_id) == {:ok, false}
-    assert git_snapshot(context.repository) == before
-  end
-
-  test "a repository that disappears after selection is reported, never matched", context do
-    disposable = init_repo!(Path.join(context.root, "disposable"))
-    {:ok, disposable_id} = PortableRepositoryIdentity.generate(disposable)
-
-    assert {:ok, proof} = HostedLocalRepositoryFolder.select(picker: picker(disposable))
-    assert proof.(disposable_id) == {:ok, true}
-
-    File.rm_rf!(disposable)
-
-    assert {:error, :inaccessible} = proof.(disposable_id)
-  end
-
-  test "the default picker follows the established worker stand-in seam" do
-    assert HostedLocalRepositoryFolder.picker_available?() ==
-             Application.get_env(:sdd_orchestrator, :device_worker_stub, false)
-  end
-
-  defp picker(path), do: fn -> {:ok, path} end
-
-  defp git_root do
-    Path.join(
-      System.tmp_dir!(),
-      "sdd_hosted_local_folder_#{System.unique_integer([:positive])}"
-    )
-  end
-
-  defp init_repo!(path) do
-    File.mkdir_p!(path)
-    git!(path, ["init", "-q"])
-    git!(path, ["config", "user.email", "folder-selection@example.test"])
-    git!(path, ["config", "user.name", "Folder Selection"])
-    File.write!(Path.join(path, "README.md"), "unchanged #{Path.basename(path)}")
-    git!(path, ["add", "README.md"])
-    git!(path, ["commit", "-q", "-m", "initial"])
-    path
-  end
-
-  defp init_bare_repo!(path) do
-    File.mkdir_p!(path)
-    git!(path, ["init", "-q"])
-    path
-  end
-
-  defp git_snapshot(path) do
     %{
-      head: git!(path, ["rev-parse", "HEAD"]),
-      branches: git!(path, ["branch", "--format=%(refname)"]),
-      remotes: git!(path, ["remote", "-v"]),
-      status: git!(path, ["status", "--porcelain=v1"]),
-      config: git!(path, ["config", "--local", "--list"])
+      scope: %{device_workspace_id: workspace_id, project_id: Ecto.UUID.generate()},
+      workspace_id: workspace_id,
+      worker_id: worker_id,
+      attachment: %{device_workspace_id: workspace_id, worker_id: worker_id}
     }
   end
 
-  defp git!(path, args) do
-    {output, 0} = System.cmd("git", ["-C", path | args], stderr_to_stdout: true)
-    String.trim(output)
+  test "the request asks one machine about this project's identity and nothing else", context do
+    assert {:ok, request_id} =
+             HostedLocalRepositoryFolder.request(context.scope, context.worker_id, @identity)
+
+    assert [%SelectionRequest{} = pushed] = TransportDouble.pushed()
+    assert pushed.id == request_id
+    assert pushed.requester == self()
+    assert pushed.device_workspace_id == context.workspace_id
+    assert pushed.project_id == context.scope.project_id
+    assert pushed.worker_id == context.worker_id
+
+    # One candidate, under this module's own reference, and no new identity: the
+    # project already has one and the only open question is whether the folder
+    # is it.
+    assert pushed.candidates == [
+             %{ref: HostedLocalRepositoryFolder.project_ref(), identity: @identity}
+           ]
+
+    assert pushed.generate? == false
+  end
+
+  test "a matched answer proves the repository, an unmatched one does not", context do
+    {:ok, request_id} =
+      HostedLocalRepositoryFolder.request(context.scope, context.worker_id, @identity)
+
+    :ok = RepositorySelection.answer(context.attachment, selected(request_id, ["project"]))
+
+    assert_receive {:repository_selection, ^request_id, {:selected, %SelectionResult{} = result}}
+
+    proof = HostedLocalRepositoryFolder.proof(result, @identity)
+    assert is_function(proof, 1)
+    assert proof.(@identity) == {:ok, true}
+
+    unmatched = %SelectionResult{request_id: request_id, outcome: :selected, matches: []}
+    assert HostedLocalRepositoryFolder.proof(unmatched, @identity).(@identity) == {:ok, false}
+  end
+
+  test "a verdict answers only for the identity it was asked about" do
+    matched = %SelectionResult{request_id: "r", outcome: :selected, matches: ["project"]}
+    proof = HostedLocalRepositoryFolder.proof(matched, @identity)
+
+    # The worker compared the folder against the identity that was sent, so the
+    # same verdict means nothing for a project whose identity changed while the
+    # panel was open. It is answered false, never connected on a stale true.
+    assert proof.(@identity) == {:ok, true}
+    assert proof.("local-repo:v1:b3RoZXI:b3RoZXI") == {:ok, false}
+    assert proof.("") == {:ok, false}
+  end
+
+  test "the reference is recognised in the form a real worker sends it back" do
+    result = %SelectionResult{request_id: "r", outcome: :selected, matches: [:project]}
+    assert HostedLocalRepositoryFolder.proof(result, @identity).(@identity) == {:ok, true}
+
+    wire = %SelectionResult{request_id: "r", outcome: :selected, matches: ["project"]}
+    assert HostedLocalRepositoryFolder.proof(wire, @identity).(@identity) == {:ok, true}
+
+    other = %SelectionResult{request_id: "r", outcome: :selected, matches: ["something-else"]}
+    assert HostedLocalRepositoryFolder.proof(other, @identity).(@identity) == {:ok, false}
+
+    unusable = %SelectionResult{request_id: "r", outcome: :selected, matches: [%{"ref" => 1}]}
+    assert HostedLocalRepositoryFolder.proof(unusable, @identity).(@identity) == {:ok, false}
+  end
+
+  test "no path is asked for, answered with, or held in the proof", context do
+    {:ok, request_id} =
+      HostedLocalRepositoryFolder.request(context.scope, context.worker_id, @identity)
+
+    [pushed] = TransportDouble.pushed()
+    refute inspect(pushed) =~ "/"
+
+    :ok = RepositorySelection.answer(context.attachment, selected(request_id, ["project"]))
+    assert_receive {:repository_selection, ^request_id, {:selected, result}}
+
+    # The folder name is the last segment and nothing more, and the proof closes
+    # over a verdict and the identity it answers for, and nothing else, so there
+    # is nowhere for a path to hide in it.
+    assert result.folder_name == "orchestrator"
+    proof = HostedLocalRepositoryFolder.proof(result, @identity)
+    assert {:env, captured} = :erlang.fun_info(proof, :env)
+    assert Enum.sort(captured) == Enum.sort([true, @identity])
+    assert proof.(@identity) == {:ok, true}
+  end
+
+  test "a refusal never reaches the proof at all", context do
+    {:ok, request_id} =
+      HostedLocalRepositoryFolder.request(context.scope, context.worker_id, @identity)
+
+    :ok =
+      RepositorySelection.answer(context.attachment, %{
+        "request_id" => request_id,
+        "outcome" => "not_a_git_repository"
+      })
+
+    assert_receive {:repository_selection, ^request_id, {:refused, :not_a_git_repository}}
+    refute_receive {:repository_selection, ^request_id, {:selected, _result}}, 50
+  end
+
+  test "a request that cannot leave the control plane is reported, not left open", context do
+    TransportDouble.script({:error, :no_worker})
+
+    assert {:error, :no_worker} =
+             HostedLocalRepositoryFolder.request(context.scope, context.worker_id, @identity)
+
+    refute_receive {:repository_selection, _request_id, _outcome}, 50
+  end
+
+  defp selected(request_id, matches) do
+    %{
+      "request_id" => request_id,
+      "outcome" => "selected",
+      "folder_name" => "orchestrator",
+      "matches" => matches
+    }
   end
 end
