@@ -19,6 +19,7 @@ defmodule SddOrchestrator.Delivery.RetryTest do
     AgentRun,
     CommandOutbox,
     DeliveryStore,
+    ExecutionManifest,
     Feature,
     Retry,
     RunAttempt,
@@ -30,18 +31,9 @@ defmodule SddOrchestrator.Delivery.RetryTest do
   alias SddOrchestrator.ParticipationDeliveryDouble
   alias SddOrchestrator.Repo
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
-
   setup do
     for {key, value} <- [
-          participation_email_delivery: ParticipationDeliveryDouble,
-          delivery_execution: @execution
+          participation_email_delivery: ParticipationDeliveryDouble
         ] do
       previous = Application.get_env(:sdd_orchestrator, key)
       Application.put_env(:sdd_orchestrator, key, value)
@@ -67,7 +59,8 @@ defmodule SddOrchestrator.Delivery.RetryTest do
       feature: feature,
       owner: context.owner_actor,
       participant: context.participant_actor,
-      owner_account: context.account
+      owner_account: context.account,
+      profile: context.profile
     }
   end
 
@@ -177,20 +170,33 @@ defmodule SddOrchestrator.Delivery.RetryTest do
       assert Repo.get!(AgentRun, run.id).branch == run.branch
     end
 
-    test "keeps the retry on the configured worker rather than moving it", %{
+    test "keeps the retry on the approved contract rather than moving it", %{
       authority: authority,
       project: project,
+      profile: profile,
       run: run,
       attempt: attempt
     } do
       {:ok, results} =
         Retry.handle_failure(authority, project.id, failed_event(run, attempt, "rate_limited"))
 
-      # The manifest handed to the worker is rebuilt from the run and the project
-      # configuration, never from the failure, so the same configured worker and
-      # the same branch are bound into the digest the command carries.
+      # The manifest handed to the worker is rebuilt from the run and the
+      # approved execution profile, never from the failure, so the same branch
+      # and the same checks are bound into the digest the command carries. The
+      # digest covers every field, so an equal digest is proof that the profile's
+      # base revision, checks, root, commands, and scope are what travelled.
+      expected =
+        DeliveryFixtures.continuation_manifest(run, results.attempt, profile, %{
+          "reason" => "automatic_retry",
+          "prior_attempt_number" => attempt.attempt_number
+        })
+
+      assert ExecutionManifest.digest(expected) == results.attempt.manifest_digest
       assert results.command.manifest_digest == results.attempt.manifest_digest
       refute results.attempt.manifest_digest == attempt.manifest_digest
+
+      assert results.attempt.required_checks ==
+               DeliveryFixtures.required_check_contract(profile.required_checks)
     end
 
     test "creates the next ordered attempt with a higher fence token", %{

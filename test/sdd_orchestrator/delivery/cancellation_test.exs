@@ -41,14 +41,6 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
   alias SddOrchestrator.SpecificationFixtures
   alias SddOrchestrator.SpecificationStore
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
-
   @boundary [
     execution_location: "this computer",
     agent_provider: "configured-agent",
@@ -62,7 +54,6 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
 
     for {key, value} <- [
           participation_email_delivery: ParticipationDeliveryDouble,
-          delivery_execution: @execution,
           processing_boundary: @boundary
         ] do
       previous = Application.get_env(:sdd_orchestrator, key)
@@ -80,7 +71,13 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
     ParticipationDeliveryDouble.succeed()
 
     context = DeliveryFixtures.delivery_project_fixture()
-    feature = DeliveryFixtures.feature_fixture(context.project, context.account)
+
+    # Every guided part is written, so readiness clears and these tests reach
+    # the run they are about to cancel.
+    feature =
+      DeliveryFixtures.feature_fixture(context.project, context.account, %{
+        requirements: :filled
+      })
 
     {:ok, _current} =
       SpecificationStore.create(

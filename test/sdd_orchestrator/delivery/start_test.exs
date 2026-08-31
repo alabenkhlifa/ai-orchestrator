@@ -34,48 +34,14 @@ defmodule SddOrchestrator.Delivery.StartTest do
   alias SddOrchestrator.ParticipationDeliveryDouble
   alias SddOrchestrator.PersonalConnectionAdapterDouble
   alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
-  alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ReadinessGuidanceDouble
   alias SddOrchestrator.Repo
-  alias SddOrchestrator.RepositoryAssessments
-
-  alias SddOrchestrator.RepositoryAssessments.{
-    AssessmentStore,
-    RepositoryAssessment,
-    RepositoryAssessmentCacheProvenance,
-    RepositoryAssessmentResult,
-    RepositoryBindingPreparation,
-    RepositoryExecutionProfile,
-    RepositoryExecutionProfileProposalPayload,
-    WorkerRepositoryExecutionProfileProposalEnvelope
-  }
+  alias SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfile
 
   alias SddOrchestrator.SpecificationFixtures
   alias SddOrchestrator.SpecificationStore
 
-  @scanner_digest String.duplicate("a", 64)
-  @disclosure_digest String.duplicate("b", 64)
-  @base_revision String.duplicate("1", 40)
-  @repository_provider "github"
-
-  # The approved profile's own values. One command, and the scope entries
-  # together, weigh more than `ProtocolLimits.max_reference_bytes`, so a
-  # manifest that squeezed them into `agent_ref` or `worker_ref` would be
-  # refused. They belong to fields of their own instead.
-  @long_command "mix test " <> String.duplicate("--include slow_case ", 30)
-
-  @deep_directories Enum.map(1..6, fn index ->
-                      "lib/" <> String.duplicate("deep_module_#{index}_", 6) <> "leaf"
-                    end)
-
-  @proposal_fields %{
-    commands: ["mix test", @long_command],
-    required_checks: ["mix test"],
-    allowed_scope: @deep_directories,
-    gaps: [],
-    conflicts: [],
-    multi_root_blockers: []
-  }
+  @base_revision DeliveryFixtures.base_revision()
 
   # The most required checks a profile may hold. A profile its owner approved
   # must always fit in a manifest, so this is the count the manifest allows.
@@ -85,19 +51,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
                 "mix test --only case_#{String.pad_leading(Integer.to_string(index), 2, "0")}"
               end)
 
-  @max_check_fields %{@proposal_fields | commands: @max_checks, required_checks: @max_checks}
-
   @second_revision String.duplicate("2", 40)
-
-  @findings [
-    %{
-      category: "instruction",
-      path: "AGENTS.md",
-      bytes: 12,
-      sha256: String.duplicate("d", 64),
-      line_count: 3
-    }
-  ]
 
   # Matches `AIRuntimeFixtures`' own default catalog/quota `retrieved_at`, so a
   # pin against a fixture-built catalog is proven against the snapshot's own
@@ -134,28 +88,32 @@ defmodule SddOrchestrator.Delivery.StartTest do
     ParticipationDeliveryDouble.succeed()
 
     context = DeliveryFixtures.delivery_project_fixture()
-    project = connect_repository!(context.project)
-    feature = DeliveryFixtures.feature_fixture(project, context.account)
+
+    # Every guided part is written, so nothing structural blocks readiness and
+    # these tests keep proving what starting a run does rather than what an
+    # unfinished requirement stops.
+    feature =
+      DeliveryFixtures.feature_fixture(context.project, context.account, %{
+        requirements: :filled
+      })
 
     {:ok, _current} =
       SpecificationStore.create(
         context.workspace,
-        project.id,
+        context.project.id,
         SpecificationFixtures.specification_attrs(),
         actor_ref: "owner"
       )
 
-    profile = approve_profile!(context.account.id, project)
-
     %{
       context: context,
       authority: context.workspace,
-      project: project,
+      project: context.project,
       feature: feature,
       owner: context.owner_actor,
       participant: context.participant_actor,
       owner_account: context.account,
-      profile: profile
+      profile: context.profile
     }
   end
 
@@ -355,9 +313,15 @@ defmodule SddOrchestrator.Delivery.StartTest do
       owner_account: owner_account,
       ready: ready
     } do
+      fields = %{
+        DeliveryFixtures.profile_fields()
+        | commands: @max_checks,
+          required_checks: @max_checks
+      }
+
       profile =
-        approve_profile!(owner_account.id, project,
-          fields: @max_check_fields,
+        DeliveryFixtures.approve_profile!(owner_account.id, project,
+          fields: fields,
           commit: @second_revision,
           now: DateTime.add(DateTime.utc_now(), 3_600, :second)
         )
@@ -478,16 +442,16 @@ defmodule SddOrchestrator.Delivery.StartTest do
     } do
       ready = prepare(%{authority: authority, project: project, feature: feature, owner: owner})
 
-      {:ok, %{specifications: [entry | _rest]}} =
-        SpecificationStore.current_snapshot(authority, project.id)
-
-      {:ok, current} = SpecificationStore.get_current(authority, project.id, entry.id)
+      # The feature's own specification is the one readiness judged, so it is
+      # the one an edit has to move for the verdict to go stale.
+      {:ok, current} =
+        SpecificationStore.get_current(authority, project.id, feature.specification_id)
 
       {:ok, _appended} =
         SpecificationStore.append_revision(
           authority,
           project.id,
-          entry.id,
+          feature.specification_id,
           current.revision.id,
           %{
             revision_id: Ecto.UUID.generate(),
@@ -1005,124 +969,6 @@ defmodule SddOrchestrator.Delivery.StartTest do
     assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
 
     manifest
-  end
-
-  # A connected hosted repository, which both the assessment store and the
-  # profile store require before anything may be approved for this project.
-  # `DeliveryFixtures` creates a project without one, and the shared fixture
-  # belongs to a later task.
-  defp connect_repository!(project) do
-    repository_id = System.unique_integer([:positive])
-
-    project =
-      project
-      |> Ecto.Changeset.change(%{
-        storage_mode: "hosted",
-        lifecycle_state: "active",
-        repository_provider: @repository_provider,
-        canonical_repository_id: Integer.to_string(repository_id)
-      })
-      |> Repo.update!()
-
-    %RepositoryConnection{}
-    |> RepositoryConnection.create_changeset(%{
-      project_id: project.id,
-      workspace_id: project.workspace_id,
-      provider: @repository_provider,
-      provider_repository_id: repository_id,
-      state: "connected"
-    })
-    |> Repo.insert!()
-
-    project
-  end
-
-  # Walks the real assessment and approval path, so the profile the manifest
-  # reads is one an owner could actually have approved. Approval is
-  # append-only, so a second call with a later assessment adds a higher
-  # version rather than replacing the first.
-  defp approve_profile!(account_id, project, opts \\ []) do
-    authority = {:hosted, account_id}
-    completed = complete_assessment!(authority, project, opts)
-
-    {:ok, review} = RepositoryAssessments.profile_review(authority, completed.project_id)
-    {:ok, profile} = RepositoryAssessments.approve_profile(authority, project.id, review.proposal)
-
-    profile
-  end
-
-  defp complete_assessment!(authority, project, opts) do
-    fields = Keyword.get(opts, :fields, @proposal_fields)
-    commit = Keyword.get(opts, :commit, @base_revision)
-    now = Keyword.get(opts, :now, DateTime.utc_now()) |> DateTime.truncate(:second)
-
-    {:ok, preparation} =
-      RepositoryBindingPreparation.new(%{
-        project_id: project.id,
-        repository_provider: project.repository_provider,
-        repository_id: project.canonical_repository_id,
-        root: ".",
-        commit: commit,
-        scanner_contract_digest: @scanner_digest,
-        disclosure_digest: @disclosure_digest,
-        worker_ref: Ecto.UUID.generate(),
-        nonce: Ecto.UUID.generate(),
-        issued_at: now,
-        expires_at: DateTime.add(now, 120, :second)
-      })
-
-    {:ok, pending} = RepositoryAssessment.pending(preparation, now)
-    {:ok, stored} = AssessmentStore.put(authority, pending)
-    {:ok, command} = RepositoryAssessment.command(stored)
-    {:ok, result} = RepositoryAssessmentResult.completed(command, completed_scan(command))
-    {:ok, payload} = RepositoryExecutionProfileProposalPayload.new(result, fields)
-
-    {:ok, envelope} =
-      WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
-
-    {:ok, completed} =
-      RepositoryAssessments.finish_assessment(
-        authority,
-        project.id,
-        command,
-        result,
-        provenance!(command, result),
-        now: now,
-        proposal_envelope: envelope
-      )
-
-    completed
-  end
-
-  defp completed_scan(command) do
-    %{
-      protocol_version: command.version,
-      assessment_id: command.assessment_id,
-      project_id: command.project_id,
-      repository: %{provider: command.repository_provider, id: command.repository_id},
-      root: command.root,
-      commit: command.commit,
-      scanner_contract_digest: command.scanner_contract_digest,
-      status: "completed",
-      findings: @findings,
-      structure: Enum.map(["lib" | @deep_directories], &%{path: &1, kind: "directory"}),
-      stats: %{discovered_paths: 16, inspected_files: 1, bytes_read: 20}
-    }
-  end
-
-  defp provenance!(command, result) do
-    {:ok, cache_key_sha256} = RepositoryAssessmentCacheProvenance.cache_key_sha256(command)
-    {:ok, evidence_sha256} = RepositoryAssessmentCacheProvenance.evidence_sha256(result)
-
-    {:ok, provenance} =
-      RepositoryAssessmentCacheProvenance.new(%{
-        source: "fresh_scan",
-        cache_key_sha256: cache_key_sha256,
-        evidence_sha256: evidence_sha256,
-        cache_stored: true
-      })
-
-    provenance
   end
 
   defp blocker do

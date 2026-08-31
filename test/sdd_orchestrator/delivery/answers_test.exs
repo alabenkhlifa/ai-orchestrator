@@ -18,6 +18,7 @@ defmodule SddOrchestrator.Delivery.AnswersTest do
     Assignment,
     Blocking,
     BlockingQuestion,
+    ExecutionManifest,
     Feature,
     RunAttempt,
     RunCommand,
@@ -30,18 +31,9 @@ defmodule SddOrchestrator.Delivery.AnswersTest do
   alias SddOrchestrator.SpecificationFixtures
   alias SddOrchestrator.SpecificationStore
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
-
   setup do
     for {key, value} <- [
-          participation_email_delivery: ParticipationDeliveryDouble,
-          delivery_execution: @execution
+          participation_email_delivery: ParticipationDeliveryDouble
         ] do
       previous = Application.get_env(:sdd_orchestrator, key)
       Application.put_env(:sdd_orchestrator, key, value)
@@ -60,10 +52,14 @@ defmodule SddOrchestrator.Delivery.AnswersTest do
     context = DeliveryFixtures.delivery_project_fixture()
     feature = DeliveryFixtures.feature_fixture(context.project, context.account)
 
-    attrs = SpecificationFixtures.specification_attrs()
-
+    # An answer is written into the feature's own specification, so that is the
+    # one these tests read the head of and append against.
     {:ok, current} =
-      SpecificationStore.create(context.workspace, context.project.id, attrs, actor_ref: "owner")
+      SpecificationStore.get_current(
+        context.workspace,
+        context.project.id,
+        feature.specification_id
+      )
 
     %{
       context: context,
@@ -73,6 +69,7 @@ defmodule SddOrchestrator.Delivery.AnswersTest do
       owner: context.owner_actor,
       participant: context.participant_actor,
       owner_account: context.account,
+      profile: context.profile,
       specification: current
     }
   end
@@ -178,6 +175,41 @@ defmodule SddOrchestrator.Delivery.AnswersTest do
       # The older attempt is superseded, so the paused worker's fence is now
       # useless even if it reconnects believing it still owns the run.
       assert Repo.get!(RunAttempt, attempt.id).state == "superseded"
+    end
+
+    test "binds the resumed attempt to the approved execution profile", %{
+      authority: authority,
+      project: project,
+      feature: feature,
+      owner: owner,
+      profile: profile,
+      run: run,
+      attempt: attempt,
+      question: question
+    } do
+      {:ok, results} =
+        Answers.accept(
+          authority,
+          owner,
+          %{project: project, feature: feature},
+          question.id,
+          "Yes."
+        )
+
+      # The digest covers every field, so an equal digest is proof that the
+      # resumed attempt carries the profile's base revision, checks, root,
+      # commands, and scope, and nothing a configuration could have supplied.
+      expected =
+        DeliveryFixtures.continuation_manifest(run, results.attempt, profile, %{
+          "reason" => "blocking_answer",
+          "prior_attempt_number" => attempt.attempt_number
+        })
+
+      assert ExecutionManifest.digest(expected) == results.attempt.manifest_digest
+      assert results.command.manifest_digest == results.attempt.manifest_digest
+
+      assert results.attempt.required_checks ==
+               DeliveryFixtures.required_check_contract(profile.required_checks)
     end
 
     test "moves the run's effective revision without rewriting where it started", %{

@@ -32,10 +32,10 @@ defmodule SddOrchestrator.Delivery.Retry do
     DeliveryStore,
     EventIngestion,
     ExecutionManifest,
+    ExecutionProfile,
     ParticipantGuard,
     RunAttempt,
-    RunNotifications,
-    Start
+    RunNotifications
   }
 
   @type authority :: DeliveryStore.authority()
@@ -49,6 +49,7 @@ defmodule SddOrchestrator.Delivery.Retry do
           | :no_failed_run
           | :no_attempt
           | :invalid_failure
+          | :no_execution_profile
           | term()
 
   # The event type this task owns. `EventIngestion` refuses it, which is what
@@ -180,7 +181,7 @@ defmodule SddOrchestrator.Delivery.Retry do
          {:ok, run} <- failed_run(authority, project.id, feature.id),
          {:ok, attempt} <- latest_attempt(authority, project.id, run),
          {:ok, current} <- fetch_feature(authority, project.id, run.feature_id),
-         {:ok, manifest} <- next_manifest(run, attempt, "manual_retry", opts) do
+         {:ok, manifest} <- next_manifest(authority, run, attempt, "manual_retry", opts) do
       commit(
         authority,
         run.project_id,
@@ -216,7 +217,8 @@ defmodule SddOrchestrator.Delivery.Retry do
   end
 
   defp schedule_retry(%{run: run, attempt: attempt, opts: opts} = context) do
-    with {:ok, manifest} <- next_manifest(run, attempt, "automatic_retry", opts) do
+    with {:ok, manifest} <-
+           next_manifest(context.authority, run, attempt, "automatic_retry", opts) do
       # The wait is a due time the dispatcher honours, not a sleeping process, so
       # a restart during the backoff still delivers exactly one retry.
       due_at = DateTime.add(now(opts), backoff(attempt.attempt_number, opts), :second)
@@ -390,33 +392,34 @@ defmodule SddOrchestrator.Delivery.Retry do
     }
   end
 
-  # The branch and the configured worker come from the run and the project
-  # configuration, never from the failure event, so a retry cannot be steered
-  # onto a different branch or a different worker by whatever just failed.
-  defp next_manifest(run, attempt, reason, opts) do
-    config = Keyword.merge(Start.execution_config(), opts)
-
-    ExecutionManifest.new(%{
-      "manifest_version" => ExecutionManifest.manifest_version(),
-      "project_id" => run.project_id,
-      "feature_id" => run.feature_id,
-      "run_id" => run.id,
-      "attempt_number" => next_attempt_number(run, attempt),
-      "approved_slice" => run.approved_slice,
-      "starting_revision_id" => run.starting_revision_id,
-      "starting_revision_digest" => run.starting_revision_digest,
-      "effective_revision_id" => run.effective_revision_id,
-      "effective_revision_digest" => run.effective_revision_digest,
-      "repository_base_revision" => Keyword.fetch!(config, :repository_base_revision),
-      "target_branch" => run.branch,
-      "required_checks" => Keyword.get(config, :required_checks, []),
-      "agent_ref" => Keyword.get(config, :agent_ref, %{}),
-      "worker_ref" => Keyword.get(config, :worker_ref, %{}),
-      "continuation" => %{
-        "reason" => reason,
-        "prior_attempt_number" => attempt.attempt_number
+  # The branch comes from the run and the execution contract from the profile
+  # the repository's owner approved, never from the failure event, so a retry
+  # cannot be steered onto a different branch, a different worker, or a
+  # different set of checks by whatever just failed.
+  defp next_manifest(authority, run, attempt, reason, opts) do
+    with {:ok, profile_fields} <- ExecutionProfile.manifest_fields(authority, run.project_id) do
+      %{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => run.project_id,
+        "feature_id" => run.feature_id,
+        "run_id" => run.id,
+        "attempt_number" => next_attempt_number(run, attempt),
+        "approved_slice" => run.approved_slice,
+        "starting_revision_id" => run.starting_revision_id,
+        "starting_revision_digest" => run.starting_revision_digest,
+        "effective_revision_id" => run.effective_revision_id,
+        "effective_revision_digest" => run.effective_revision_digest,
+        "target_branch" => run.branch,
+        "agent_ref" => Keyword.get(opts, :agent_ref, %{}),
+        "worker_ref" => Keyword.get(opts, :worker_ref, %{}),
+        "continuation" => %{
+          "reason" => reason,
+          "prior_attempt_number" => attempt.attempt_number
+        }
       }
-    })
+      |> Map.merge(profile_fields)
+      |> ExecutionManifest.new()
+    end
   end
 
   defp next_attempt_number(run, attempt),

@@ -52,28 +52,7 @@ defmodule SddOrchestrator.Delivery.ReviewTest do
   @path "web"
   @feedback "The empty state still shows a spinner"
 
-  # A rejection continues the run, so it builds the next attempt's manifest from
-  # the configured execution boundary exactly as a retry does.
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
-
   setup context do
-    previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
-    Application.put_env(:sdd_orchestrator, :delivery_execution, @execution)
-
-    on_exit(fn ->
-      if previous do
-        Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
-      else
-        Application.delete_env(:sdd_orchestrator, :delivery_execution)
-      end
-    end)
-
     hosted = DeliveryFixtures.delivery_project_fixture()
 
     # Responsibility resolves to the assignee, so the responsible participant and
@@ -92,10 +71,17 @@ defmodule SddOrchestrator.Delivery.ReviewTest do
 
     {:ok, device_workspace} = Devices.establish_workspace()
 
+    # A device-authoritative project keeps its own approved profile, which is
+    # what a continued attempt's manifest is built from under this authority.
     authority =
       case context[:authority] do
-        :device -> %DeviceWorkspace{id: device_workspace.id}
-        _hosted -> hosted.workspace
+        :device ->
+          workspace = %DeviceWorkspace{id: device_workspace.id}
+          DeliveryFixtures.approve_device_profile!(workspace, hosted.project)
+          workspace
+
+        _hosted ->
+          hosted.workspace
       end
 
     developing = seed_feature(authority, hosted.project, feature)

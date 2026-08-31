@@ -87,10 +87,6 @@ defmodule SddOrchestrator.Delivery.Start do
       ProcessingDisclosure.confirmed?(project.id, actor)
   end
 
-  @doc "The configured execution references bound into every manifest."
-  @spec execution_config() :: keyword()
-  def execution_config, do: Application.get_env(:sdd_orchestrator, :delivery_execution, [])
-
   defp commit(authority, project, feature, member, manifest, opts) do
     digest = ExecutionManifest.digest(manifest)
     operation_key = "start:#{manifest.run_id}"

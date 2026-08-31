@@ -25,8 +25,8 @@ defmodule SddOrchestrator.Delivery.Answers do
     BlockingQuestion,
     DeliveryStore,
     ExecutionManifest,
-    QuestionRouting,
-    Start
+    ExecutionProfile,
+    QuestionRouting
   }
 
   alias SddOrchestrator.SpecificationStore
@@ -42,6 +42,7 @@ defmodule SddOrchestrator.Delivery.Answers do
           | :no_specification
           | :revision_conflict
           | :unknown_run
+          | :no_execution_profile
           | term()
 
   @max_answer_bytes 8_000
@@ -72,7 +73,8 @@ defmodule SddOrchestrator.Delivery.Answers do
          {:ok, run} <- fetch_run(authority, project, question),
          {:ok, attempt} <- current_attempt(authority, project, run),
          {:ok, revision} <- append_answer(authority, project, feature, question, text, member),
-         {:ok, manifest} <- next_manifest(project, feature, run, attempt, revision, opts) do
+         {:ok, manifest} <-
+           next_manifest(authority, project, feature, run, attempt, revision, opts) do
       resume(%{
         authority: authority,
         project: project,
@@ -210,32 +212,34 @@ defmodule SddOrchestrator.Delivery.Answers do
     ]
   end
 
-  # The branch comes from the run, never from the answer or the configuration,
-  # so a resumed attempt cannot be pointed at a branch the run does not own.
-  defp next_manifest(project, feature, run, attempt, revision, opts) do
-    config = Keyword.merge(Start.execution_config(), opts)
-
-    ExecutionManifest.new(%{
-      "manifest_version" => ExecutionManifest.manifest_version(),
-      "project_id" => project.id,
-      "feature_id" => feature.id,
-      "run_id" => run.id,
-      "attempt_number" => attempt.attempt_number + 1,
-      "approved_slice" => run.approved_slice,
-      "starting_revision_id" => run.starting_revision_id,
-      "starting_revision_digest" => run.starting_revision_digest,
-      "effective_revision_id" => revision.id,
-      "effective_revision_digest" => revision.content_digest,
-      "repository_base_revision" => Keyword.fetch!(config, :repository_base_revision),
-      "target_branch" => run.branch,
-      "required_checks" => Keyword.get(config, :required_checks, []),
-      "agent_ref" => Keyword.get(config, :agent_ref, %{}),
-      "worker_ref" => Keyword.get(config, :worker_ref, %{}),
-      "continuation" => %{
-        "reason" => "blocking_answer",
-        "prior_attempt_number" => attempt.attempt_number
+  # The branch comes from the run and the execution contract comes from the
+  # profile the repository's owner approved, never from the answer, so a
+  # resumed attempt cannot be pointed at a branch or a check the run does not
+  # own.
+  defp next_manifest(authority, project, feature, run, attempt, revision, opts) do
+    with {:ok, profile_fields} <- ExecutionProfile.manifest_fields(authority, project.id) do
+      %{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => project.id,
+        "feature_id" => feature.id,
+        "run_id" => run.id,
+        "attempt_number" => attempt.attempt_number + 1,
+        "approved_slice" => run.approved_slice,
+        "starting_revision_id" => run.starting_revision_id,
+        "starting_revision_digest" => run.starting_revision_digest,
+        "effective_revision_id" => revision.id,
+        "effective_revision_digest" => revision.content_digest,
+        "target_branch" => run.branch,
+        "agent_ref" => Keyword.get(opts, :agent_ref, %{}),
+        "worker_ref" => Keyword.get(opts, :worker_ref, %{}),
+        "continuation" => %{
+          "reason" => "blocking_answer",
+          "prior_attempt_number" => attempt.attempt_number
+        }
       }
-    })
+      |> Map.merge(profile_fields)
+      |> ExecutionManifest.new()
+    end
   end
 
   # The caller names the question it is answering, so an answer written against

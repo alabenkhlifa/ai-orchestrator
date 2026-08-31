@@ -90,11 +90,11 @@ defmodule SddOrchestrator.Delivery.Reconciliation do
     CommandOutbox,
     DeliveryStore,
     ExecutionManifest,
+    ExecutionProfile,
     ProtocolCodec,
     Retry,
     RunAttempt,
-    RunNotifications,
-    Start
+    RunNotifications
   }
 
   alias SddOrchestrator.Delivery.Reconciliation.Decision
@@ -105,6 +105,7 @@ defmodule SddOrchestrator.Delivery.Reconciliation do
           :invalid_snapshot
           | :unsupported_authority
           | :unknown_feature
+          | :no_execution_profile
           | term()
 
   @snapshot_type "reconciliation_snapshot"
@@ -393,33 +394,33 @@ defmodule SddOrchestrator.Delivery.Reconciliation do
     }
   end
 
-  # The branch, the workspace, and the configured worker come from the run and
-  # the project's configuration, never from the snapshot, so a reconnecting
-  # worker cannot steer its own next attempt onto different work.
-  defp next_manifest(%{run: run, attempt: attempt}, opts) do
-    config = Keyword.merge(Start.execution_config(), opts)
-
-    ExecutionManifest.new(%{
-      "manifest_version" => ExecutionManifest.manifest_version(),
-      "project_id" => run.project_id,
-      "feature_id" => run.feature_id,
-      "run_id" => run.id,
-      "attempt_number" => max(attempt.attempt_number, run.current_attempt_number) + 1,
-      "approved_slice" => run.approved_slice,
-      "starting_revision_id" => run.starting_revision_id,
-      "starting_revision_digest" => run.starting_revision_digest,
-      "effective_revision_id" => run.effective_revision_id,
-      "effective_revision_digest" => run.effective_revision_digest,
-      "repository_base_revision" => Keyword.fetch!(config, :repository_base_revision),
-      "target_branch" => run.branch,
-      "required_checks" => Keyword.get(config, :required_checks, []),
-      "agent_ref" => Keyword.get(config, :agent_ref, %{}),
-      "worker_ref" => Keyword.get(config, :worker_ref, %{}),
-      "continuation" => %{
-        "reason" => "automatic_retry",
-        "prior_attempt_number" => attempt.attempt_number
+  # The branch, the workspace, and the execution contract come from the run and
+  # the profile the repository's owner approved, never from the snapshot, so a
+  # reconnecting worker cannot steer its own next attempt onto different work.
+  defp next_manifest(%{authority: authority, run: run, attempt: attempt}, opts) do
+    with {:ok, profile_fields} <- ExecutionProfile.manifest_fields(authority, run.project_id) do
+      %{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => run.project_id,
+        "feature_id" => run.feature_id,
+        "run_id" => run.id,
+        "attempt_number" => max(attempt.attempt_number, run.current_attempt_number) + 1,
+        "approved_slice" => run.approved_slice,
+        "starting_revision_id" => run.starting_revision_id,
+        "starting_revision_digest" => run.starting_revision_digest,
+        "effective_revision_id" => run.effective_revision_id,
+        "effective_revision_digest" => run.effective_revision_digest,
+        "target_branch" => run.branch,
+        "agent_ref" => Keyword.get(opts, :agent_ref, %{}),
+        "worker_ref" => Keyword.get(opts, :worker_ref, %{}),
+        "continuation" => %{
+          "reason" => "automatic_retry",
+          "prior_attempt_number" => attempt.attempt_number
+        }
       }
-    })
+      |> Map.merge(profile_fields)
+      |> ExecutionManifest.new()
+    end
   end
 
   defp decision(context, outcome, reason, extra \\ []) do

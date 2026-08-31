@@ -26,7 +26,9 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
   alias SddOrchestrator.ProjectAssistant.FakeRepositoryObservationAdapter
   alias SddOrchestrator.ProjectAssistant.TurnOrchestrator
   alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.SpecificationFixtures
+  alias SddOrchestrator.SpecificationStore
 
   @now ~U[2026-08-03 12:00:00Z]
 
@@ -61,8 +63,7 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
       project: project,
       workspace: workspace,
       owner_actor: actor,
-      account: account,
-      specification: specification
+      account: account
     } do
       assert {:ok, {_conversation, turn, citations}} =
                ask(workspace, project.id, actor, account, "spec-valid: what spec is current?")
@@ -71,9 +72,20 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
       assert turn.uncertainty_markers == []
       assert [citation] = citations
       assert citation.source_type == "specification"
-      assert citation.reference["specification_id"] == specification.specification.id
-      assert citation.reference["revision_id"] == specification.revision.id
-      assert turn.answer_text =~ "Read-only project assistant"
+
+      # The feature carries a specification of its own, so the model cites
+      # whichever one the snapshot lists first. What this proves is unchanged:
+      # the citation names a real specification of this project and its current
+      # revision, and the answer text names that same specification.
+      assert {:ok, cited} =
+               SpecificationStore.get_current(
+                 workspace,
+                 project.id,
+                 citation.reference["specification_id"]
+               )
+
+      assert citation.reference["revision_id"] == cited.revision.id
+      assert turn.answer_text =~ cited.specification.title
     end
 
     test "a stale specification citation is rejected and marked stale", %{
@@ -268,8 +280,7 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
       project: project,
       workspace: workspace,
       owner_actor: actor,
-      account: account,
-      specification: specification
+      account: account
     } do
       project = with_repository_ref(project, "clean")
 
@@ -281,10 +292,21 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
 
       assert [citation] = citations
       assert citation.source_type == "specification"
-      assert citation.reference["specification_id"] == specification.specification.id
       refute Enum.any?(citations, &(&1.source_type == "repository"))
 
-      assert turn.answer_text =~ "Read-only project assistant"
+      # The feature carries a specification of its own, so the model cites
+      # whichever one the snapshot lists first. What this proves is unchanged:
+      # the answer came from stored project data, naming the specification it
+      # actually cited, and nothing from the offline worker's repository.
+      assert {:ok, cited} =
+               SpecificationStore.get_current(
+                 workspace,
+                 project.id,
+                 citation.reference["specification_id"]
+               )
+
+      assert citation.reference["revision_id"] == cited.revision.id
+      assert turn.answer_text =~ cited.specification.title
       refute turn.answer_text =~ "lib/app.ex"
       assert [%{"type" => "unavailable"}] = turn.uncertainty_markers
     end
@@ -473,13 +495,20 @@ defmodule SddOrchestrator.ProjectAssistant.TurnOrchestratorTest do
 
   defp always_available, do: fn _authority, _project_id -> true end
 
+  # Naming a `test` provider replaces whatever repository the project had, so
+  # the connection that came with it goes too. Leaving a GitHub connection
+  # attached would send `RepositorySourceAuthorization` down its GitHub branch
+  # while the project claims a different provider, and the observation would be
+  # refused for a reason the test is not about.
   defp with_repository_ref(project, ref) do
+    Repo.delete_all(from c in RepositoryConnection, where: c.project_id == ^project.id)
+
     {:ok, updated} =
       project
       |> Project.changeset(%{repository_provider: "test", canonical_repository_id: ref})
       |> Repo.update()
 
-    updated
+    Repo.preload(updated, :repository_connection, force: true)
   end
 
   defp confirm!(workspace, project_id, actor, account) do

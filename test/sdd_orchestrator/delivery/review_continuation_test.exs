@@ -58,20 +58,11 @@ defmodule SddOrchestrator.Delivery.ReviewContinuationTest do
   @feedback "The empty state still shows a spinner"
   @contradiction "Guests should never reach this screen at all"
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
-
   setup context do
     root = Path.join(System.tmp_dir!(), "continuation-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf(root) end)
 
-    put_env(:delivery_execution, @execution)
     put_env(:worker_workspace_root, root)
 
     hosted = DeliveryFixtures.delivery_project_fixture()
@@ -89,10 +80,16 @@ defmodule SddOrchestrator.Delivery.ReviewContinuationTest do
 
     {:ok, device_workspace} = Devices.establish_workspace()
 
-    authority =
+    # A device-authoritative project keeps its own approved profile, which is
+    # what a continued attempt's manifest is built from under this authority.
+    {authority, profile} =
       case context[:authority] do
-        :device -> %DeviceWorkspace{id: device_workspace.id}
-        _hosted -> hosted.workspace
+        :device ->
+          workspace = %DeviceWorkspace{id: device_workspace.id}
+          {workspace, DeliveryFixtures.approve_device_profile!(workspace, hosted.project)}
+
+        _hosted ->
+          {hosted.workspace, hosted.profile}
       end
 
     developing = seed_feature(authority, hosted.project, feature)
@@ -107,6 +104,7 @@ defmodule SddOrchestrator.Delivery.ReviewContinuationTest do
       responsible_actor: hosted.participant_actor,
       workspace_root: root,
       feature: developing,
+      profile: profile,
       run: run
     }
   end
@@ -129,10 +127,14 @@ defmodule SddOrchestrator.Delivery.ReviewContinuationTest do
 
       test "the same workspace continues because the run identity does [AC-35]", context do
         context = ready(context)
-        {:ok, before} = ReviewContinuation.manifest(run(context), latest(context))
+
+        {:ok, before} =
+          ReviewContinuation.manifest(context.authority, run(context), latest(context))
 
         {:ok, %{attempt: attempt}} = reject(context, @feedback)
-        {:ok, after_manifest} = ReviewContinuation.manifest(run(context), attempt)
+
+        {:ok, after_manifest} =
+          ReviewContinuation.manifest(context.authority, run(context), attempt)
 
         assert Workspace.working_directory(before) == Workspace.working_directory(after_manifest)
 
@@ -197,6 +199,27 @@ defmodule SddOrchestrator.Delivery.ReviewContinuationTest do
         assert feature(context).lifecycle_column == "in_development"
       end
 
+      test "the next attempt is bound to the approved execution profile", context do
+        context = ready(context)
+        rejected = latest(context)
+
+        {:ok, %{attempt: attempt}} = reject(context, @feedback)
+
+        # The digest covers every field, so an equal digest is proof that the
+        # continued attempt carries the profile's base revision, checks, root,
+        # commands, and scope, and nothing the reviewer wrote.
+        expected =
+          DeliveryFixtures.continuation_manifest(run(context), attempt, context.profile, %{
+            "reason" => "review_feedback",
+            "prior_attempt_number" => rejected.attempt_number
+          })
+
+        assert ExecutionManifest.digest(expected) == attempt.manifest_digest
+
+        assert attempt.required_checks ==
+                 DeliveryFixtures.required_check_contract(context.profile.required_checks)
+      end
+
       test "the resume command names the new attempt and the manifest it carries [AC-35]",
            context do
         context = ready(context)
@@ -213,7 +236,7 @@ defmodule SddOrchestrator.Delivery.ReviewContinuationTest do
       test "the manifest continues the rejected attempt on the run's own branch", context do
         context = ready(context)
         rejected = latest(context)
-        {:ok, manifest} = ReviewContinuation.manifest(run(context), rejected)
+        {:ok, manifest} = ReviewContinuation.manifest(context.authority, run(context), rejected)
 
         {:ok, %{attempt: attempt}} = reject(context, @feedback)
 
@@ -409,7 +432,9 @@ defmodule SddOrchestrator.Delivery.ReviewContinuationTest do
       test "the question carries the feedback, the branch, and the run's workspace [AC-26]",
            context do
         context = ready(context)
-        {:ok, manifest} = ReviewContinuation.manifest(run(context), latest(context))
+
+        {:ok, manifest} =
+          ReviewContinuation.manifest(context.authority, run(context), latest(context))
 
         {:ok, %{question: question, activity: activity}} =
           reject(context, @contradiction, contradicts_agreement?: true)
