@@ -15,6 +15,7 @@ Requires:
 - `capability:mac-scoped-worker-connection` — provider `specs/39-mac-scoped-worker-connection#Task 8` — required before `Task 2`.
 - `capability:hosted-local-repository-connection` — provider `specs/37-hosted-local-repository-connection#Task 6` — required before `Task 6`.
 - `capability:worker-initiated-pairing` — provider `specs/38-worker-initiated-pairing#Task 8` — required before `Task 8`.
+- `capability:distribution-free-worker-control` — provider `specs/43-distribution-free-worker-control#Task 5` — required before `Task 3`.
 
 Provides:
 
@@ -39,7 +40,7 @@ Included:
 
 - The `RepositorySelection` request lifecycle on the control plane: correlation, timeout, cancellation, requester exit, and refusal of foreign answers.
 - The `repository_selection` request and `repository_selection_result` messages over the Mac-scoped attachment, with capability negotiation.
-- The worker-side pending request, the app's poll and native picker, the app's answer, and the worker's Git check, identity generation, candidate matching, and folder name.
+- The worker-side pending request, the two owner-only files that carry it between the release and the app, the app's poll and native picker, the app's answer, and the worker's Git check, identity generation, candidate matching, and folder name.
 - Request-driven selection in the hosted first connection and machine change, in accountless selection, and in `Locate repository`, with shared waiting, cancel, no-answer, and retry states.
 - One availability definition read from the Mac-scoped attachment, used by every worker list and action.
 - Truthful `Check again` and a `Pair again` action on the onboarding screen.
@@ -96,18 +97,18 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 2
   - Purpose: Do every path-dependent computation on the Mac so the path never has to leave it.
-  - Owned surfaces: `SddOrchestrator.Worker.RepositorySelection` with `pending/0` and `answer/2`, `Worker.GatewayConnection` handling of the inbound request and outbound result, the Git check through `Devices.RepositoryValidation`, generation through `Devices.PortableRepositoryIdentity`, candidate matching, the folder name, and the exclusion of the path from every log line on the worker.
-  - Owns: AC-04
-  - Proof: Focused tests cover a pending request exposed to the app, an answered path yielding matches and a new identity, a non-repository folder answering `not_a_git_repository`, an inaccessible folder answering `inaccessible`, a cancellation answering `cancelled`, and a captured log holding no path.
+  - Owned surfaces: `SddOrchestrator.Worker.RepositorySelection` with `pending/0` and `answer/2`, `Worker.GatewayConnection` handling of the inbound request and outbound result, the `pending_selection.json` and `selection_answer.json` file contract under `Configuration.home/1` including their owner-only mode, the deletion of the answer on read and of a stale answer at start, the removal of the pending file when the request ends, the Git check through `Devices.RepositoryValidation`, generation through `Devices.PortableRepositoryIdentity`, candidate matching, the folder name, and the exclusion of the path from every log line on the worker.
+  - Owns: AC-04, AC-11, entity:PendingSelectionFile, entity:SelectionAnswerFile
+  - Proof: Focused tests cover a pending request published to its file and removed when the request ends, an answered path yielding matches and a new identity, the answer file being gone after the answer is read, a stale answer deleted unread at start, a non-repository folder answering `not_a_git_repository`, an inaccessible folder answering `inaccessible`, a cancellation answering `cancelled`, and a captured log holding no path.
 
 - [ ] Task 4 — Show the native picker from the app and hand the answer back.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
-  - Purpose: Close the reverse hop the app never had, using the poll it already runs.
-  - Owned surfaces: The app's pending-selection poll at a two-second interval while attached, `NSOpenPanel` presentation on the main thread through `WorkspaceFolderPicking`, the `answer/2` rpc call with the path or a cancellation, closing the panel when the request is cancelled, and not retaining the path after answering.
+  - Purpose: Close the reverse hop the app never had, without Erlang distribution.
+  - Owned surfaces: The app's poll of `pending_selection.json` at a two-second interval while attached, `NSOpenPanel` presentation on the main thread through `WorkspaceFolderPicking`, writing `selection_answer.json` with the path or a cancellation, closing the panel when the pending file disappears, and not retaining the path after writing it.
   - Owns: none
-  - Proof: Focused Swift tests with the fake picker and a fake command runner cover a pending request producing one panel, a chosen folder producing one `answer` rpc with the path, a dismissed panel producing one cancellation rpc, a cancelled request closing the panel without an answer, and no second panel while one is open.
+  - Proof: Focused Swift tests with the fake picker and a fake file store cover a pending file producing one panel, a chosen folder producing one answer file holding the path, a dismissed panel producing one cancellation answer, the pending file disappearing closing the panel without an answer, no second panel while one is open, and no source invoking the release's `rpc` command.
 
 - [ ] Task 5 — Give every list and action one definition of an available worker.
   - Size: Standard
@@ -160,7 +161,7 @@ Traceability:
 - [ ] Project-scoped attachment, delivery, and run execution tests pass unchanged.
 - [ ] The hosted exact-match, binding replacement, and disconnect tests pass unchanged.
 - [ ] Availability, waiting, cancel, timeout, and worker-lost transitions pass.
-- [ ] The log, diagnostic, and no-analytics review finds no path, remote, history, file name, or content.
+- [ ] The log, diagnostic, and no-analytics review finds no path, remote, history, file name, or content, and no answer file survives a completed selection.
 - [ ] Build, formatting, lint, static checks, and logs review pass.
 - [ ] Required browser scenarios pass through the stub adapter under `E2E_MODE`.
 - [ ] The worker app's own test suite passes.
