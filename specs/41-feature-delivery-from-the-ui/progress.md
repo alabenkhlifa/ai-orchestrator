@@ -1,5 +1,33 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-08-31 - Tasks 2, 5, and 7 complete
+
+`Task 2`, the guided requirements form.
+
+- `Delivery.GuidedRequirements` owns the document shape. `structure/0` and `render/1` derive the four headings from `Readiness.guided_structure/0` at runtime, so what the form writes and what readiness judges cannot drift. `parse/1` answers an empty string for an absent or empty heading and ignores sections the four do not name, so a document a run later appends to still parses.
+- The form reads the head revision id and the design and tasks documents once at mount and replaces them only on a successful save, so a head that moved is always refused rather than overwritten. Saving appends through `SpecificationStore.append_revision/5` with the acting person as actor.
+- The save reuses the `:answer_question` guard action, which is the only existing action mapped to the `:edit_specifications` capability that owner and participant both hold. `ParticipantGuard` was not extended.
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/guided_requirements_test.exs test/sdd_orchestrator_web/live/feature_requirements_form_test.exs` — exit `0`.
+
+`Task 5`, the started run's manifest.
+
+- `RepositoryAssessments.approved_profile/2` answers the highest-version profile from `ProfileStore.list/2`, or `{:error, :no_execution_profile}`. `Start` derives the profile viewer from the storage authority; the actor's right to press start is already settled by `ParticipantGuard`.
+- `manifest_for` no longer merges `execution_config()`, so no started run takes a value from configuration. `execution_config/0` itself stays until `Task 10`.
+- Two corrections were taken with the user after the first pass. `manifest_version` moved to 2, because `reject_unknown_fields/1` would otherwise make a worker installed before this change refuse the new manifest with `unknown_manifest_field` rather than an honest version refusal. `ProtocolLimits.max_required_checks` moved from 50 to the profile's own 64, because an owner could approve a profile the manifest would then refuse to carry.
+- The three golden fixtures were recomputed, not hand-edited, and renamed to `_v2`. New digest `4c090cc28660fdf335f491165d39923229a0c6653774031689aeb3f735afe66b`.
+- 18 tests in `cancellation_test.exs`, `local_worker_run_governance_privacy_test.exs`, and `local_worker_runtime_governance_end_to_end_test.exs` now fail with `:no_execution_profile`, because `DeliveryFixtures.delivery_project_fixture/0` seeds no connected repository or profile. `Task 10` owns that fixture change. The four continuation builders pass untouched, which is what the empty field defaults are for.
+- Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/start_test.exs test/sdd_orchestrator/delivery/execution_manifest_test.exs test/sdd_orchestrator/delivery/protocol_codec_test.exs` — exit `0`.
+
+`Task 7`, the bound project's run topic.
+
+- `Delivery.BoundProjectNotice` pushes `project_bound` and `project_unbound`, carrying the project id and nothing else, to every attachment `WorkerAttachment.attached/1` returns. Bindings are announced on connect, on disconnect through the single removal point in `HostedLocalRepositoryBindings.disconnect/2`, and on attach for every binding the Mac already holds.
+- `Worker.ProjectConnections`, a `DynamicSupervisor` keyed by project id, opens one project-scoped `GatewayConnection` per bound project. That connection performs the existing credential exchange and join, so no connect, join, credential, or delivery code was written or changed.
+- `DynamicSupervisor.start_child` reports an exit reason quoting the whole `%Configuration{}`, including `worker_credential`, and `Configuration` has no `Inspect` guard. `ProjectConnections.open/3` therefore drops the reason and answers `:project_connections_unavailable`. A test asserts the credential never reaches the log and that the Mac connection survives the failure.
+- `WorkerChannel.confirm_execution_target/2` now reads the socket's project with `Map.get`. The specs/39 test that asserted `join crashed` was replaced with one asserting `unauthorized_execution_target`, no crash, and the same socket still attaching for its own Mac.
+- Announcing on attach needs a database read in the channel join, so `worker_workspace_channel_test.exs` and its selection companion moved to `DataCase`; the first lost `async: true`.
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator_web/channels/worker_workspace_channel_bound_project_test.exs test/sdd_orchestrator/worker/bound_project_connection_test.exs test/sdd_orchestrator_web/channels/worker_workspace_channel_test.exs test/sdd_orchestrator_web/channels/worker_workspace_channel_repository_selection_test.exs test/sdd_orchestrator_web/channels/worker_channel_test.exs test/sdd_orchestrator/worker/supervisor_test.exs test/sdd_orchestrator/worker/gateway_connection_test.exs test/sdd_orchestrator/worker/mac_scoped_connection_end_to_end_test.exs test/sdd_orchestrator/portability/hosted_local_repository_bindings_test.exs test/sdd_orchestrator/portability/hosted_local_repository_connection_test.exs` — exit `0`.
+- All three receipts were confirmed on the main thread by real exit status.
+
 ### 2026-08-31 - Two decided mechanisms found unworkable, replaced with the user
 
 Implementation of `Task 5` and `Task 7` stopped on the agreement, not on code. Both replacements were chosen by the user.

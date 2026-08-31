@@ -45,6 +45,17 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   already-obtained gateway credential (carried in the retained connection
   URI) via Slipstream's built-in backoff — never a new credential, never a
   different project.
+
+  A Mac-scoped connection also learns which projects this worker serves. The
+  control plane pushes `project_bound` and `project_unbound` over that topic,
+  each naming a project id and nothing else, and this connection answers by
+  opening or closing a second connection for that project under
+  `SddOrchestrator.Worker.ProjectConnections`. That second connection is an
+  ordinary project-scoped one: it exchanges the project credential, joins
+  `worker:<project id>`, and handles commands through the code above,
+  unchanged. Opening one is deliberately kept idempotent per project, because
+  a worker re-reads the whole list of bindings every time it attaches and a
+  worker already configured with a project is already connected for it.
   """
 
   use Slipstream, restart: :temporary
@@ -58,6 +69,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.ConnectionStatus
   alias SddOrchestrator.Worker.ExecutionPreparer
+  alias SddOrchestrator.Worker.ProjectConnections
   alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.RequiredCheckRunner
   alias SddOrchestrator.Worker.RunState
@@ -299,6 +311,21 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     {:ok, socket}
   end
 
+  # This Mac now serves a project. The whole answer is a second connection,
+  # dialled from a copy of this configuration that names the project, so every
+  # credential, join, registry, and command path stays the one already proved.
+  def handle_message(_topic, "project_bound", %{"project_id" => project_id}, socket)
+      when is_binary(project_id) do
+    {:ok, open_project_connection(socket, project_id)}
+  end
+
+  # The project is no longer this Mac's. The connection for it is closed, which
+  # takes it out of the control plane's project-keyed registry with it.
+  def handle_message(_topic, "project_unbound", %{"project_id" => project_id}, socket)
+      when is_binary(project_id) do
+    {:ok, close_project_connection(socket, project_id)}
+  end
+
   # Any other inbound push is observed and ignored rather than crashing the
   # process on an unrecognized message.
   def handle_message(topic, event, message, socket) do
@@ -307,6 +334,83 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     )
 
     {:ok, socket}
+  end
+
+  # Opening is idempotent per project, and deliberately so. A worker re-reads
+  # every binding for its Mac each time it attaches, and a worker configured
+  # with a project is already connected for it, so a notice for something
+  # already served must cost nothing rather than open a rival connection.
+  defp open_project_connection(socket, project_id) do
+    cond do
+      project_id == socket.assigns.config.project_id -> socket
+      Map.has_key?(socket.assigns.project_connections, project_id) -> socket
+      true -> start_project_connection(socket, project_id)
+    end
+  end
+
+  # A connection that refuses to start is this project's problem alone. It is
+  # reported and left, because killing this connection would cost the worker its
+  # Mac attachment and every other project with it.
+  defp start_project_connection(socket, project_id) do
+    %Configuration{} = configured = socket.assigns.config
+    config = %Configuration{configured | project_id: project_id}
+
+    case ProjectConnections.open(
+           socket.assigns.project_connection_supervisor,
+           config,
+           socket.assigns.opts
+         ) do
+      {:ok, pid} when is_pid(pid) ->
+        Process.monitor(pid)
+        Logger.info("worker gateway opened a project connection for project #{project_id}")
+
+        assign(
+          socket,
+          :project_connections,
+          Map.put(socket.assigns.project_connections, project_id, pid)
+        )
+
+      other ->
+        Logger.error(
+          "worker gateway could not open a project connection for project " <>
+            "#{project_id}: #{refusal_summary(other)}"
+        )
+
+        socket
+    end
+  end
+
+  # A refusal is named, never inspected whole. A supervisor's own error term can
+  # quote the start call that failed, and that call carries this worker's
+  # configuration and its credential with it.
+  defp refusal_summary({:error, {:already_started, _pid}}), do: "already_started"
+  defp refusal_summary({:error, reason}) when is_atom(reason), do: Atom.to_string(reason)
+  defp refusal_summary(:ignore), do: "ignored"
+  defp refusal_summary(_other), do: "refused"
+
+  defp close_project_connection(socket, project_id) do
+    case Map.pop(socket.assigns.project_connections, project_id) do
+      {nil, _connections} ->
+        socket
+
+      {pid, connections} ->
+        ProjectConnections.close(socket.assigns.project_connection_supervisor, pid)
+        Logger.info("worker gateway closed the project connection for project #{project_id}")
+        assign(socket, :project_connections, connections)
+    end
+  end
+
+  # A project connection that stopped on its own must stop counting as open, or
+  # the next notice for that project would be dismissed as a duplicate and the
+  # worker would stay unreachable for it.
+  defp drop_project_connection(socket, pid) do
+    assign(
+      socket,
+      :project_connections,
+      socket.assigns.project_connections
+      |> Enum.reject(fn {_project_id, open} -> open == pid end)
+      |> Map.new()
+    )
   end
 
   defp handle_accepted_command(topic, %{"operation" => "cancel"} = message, socket),
@@ -536,6 +640,13 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     end
 
     {:noreply, socket}
+  end
+
+  # A project connection is temporary, so one that goes down stays down. Only
+  # the record of it being open is cleared here, which is what lets a later
+  # `project_bound` notice open it again.
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
+    {:noreply, drop_project_connection(socket, pid)}
   end
 
   defp poll_and_deliver(socket, envelope) do
@@ -866,6 +977,14 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
         |> assign(:check_timeout_ms, Keyword.get(opts, :check_timeout_ms))
         |> assign(:gateway_credential, token)
         |> assign(:artifact_req_options, Keyword.get(opts, :req_options))
+        # Kept whole so a project connection opened later starts on the same
+        # terms as this one, including whatever seam a test is driving.
+        |> assign(:opts, opts)
+        |> assign(
+          :project_connection_supervisor,
+          Keyword.get(opts, :project_connections, ProjectConnections)
+        )
+        |> assign(:project_connections, %{})
 
       case connect(socket, uri: uri) do
         {:ok, connecting_socket} -> {:ok, connecting_socket}

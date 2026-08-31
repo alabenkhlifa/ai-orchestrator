@@ -18,7 +18,14 @@ defmodule SddOrchestrator.Worker.Supervisor do
   use Supervisor
 
   alias SddOrchestrator.Delivery.AgentAdapter
-  alias SddOrchestrator.Worker.{Configuration, GatewayConnection, RepositorySelection, State}
+
+  alias SddOrchestrator.Worker.{
+    Configuration,
+    GatewayConnection,
+    ProjectConnections,
+    RepositorySelection,
+    State
+  }
 
   # `Configuration.agent_adapters/0` is the validated set of strings a paired
   # configuration may carry; anything else is unreachable through pairing but
@@ -97,8 +104,19 @@ defmodule SddOrchestrator.Worker.Supervisor do
   # it for the Mac app to answer (specs/40-worker-repository-selection Task 3).
   # It starts before the gateway connection, so a request arriving on the first
   # join always has somewhere to land.
+  # `ProjectConnections` holds one connection per project this worker is told to
+  # serve (specs/41-feature-delivery-from-the-ui Task 7), and starts before the
+  # gateway connection for the same reason: a `project_bound` notice arriving on
+  # the first join has somewhere to open. Both scopes start it, so the tree has
+  # one shape; a worker already configured with a project simply opens nothing
+  # under it.
   defp children(%Configuration{} = config),
-    do: [{State, config}, {RepositorySelection, []}, {GatewayConnection, config}]
+    do: [
+      {State, config},
+      {RepositorySelection, []},
+      {ProjectConnections, []},
+      {GatewayConnection, config}
+    ]
 
   @doc "Reads the configuration held by a running worker's `SddOrchestrator.Worker.State` child."
   @spec configuration(pid()) :: Configuration.t() | nil

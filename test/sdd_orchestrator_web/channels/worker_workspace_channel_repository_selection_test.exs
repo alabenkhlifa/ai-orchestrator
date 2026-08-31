@@ -10,9 +10,11 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelRepositorySelectionTest do
   never a location.
 
   `async: false`: the request server is one named process for the whole node,
-  and this file selects the real transport in application environment.
+  and this file selects the real transport in application environment. The
+  shared sandbox comes with specs/41 Task 7, which gives the attachment join one
+  database read for the projects already bound to this Mac.
   """
-  use ExUnit.Case, async: false
+  use SddOrchestrator.DataCase, async: false
 
   import Phoenix.ChannelTest
 

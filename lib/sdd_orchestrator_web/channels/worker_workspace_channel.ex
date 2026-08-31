@@ -20,6 +20,14 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
   actually execute still stays on the project-scoped `worker:` topic, where a
   project-scoped credential is what authorizes it.
 
+  It also carries the `project_bound` and `project_unbound` notices, which name
+  a project id and nothing else. They are not delivery either. A notice tells
+  the worker which projects it now serves so it can open its own project-scoped
+  connection for each one, and every run still travels over that connection's
+  own topic under its own credential. A worker that attaches while bindings
+  already exist is told about all of them at the join, because a binding made
+  while nobody was listening would otherwise never be heard.
+
   The workspace and the worker an answer is credited to are read from this
   socket's own authenticated assigns and never from the frame. An attachment
   can therefore only ever close a request that was pushed to it, and a frame
@@ -31,6 +39,7 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
   """
   use Phoenix.Channel
 
+  alias SddOrchestrator.Delivery.BoundProjectNotice
   alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Delivery.WorkerProtocol
   alias SddOrchestrator.RepositorySelection
@@ -41,6 +50,11 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
     with :ok <- confirm_device_workspace(device_workspace_id, socket),
          {:ok, contract} <- WorkerProtocol.negotiate(params),
          {:ok, _attachment} <- attach(device_workspace_id, contract, socket) do
+      # After the attachment is recorded, never before: the notice is sent to
+      # whoever is attached for this Mac, and this connection has to be one of
+      # them to hear about its own bindings.
+      BoundProjectNotice.announce_bound(device_workspace_id)
+
       {:ok, contract, assign(socket, :contract, contract)}
     else
       {:error, reason} -> {:error, refusal(reason)}
@@ -68,6 +82,16 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
 
   def handle_info({:repository_selection_cancel, payload}, socket) do
     push(socket, "repository_selection_cancel", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:project_bound, payload}, socket) do
+    push(socket, "project_bound", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:project_unbound, payload}, socket) do
+    push(socket, "project_unbound", payload)
     {:noreply, socket}
   end
 

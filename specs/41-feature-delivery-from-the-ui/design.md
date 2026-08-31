@@ -66,7 +66,7 @@ Required boundaries:
 - `Readiness.assess/3` and `ReadinessAssessment` gain structural findings and a `guidance` flag with values `configured` or `not_configured`; `ReadinessGuidance` adapters may answer `{:error, :not_configured}`.
 - `Start.preconditions/3` answering the ordered item list; `Start.start/4` adding `:no_execution_profile` and `:worker_unavailable` to its error type and dropping `:delivery_execution`.
 - `RepositoryAssessments.approved_profile/2` answering the project's highest approved `RepositoryExecutionProfile`, or nothing.
-- `ExecutionManifest` gaining `repository_root`, `commands`, and `allowed_scope`, validated as the profile already validates them, at `manifest_version` 1.
+- `ExecutionManifest` gaining `repository_root`, `commands`, and `allowed_scope`, validated as the profile already validates them, at `manifest_version` 2.
 - Mac-scoped attachment messages `project_bound` and `project_unbound` with `project_id`.
 - Compatibility that must hold: `Feature` transitions and `state_version` locking, the `:start_run` and `:assign` guards, `Suggestions.promote/4`, `RunTransitions`, `DeliveryStore.commit`, the `RunCommand` outbox and `deliver/1`, the project-scoped `worker:` topic and its credential exchange, the review, evidence, comment, and assignment behavior of the feature page, and every browser-suite scenario that seeds features and runs.
 
@@ -92,9 +92,16 @@ Required boundaries:
 
 ### The manifest carries the profile's values in fields of its own
 
-- Choice: `ExecutionManifest` gains typed `repository_root`, `commands`, and `allowed_scope` fields at `manifest_version` 1. `agent_ref` and `worker_ref` stay the small identity maps they are.
+- Choice: `ExecutionManifest` gains typed `repository_root`, `commands`, and `allowed_scope` fields, and `manifest_version` moves to 2. `agent_ref` and `worker_ref` stay the small identity maps they are.
 - Reason: Those two references are flat string maps capped at 512 bytes per value, and a profile holds up to 64 commands and scope entries of up to 1024 bytes each. Joining the lists into a reference value would let a legitimate profile produce a manifest the manifest's own validation refuses.
-- Consequence: `ExecutionManifest` and its digest change, and the worker reads three named fields instead of parsing a reference string. The version stays at 1, so an installed worker keeps parsing the fields it already reads.
+- Reason for the version: `ExecutionManifest` refuses a field it does not know, so a worker installed before this change would refuse the new manifest either way. At version 2 it refuses with `unsupported_manifest_version`, which is what the version field is for, instead of a field error that reads like a bug. Every manifest decode is a worker reading an in-flight command; nothing decodes a stored manifest, so no run history depends on version 1.
+- Consequence: `ExecutionManifest`, its canonical form, and its digest change, and the worker reads three named fields instead of parsing a reference string. A worker older than this change refuses every run command until it is updated. The three fields take empty defaults when absent, so the four continuation builders keep producing valid manifests until `Task 10` moves them onto the profile.
+
+### The manifest and the profile agree on how many checks are allowed
+
+- Choice: `ProtocolLimits.max_required_checks` moves from 50 to 64, matching the profile proposal's own limit.
+- Reason: An owner can approve a profile holding up to 64 required checks, and the manifest would then refuse to carry it. A profile the owner approved must be startable, and 64 command strings sit far inside the manifest's 64KB payload cap.
+- Consequence: One bound instead of two. A profile that is too large to run is refused at approval, where the person can act on it, rather than at start.
 
 ### The worker opens a project-scoped connection when told
 

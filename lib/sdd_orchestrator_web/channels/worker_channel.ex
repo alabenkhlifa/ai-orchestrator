@@ -81,8 +81,15 @@ defmodule SddOrchestratorWeb.WorkerChannel do
   # The socket authenticated one execution target; the topic is where a worker
   # would otherwise reach across projects, so it is checked before negotiation
   # and therefore before the worker can be sent anything.
+  #
+  # A socket holding no project at all, such as a Mac-scoped one, matches no
+  # topic here, because the value it would be compared against is absent rather
+  # than wrong. Reading the assign directly raised on that socket and killed the
+  # channel process instead of answering it, which turned a refusal into a
+  # crash. Nothing that was refused becomes allowed: an absent project can equal
+  # no topic.
   defp confirm_execution_target(project_id, socket) do
-    if project_id == socket.assigns.project_id,
+    if project_id == Map.get(socket.assigns, :project_id),
       do: :ok,
       else: {:error, :unauthorized_execution_target}
   end

@@ -86,7 +86,7 @@ Traceability:
   - Proof: Focused tests cover a created feature answering a linked specification with the four empty headings, a participant creating one under the owner's authority with the participant recorded as actor, a failed specification creation leaving no feature, and the board still listing the feature as before.
   - Delivered: `Features.create/3` now creates the feature and its own specification in one transaction under the owner's authority, with the acting person recorded as the revision's actor. A refused specification leaves no feature.
 
-- [ ] Task 2 — Edit the four guided parts and save a revision.
+- [x] Task 2 — Edit the four guided parts and save a revision.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -94,6 +94,7 @@ Traceability:
   - Owned surfaces: `Delivery.GuidedRequirements` parse and render, the requirements form on `FeatureDetailLive` with its four parts, the save through `SpecificationStore.append_revision/5` with the expected head, the refusal on a concurrent revision, and the design and tasks documents carried forward unchanged.
   - Owns: AC-02, entity:GuidedRequirementsDocument
   - Proof: Focused LiveView tests cover a save producing one new revision holding the four parts, the form showing them back after reload, a concurrent revision being refused with a reload notice, and the design and tasks documents unchanged across saves.
+  - Delivered: `Delivery.GuidedRequirements` owns the four-part document shape, derived from `Readiness.guided_structure/0` so the headings cannot drift. The feature page's form saves one revision against the head it loaded and carries the design and tasks documents forward.
 
 - [ ] Task 3 — Judge readiness from the feature's specification with structural findings.
   - Size: Standard
@@ -113,14 +114,15 @@ Traceability:
   - Owns: AC-04, AC-05
   - Proof: Focused LiveView tests cover `Make ready` moving a blocker-free feature to `Ready for development`, a blocker refusing it with the blocker named, a save after ready rendering the verdict stale and hiding both `Make ready` and the start action, and `Back to draft` returning the column.
 
-- [ ] Task 5 — Build the started run's manifest from the approved execution profile.
+- [x] Task 5 — Build the started run's manifest from the approved execution profile.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Run the repository's real checks and commands instead of values only a test ever set.
-  - Owned surfaces: `RepositoryAssessments.approved_profile/2`, the `ExecutionManifest` fields `repository_root`, `commands`, and `allowed_scope` with their validation at `manifest_version` 1, and `Start.start/4` building the manifest from the approved profile with the `:no_execution_profile` refusal. `Start.execution_config/0` stays until `Task 10`.
+  - Owned surfaces: `RepositoryAssessments.approved_profile/2`, the `ExecutionManifest` fields `repository_root`, `commands`, and `allowed_scope` with their validation, the move to `manifest_version` 2 with its golden fixtures, `ProtocolLimits.max_required_checks` raised to the profile's own 64, and `Start.start/4` building the manifest from the approved profile with the `:no_execution_profile` refusal. `Start.execution_config/0` stays until `Task 10`.
   - Owns: AC-09
-  - Proof: Focused tests cover a started run's manifest carrying the profile's base revision, required checks, root, commands, and allowed scope, a project without an approved profile refused with `:no_execution_profile` and creating nothing, and a profile whose commands and scope exceed a reference value's byte cap still producing a valid manifest.
+  - Proof: Focused tests cover a started run's manifest carrying the profile's base revision, required checks, root, commands, and allowed scope, a project without an approved profile refused with `:no_execution_profile` and creating nothing, a profile whose commands and scope exceed a reference value's byte cap still producing a valid manifest, a version 1 map refused as an unsupported version, and a profile holding 64 required checks starting.
+  - Delivered: `Start` builds the manifest from `RepositoryAssessments.approved_profile/2` and refuses `:no_execution_profile` without one. `ExecutionManifest` carries the profile's root, commands, and allowed scope in fields of its own at version 2, and the required-check cap now matches the profile's 64.
 
 - [ ] Task 6 — Show every start precondition with a way to resolve it.
   - Size: Standard
@@ -131,7 +133,7 @@ Traceability:
   - Owns: AC-06, entity:StartReadout
   - Proof: Focused tests cover each unmet item rendered with its route and the button absent, all items met rendering the button, the worker item unmet for a bound worker that is not attached now, and the readout and `available?/3` agreeing on every combination tested.
 
-- [ ] Task 7 — Join a bound project's run topic when the control plane says so.
+- [x] Task 7 — Join a bound project's run topic when the control plane says so.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -139,6 +141,7 @@ Traceability:
   - Owned surfaces: `project_bound` and `project_unbound` pushes over the Mac-scoped attachment on connect, disconnect, and attach with existing bindings, the `DynamicSupervisor` under `Worker.Supervisor` starting and stopping one project-scoped `Worker.GatewayConnection` per bound project, idempotent handling for a project already connected from configuration, and `WorkerChannel.confirm_execution_target/2` refusing a cross-scope join instead of crashing.
   - Owns: none
   - Proof: Focused tests cover a bound project pushed on attach and on connect, the worker's project connection joining the topic and appearing in the project-keyed registry, `deliver/1` reaching it, an unbind stopping the connection, a duplicate `project_bound` opening no second connection, and a Mac-scoped socket refused on a project topic with the channel still alive.
+  - Delivered: `BoundProjectNotice` pushes `project_bound` and `project_unbound` over the Mac attachment, and `Worker.ProjectConnections` opens one project-scoped gateway connection per bound project. A Mac-scoped socket aimed at a project topic is now refused instead of crashing the channel.
 
 - [ ] Task 8 — Start development from the feature page and show the run begin.
   - Size: Standard
