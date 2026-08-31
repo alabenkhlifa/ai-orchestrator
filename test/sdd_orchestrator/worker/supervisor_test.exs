@@ -14,6 +14,7 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
 
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.GatewayConnection
+  alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.State
   alias SddOrchestrator.Worker.Supervisor, as: WorkerSupervisor
 
@@ -85,7 +86,11 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # `State` is asserted present here, matching what
     # `WorkerSupervisor.configuration/1` still relies on.
     assert State in ids
-    refute Enum.any?(ids, fn id -> id |> to_string() |> String.contains?("Repo") end)
+
+    # The rule is "no Ecto repo child", so the id is asked whether it names one.
+    # A `"Repo"` substring test no longer answers that question: specs/40's
+    # `RepositorySelection` child contains the word and is not a database repo.
+    refute Enum.any?(ids, fn id -> id |> Module.split() |> List.last() == "Repo" end)
   end
 
   describe "a worker with no project" do
@@ -128,14 +133,26 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # slice exists to close: a paired worker that connects to nothing. A real
     # browser pairing found it, because every other test starts
     # `GatewayConnection` itself and never asks the supervisor.
+    # specs/40 Task 3 adds `RepositorySelection` between them: it holds the one
+    # open folder-picker request, and it starts before the connection so a
+    # request arriving on the first join has somewhere to land.
     test "starts the gateway connection for both scopes" do
       assert {:ok, {_flags, mac_only_children}} = WorkerSupervisor.init(mac_only_config())
-      assert Enum.map(mac_only_children, & &1.id) == [State, GatewayConnection]
+
+      assert Enum.map(mac_only_children, & &1.id) == [
+               State,
+               RepositorySelection,
+               GatewayConnection
+             ]
 
       assert {:ok, {_flags, project_children}} =
                WorkerSupervisor.init(struct!(Configuration, @valid_fields))
 
-      assert Enum.map(project_children, & &1.id) == [State, GatewayConnection]
+      assert Enum.map(project_children, & &1.id) == [
+               State,
+               RepositorySelection,
+               GatewayConnection
+             ]
     end
 
     test "leaves the workspace root unset instead of configuring a nil one", context do

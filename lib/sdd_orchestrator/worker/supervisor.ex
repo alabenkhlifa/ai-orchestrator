@@ -18,7 +18,7 @@ defmodule SddOrchestrator.Worker.Supervisor do
   use Supervisor
 
   alias SddOrchestrator.Delivery.AgentAdapter
-  alias SddOrchestrator.Worker.{Configuration, GatewayConnection, State}
+  alias SddOrchestrator.Worker.{Configuration, GatewayConnection, RepositorySelection, State}
 
   # `Configuration.agent_adapters/0` is the validated set of strings a paired
   # configuration may carry; anything else is unreachable through pairing but
@@ -93,7 +93,12 @@ defmodule SddOrchestrator.Worker.Supervisor do
   # projectless worker is what left a genuinely paired worker connected to
   # nothing, which is the defect specs/39-mac-scoped-worker-connection exists to
   # close.
-  defp children(%Configuration{} = config), do: [{State, config}, {GatewayConnection, config}]
+  # `RepositorySelection` holds the one open folder-picker request and publishes
+  # it for the Mac app to answer (specs/40-worker-repository-selection Task 3).
+  # It starts before the gateway connection, so a request arriving on the first
+  # join always has somewhere to land.
+  defp children(%Configuration{} = config),
+    do: [{State, config}, {RepositorySelection, []}, {GatewayConnection, config}]
 
   @doc "Reads the configuration held by a running worker's `SddOrchestrator.Worker.State` child."
   @spec configuration(pid()) :: Configuration.t() | nil
