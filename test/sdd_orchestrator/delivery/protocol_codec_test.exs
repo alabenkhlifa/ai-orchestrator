@@ -9,7 +9,7 @@ defmodule SddOrchestrator.Delivery.ProtocolCodecTest do
   describe "deterministic encoding" do
     test "encodes each envelope to its exact byte-stable fixture" do
       pairs = [
-        {Fixtures.command(), "start_command_v1.json"},
+        {Fixtures.command(), "start_command_v2.json"},
         {Fixtures.event(), "progress_event_v1.json"},
         {Fixtures.acknowledgement(), "acknowledgement_v1.json"},
         {Fixtures.heartbeat(), "heartbeat_v1.json"},

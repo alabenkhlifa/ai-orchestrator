@@ -16,6 +16,7 @@ defmodule SddOrchestrator.Delivery.Start do
   storage authority.
   """
 
+  alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, RuntimeSessions}
   alias SddOrchestrator.Devices.LocalWorker
 
@@ -32,6 +33,7 @@ defmodule SddOrchestrator.Delivery.Start do
 
   alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryAssessments
   alias SddOrchestrator.SpecificationStore
 
   @type authority :: Readiness.authority()
@@ -43,6 +45,7 @@ defmodule SddOrchestrator.Delivery.Start do
           | :boundary_unconfirmed
           | :already_started
           | :no_specification
+          | :no_execution_profile
           | :invalid_manifest
           | {:ai_connection_selection_required, [Ecto.UUID.t()]}
           | term()
@@ -61,7 +64,7 @@ defmodule SddOrchestrator.Delivery.Start do
          :ok <- ready?(authority, project.id, actor, feature.id),
          {:ok, current} <- current_revision(authority, project.id),
          :ok <- not_already_started(authority, project, feature),
-         {:ok, manifest} <- manifest_for(project, feature, current, opts),
+         {:ok, manifest} <- manifest_for(authority, project, feature, current, opts),
          {:ok, ai_connection_id} <- resolve_ai_connection(project.id, member.account_id, opts),
          {:ok, session_id} <- pin_governed_session(manifest, ai_connection_id, member, opts),
          {:ok, results} <- commit(authority, project, feature, member, manifest, opts) do
@@ -167,35 +170,57 @@ defmodule SddOrchestrator.Delivery.Start do
     ]
   end
 
-  defp manifest_for(project, feature, current, opts) do
-    config = Keyword.merge(execution_config(), opts)
+  # The repository's own base revision, checks, root, commands, and scope come
+  # from the version of the execution profile its owner approved. Nothing here
+  # falls back to configuration, so a run can only ever execute the contract a
+  # person actually approved for that repository.
+  defp manifest_for(authority, project, feature, current, opts) do
     run_id = Keyword.get(opts, :run_id, Ecto.UUID.generate())
 
-    ExecutionManifest.new(%{
-      "manifest_version" => ExecutionManifest.manifest_version(),
-      "project_id" => project.id,
-      "feature_id" => feature.id,
-      "run_id" => run_id,
-      "attempt_number" => 1,
-      "approved_slice" => Keyword.get(config, :approved_slice, "slice-07"),
-      "starting_revision_id" => revision_id(current),
-      "starting_revision_digest" => revision_digest(current),
-      "effective_revision_id" => revision_id(current),
-      "effective_revision_digest" => revision_digest(current),
-      "repository_base_revision" => Keyword.fetch!(config, :repository_base_revision),
-      "target_branch" => branch_for(run_id, config),
-      "required_checks" => Keyword.get(config, :required_checks, []),
-      "agent_ref" => Keyword.get(config, :agent_ref, %{}),
-      "worker_ref" => Keyword.get(config, :worker_ref, %{}),
-      "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
-    })
+    with {:ok, profile} <-
+           RepositoryAssessments.approved_profile(profile_viewer(authority), project.id) do
+      ExecutionManifest.new(%{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => project.id,
+        "feature_id" => feature.id,
+        "run_id" => run_id,
+        "attempt_number" => 1,
+        "approved_slice" => Keyword.get(opts, :approved_slice, "slice-07"),
+        "starting_revision_id" => revision_id(current),
+        "starting_revision_digest" => revision_digest(current),
+        "effective_revision_id" => revision_id(current),
+        "effective_revision_digest" => revision_digest(current),
+        "repository_base_revision" => profile.base_revision,
+        "target_branch" => branch_for(run_id, opts),
+        "required_checks" => required_checks(profile),
+        "repository_root" => profile.root,
+        "commands" => profile.commands,
+        "allowed_scope" => profile.allowed_scope,
+        "agent_ref" => Keyword.get(opts, :agent_ref, %{}),
+        "worker_ref" => Keyword.get(opts, :worker_ref, %{}),
+        "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
+      })
+    end
+  end
+
+  # The profile store answers the owner's approved versions, so the viewer is
+  # built from the project's storage authority rather than from the person who
+  # pressed start. Their right to press it was already checked.
+  defp profile_viewer(%PersonalWorkspace{account_id: account_id}), do: {:hosted, account_id}
+  defp profile_viewer(%DeviceWorkspace{} = workspace), do: {:device, workspace}
+
+  # A profile names its required checks by the command that runs them, and
+  # those names are already unique, so the manifest's named-check contract
+  # carries the command as both the name and the command.
+  defp required_checks(profile) do
+    Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1})
   end
 
   # One run owns one branch for its whole lifetime, so the branch name is
   # derived from the run identity rather than from the feature title, which a
   # person can change.
-  defp branch_for(run_id, config) do
-    prefix = Keyword.get(config, :branch_prefix, "sdd")
+  defp branch_for(run_id, opts) do
+    prefix = Keyword.get(opts, :branch_prefix, "sdd")
 
     "#{prefix}/run-#{run_id}"
   end

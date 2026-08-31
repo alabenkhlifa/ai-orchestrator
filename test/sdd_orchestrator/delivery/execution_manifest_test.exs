@@ -1,7 +1,7 @@
 defmodule SddOrchestrator.Delivery.ExecutionManifestTest do
   use ExUnit.Case, async: true
 
-  alias SddOrchestrator.Delivery.ExecutionManifest
+  alias SddOrchestrator.Delivery.{ExecutionManifest, ProtocolLimits}
   alias SddOrchestrator.DeliveryProtocolFixtures, as: Fixtures
 
   @fixtures Path.expand("../../fixtures/delivery", __DIR__)
@@ -11,7 +11,7 @@ defmodule SddOrchestrator.Delivery.ExecutionManifestTest do
       manifest = Fixtures.manifest()
 
       assert {:ok, encoded} = ExecutionManifest.encode(manifest)
-      assert encoded == read_fixture("execution_manifest_v1.json")
+      assert encoded == read_fixture("execution_manifest_v2.json")
     end
 
     test "produces identical bytes and digests regardless of attribute order" do
@@ -41,7 +41,7 @@ defmodule SddOrchestrator.Delivery.ExecutionManifestTest do
   describe "digest/1" do
     test "matches the recorded fixture digest" do
       assert ExecutionManifest.digest(Fixtures.manifest()) ==
-               read_fixture("execution_manifest_v1.digest")
+               read_fixture("execution_manifest_v2.digest")
     end
 
     test "changes when any bound field changes" do
@@ -55,6 +55,9 @@ defmodule SddOrchestrator.Delivery.ExecutionManifestTest do
         %{"repository_base_revision" => "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d"},
         %{"target_branch" => "sdd/feature/ftr-0002/run-0004"},
         %{"required_checks" => [%{"name" => "test", "command" => "mix test"}]},
+        %{"repository_root" => "apps/api"},
+        %{"commands" => ["mix test"]},
+        %{"allowed_scope" => ["lib"]},
         %{"agent_ref" => %{"provider_ref" => "other-agent", "model_ref" => "configured-model"}},
         %{"worker_ref" => %{"execution_target_ref" => "configured-remote-worker"}}
       ]
@@ -88,11 +91,38 @@ defmodule SddOrchestrator.Delivery.ExecutionManifestTest do
     end
 
     test "rejects an unsupported manifest version" do
+      assert ExecutionManifest.manifest_version() == 2
+
       assert {:error, :unsupported_manifest_version} =
-               ExecutionManifest.new(Fixtures.manifest_attrs(%{"manifest_version" => 2}))
+               ExecutionManifest.new(Fixtures.manifest_attrs(%{"manifest_version" => 3}))
 
       assert {:error, :unsupported_manifest_version} =
                ExecutionManifest.from_map(Fixtures.manifest_attrs(%{"manifest_version" => 99}))
+    end
+
+    # A version 1 manifest carried none of the profile's own fields. Refusing
+    # it on the version says what is wrong; refusing it as a malformed field
+    # would not.
+    test "rejects a version 1 manifest on its version, not its fields" do
+      version_one =
+        Fixtures.manifest_attrs(%{"manifest_version" => 1})
+        |> Map.drop(["repository_root", "commands", "allowed_scope"])
+
+      assert {:error, :unsupported_manifest_version} = ExecutionManifest.from_map(version_one)
+      assert {:error, :unsupported_manifest_version} = ExecutionManifest.new(version_one)
+    end
+
+    test "accepts a version 2 manifest that carries no profile fields yet" do
+      assert {:ok, manifest} =
+               ExecutionManifest.from_map(
+                 Map.drop(Fixtures.manifest_attrs(), [
+                   "repository_root",
+                   "commands",
+                   "allowed_scope"
+                 ])
+               )
+
+      assert manifest.manifest_version == 2
     end
 
     test "rejects invalid identities, revisions, and branches" do
@@ -142,7 +172,9 @@ defmodule SddOrchestrator.Delivery.ExecutionManifestTest do
                ExecutionManifest.new(Fixtures.manifest_attrs(%{"required_checks" => duplicates}))
 
       too_many =
-        Enum.map(1..51, fn index -> %{"name" => "check#{index}", "command" => "mix test"} end)
+        Enum.map(1..(ProtocolLimits.get(:max_required_checks) + 1), fn index ->
+          %{"name" => "check#{index}", "command" => "mix test"}
+        end)
 
       assert {:error, :too_many_required_checks} =
                ExecutionManifest.new(Fixtures.manifest_attrs(%{"required_checks" => too_many}))
@@ -200,6 +232,74 @@ defmodule SddOrchestrator.Delivery.ExecutionManifestTest do
                ExecutionManifest.new(
                  Fixtures.manifest_attrs(%{"continuation" => %{"reason" => "initial"}})
                )
+    end
+  end
+
+  describe "the approved profile's root, commands, and scope" do
+    test "default to empty when the attributes carry none" do
+      assert {:ok, manifest} = ExecutionManifest.new(Fixtures.manifest_attrs())
+
+      assert manifest.repository_root == ""
+      assert manifest.commands == []
+      assert manifest.allowed_scope == []
+
+      assert {:ok, ^manifest} = ExecutionManifest.from_map(Fixtures.manifest_attrs())
+    end
+
+    test "carry the profile's own values through encoding and back" do
+      attrs =
+        Fixtures.manifest_attrs(%{
+          "repository_root" => "apps/api",
+          "commands" => ["mix test", "mix credo --strict"],
+          "allowed_scope" => ["apps/api/lib", "apps/api/test"]
+        })
+
+      assert {:ok, manifest} = ExecutionManifest.new(attrs)
+      assert {:ok, encoded} = ExecutionManifest.encode(manifest)
+      assert {:ok, ^manifest} = ExecutionManifest.decode(encoded)
+
+      assert manifest.repository_root == "apps/api"
+      assert manifest.commands == ["mix test", "mix credo --strict"]
+      assert manifest.allowed_scope == ["apps/api/lib", "apps/api/test"]
+    end
+
+    # The reason these are fields of their own: an approved profile holds
+    # values far heavier than a reference map's per-value cap.
+    test "accept an entry heavier than a reference value's byte cap" do
+      long_command = String.duplicate("x", ProtocolLimits.get(:max_reference_bytes) + 1)
+
+      assert {:ok, manifest} =
+               ExecutionManifest.new(Fixtures.manifest_attrs(%{"commands" => [long_command]}))
+
+      assert manifest.commands == [long_command]
+
+      assert {:error, :invalid_agent_ref} =
+               ExecutionManifest.new(
+                 Fixtures.manifest_attrs(%{"agent_ref" => %{"commands" => long_command}})
+               )
+    end
+
+    test "reject a malformed root, command list, or scope list" do
+      too_many = Enum.map(1..65, &"mix test #{&1}")
+      too_long = String.duplicate("y", 1_025)
+
+      cases = [
+        {%{"repository_root" => too_long}, :invalid_repository_root},
+        {%{"repository_root" => nil}, :invalid_repository_root},
+        {%{"commands" => too_many}, :invalid_commands},
+        {%{"commands" => [too_long]}, :invalid_commands},
+        {%{"commands" => [""]}, :invalid_commands},
+        {%{"commands" => ["mix test", 1]}, :invalid_commands},
+        {%{"commands" => "mix test"}, :invalid_commands},
+        {%{"allowed_scope" => too_many}, :invalid_allowed_scope},
+        {%{"allowed_scope" => [too_long]}, :invalid_allowed_scope},
+        {%{"allowed_scope" => [nil]}, :invalid_allowed_scope},
+        {%{"allowed_scope" => %{"lib" => true}}, :invalid_allowed_scope}
+      ]
+
+      for {override, expected} <- cases do
+        assert ExecutionManifest.new(Fixtures.manifest_attrs(override)) == {:error, expected}
+      end
     end
   end
 

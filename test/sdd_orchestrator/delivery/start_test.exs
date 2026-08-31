@@ -21,6 +21,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
     Feature,
     LocalWorkerRunGovernance,
     ProcessingDisclosure,
+    ProtocolLimits,
     Readiness,
     RunAttempt,
     RunCommand,
@@ -33,17 +34,69 @@ defmodule SddOrchestrator.Delivery.StartTest do
   alias SddOrchestrator.ParticipationDeliveryDouble
   alias SddOrchestrator.PersonalConnectionAdapterDouble
   alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ReadinessGuidanceDouble
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryAssessments
+
+  alias SddOrchestrator.RepositoryAssessments.{
+    AssessmentStore,
+    RepositoryAssessment,
+    RepositoryAssessmentCacheProvenance,
+    RepositoryAssessmentResult,
+    RepositoryBindingPreparation,
+    RepositoryExecutionProfile,
+    RepositoryExecutionProfileProposalPayload,
+    WorkerRepositoryExecutionProfileProposalEnvelope
+  }
+
   alias SddOrchestrator.SpecificationFixtures
   alias SddOrchestrator.SpecificationStore
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
+  @scanner_digest String.duplicate("a", 64)
+  @disclosure_digest String.duplicate("b", 64)
+  @base_revision String.duplicate("1", 40)
+  @repository_provider "github"
+
+  # The approved profile's own values. One command, and the scope entries
+  # together, weigh more than `ProtocolLimits.max_reference_bytes`, so a
+  # manifest that squeezed them into `agent_ref` or `worker_ref` would be
+  # refused. They belong to fields of their own instead.
+  @long_command "mix test " <> String.duplicate("--include slow_case ", 30)
+
+  @deep_directories Enum.map(1..6, fn index ->
+                      "lib/" <> String.duplicate("deep_module_#{index}_", 6) <> "leaf"
+                    end)
+
+  @proposal_fields %{
+    commands: ["mix test", @long_command],
+    required_checks: ["mix test"],
+    allowed_scope: @deep_directories,
+    gaps: [],
+    conflicts: [],
+    multi_root_blockers: []
+  }
+
+  # The most required checks a profile may hold. A profile its owner approved
+  # must always fit in a manifest, so this is the count the manifest allows.
+  # The proposal payload takes its lists already sorted, so the index is padded
+  # to keep the written order and the sorted order the same.
+  @max_checks Enum.map(1..64, fn index ->
+                "mix test --only case_#{String.pad_leading(Integer.to_string(index), 2, "0")}"
+              end)
+
+  @max_check_fields %{@proposal_fields | commands: @max_checks, required_checks: @max_checks}
+
+  @second_revision String.duplicate("2", 40)
+
+  @findings [
+    %{
+      category: "instruction",
+      path: "AGENTS.md",
+      bytes: 12,
+      sha256: String.duplicate("d", 64),
+      line_count: 3
+    }
   ]
 
   # Matches `AIRuntimeFixtures`' own default catalog/quota `retrieved_at`, so a
@@ -64,7 +117,6 @@ defmodule SddOrchestrator.Delivery.StartTest do
 
     for {key, value} <- [
           participation_email_delivery: ParticipationDeliveryDouble,
-          delivery_execution: @execution,
           processing_boundary: @boundary
         ] do
       previous = Application.get_env(:sdd_orchestrator, key)
@@ -82,24 +134,28 @@ defmodule SddOrchestrator.Delivery.StartTest do
     ParticipationDeliveryDouble.succeed()
 
     context = DeliveryFixtures.delivery_project_fixture()
-    feature = DeliveryFixtures.feature_fixture(context.project, context.account)
+    project = connect_repository!(context.project)
+    feature = DeliveryFixtures.feature_fixture(project, context.account)
 
     {:ok, _current} =
       SpecificationStore.create(
         context.workspace,
-        context.project.id,
+        project.id,
         SpecificationFixtures.specification_attrs(),
         actor_ref: "owner"
       )
 
+    profile = approve_profile!(context.account.id, project)
+
     %{
       context: context,
       authority: context.workspace,
-      project: context.project,
+      project: project,
       feature: feature,
       owner: context.owner_actor,
       participant: context.participant_actor,
-      owner_account: context.account
+      owner_account: context.account,
+      profile: profile
     }
   end
 
@@ -189,6 +245,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
       authority: authority,
       project: project,
       owner: owner,
+      profile: profile,
       ready: ready
     } do
       {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
@@ -205,15 +262,144 @@ defmodule SddOrchestrator.Delivery.StartTest do
           "starting_revision_digest" => results.run.starting_revision_digest,
           "effective_revision_id" => results.run.effective_revision_id,
           "effective_revision_digest" => results.run.effective_revision_digest,
-          "repository_base_revision" => "a1b2c3d4e5f6a7b8",
+          "repository_base_revision" => profile.base_revision,
           "target_branch" => results.run.branch,
-          "required_checks" => [%{"name" => "mix test", "command" => "mix test"}],
-          "agent_ref" => %{"provider" => "configured-agent"},
-          "worker_ref" => %{"target" => "configured-worker"},
+          "required_checks" =>
+            Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1}),
+          "repository_root" => profile.root,
+          "commands" => profile.commands,
+          "allowed_scope" => profile.allowed_scope,
+          "agent_ref" => %{},
+          "worker_ref" => %{},
           "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
         })
 
       assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
+    end
+  end
+
+  describe "the manifest comes from the approved execution profile [AC-09]" do
+    setup ctx, do: %{ready: prepare(ctx)}
+
+    test "carries the profile's base revision, required checks, root, commands, and scope", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      profile: profile,
+      ready: ready
+    } do
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      manifest = started_manifest(results, project, ready, profile)
+
+      assert manifest.repository_base_revision == profile.base_revision
+      assert manifest.repository_root == profile.root
+      assert manifest.commands == profile.commands
+      assert manifest.allowed_scope == profile.allowed_scope
+
+      assert manifest.required_checks ==
+               Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1})
+
+      # The attempt snapshots the same contract the manifest was digested from.
+      assert results.attempt.required_checks == manifest.required_checks
+      assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
+    end
+
+    test "refuses a project with no approved profile and creates nothing", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      {_count, nil} = Repo.delete_all(RepositoryExecutionProfile)
+
+      assert {:error, :no_execution_profile} =
+               Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+      assert Repo.aggregate(RunAttempt, :count) == 0
+      assert Repo.aggregate(RunCommand, :count) == 0
+      assert Repo.get!(Feature, ready.id).lifecycle_column == "ready_for_development"
+    end
+
+    test "a profile heavier than a reference value's byte cap still yields a valid manifest", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      profile: profile,
+      ready: ready
+    } do
+      max_reference_bytes = ProtocolLimits.get(:max_reference_bytes)
+
+      assert byte_size(Enum.join(profile.commands)) > max_reference_bytes
+      assert byte_size(Enum.join(profile.allowed_scope)) > max_reference_bytes
+      assert Enum.any?(profile.commands, &(byte_size(&1) > max_reference_bytes))
+
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      manifest = started_manifest(results, project, ready, profile)
+
+      # A real manifest: it survives its own validation and its own encoding,
+      # neither of which a reference value that size would have survived.
+      assert {:ok, ^manifest} = manifest |> ExecutionManifest.to_map() |> ExecutionManifest.new()
+      assert {:ok, encoded} = ExecutionManifest.encode(manifest)
+      assert {:ok, ^manifest} = ExecutionManifest.decode(encoded)
+      assert manifest.commands == profile.commands
+      assert manifest.allowed_scope == profile.allowed_scope
+    end
+
+    test "carries every required check of a profile approved with the most it may hold", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      profile =
+        approve_profile!(owner_account.id, project,
+          fields: @max_check_fields,
+          commit: @second_revision,
+          now: DateTime.add(DateTime.utc_now(), 3_600, :second)
+        )
+
+      # The newest approved version is the one in force.
+      assert profile.version == 2
+      assert length(profile.required_checks) == 64
+
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      manifest = started_manifest(results, project, ready, profile)
+
+      assert length(manifest.required_checks) == 64
+      assert manifest.repository_base_revision == @second_revision
+      assert {:ok, encoded} = ExecutionManifest.encode(manifest)
+      assert {:ok, ^manifest} = ExecutionManifest.decode(encoded)
+    end
+
+    test "an absent root, commands, and scope still decode as an empty manifest value" do
+      attrs = %{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => Ecto.UUID.generate(),
+        "feature_id" => Ecto.UUID.generate(),
+        "run_id" => Ecto.UUID.generate(),
+        "attempt_number" => 1,
+        "approved_slice" => "slice-07",
+        "starting_revision_id" => Ecto.UUID.generate(),
+        "starting_revision_digest" => String.duplicate("c", 64),
+        "effective_revision_id" => Ecto.UUID.generate(),
+        "effective_revision_digest" => String.duplicate("c", 64),
+        "repository_base_revision" => @base_revision,
+        "target_branch" => "sdd/run-1",
+        "required_checks" => [],
+        "agent_ref" => %{},
+        "worker_ref" => %{},
+        "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
+      }
+
+      assert {:ok, manifest} = ExecutionManifest.from_map(attrs)
+      assert manifest.repository_root == ""
+      assert manifest.commands == []
+      assert manifest.allowed_scope == []
     end
   end
 
@@ -786,6 +972,157 @@ defmodule SddOrchestrator.Delivery.StartTest do
     |> Repo.insert!()
 
     worker
+  end
+
+  # The started run's own manifest. `Start` stores only its digest, so the
+  # manifest is rebuilt from the approved profile and is accepted only when its
+  # digest is the one the attempt recorded. The digest covers every field, so a
+  # match can only happen if the run really carried these values.
+  defp started_manifest(results, project, feature, profile) do
+    {:ok, manifest} =
+      ExecutionManifest.new(%{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => project.id,
+        "feature_id" => feature.id,
+        "run_id" => results.run.id,
+        "attempt_number" => 1,
+        "approved_slice" => "slice-07",
+        "starting_revision_id" => results.run.starting_revision_id,
+        "starting_revision_digest" => results.run.starting_revision_digest,
+        "effective_revision_id" => results.run.effective_revision_id,
+        "effective_revision_digest" => results.run.effective_revision_digest,
+        "repository_base_revision" => profile.base_revision,
+        "target_branch" => results.run.branch,
+        "required_checks" => Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1}),
+        "repository_root" => profile.root,
+        "commands" => profile.commands,
+        "allowed_scope" => profile.allowed_scope,
+        "agent_ref" => %{},
+        "worker_ref" => %{},
+        "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
+      })
+
+    assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
+
+    manifest
+  end
+
+  # A connected hosted repository, which both the assessment store and the
+  # profile store require before anything may be approved for this project.
+  # `DeliveryFixtures` creates a project without one, and the shared fixture
+  # belongs to a later task.
+  defp connect_repository!(project) do
+    repository_id = System.unique_integer([:positive])
+
+    project =
+      project
+      |> Ecto.Changeset.change(%{
+        storage_mode: "hosted",
+        lifecycle_state: "active",
+        repository_provider: @repository_provider,
+        canonical_repository_id: Integer.to_string(repository_id)
+      })
+      |> Repo.update!()
+
+    %RepositoryConnection{}
+    |> RepositoryConnection.create_changeset(%{
+      project_id: project.id,
+      workspace_id: project.workspace_id,
+      provider: @repository_provider,
+      provider_repository_id: repository_id,
+      state: "connected"
+    })
+    |> Repo.insert!()
+
+    project
+  end
+
+  # Walks the real assessment and approval path, so the profile the manifest
+  # reads is one an owner could actually have approved. Approval is
+  # append-only, so a second call with a later assessment adds a higher
+  # version rather than replacing the first.
+  defp approve_profile!(account_id, project, opts \\ []) do
+    authority = {:hosted, account_id}
+    completed = complete_assessment!(authority, project, opts)
+
+    {:ok, review} = RepositoryAssessments.profile_review(authority, completed.project_id)
+    {:ok, profile} = RepositoryAssessments.approve_profile(authority, project.id, review.proposal)
+
+    profile
+  end
+
+  defp complete_assessment!(authority, project, opts) do
+    fields = Keyword.get(opts, :fields, @proposal_fields)
+    commit = Keyword.get(opts, :commit, @base_revision)
+    now = Keyword.get(opts, :now, DateTime.utc_now()) |> DateTime.truncate(:second)
+
+    {:ok, preparation} =
+      RepositoryBindingPreparation.new(%{
+        project_id: project.id,
+        repository_provider: project.repository_provider,
+        repository_id: project.canonical_repository_id,
+        root: ".",
+        commit: commit,
+        scanner_contract_digest: @scanner_digest,
+        disclosure_digest: @disclosure_digest,
+        worker_ref: Ecto.UUID.generate(),
+        nonce: Ecto.UUID.generate(),
+        issued_at: now,
+        expires_at: DateTime.add(now, 120, :second)
+      })
+
+    {:ok, pending} = RepositoryAssessment.pending(preparation, now)
+    {:ok, stored} = AssessmentStore.put(authority, pending)
+    {:ok, command} = RepositoryAssessment.command(stored)
+    {:ok, result} = RepositoryAssessmentResult.completed(command, completed_scan(command))
+    {:ok, payload} = RepositoryExecutionProfileProposalPayload.new(result, fields)
+
+    {:ok, envelope} =
+      WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
+
+    {:ok, completed} =
+      RepositoryAssessments.finish_assessment(
+        authority,
+        project.id,
+        command,
+        result,
+        provenance!(command, result),
+        now: now,
+        proposal_envelope: envelope
+      )
+
+    completed
+  end
+
+  defp completed_scan(command) do
+    %{
+      protocol_version: command.version,
+      assessment_id: command.assessment_id,
+      project_id: command.project_id,
+      repository: %{provider: command.repository_provider, id: command.repository_id},
+      root: command.root,
+      commit: command.commit,
+      scanner_contract_digest: command.scanner_contract_digest,
+      status: "completed",
+      findings: @findings,
+      structure: Enum.map(["lib" | @deep_directories], &%{path: &1, kind: "directory"}),
+      stats: %{discovered_paths: 16, inspected_files: 1, bytes_read: 20}
+    }
+  end
+
+  defp provenance!(command, result) do
+    {:ok, cache_key_sha256} = RepositoryAssessmentCacheProvenance.cache_key_sha256(command)
+    {:ok, evidence_sha256} = RepositoryAssessmentCacheProvenance.evidence_sha256(result)
+
+    {:ok, provenance} =
+      RepositoryAssessmentCacheProvenance.new(%{
+        source: "fresh_scan",
+        cache_key_sha256: cache_key_sha256,
+        evidence_sha256: evidence_sha256,
+        cache_stored: true
+      })
+
+    provenance
   end
 
   defp blocker do
