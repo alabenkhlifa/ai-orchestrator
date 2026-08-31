@@ -50,9 +50,22 @@ config :sdd_orchestrator, start_command_dispatcher: false
 # a timer must never race the Ecto sandbox or stamp another test's worker rows.
 config :sdd_orchestrator, start_worker_liveness_refresher: false
 
-# Exercise the local worker stand-in (pairing completion and folder selection) so
-# the local-onboarding LiveView flow is driveable without the signed native worker.
+# Exercise the local worker stand-in (pairing completion, folder selection, and
+# attachment) so the local-onboarding LiveView flow is driveable without the
+# signed native worker. Availability is otherwise read from the Mac-scoped
+# attachment registry, and no process attaches in a test that is not about
+# attachment; with this flag on a paired worker counts as attached. A test that
+# proves the real definition turns the flag off for itself.
 config :sdd_orchestrator, :device_worker_stub, true
+
+# The folder-picker stand-in is an adapter, not a flag inside each screen: the
+# request, the waiting state, and the outcome handling that run here are the
+# ones a production control plane runs, and only the transport differs. It
+# answers from `:device_worker_stub_folder`. A test that needs to script an
+# outcome installs `SddOrchestrator.RepositorySelectionTransportDouble` instead.
+config :sdd_orchestrator,
+       :repository_selection_transport,
+       SddOrchestrator.RepositorySelection.Stub
 
 # Tests use the deterministic GitHub fake, never a live provider.
 config :sdd_orchestrator, :github,

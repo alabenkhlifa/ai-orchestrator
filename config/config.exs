@@ -157,6 +157,13 @@ config :sdd_orchestrator, SddOrchestrator.Devices,
 # stand-in so the graphical flow is exercisable without a signed binary.
 config :sdd_orchestrator, :device_worker_stub, false
 
+# A folder-picker request travels over the Mac-scoped worker attachment, so the
+# real attachment transport is the default everywhere. The stand-in transport is
+# selected instead under `E2E_MODE` and in tests.
+config :sdd_orchestrator,
+       :repository_selection_transport,
+       SddOrchestrator.RepositorySelection.Transport.Attachment
+
 # Cloak vault ciphers are configured per environment because the key is a secret.
 
 # Import environment specific config. This must remain at the bottom

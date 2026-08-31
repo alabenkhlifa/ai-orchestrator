@@ -46,6 +46,7 @@ A person whose worker app is connected on this Mac can point a project at a repo
 
 - Only a worker attached to the control plane right now can be asked to open a picker. Every list that offers a worker and every action that uses one apply this one test. A worker that was seen recently but is not attached now is not offered and is refused with the same wording.
 - The folder's path, remote URL, Git history, file names, and content never leave the Mac. The worker reports only the portable repository identity and the folder name, meaning the last path segment. The dashboard may show and suggest the folder name and never a path.
+- Inside the Mac, the app hands the chosen path to the worker release through an owner-only file. The release deletes that file as soon as it reads it and keeps the path only while it computes the answer. No path survives a completed selection anywhere on disk.
 - A selection request belongs to one requesting session, one workspace or project, and one worker. The worker answers only the request it was given. An answer for another request, workspace, or worker is refused and changes nothing.
 - One selection request is open per requesting session at a time. A late answer to a request that was cancelled or timed out is ignored.
 - Nothing is stored until the dashboard's own validation succeeds. The hosted exact-match rule and the accountless duplicate and naming rules stay exactly as their specifications already state.
@@ -66,6 +67,7 @@ A person whose worker app is connected on this Mac can point a project at a repo
 - [AC-08] Given a completed selection, when the transported payload and the logs on both sides are inspected, then they carry the repository identity and folder name only and no path, remote, history, file name, or content.
 - [AC-09] Given an unavailable worker on the onboarding screen, when the person presses `Check again`, then the screen shows the state the control plane knows now and never `Code accepted` unless a code was accepted in this session.
 - [AC-10] Given an unavailable worker on the onboarding screen, when the person chooses to pair again and completes pairing, then a new worker is authorized for the workspace, the old record is kept, and the screen reports the new worker's state.
+- [AC-11] Given the worker app has written its answer for an open request, when the release reads that answer, then the answer file is deleted at once, the path is used only inside the answering process, and no path is left on disk, in a log, or in any stored state.
 
 ## Open Questions
 

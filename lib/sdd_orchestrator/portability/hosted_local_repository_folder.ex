@@ -7,106 +7,98 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryFolder do
   knew where the repository was; a first connection has no such record, so the
   owner names the folder and the machine never searches for it.
 
-  `select/1` opens the machine's native folder picker through the same stand-in
-  seam accountless onboarding uses, confirms the chosen folder is a Git
-  repository, and returns a *proof function* — a closure over the path. The path
-  is therefore held in the closure's own environment and is never a field of any
-  returned, rendered, or stored value. Calling the proof recomputes the portable
-  identity on the device through `PortableRepositoryIdentity` and answers only
-  whether it matched the identity the project already holds.
+  The folder is on the owner's Mac and the control plane is not, so this module
+  opens nothing itself. `request/3` asks that machine's worker to open its own
+  folder picker, carrying the project's portable repository identity as the only
+  candidate, and returns at once with a request id. The owner answers a native
+  panel in tens of seconds, so the answer arrives later in the requesting
+  process's mailbox as `{:repository_selection, request_id, outcome}`. See
+  `SddOrchestrator.RepositorySelection` for the outcomes.
 
-  The proof this returns is exactly the matcher
-  `HostedLocalRepositoryConnection.connect/6` expects, so the connect gate runs
-  its authority checks first and this module answers only the repository
-  question.
+  ## Why a verdict is still a proof
+
+  `proof/1` builds the proof function
+  `SddOrchestrator.Portability.HostedLocalRepositoryConnection.connect/6` takes,
+  from the worker's answer rather than from a path. That is not a weaker check
+  than the closure it replaces.
+
+  The worker held the chosen folder, ran the Git check on it, and compared that
+  real repository against the real identity this project holds. The verdict this
+  closure carries is that comparison. The closure it replaces could recompute
+  the identity itself only because the control plane and the repository happened
+  to share one machine, which is exactly the assumption this slice removes. On a
+  control plane that cannot see the folder, recomputing would be guessing; the
+  proof reports what the machine that can see it found.
+
+  The gate still runs its own authority checks first, and it still rechecks
+  ownership, worker authorization, and worker availability inside the binding
+  transaction. This module answers only the repository question.
+
+  Nothing that crosses back carries a filesystem path, a remote URL, a file
+  name, or a Git object. A request carries one identity, and an answer carries
+  one reference.
   """
 
-  alias SddOrchestrator.Devices.{PortableRepositoryIdentity, RepositoryValidation}
+  alias SddOrchestrator.RepositorySelection
+  alias SddOrchestrator.RepositorySelection.SelectionResult
 
-  @typedoc """
-  Opens the machine's folder picker. `:cancelled` when the owner dismisses it,
-  `:unavailable` when this machine cannot open one at all.
-  """
-  @type picker :: (-> {:ok, Path.t()} | :cancelled | :unavailable)
+  # The requester's own handle for the single candidate it sends. It comes back
+  # in the answer's `matches` and means "the folder is this project's
+  # repository".
+  @project_ref :project
 
   @typedoc "Answers only whether the selected folder is the repository the project names."
-  @type proof :: (String.t() -> {:ok, boolean()} | {:error, RepositoryValidation.error()})
-
-  @type error ::
-          :cancelled
-          | :not_a_git_repository
-          | :picker_unavailable
-          | :repository_unavailable
+  @type proof :: (String.t() -> {:ok, boolean()})
 
   @doc """
-  Asks the machine for a repository folder and returns a proof over it.
+  Asks one machine's worker for this project's repository folder.
 
-  A cancelled selection returns `{:error, :cancelled}` so the caller attempts no
-  connection at all. A folder that is not a Git repository returns
-  `{:error, :not_a_git_repository}` at selection time rather than as a generic
-  connection failure, because the owner's next action is to pick a different
-  folder. Nothing is stored either way.
+  `scope` is `%{device_workspace_id: id, project_id: id}`, `worker_id` is the
+  machine the owner chose, and `identity` is the portable repository identity
+  the project already holds. No new identity is asked for: this project has one,
+  and the only open question is whether the folder is it.
+
+  Returns the request id. The outcome arrives later as a message to the calling
+  process, so the caller must be the process that will render it.
   """
-  @spec select(keyword()) :: {:ok, proof()} | {:error, error()}
-  def select(opts \\ []) do
-    picker = Keyword.get_lazy(opts, :picker, &default_picker/0)
-
-    with {:ok, path} <- open(picker),
-         :ok <- git_repository(path) do
-      {:ok, fn repository_id -> prove(path, repository_id) end}
-    end
+  @spec request(RepositorySelection.scope(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, RepositorySelection.error()}
+  def request(scope, worker_id, identity) when is_binary(identity) do
+    RepositorySelection.request(scope, worker_id,
+      candidates: [%{ref: @project_ref, identity: identity}],
+      generate: false
+    )
   end
 
   @doc """
-  Whether this machine can open a folder picker at all.
+  Turns one worker's answer into the proof the connect gate expects.
 
-  The real native handoff belongs to the worker's own transport, which is
-  release-gated; dev and test drive the same stand-in accountless onboarding
-  uses.
+  `requested_identity` is the identity that was sent as the single candidate.
+  The worker compared the folder against that identity, so its verdict means
+  nothing for any other one: a project whose identity changed while the panel
+  was open is answered `{:ok, false}` rather than connected on a stale `true`.
+
+  The proof answers `{:ok, true}` only when the worker reported that candidate
+  as a match and the gate asks about that same identity. It never answers
+  `{:error, _}`, because a folder the worker could not read is not reported as a
+  selection at all.
   """
-  @spec picker_available?() :: boolean()
-  def picker_available?, do: Application.get_env(:sdd_orchestrator, :device_worker_stub, false)
+  @spec proof(SelectionResult.t(), String.t()) :: proof()
+  def proof(%SelectionResult{matches: matches}, requested_identity)
+      when is_binary(requested_identity) do
+    matched? = Enum.any?(matches, &project_ref?/1)
 
-  defp open(picker) do
-    case picker.() do
-      {:ok, path} when is_binary(path) -> {:ok, path}
-      :cancelled -> {:error, :cancelled}
-      _unavailable -> {:error, :picker_unavailable}
-    end
+    fn repository_id -> {:ok, matched? and repository_id == requested_identity} end
   end
 
-  defp git_repository(path) do
-    case RepositoryValidation.root_commit_ids(path) do
-      {:ok, _roots} -> :ok
-      {:error, :not_a_git_repository} -> {:error, :not_a_git_repository}
-      {:error, _reason} -> {:error, :repository_unavailable}
-    end
-  end
+  @doc "The reference this module sends its single candidate under."
+  @spec project_ref() :: atom()
+  def project_ref, do: @project_ref
 
-  # Only a verdict, or the repository's own availability, crosses back. A folder
-  # that stopped being a usable repository between selection and connection is
-  # reported as such; an unusable identity is never resolved as a match.
-  defp prove(path, repository_id) do
-    case PortableRepositoryIdentity.match(path, repository_id) do
-      {:ok, matched?} ->
-        {:ok, matched?}
-
-      {:error, reason}
-      when reason in [:inaccessible, :not_a_git_repository, :empty_repository] ->
-        {:error, reason}
-
-      {:error, _identity} ->
-        {:ok, false}
-    end
-  end
-
-  defp default_picker do
-    fn ->
-      if picker_available?(), do: {:ok, stub_folder()}, else: :unavailable
-    end
-  end
-
-  defp stub_folder do
-    Application.get_env(:sdd_orchestrator, :device_worker_stub_folder) || File.cwd!()
-  end
+  # A reference is stringified on the way to the worker, so a real answer names
+  # it as `"project"`. An in-process transport can hand the atom straight back,
+  # and both mean the same reference.
+  defp project_ref?(@project_ref), do: true
+  defp project_ref?(ref) when is_binary(ref), do: ref == Atom.to_string(@project_ref)
+  defp project_ref?(_ref), do: false
 end

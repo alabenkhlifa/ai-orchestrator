@@ -11,15 +11,22 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
 
   The device store is a singleton GenServer not started in test, so each test starts
   its own isolated instance on a unique path in an `async: false` case.
+
+  `specs/40-worker-repository-selection` Task 7 turned the folder question into a
+  request the worker answers, so every selection here is a click that waits and an
+  answer that arrives a moment later. The scenarios are unchanged; they settle the
+  page through `SddOrchestrator.SelectionSettling` rather than reading it once.
   """
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import SddOrchestrator.SelectionSettling, only: [settle: 2]
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
+  alias SddOrchestratorWeb.RepositoryAssessmentLive
 
   setup do
     path = store_path()
@@ -59,11 +66,14 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
 
       assert has_element?(view, "[data-worker-status=detected]")
 
-      # Native selection of the repository.
+      # The worker is asked for the repository and answers with its folder name.
       render_click(view, "continue_to_selection")
-      render_click(view, "select_folder")
-      assert has_element?(view, "[data-selected-repository]")
+      assert render_click(view, "select_folder") =~ "data-selection-waiting"
+      settle(view, "data-selected-repository")
       assert has_element?(view, "[data-repository-name]", Path.basename(repo))
+
+      # The worker reported verdicts and a folder name. There is no path to show.
+      refute render(view) =~ repo
 
       # First-connection disclosure with the accountless data-loss warning.
       view = proceed_to_review(conn, view)
@@ -159,14 +169,21 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       render_click(view2, "continue_to_selection")
       render_click(view2, "select_folder")
 
+      assert settle(view2, "data-duplicate") =~ "already connected"
       assert has_element?(view2, "[data-step=selection] [data-duplicate]")
-      assert render(view2) =~ "already connected"
       refute has_element?(view2, "[data-selected-repository]")
       assert [^one] = Devices.list_projects()
     end
   end
 
   describe "Locate repository recovery" do
+    # Locating asks a worker now, so these scenarios need one attached. The test
+    # that proves the refusal turns the stand-in off for itself.
+    setup %{workspace: workspace} do
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
+      :ok
+    end
+
     test "a matching repository restores the connection", %{conn: conn, repo: repo, workspace: ws} do
       {:ok, %{fingerprint: fp}} = Devices.RepositoryValidation.validate(repo, ws.id)
 
@@ -183,8 +200,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       assert has_element?(view, "[data-step=selection][data-locate=true]")
       render_click(view, "select_folder")
 
-      {to, _flash} = assert_redirect(view)
+      {to, flash} = assert_redirect(view, 5_000)
       assert to == "/local/projects/#{project.id}"
+      assert flash["info"] =~ "ready for future project exports"
 
       assert {:ok, upgraded} = Devices.get_project(project.id)
       refute upgraded.repository_fingerprint == fp
@@ -214,7 +232,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[locate: project.id]}")
       render_click(view, "select_folder")
 
-      assert has_element?(view, "[data-selection-error]", "different repository")
+      assert settle(view, "data-selection-error") =~ "different repository"
       refute has_element?(view, "[data-selected-repository]")
       assert {:ok, unchanged} = Devices.get_project(project.id)
       assert unchanged.repository_fingerprint == fp
@@ -238,7 +256,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[locate: project.id]}")
       render_click(view, "select_folder")
 
-      {to, _flash} = assert_redirect(view)
+      {to, _flash} = assert_redirect(view, 5_000)
       assert to == "/local/projects/#{project.id}"
       assert {:ok, unchanged} = Devices.get_project(project.id)
       assert unchanged.repository_fingerprint == identity
@@ -258,13 +276,19 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
           status: "unavailable"
         })
 
+      # The worker paired in this describe's setup has nothing attached, which is
+      # what unavailable means here. The stand-in that counts a paired worker as
+      # attached is off, so availability is read where it really lives.
       Application.put_env(:sdd_orchestrator, :device_worker_stub, false)
       on_exit(fn -> Application.put_env(:sdd_orchestrator, :device_worker_stub, true) end)
 
       {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[locate: project.id]}")
-      render_click(view, "select_folder")
+      html = render_click(view, "select_folder")
 
-      assert has_element?(view, "[data-selection-error]", "Connect the worker")
+      # No worker was asked, so no panel is waiting on an answer.
+      assert html =~ "data-selection-error"
+      assert html =~ RepositoryAssessmentLive.worker_unavailable_message()
+      refute html =~ "data-selection-waiting"
       assert {:ok, unchanged} = Devices.get_project(project.id)
       assert unchanged.repository_fingerprint == legacy
     end
@@ -317,7 +341,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
     assert has_element?(view, "[data-worker-status=detected]")
     render_click(view, "continue_to_selection")
     render_click(view, "select_folder")
-    assert has_element?(view, "[data-selected-repository]")
+    settle(view, "data-selected-repository")
     {:ok, view, html}
   end
 

@@ -40,6 +40,26 @@ public enum WorkerPaths {
         (workerHome(override: homeOverride) as NSString).appendingPathComponent("worker.json")
     }
 
+    /// [specs/40 Task 4] `<workerHome>/pending_selection.json` — the file the
+    /// release publishes while one repository-selection request is open, and
+    /// the only way this app learns that a person is being asked to point at a
+    /// folder. `SddOrchestrator.Worker.RepositorySelection` owns the name and
+    /// the location; both are mirrored here so the two sides resolve one path
+    /// and neither can drift.
+    static func pendingSelectionPath(homeOverride: String? = nil) -> String {
+        (workerHome(override: homeOverride) as NSString)
+            .appendingPathComponent("pending_selection.json")
+    }
+
+    /// [specs/40 Task 4] `<workerHome>/selection_answer.json` — where this app
+    /// writes the folder the person chose. It is the one place in the product
+    /// a repository path is ever written, and the release deletes it the
+    /// moment it reads it, so it exists for about one poll interval.
+    static func selectionAnswerPath(homeOverride: String? = nil) -> String {
+        (workerHome(override: homeOverride) as NSString)
+            .appendingPathComponent("selection_answer.json")
+    }
+
     /// `$HOME` first, because that is what the release resolves:
     /// `System.user_home!/0` reads the environment, and the release is this
     /// app's own child process, so it inherits exactly this value. Falling

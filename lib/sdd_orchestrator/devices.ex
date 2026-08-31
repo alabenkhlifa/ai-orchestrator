@@ -10,9 +10,12 @@ defmodule SddOrchestrator.Devices do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
 
+  alias SddOrchestrator.Delivery.WorkerAttachment
+
   alias SddOrchestrator.Devices.{
     DeviceProject,
     DeviceTransaction,
+    LocalWorker,
     Pairing,
     PortableRepositoryIdentity,
     WorkerDiscovery
@@ -38,6 +41,40 @@ defmodule SddOrchestrator.Devices do
     |> Pairing.active_workers()
     |> WorkerDiscovery.status()
   end
+
+  @doc """
+  Whether this paired worker is attached to the control plane right now.
+
+  This is the one definition of an available worker. Every list that offers a
+  worker and every action that then uses one asks this same question, because a
+  list that says a worker is available and an action that refuses the same
+  worker a minute later is a product defect, not two views of the truth.
+
+  The answer is read from the Mac-scoped attachment registry
+  (`SddOrchestrator.Delivery.WorkerAttachment`), keyed by the worker's device
+  workspace and matched on the worker identity the credential named. It is
+  therefore true only while an authenticated channel process is alive.
+  `LocalWorker.last_seen_at` is not consulted here: it is stamped on a timer and
+  stays for display and for the staleness rule in `WorkerDiscovery`.
+  """
+  @spec worker_available?(LocalWorker.t()) :: boolean()
+  def worker_available?(%LocalWorker{} = worker) do
+    # Development and test stand-in: no native worker attaches, so a paired
+    # worker counts as attached. `:device_worker_stub` is off in a production
+    # build, which therefore has no stand-in at all.
+    if Application.get_env(:sdd_orchestrator, :device_worker_stub, false),
+      do: true,
+      else: attached?(worker)
+  end
+
+  defp attached?(%LocalWorker{device_workspace_id: workspace_id, id: worker_id})
+       when is_binary(workspace_id) and is_binary(worker_id) do
+    workspace_id
+    |> WorkerAttachment.attached()
+    |> Enum.any?(fn {_channel, contract} -> contract.worker_id == worker_id end)
+  end
+
+  defp attached?(_worker), do: false
 
   @doc "Returns the established device workspace, or `{:error, :not_found}` after loss."
   @spec get_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, :not_found}
@@ -153,6 +190,49 @@ defmodule SddOrchestrator.Devices do
       {:error, :invalid_identifier} ->
         {:error, :invalid_repository_identity}
     end
+  end
+
+  @doc """
+  Completes a legacy upgrade whose comparison a worker already performed.
+
+  `locate_repository/3` does the whole upgrade from a path, because it can
+  compute every part itself. A worker-driven locate cannot: the path stays on
+  the Mac and the control plane sees only which candidates matched and the
+  replacement identity the worker generated. This function is the second half of
+  that upgrade, and it exists so a request-driven caller reaches the same atomic
+  replacement instead of reimplementing it.
+
+  The caller supplies the identity the worker generated and
+  `comparison_snapshot`, `%{project_id => identity}` for every other project
+  whose identity was sent as a candidate. Those are exactly the values
+  `locate_repository/3` passes, so a project or an identity that changed while
+  the panel was open still returns `:identity_race` and changes nothing.
+
+  It performs no matching of its own. The caller must already know, from the
+  worker's answer, that the folder matched this project and no other.
+  """
+  @spec upgrade_located_repository_identity(DeviceProject.t(), String.t(), %{
+          optional(String.t()) => String.t()
+        }) ::
+          {:ok, DeviceProject.t()}
+          | {:error,
+             :not_found
+             | :identity_changed
+             | :identity_race
+             | :invalid_repository_identity
+             | {:repository_already_linked, DeviceProject.t()}}
+  def upgrade_located_repository_identity(
+        %DeviceProject{} = project,
+        replacement_identity,
+        comparison_snapshot
+      )
+      when is_binary(replacement_identity) and is_map(comparison_snapshot) do
+    adapter().replace_repository_identity(
+      project.id,
+      project.repository_fingerprint,
+      replacement_identity,
+      comparison_snapshot
+    )
   end
 
   @doc """

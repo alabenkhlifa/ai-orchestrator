@@ -17,6 +17,11 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryAssessments
 
+  # One owned wording for a worker that is not available. The empty list and the
+  # refused action are the same fact seen twice, so they render this value rather
+  # than holding two sentences that drift apart.
+  @worker_unavailable_message "No worker is available right now. Start or reconnect one, then try again."
+
   @scanner_contract_version "repository-assessment-scanner-contract-v1"
   @scanner_contract_digest :crypto.hash(:sha256, @scanner_contract_version)
                            |> Base.encode16(case: :lower)
@@ -280,7 +285,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
       {:ok, %DeviceWorkspace{id: workspace_id}} ->
         workspace_id
         |> Pairing.active_workers()
-        |> Enum.filter(&(WorkerDiscovery.status([&1]) == :detected))
+        |> Enum.filter(&available?/1)
         |> Enum.sort_by(& &1.inserted_at, DateTime)
         |> Enum.with_index(1)
         |> Enum.map(fn {worker, index} ->
@@ -299,6 +304,22 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   catch
     :exit, _reason -> []
   end
+
+  # A worker is offered here only when the action that follows would accept it.
+  # `WorkerDiscovery.status/2` reads `Devices.worker_available?/1`, the one
+  # definition of an available worker, and `RepositoryAssessments` authorizes the
+  # chosen worker through that same call, so this list cannot offer a worker the
+  # submit then refuses.
+  defp available?(worker), do: WorkerDiscovery.status([worker]) == :detected
+
+  @doc """
+  The one wording for a worker that is not available.
+
+  The empty worker list and a refused submit report the same fact, so both
+  render this value instead of keeping two sentences that drift apart.
+  """
+  @spec worker_unavailable_message() :: String.t()
+  def worker_unavailable_message, do: @worker_unavailable_message
 
   defp worker_label(worker, index) do
     platform =
@@ -340,8 +361,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
     |> assign_workers()
   end
 
-  defp preparation_error(:worker_unavailable),
-    do: "That worker is no longer available. Start or reconnect it, then try again."
+  defp preparation_error(:worker_unavailable), do: @worker_unavailable_message
 
   defp preparation_error(:repository_mismatch),
     do:
@@ -473,7 +493,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
                 class="mt-2 text-xs font-semibold text-warn-fg"
                 data-no-workers
               >
-                No reachable paired worker is available. Start or pair one, then return here.
+                {worker_unavailable_message()}
               </p>
             </div>
 

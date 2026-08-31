@@ -25,6 +25,13 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
   query, no `Accounts` context function invoked, so it violates none of this
   check's real intent. Every other `SddOrchestrator.Accounts.X` reference
   still fails closed, exactly like the `Delivery` allowlist above.
+
+  `SddOrchestrator.Devices` is allowlisted the same way for the two Repo-free
+  repository checks specs/40's `design.md` names as run on the worker:
+  `RepositoryValidation` and `PortableRepositoryIdentity`. They are plain
+  functions over a path, which is exactly why the Git check and the identity
+  can happen on the Mac and the path never has to leave it. Every other
+  `SddOrchestrator.Devices.X` reference still fails closed.
   """
 
   use ExUnit.Case, async: true
@@ -32,7 +39,6 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
   @forbidden [
     "SddOrchestrator.Repo",
     "Ecto.Repo",
-    "SddOrchestrator.Devices",
     "SddOrchestrator.Projects",
     "SddOrchestrator.Portability"
   ]
@@ -56,8 +62,18 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
   # (see the moduledoc). Never a database lookup.
   @allowed_accounts_modules ~w(PersonalWorkspace)
 
+  # The two `Devices.*` modules the worker answers a folder-picker request with
+  # (specs/40-worker-repository-selection Task 3). Both are plain functions over
+  # a path: `RepositoryValidation` shells out to `git`, and
+  # `PortableRepositoryIdentity` is HMAC over what it returns. Verified by
+  # inspection to reference neither `Repo.` nor `Ecto.Schema`, which is the
+  # whole reason the Git check and the identity can run on the Mac. Every other
+  # `Devices` reference still fails closed, exactly like the two lists above.
+  @allowed_devices_modules ~w(PortableRepositoryIdentity RepositoryValidation)
+
   @delivery_reference ~r/SddOrchestrator\.Delivery\.([A-Za-z0-9_]+)/
   @accounts_reference ~r/SddOrchestrator\.Accounts\.([A-Za-z0-9_]+)/
+  @devices_reference ~r/SddOrchestrator\.Devices\.([A-Za-z0-9_]+)/
 
   @runtime_paths Path.wildcard("lib/sdd_orchestrator/worker/**/*.ex") ++
                    ["lib/mix/tasks/worker.start.ex"]
@@ -82,6 +98,12 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
         assert submodule in @allowed_accounts_modules,
                "#{path} unexpectedly references SddOrchestrator.Accounts.#{submodule}, " <>
                  "which is not the allowlisted bare PersonalWorkspace struct literal"
+      end
+
+      for [_full, submodule] <- Regex.scan(@devices_reference, source) do
+        assert submodule in @allowed_devices_modules,
+               "#{path} unexpectedly references SddOrchestrator.Devices.#{submodule}, " <>
+                 "which is not on the allowlisted set of Repo-free repository checks"
       end
     end
   end

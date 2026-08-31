@@ -34,6 +34,16 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   and calls `HostedLocalRepositoryConnection.connect/6`. Every refusal keeps the
   project exactly as it was and names what the owner can do next.
 
+  The folder question is asked of the machine, not answered on this node
+  (specs/40 Task 6). The repository is on the owner's Mac and a person takes
+  tens of seconds to answer a native panel, so the connect action confirms the
+  machine, checks its worker is attached, asks that worker to open its picker,
+  and then waits. The owner's answer arrives as one
+  `{:repository_selection, request_id, outcome}` message and only then is the
+  connect gate called. Waiting, cancel, and no-answer are page states rather
+  than a blocked call, and the request is bound to this LiveView process, so
+  closing the tab closes the panel.
+
   The same action moves a connected project to a different machine (specs/37
   Task 5): replacement runs through the identical gate, so it is atomic and a
   failed replacement leaves the previous machine authoritative. Disconnect
@@ -46,7 +56,9 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
+  alias SddOrchestrator.Devices.WorkerDiscovery
 
   alias SddOrchestrator.Portability.{
     HostedLocalRepositoryBindings,
@@ -58,6 +70,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Connections
   alias SddOrchestrator.ProjectStorage
+  alias SddOrchestrator.RepositorySelection
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
@@ -114,6 +127,18 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
     {:noreply, reset_connect(socket)}
   end
 
+  # The request server tells the worker to close its panel and then sends this
+  # process `:cancelled`, so the page returns to the offer through the one
+  # handler every outcome goes through.
+  def handle_event("cancel_selection", _params, socket) do
+    case socket.assigns.connect_request_id do
+      request_id when is_binary(request_id) -> RepositorySelection.cancel(request_id)
+      _nothing_open -> :ok
+    end
+
+    {:noreply, socket}
+  end
+
   # Disconnect removes the routing and nothing else. Repeating it succeeds, so a
   # double submit cannot turn into an error the owner has to interpret.
   def handle_event("disconnect_machine", _params, socket) do
@@ -162,6 +187,87 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
     end
   end
 
+  # Exactly one outcome arrives per request. An outcome naming a request this
+  # page is not waiting on belongs to a request it already finished or
+  # cancelled, so it changes nothing.
+  @impl true
+  def handle_info({:repository_selection, request_id, outcome}, socket) do
+    if request_id == socket.assigns.connect_request_id do
+      {:noreply, selection_outcome(socket, outcome)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # The proof is built against the identity this page actually asked about, so a
+  # verdict cannot be applied to a different one.
+  defp selection_outcome(socket, {:selected, result}) do
+    proof = HostedLocalRepositoryFolder.proof(result, socket.assigns.connect_identity)
+
+    connect_selected(socket, proof)
+  end
+
+  defp selection_outcome(socket, :cancelled) do
+    socket |> reset_connect() |> assign_worker_connection()
+  end
+
+  defp selection_outcome(socket, {:refused, reason}) do
+    socket
+    |> reset_connect()
+    |> assign(:connect_error, connect_message(refusal(reason)))
+    |> assign_worker_connection()
+  end
+
+  # A timeout and a lost attachment are one fact to the owner: nothing came
+  # back. The page says only that, and offers the action that can change it.
+  defp selection_outcome(socket, no_answer) when no_answer in [:timeout, :worker_lost] do
+    socket
+    |> reset_connect()
+    |> assign(:connect_step, :no_answer)
+    |> assign_worker_connection()
+  end
+
+  defp refusal(:inaccessible), do: :repository_unavailable
+  defp refusal(reason), do: reason
+
+  # The gate is called with the machine the request was sent to. It rechecks
+  # ownership, worker authorization, and worker availability itself, so a
+  # machine revoked or stopped while the panel was open is refused here rather
+  # than connected on a stale decision.
+  defp connect_selected(socket, proof) do
+    worker_id = socket.assigns.connect_worker_id
+
+    case device_workspace() do
+      nil ->
+        socket |> reset_connect() |> assign(:connect_step, :no_worker_paired)
+
+      device_workspace ->
+        socket
+        |> reset_connect()
+        |> connected(device_workspace, worker_id, proof)
+    end
+  end
+
+  defp connected(socket, device_workspace, worker_id, proof) do
+    case HostedLocalRepositoryConnection.connect(
+           socket.assigns.workspace,
+           socket.assigns.project.id,
+           device_workspace,
+           worker_id,
+           proof
+         ) do
+      {:ok, _connected} ->
+        assign_worker_connection(socket)
+
+      {:error, reason} ->
+        socket
+        |> assign(:connect_error, connect_message(reason))
+        |> assign_worker_connection()
+    end
+  end
+
   defp assign_entry(socket, entry) do
     socket
     |> assign(:page_title, entry.project.name)
@@ -177,28 +283,34 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
     end
   end
 
-  # The chosen machine is confirmed against the paired set as it is now, the
-  # machine is pointed at a folder, and only then is the authority gate called.
-  # A cancelled folder selection attempts nothing and says nothing.
+  # The chosen machine is confirmed against the paired set as it is now, its
+  # worker must be attached, and the project must hold an identity a machine can
+  # actually prove. Only then is the owner asked to point at a folder, because
+  # asking first and refusing afterwards wastes the one step only they can do.
   defp connect_machine(socket, worker_id) do
     device_workspace = device_workspace()
 
     with {:ok, confirmed_worker_id} <-
            HostedLocalRepositoryMachines.confirm(device_workspace, worker_id),
-         {:ok, proof} <- HostedLocalRepositoryFolder.select(),
-         {:ok, _connected} <-
-           HostedLocalRepositoryConnection.connect(
-             socket.assigns.workspace,
-             socket.assigns.project.id,
-             device_workspace,
+         :ok <- available_machine(device_workspace, confirmed_worker_id),
+         {:ok, identity} <- connectable_identity(socket.assigns.project),
+         {:ok, request_id} <-
+           HostedLocalRepositoryFolder.request(
+             %{
+               device_workspace_id: device_workspace.id,
+               project_id: socket.assigns.project.id
+             },
              confirmed_worker_id,
-             proof
+             identity
            ) do
-      socket |> reset_connect() |> assign_worker_connection()
+      socket
+      |> reset_connect()
+      |> assign(:connect_step, :waiting)
+      |> assign(:connect_request_id, request_id)
+      |> assign(:connect_worker_id, confirmed_worker_id)
+      |> assign(:connect_identity, identity)
+      |> assign_worker_connection()
     else
-      {:error, :cancelled} ->
-        socket |> reset_connect() |> assign_worker_connection()
-
       {:error, :no_worker_paired} ->
         socket |> reset_connect() |> assign(:connect_step, :no_worker_paired)
 
@@ -210,11 +322,53 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
     end
   end
 
+  # Only a worker attached right now may be asked to open a picker, and this
+  # pre-check reads that through `WorkerDiscovery.status/2` deliberately: it is
+  # the same reading the machine picker offers on and the same one
+  # `HostedLocalRepositoryConnection.connect/6` refuses on, so a machine cannot
+  # pass here and be refused after the owner has already picked a folder.
+  # `Devices.worker_available?/1` is the definition underneath; `status/2` is
+  # how both the list and the action ask it, because it also applies
+  # compatibility and staleness.
+  #
+  # This screen already owns one sentence for a machine not being reachable, so
+  # the refusal is reported as `:worker_unavailable` and rendered by
+  # `connect_message/1` rather than given a second wording of its own.
+  defp available_machine(device_workspace, worker_id) do
+    device_workspace.id
+    |> Pairing.active_workers()
+    |> Enum.find(&(&1.id == worker_id))
+    |> case do
+      nil ->
+        {:error, :unauthorized_worker}
+
+      worker ->
+        if WorkerDiscovery.status([worker]) == :detected,
+          do: :ok,
+          else: {:error, :worker_unavailable}
+    end
+  end
+
+  # A project whose identity no machine can prove is refused before a panel
+  # opens. The connect gate refuses the same two values for the same reasons;
+  # asking here only decides whether the owner is sent looking for a folder that
+  # could never match.
+  defp connectable_identity(project) do
+    case PortableRepositoryIdentity.parse(project.canonical_repository_id) do
+      {:ok, _identity} -> {:ok, project.canonical_repository_id}
+      {:error, :legacy_identifier} -> {:error, :legacy_repository_identity}
+      {:error, :invalid_identifier} -> {:error, :invalid_repository_identity}
+    end
+  end
+
   defp reset_connect(socket) do
     socket
     |> assign(:connect_step, nil)
     |> assign(:connect_machines, [])
     |> assign(:connect_error, nil)
+    |> assign(:connect_request_id, nil)
+    |> assign(:connect_worker_id, nil)
+    |> assign(:connect_identity, nil)
   end
 
   # The device store is the worker's own boundary. A machine with no worker
@@ -245,8 +399,16 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
       "This project's repository identity can't be read, so no machine can prove it. Restore " <>
         "the project from a backup package to re-establish its identity."
 
+  # The one sentence this screen has for the machine the owner chose not being
+  # reachable. The pre-check and the connect gate report the same fact, so both
+  # render this value.
   defp connect_message(:worker_unavailable),
     do: "That machine isn't reachable right now. Open the worker app on it, then try again."
+
+  defp connect_message(:worker_needs_update),
+    do:
+      "That machine's worker app is too old to open a folder picker. Update it there, then try " <>
+        "again."
 
   defp connect_message(:unauthorized_worker),
     do:
@@ -259,11 +421,16 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   defp connect_message(:not_a_git_repository),
     do: "That folder isn't a Git repository. Choose a folder that contains a Git repository."
 
+  defp connect_message(:empty_repository),
+    do: "That folder is a Git repository with no commits yet. Choose this project's repository."
+
   defp connect_message(:repository_unavailable),
     do: "That folder couldn't be read. Check it still exists on that machine, then try again."
 
-  defp connect_message(:picker_unavailable),
-    do: "Connect the worker on that machine to open its folder picker."
+  # The transport refusing to reach a worker and the gate finding none reachable
+  # are the same fact to the owner, so this renders the one sentence above
+  # rather than a second copy of it.
+  defp connect_message(:no_worker), do: connect_message(:worker_unavailable)
 
   defp connect_message(_reason),
     do: "That machine couldn't check the folder. Try again."
@@ -455,7 +622,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
               </p>
 
               <div
-                :if={@connect_step != :choosing_machine}
+                :if={@connect_step not in [:choosing_machine, :waiting, :no_answer]}
                 class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"
               >
                 <.button
@@ -506,6 +673,43 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
                   class="mt-2 w-full sm:w-auto"
                 >
                   Not now
+                </.button>
+              </div>
+
+              <%!-- The page says what it asked the machine to do and what it
+              heard back. It cannot see the Mac, so it never claims a panel is
+              on screen. --%>
+              <div :if={@connect_step == :waiting} class="mt-3" data-selection-waiting>
+                <p class="text-[13px] font-semibold text-ink">Waiting for that machine</p>
+                <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                  We asked its worker app to open a folder picker. Choose the folder that holds
+                  this project's repository.
+                </p>
+                <.button
+                  variant="ghost"
+                  size="sm"
+                  phx-click="cancel_selection"
+                  data-cancel-selection
+                  class="mt-2 w-full sm:w-auto"
+                >
+                  Cancel
+                </.button>
+              </div>
+
+              <div :if={@connect_step == :no_answer} class="mt-3" data-selection-no-answer>
+                <p class="text-[13px] font-semibold text-ink">No answer came back</p>
+                <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                  That machine didn't answer the folder request. Open the worker app on it, then
+                  try again.
+                </p>
+                <.button
+                  variant="secondary"
+                  size="sm"
+                  phx-click="connect_machine"
+                  data-retry-connect
+                  class="mt-2 w-full sm:w-auto"
+                >
+                  <.lucide name="refresh-cw" class="size-4" /> Try again
                 </.button>
               </div>
 

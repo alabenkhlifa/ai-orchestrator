@@ -58,6 +58,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.ConnectionStatus
   alias SddOrchestrator.Worker.ExecutionPreparer
+  alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.RequiredCheckRunner
   alias SddOrchestrator.Worker.RunState
 
@@ -80,6 +81,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     agent.thread_resume
     evidence.screenshot
     preview.request
+    repository_selection
   )
 
   @capabilities Enum.sort(@required_capabilities ++ @optional_capabilities)
@@ -265,6 +267,36 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
         {:ok, socket}
     end
+  end
+
+  # A folder-picker request from the control plane
+  # (specs/40-worker-repository-selection Task 3). Everything that needs the
+  # chosen path happens inside `SddOrchestrator.Worker.RepositorySelection`, on
+  # this Mac; this callback only hands the request over and gives it a way to
+  # answer. The reply runs later, in that process, so it sends the payload back
+  # here rather than pushing from a process the socket does not belong to — the
+  # same deferred-push shape `handle_info({:observe_agent, _}, socket)` uses.
+  def handle_message(topic, "repository_selection", message, socket) do
+    connection = self()
+    reply = fn payload -> send(connection, {:repository_selection_result, topic, payload}) end
+
+    RepositorySelection.open(message, reply, socket.assigns.home)
+
+    {:ok, socket}
+  end
+
+  # The control plane stopped waiting (the requester left, or the window ended),
+  # so the panel is closed and nothing is answered.
+  def handle_message(_topic, "repository_selection_cancel", message, socket) do
+    case message do
+      %{"request_id" => request_id} when is_binary(request_id) ->
+        RepositorySelection.close(request_id)
+
+      _unusable ->
+        Logger.info("worker gateway ignoring a repository selection cancel with no request id")
+    end
+
+    {:ok, socket}
   end
 
   # Any other inbound push is observed and ignored rather than crashing the
@@ -486,6 +518,24 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
       _none_pending ->
         poll_and_deliver(socket, envelope)
     end
+  end
+
+  # The finished folder-picker answer, sent here by
+  # `SddOrchestrator.Worker.RepositorySelection` because only this process owns
+  # the socket. The payload holds identities and a folder name; never a path.
+  def handle_info({:repository_selection_result, topic, payload}, socket) do
+    case push(socket, topic, "repository_selection_result", payload) do
+      {:ok, _ref} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to push a repository selection result for request " <>
+            "#{inspect(payload["request_id"])}: #{inspect(reason)}"
+        )
+    end
+
+    {:noreply, socket}
   end
 
   defp poll_and_deliver(socket, envelope) do

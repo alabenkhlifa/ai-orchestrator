@@ -164,6 +164,17 @@ config :sdd_orchestrator, SddOrchestrator.Devices.DeviceStore.Local,
 # stand-in is visibly broken here instead of at the first real install.
 config :sdd_orchestrator, :device_worker_stub, e2e_mode?
 
+# The folder-picker stand-in is selected the same way and for the same reason:
+# the browser suite drives the real request path with a transport that answers
+# from the folder it seeded. A plain dev server keeps the attachment transport
+# configured in `config/config.exs`, so a machine with no worker attached says
+# so instead of being answered by a stand-in.
+if e2e_mode? do
+  config :sdd_orchestrator,
+         :repository_selection_transport,
+         SddOrchestrator.RepositorySelection.Stub
+end
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

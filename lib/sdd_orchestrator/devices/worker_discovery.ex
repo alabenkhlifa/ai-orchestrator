@@ -10,9 +10,10 @@ defmodule SddOrchestrator.Devices.WorkerDiscovery do
     * `:incompatible` — a worker is paired but none satisfies the supported
       macOS/protocol policy, so the user needs to update or reinstall.
     * `:unavailable` — a compatible worker is paired but not currently reachable
-      (never seen, or its last heartbeat is stale), so its projects stay visible
-      with an unavailable connection state instead of appearing deleted.
-    * `:detected` — a compatible worker has reported in recently and can open the
+      (not attached to the control plane, never seen, or its last heartbeat is
+      stale), so its projects stay visible with an unavailable connection state
+      instead of appearing deleted.
+    * `:detected` — a compatible worker is attached right now and can open the
       folder picker and validate a repository.
 
   Supports the current macOS major and the immediately previous one over worker
@@ -25,10 +26,15 @@ defmodule SddOrchestrator.Devices.WorkerDiscovery do
   never refused merely because its row has not been added yet; two or more above,
   or anything below the computed floor, stays incompatible.
 
-  Reachability is modeled through `LocalWorker.last_seen_at`; the real native
-  worker updates it over its outbound transport (release-gated).
+  Reachability has one definition, `Devices.worker_available?/1`: the worker is
+  attached to the control plane right now. A list that offers a worker and the
+  action that then uses it read that same answer, so neither can contradict the
+  other. `LocalWorker.last_seen_at` stays for display and for the staleness rule
+  below: a worker whose last heartbeat is old is reported `:unavailable` even
+  when an attachment is present, because the two disagree about the same worker.
   """
 
+  alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.LocalWorker
 
   @supported_os_family "macos"
@@ -149,9 +155,17 @@ defmodule SddOrchestrator.Devices.WorkerDiscovery do
     end
   end
 
-  defp reachable?(%LocalWorker{last_seen_at: nil}, _now), do: false
+  # Reachable means attached right now, which is the one availability definition
+  # every list and every action reads. The heartbeat is kept as a second
+  # condition: an attachment beside an ancient `last_seen_at` is a contradiction
+  # about one worker, and the safe reading of a contradiction is unavailable.
+  defp reachable?(%LocalWorker{} = worker, now) do
+    fresh_heartbeat?(worker, now) and Devices.worker_available?(worker)
+  end
 
-  defp reachable?(%LocalWorker{last_seen_at: last_seen}, now) do
+  defp fresh_heartbeat?(%LocalWorker{last_seen_at: nil}, _now), do: false
+
+  defp fresh_heartbeat?(%LocalWorker{last_seen_at: last_seen}, now) do
     DateTime.diff(now, last_seen, :second) <= @staleness_seconds
   end
 end

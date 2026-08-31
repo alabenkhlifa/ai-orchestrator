@@ -11,13 +11,25 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
        (`Devices.worker_status/1`). Each of the four states — missing, incompatible,
        unavailable, detected — gets graphical, terminal-free guidance. Missing and
        incompatible carry install/update guidance plus a pairing-code entry (which
-       also covers replacement-worker pairing). Unavailable keeps projects visible.
-    2. `:selection` — the native folder picker (the local worker stand-in in
-       dev/test) yields a path validated entirely on the worker boundary through
-       `Devices.select_repository/2`. Existing workspace-authorized identities
-       are checked before a fresh portable identity is allocated. Only the
-       non-reversible identity crosses the boundary; the name and location are
-       shown locally.
+       also covers replacement-worker pairing). Unavailable keeps projects visible
+       and offers `Pair again`, which reveals that same pairing entry and its
+       deep link, so a person whose worker record is stale still has a way
+       forward. Pairing again authorizes another worker for this workspace and
+       keeps the old record.
+
+       The waiting state is session state, not a reading of the status. It says a
+       code was accepted, so it appears only after this session accepted one
+       (`code_accepted?`). Any other not-detected status renders its own state
+       instead, because the control plane knows nothing about a code that was
+       never entered.
+    2. `:selection` — the folder question is asked of the Mac's attached worker
+       and answered by a person (specs/40 Task 7). The worker opens its own
+       native picker, runs the Git check there, compares the folder against the
+       identities this workspace already holds, and answers with verdicts only:
+       which candidates matched, the folder's own name, and a fresh portable
+       identity. No path reaches this screen, so none can be rendered or stored.
+       A non-empty match list is the duplicate outcome
+       `Devices.select_repository/2` used to compute here from a path.
        Continuing hands off to the shared storage-selection step
        (`specs/05-project-storage-lifecycle/`): a device-origin onboarding attempt
        is created with the selected repository's fingerprint and name, the detected
@@ -32,24 +44,36 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
        project through `Devices.register_project/2` and opens its dashboard.
 
   Moved or renamed repositories reconnect through `Locate repository`
-  (`?locate=<project_id>`): the selected repository is accepted only when its
-  canonical fingerprint matches the project's; a non-matching selection is treated
-  as a different repository and never replaces the connection.
+  (`?locate=<project_id>`): the selected repository is accepted only when the
+  worker reports that the folder matches the project's own identity; a
+  non-matching selection is treated as a different repository and never replaces
+  the connection. A project still carrying a legacy identity is upgraded on the
+  same answer, because the other projects rode along as candidates and the
+  worker generated the replacement.
 
-  The `:device_worker_stub` flag (on in dev/test, off in prod) drives a local
-  worker stand-in so pairing and folder selection are exercisable without the
-  signed native worker; with it off the page waits on the real (release-gated)
-  worker.
+  Both modes share one waiting state with `Cancel` and one no-answer state with
+  `Try again`, the states `ProjectDashboardLive` renders for the same facts. The
+  request is bound to this LiveView process, so leaving the page closes the
+  panel on the Mac.
+
+  The folder-picker stand-in is no longer a flag inside this screen. It is the
+  `RepositorySelection` transport chosen by configuration, present only in tests
+  and under `E2E_MODE`. The `:device_worker_stub` flag that remains here drives
+  the pairing stand-in alone.
   """
   use SddOrchestratorWeb, :live_view
 
   import SddOrchestratorWeb.ConnectionStatus, only: [device_connection_badge: 1]
 
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Devices.{Pairing, PairingGuidance, WorkerDiscovery}
+  alias SddOrchestrator.Devices.{Pairing, PairingGuidance, PortableRepositoryIdentity}
+  alias SddOrchestrator.Devices.WorkerDiscovery
   alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
+  alias SddOrchestrator.RepositorySelection
+  alias SddOrchestrator.RepositorySelection.SelectionResult
+  alias SddOrchestratorWeb.RepositoryAssessmentLive
 
   # A device-readiness receipt from the detected worker stays valid for this
   # window while the user completes the storage step.
@@ -72,7 +96,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:deep_link_code, nil)
      |> assign(:onboarding_attempt, nil)
      |> assign(:pairing_error, nil)
-     |> assign(:awaiting_worker, false)
+     |> assign(:code_accepted?, false)
+     |> assign(:pair_again?, false)
      |> assign(:selection_error, nil)
      |> assign(:selected, nil)
      |> assign(:project_name, "")
@@ -80,7 +105,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:duplicate, nil)
      |> assign(:disclosure_required, Devices.list_projects() == [])
      |> assign(:disclosure_confirmed, false)
-     |> assign_worker_status()}
+     |> reset_selection()
+     |> assign_worker_status()
+     |> assign_awaiting_worker()}
   end
 
   @impl true
@@ -93,7 +120,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
          |> assign(:locate_project, project)
          |> assign(:step, :selection)
          |> assign(:selected, nil)
-         |> assign(:selection_error, nil)}
+         |> assign(:selection_error, nil)
+         |> reset_selection()}
 
       {:error, :not_found} ->
         {:noreply, socket}
@@ -107,7 +135,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     case Projects.get_device_onboarding_attempt(socket.assigns.workspace, attempt_id) do
       %{storage_mode: "device", selected_repository: %{"fingerprint" => fingerprint} = repo} =
           attempt ->
-        selected = %{name: repo["name"], fingerprint: fingerprint, location: nil}
+        selected = %{name: repo["name"], fingerprint: fingerprint}
 
         {:noreply,
          socket
@@ -147,10 +175,28 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
+  # Re-reads the worker and reports what the control plane knows at that moment.
+  # It never invents the waiting state: that state says a code was accepted, and
+  # only this session's own accepted code can make it true.
   @impl true
   def handle_event("recheck", _params, socket) do
-    socket = socket |> assign(:pairing_error, nil) |> assign_worker_status()
-    {:noreply, assign(socket, :awaiting_worker, socket.assigns.worker_status != :detected)}
+    {:noreply,
+     socket
+     |> assign(:pairing_error, nil)
+     |> assign_worker_status()
+     |> assign_awaiting_worker()}
+  end
+
+  # An unavailable worker is a paired record with nothing attached, which is also
+  # what a worker that was reinstalled or removed looks like. Pairing again is the
+  # ordinary pairing flow: it authorizes another worker for this same workspace
+  # and keeps the old record, so nothing here changes pairing itself.
+  def handle_event("pair_again", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:pair_again?, true)
+     |> assign(:pairing_error, nil)
+     |> maybe_issue_deep_link_code()}
   end
 
   # The submitted code is redeemed for real (`specs/38`): redemption is the moment
@@ -180,30 +226,36 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     {:noreply,
      socket
      |> assign(:step, :selection)
-     |> assign(:selection_error, nil)
-     |> assign(:duplicate, nil)
-     |> assign(:selected, nil)}
+     |> clear_selection_feedback()
+     |> reset_selection()}
   end
 
   def handle_event("back_to_discovery", _params, socket) do
+    cancel_open_request(socket)
+
     {:noreply,
      socket
      |> assign(:step, :discovery)
-     |> assign(:selection_error, nil)
-     |> assign(:duplicate, nil)
+     |> clear_selection_feedback()
+     |> reset_selection()
      |> assign(:locate_project, nil)
      |> assign_worker_status()}
   end
 
-  # The native folder picker (the stand-in in dev/test) returns a path. Only the
-  # fingerprint leaves the boundary; the name and location are shown locally.
+  # The folder is on this Mac and this node is not, so the question goes to the
+  # worker and the screen waits. The answer arrives as one
+  # `{:repository_selection, request_id, outcome}` message, and only then does
+  # anything change.
   def handle_event("select_folder", _params, socket) do
-    if worker_stub?() do
-      validate_selection(socket, stub_folder())
-    else
-      {:noreply,
-       assign(socket, :selection_error, "Connect the worker to open the folder picker.")}
-    end
+    {:noreply, request_selection(socket)}
+  end
+
+  # The request server tells the worker to close its panel and then sends this
+  # process `:cancelled`, so the screen returns to the picker through the one
+  # handler every outcome goes through.
+  def handle_event("cancel_selection", _params, socket) do
+    cancel_open_request(socket)
+    {:noreply, socket}
   end
 
   # Hand off to the shared storage-selection step. A device-origin onboarding
@@ -259,84 +311,272 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   @impl true
   def handle_info(:check_worker, socket) do
-    socket = assign_worker_status(socket)
+    socket = socket |> assign_worker_status() |> assign_awaiting_worker()
+
+    if socket.assigns.awaiting_worker do
+      {:noreply, schedule_worker_check(socket)}
+    else
+      # The worker arrived, or the person moved on. Either way stop polling
+      # rather than run a timer forever.
+      {:noreply, socket}
+    end
+  end
+
+  # Exactly one outcome arrives per request. An outcome naming a request this
+  # screen is not waiting on belongs to a request it already finished or
+  # cancelled, so it changes nothing.
+  def handle_info({:repository_selection, request_id, outcome}, socket) do
+    if request_id == socket.assigns.selection_request_id do
+      {:noreply, selection_outcome(socket, outcome)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # ---- asking the worker ----
+
+  # An unavailable worker gets the refusal, not a request: nobody should be sent
+  # looking for a folder no worker is there to check.
+  defp request_selection(socket) do
+    workspace = socket.assigns.workspace
+    socket = socket |> clear_selection_feedback() |> reset_selection()
+
+    with {:ok, plan} <- selection_plan(socket),
+         {:ok, worker_id} <- available_worker(workspace.id),
+         {:ok, request_id} <-
+           RepositorySelection.request(%{device_workspace_id: workspace.id}, worker_id,
+             candidates: plan.candidates,
+             generate: plan.generate?
+           ) do
+      socket
+      |> assign(:picker_step, :waiting)
+      |> assign(:selection_request_id, request_id)
+      |> assign(:selection_projects, plan.projects)
+    else
+      {:error, reason} -> assign(socket, :selection_error, refusal_message(socket, reason))
+    end
+  end
+
+  # Selection mode. Every project this workspace holds rides along as a
+  # candidate and a new project needs a fresh identity, which reproduces exactly
+  # what `Devices.select_repository/2` did from a path: its
+  # `ensure_repository_unlinked` is the worker's match list, and its
+  # `PortableRepositoryIdentity.generate/1` is the worker's `generate`. Task 10
+  # made the worker's comparison identical to `Devices.matches_repository?/3`,
+  # legacy identities included, so the duplicate rule is preserved rather than
+  # weakened.
+  defp selection_plan(%{assigns: %{locate_project: nil}}) do
+    {:ok, plan(Devices.list_projects(), true)}
+  end
+
+  # Locate mode. A portable identity only has to be recognised, so it travels
+  # alone and no identity is generated. A legacy one is upgraded on this same
+  # answer, so it needs both halves of the upgrade: every other project rides
+  # along, because that is the `ensure_repository_unlinked` recheck the upgrade
+  # performs, and `generate: true` produces the replacement identity.
+  defp selection_plan(%{assigns: %{locate_project: project}}) do
+    case PortableRepositoryIdentity.parse(project.repository_fingerprint) do
+      {:ok, _portable} ->
+        {:ok, plan([project], false)}
+
+      {:error, :legacy_identifier} ->
+        others = Enum.reject(Devices.list_projects(), &(&1.id == project.id))
+        {:ok, plan([project | others], true)}
+
+      # An identity no worker could compare is refused before a panel opens.
+      {:error, :invalid_identifier} ->
+        {:error, :invalid_repository_identity}
+    end
+  end
+
+  # A project is its own reference, so the worker's `matches` name projects
+  # directly. A record with no usable identity is left out of the request rather
+  # than sent as a candidate that could never match.
+  defp plan(projects, generate?) do
+    compared = Enum.filter(projects, &is_binary(&1.repository_fingerprint))
+
+    %{
+      projects: Map.new(compared, &{&1.id, &1}),
+      candidates: Enum.map(compared, &%{ref: &1.id, identity: &1.repository_fingerprint}),
+      generate?: generate?
+    }
+  end
+
+  # Only a worker attached right now may be asked to open a picker, and this
+  # reads availability the way the rest of the screen does: through
+  # `WorkerDiscovery.status/2`, whose `:detected` is `Devices.worker_available?/1`
+  # plus compatibility and staleness. Reading anything else here would let the
+  # screen say the worker is connected and then refuse the click.
+  defp available_worker(workspace_id) do
+    workspace_id
+    |> Pairing.active_workers()
+    |> Enum.find(&(WorkerDiscovery.status([&1]) == :detected))
+    |> case do
+      nil -> {:error, :worker_unavailable}
+      worker -> {:ok, worker.id}
+    end
+  end
+
+  defp cancel_open_request(socket) do
+    case socket.assigns.selection_request_id do
+      request_id when is_binary(request_id) -> RepositorySelection.cancel(request_id)
+      _nothing_open -> :ok
+    end
+  end
+
+  # ---- what the worker answered ----
+
+  defp selection_outcome(socket, {:selected, %SelectionResult{} = result}) do
+    compared = socket.assigns.selection_projects
+    socket = reset_selection(socket)
+
+    case socket.assigns.locate_project do
+      nil -> selected_repository(socket, compared, result)
+      project -> located_repository(socket, project, compared, result)
+    end
+  end
+
+  # The person dismissed the panel, or left this step. Nothing was chosen, so
+  # the screen simply offers the picker again.
+  defp selection_outcome(socket, :cancelled), do: reset_selection(socket)
+
+  defp selection_outcome(socket, {:refused, reason}) do
+    socket
+    |> reset_selection()
+    |> assign(:selected, nil)
+    |> assign(:duplicate, nil)
+    |> assign(:selection_error, refusal_message(socket, reason))
+  end
+
+  # A timeout and a lost attachment are one fact to the person: nothing came
+  # back. The screen says only that, and offers the action that can change it.
+  defp selection_outcome(socket, no_answer) when no_answer in [:timeout, :worker_lost] do
+    socket |> reset_selection() |> assign(:picker_step, :no_answer)
+  end
+
+  defp selected_repository(socket, compared, %SelectionResult{} = result) do
+    case matched_projects(compared, result.matches) do
+      [existing | _rest] -> duplicate_repository(socket, existing)
+      [] -> new_repository(socket, result)
+    end
+  end
+
+  defp new_repository(socket, %SelectionResult{identity: identity, folder_name: name})
+       when is_binary(identity) and is_binary(name) do
+    socket
+    |> assign(:selection_error, nil)
+    |> assign(:duplicate, nil)
+    |> assign(:selected, %{name: name, fingerprint: identity})
+  end
+
+  # A `generate: true` request answered without an identity or a folder name is
+  # an answer this screen cannot use. It is reported as a failed check rather
+  # than turned into a project with no identity.
+  defp new_repository(socket, _result),
+    do: assign(socket, :selection_error, selection_message(:incomplete_answer))
+
+  defp located_repository(socket, project, compared, %SelectionResult{} = result) do
+    matched = matched_projects(compared, result.matches)
 
     cond do
-      socket.assigns.worker_status == :detected ->
-        {:noreply, assign(socket, :awaiting_worker, false)}
+      not Enum.any?(matched, &(&1.id == project.id)) ->
+        locate_error(socket, :repository_mismatch)
 
-      socket.assigns.awaiting_worker ->
-        {:noreply, schedule_worker_check(socket)}
+      match?({:ok, _portable}, PortableRepositoryIdentity.parse(project.repository_fingerprint)) ->
+        reconnected(socket, project, false)
 
-      # The person moved on, so stop polling rather than run a timer forever.
       true ->
-        {:noreply, socket}
+        upgrade_legacy_repository(socket, project, compared, matched, result)
     end
   end
 
-  defp validate_selection(
-         %{assigns: %{locate_project: %{} = project, workspace: workspace}} = socket,
-         path
-       ) do
-    case Devices.locate_repository(path, project, workspace) do
-      {:ok, %{project: reconnected, upgraded?: upgraded?}} ->
-        message =
-          if upgraded?,
-            do: "Repository reconnected and ready for future project exports.",
-            else: "Repository reconnected."
-
-        {:noreply,
-         socket
-         |> put_flash(:info, message)
-         |> push_navigate(to: ~p"/local/projects/#{reconnected.id}")}
-
-      {:error, {:repository_already_linked, existing}} ->
-        {:noreply,
-         socket
-         |> assign(:selected, nil)
-         |> assign(:selection_error, nil)
-         |> assign(:duplicate, existing)}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:selected, nil)
-         |> assign(:duplicate, nil)
-         |> assign(:selection_error, locate_message(reason))}
+  # Locating a legacy identity does more than reconnect. It replaces the stored
+  # value with a fresh portable one, after rechecking that no other project
+  # matches the same repository, and reports that upgrade to the person. Both
+  # halves came back in this one answer: the other projects rode along as
+  # candidates, so the match list is that recheck, and `generate: true` produced
+  # the replacement.
+  defp upgrade_legacy_repository(socket, project, compared, matched, %SelectionResult{
+         identity: identity
+       })
+       when is_binary(identity) do
+    case Enum.find(matched, &(&1.id != project.id)) do
+      nil -> replace_legacy_identity(socket, project, compared, identity)
+      other -> duplicate_repository(socket, other)
     end
   end
 
-  defp validate_selection(socket, path) do
-    case Devices.select_repository(path, socket.assigns.workspace) do
-      {:ok, %{fingerprint: fingerprint}} ->
-        resolve_selection(socket, %{
-          name: Path.basename(path),
-          location: path,
-          fingerprint: fingerprint
-        })
+  defp upgrade_legacy_repository(socket, _project, _compared, _matched, _result),
+    do: locate_error(socket, :incomplete_answer)
 
-      {:error, {:repository_already_linked, existing}} ->
-        {:noreply,
-         socket
-         |> assign(:selected, nil)
-         |> assign(:selection_error, nil)
-         |> assign(:duplicate, existing)}
+  # The atomic replacement is not reimplemented here. `Devices` still owns it,
+  # and it still runs against the exact set of identities the comparison used,
+  # so a project or an identity that changed while the panel was open reports
+  # `:identity_race` and leaves this project alone.
+  defp replace_legacy_identity(socket, project, compared, identity) do
+    snapshot =
+      compared
+      |> Map.delete(project.id)
+      |> Map.new(fn {id, other} -> {id, other.repository_fingerprint} end)
 
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:selected, nil)
-         |> assign(:duplicate, nil)
-         |> assign(:selection_error, selection_message(reason))}
+    case Devices.upgrade_located_repository_identity(project, identity, snapshot) do
+      {:ok, upgraded} -> reconnected(socket, upgraded, true)
+      {:error, {:repository_already_linked, existing}} -> duplicate_repository(socket, existing)
+      {:error, reason} -> locate_error(socket, reason)
     end
   end
 
-  defp resolve_selection(socket, selected) do
-    {:noreply,
-     socket
-     |> assign(:selection_error, nil)
-     |> assign(:duplicate, nil)
-     |> assign(:selected, selected)}
+  defp reconnected(socket, project, upgraded?) do
+    message =
+      if upgraded?,
+        do: "Repository reconnected and ready for future project exports.",
+        else: "Repository reconnected."
+
+    socket
+    |> put_flash(:info, message)
+    |> push_navigate(to: ~p"/local/projects/#{project.id}")
+  end
+
+  defp duplicate_repository(socket, existing) do
+    socket
+    |> assign(:selected, nil)
+    |> assign(:selection_error, nil)
+    |> assign(:duplicate, existing)
+  end
+
+  defp locate_error(socket, reason) do
+    socket
+    |> assign(:selected, nil)
+    |> assign(:duplicate, nil)
+    |> assign(:selection_error, locate_message(reason))
+  end
+
+  # A reference crosses the wire as a string, so a real answer names a project by
+  # its own id. A reference this screen did not send names nothing.
+  defp matched_projects(compared, matches) do
+    matches
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&Map.get(compared, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp refusal_message(%{assigns: %{locate_project: %{}}}, reason), do: locate_message(reason)
+  defp refusal_message(_socket, reason), do: selection_message(reason)
+
+  defp clear_selection_feedback(socket) do
+    socket
+    |> assign(:selection_error, nil)
+    |> assign(:duplicate, nil)
+    |> assign(:selected, nil)
+  end
+
+  defp reset_selection(socket) do
+    socket
+    |> assign(:picker_step, nil)
+    |> assign(:selection_request_id, nil)
+    |> assign(:selection_projects, %{})
   end
 
   defp create_project(socket, name) do
@@ -408,6 +648,18 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   defp selection_message(:empty_repository),
     do: "That repository has no commits yet. Make your first commit, then select it again."
 
+  # The one owned wording for no worker being attached, read from its owner, so
+  # the refusal and the discovery state cannot drift apart.
+  defp selection_message(reason) when reason in [:worker_unavailable, :no_worker],
+    do: RepositoryAssessmentLive.worker_unavailable_message()
+
+  defp selection_message(:worker_needs_update),
+    do:
+      "The worker app on this Mac is too old to open a folder picker. Update it, then try again."
+
+  defp selection_message(_reason),
+    do: "The worker couldn't answer the folder request. Try again."
+
   defp locate_message(:repository_mismatch),
     do:
       "That's a different repository, so it can't replace this project's repository. Choose the original repository, or start a new project instead."
@@ -424,6 +676,23 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   defp assign_worker_status(socket) do
     status = Devices.worker_status(socket.assigns.workspace.id)
     assign(socket, :worker_status, status)
+  end
+
+  # The one derivation of the waiting state, so every caller reads the same rule.
+  # Waiting means a code this session accepted has not produced a worker yet. A
+  # status alone can never make it true, because the control plane cannot know
+  # about a code the person never entered.
+  defp assign_awaiting_worker(socket) do
+    awaiting? = socket.assigns.code_accepted? and socket.assigns.worker_status != :detected
+    assign(socket, :awaiting_worker, awaiting?)
+  end
+
+  # The one rule for the pairing entry being on screen, so the deep-link code is
+  # minted exactly where the form that carries it renders: this workspace has no
+  # usable worker, or the person asked to pair again from the unavailable state.
+  defp pairing_offered?(assigns) do
+    assigns.worker_status in [:missing, :incompatible] or
+      (assigns.pair_again? and assigns.worker_status == :unavailable)
   end
 
   # ---- project-scoped device setup (`?project=<id>`) ----
@@ -444,31 +713,42 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # The deep link needs a real single-use pairing code to hand the native app, the
   # same code the graphical pairing form itself is built around
   # (`Devices.Pairing.start_pairing/1`, already used by this file's worker
-  # stand-in). Issued once per mount and only when the discovery step would
-  # actually show the missing/incompatible pairing UI, so visiting with a
-  # `project` param never issues an attempt that goes unused.
+  # stand-in). Issued once per session, and only when the screen actually shows
+  # the pairing entry the link sits in, so no attempt is created that goes unused.
+  # `Pair again` reaches the same issuance rather than repeating it.
+  defp maybe_issue_deep_link_code(%{assigns: %{project_id: nil}} = socket), do: socket
+
   defp maybe_issue_deep_link_code(%{assigns: %{deep_link_code: code}} = socket)
        when is_binary(code),
        do: socket
 
-  defp maybe_issue_deep_link_code(%{assigns: %{worker_status: status}} = socket)
-       when status in [:missing, :incompatible] do
-    case Pairing.start_pairing(socket.assigns.workspace.id) do
-      {:ok, %{code: code}} -> assign(socket, :deep_link_code, code)
-      {:error, _reason} -> socket
+  defp maybe_issue_deep_link_code(socket) do
+    if pairing_offered?(socket.assigns) do
+      case Pairing.start_pairing(socket.assigns.workspace.id) do
+        {:ok, %{code: code}} -> assign(socket, :deep_link_code, code)
+        {:error, _reason} -> socket
+      end
+    else
+      socket
     end
   end
-
-  defp maybe_issue_deep_link_code(socket), do: socket
 
   defp create_enabled?(assigns) do
     String.trim(assigns.project_name) != "" and
       (not assigns.disclosure_required or assigns.disclosure_confirmed)
   end
 
-  # ---- local worker stand-in (dev/test only) ----
+  # The waiting sentence is one wording with one variable part: which repository
+  # the person is being asked to point at.
+  defp picker_target(nil), do: "your repository"
+  defp picker_target(_locate_project), do: "this project's repository"
 
-  defp worker_stub?, do: Application.get_env(:sdd_orchestrator, :device_worker_stub, false)
+  # ---- pairing stand-in (dev/test only) ----
+
+  # `:device_worker_stub` now drives pairing alone. The folder picker used to
+  # read the same flag here; it is answered by the `RepositorySelection`
+  # transport instead, so this name says which stand-in is left.
+  defp pairing_stub?, do: Application.get_env(:sdd_orchestrator, :device_worker_stub, false)
 
   # Simulates the native worker completing a dashboard-issued pairing and reporting
   # in, so worker discovery resolves to `:detected` without a signed binary.
@@ -481,7 +761,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   defp complete_pairing(socket, code) do
     case Pairing.bind_pairing(code, socket.assigns.workspace.id) do
       :ok ->
-        socket |> assign(:pairing_error, nil) |> await_worker()
+        # The one moment a code is accepted in this session, and the only thing
+        # that entitles the screen to say so.
+        socket
+        |> assign(:pairing_error, nil)
+        |> assign(:code_accepted?, true)
+        |> await_worker()
 
       {:error, :invalid_code} ->
         refused(socket)
@@ -494,7 +779,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # development and the browser suite, never in a production build, so this
   # cannot soften a refusal a real person would see.
   defp refused(socket) do
-    if worker_stub?() and stub_complete_pairing(socket.assigns.workspace.id) == :ok do
+    if pairing_stub?() and stub_complete_pairing(socket.assigns.workspace.id) == :ok do
       socket |> assign(:pairing_error, nil) |> assign_worker_status()
     else
       assign(socket, :pairing_error, @refused_pairing)
@@ -509,16 +794,16 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # suite, never a production build — it plays the app's part and finishes
   # immediately, so the flow stays drivable with no native app installed.
   defp await_worker(socket) do
-    if worker_stub?() do
+    if pairing_stub?() do
       stub_complete_pairing(socket.assigns.workspace.id)
     end
 
-    socket = assign_worker_status(socket)
+    socket = socket |> assign_worker_status() |> assign_awaiting_worker()
 
-    if socket.assigns.worker_status == :detected do
-      assign(socket, :awaiting_worker, false)
+    if socket.assigns.awaiting_worker do
+      schedule_worker_check(socket)
     else
-      socket |> assign(:awaiting_worker, true) |> schedule_worker_check()
+      socket
     end
   end
 
@@ -548,13 +833,6 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     }
   end
 
-  # The stand-in points the folder picker at a real Git repository so validation
-  # runs for real. Tests override this to exercise the invalid/moved/non-matching
-  # branches; dev falls back to the working copy, which is itself a Git repo.
-  defp stub_folder do
-    Application.get_env(:sdd_orchestrator, :device_worker_stub_folder) || File.cwd!()
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -571,6 +849,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           :if={@step == :discovery}
           worker_status={@worker_status}
           awaiting_worker={@awaiting_worker}
+          pair_again={@pair_again?}
           pairing_error={@pairing_error}
           project_id={@project_id}
           deep_link_code={@deep_link_code}
@@ -581,6 +860,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           selection_error={@selection_error}
           duplicate={@duplicate}
           locate_project={@locate_project}
+          picker_step={@picker_step}
         />
         <.review_step
           :if={@step == :review}
@@ -601,6 +881,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
 
   attr :worker_status, :atom, required: true
   attr :awaiting_worker, :boolean, default: false
+  attr :pair_again, :boolean, default: false
   attr :pairing_error, :string, default: nil
   attr :project_id, :string, default: nil
   attr :deep_link_code, :string, default: nil
@@ -645,7 +926,13 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           project_id={@project_id}
           deep_link_code={@deep_link_code}
         />
-        <.worker_unavailable :if={!@awaiting_worker and @worker_status == :unavailable} />
+        <.worker_unavailable
+          :if={!@awaiting_worker and @worker_status == :unavailable}
+          pair_again={@pair_again}
+          pairing_error={@pairing_error}
+          project_id={@project_id}
+          deep_link_code={@deep_link_code}
+        />
         <.worker_detected :if={@worker_status == :detected} />
       </div>
     </div>
@@ -804,31 +1091,67 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     """
   end
 
+  # A paired worker with nothing attached. The screen states only that, in the one
+  # owned wording every unavailable surface renders, and never claims the app is
+  # missing or stopped: a browser cannot see either. The second route matters as
+  # much as the first, because a worker record left over from a reinstall looks
+  # exactly like this and only pairing again clears it.
+  attr :pair_again, :boolean, default: false
+  attr :pairing_error, :string, default: nil
+  attr :project_id, :string, default: nil
+  attr :deep_link_code, :string, default: nil
+
   defp worker_unavailable(assigns) do
     ~H"""
     <div data-state="unavailable">
       <.notice variant="warn" icon="unplug">
-        Your worker is paired but not running right now, so this Mac can't reach your repositories.
-        Your projects are safe and still listed. They just show an unavailable connection until the
-        worker is back.
+        <p>{RepositoryAssessmentLive.worker_unavailable_message()}</p>
+        <p class="mt-0.5">
+          Your projects are safe and still listed. They show an unavailable connection until a
+          worker is back.
+        </p>
       </.notice>
 
       <ul class="mt-5 flex flex-col gap-3 text-sm text-ink-muted">
         <li class="flex gap-2">
           <.lucide name="play" class="size-4 flex-none mt-0.5 text-ink-muted" />
-          <span>Open the worker app from Applications so it can reconnect.</span>
+          <span>Open the worker app on this Mac so it can attach again.</span>
         </li>
         <li class="flex gap-2">
           <.lucide name="wifi" class="size-4 flex-none mt-0.5 text-ink-muted" />
-          <span>Once it's running, check again to continue.</span>
+          <span>Then check again to continue.</span>
+        </li>
+        <li class="flex gap-2">
+          <.lucide name="link" class="size-4 flex-none mt-0.5 text-ink-muted" />
+          <span>
+            Installed the worker again on this Mac? Pair it again. The worker you paired before is
+            kept.
+          </span>
         </li>
       </ul>
 
-      <div class="mt-5">
+      <div class="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center">
         <.button phx-click="recheck" data-recheck class="w-full sm:w-auto">
           <.lucide name="refresh-cw" class="size-4" /> Check again
         </.button>
+        <.button
+          :if={!@pair_again}
+          variant="secondary"
+          phx-click="pair_again"
+          data-pair-again
+          class="w-full sm:w-auto"
+        >
+          <.lucide name="link" class="size-4" /> Pair again
+        </.button>
       </div>
+
+      <.pairing_form
+        :if={@pair_again}
+        pairing_error={@pairing_error}
+        label="Pair worker"
+        project_id={@project_id}
+        deep_link_code={@deep_link_code}
+      />
     </div>
     """
   end
@@ -904,6 +1227,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   attr :selection_error, :string, default: nil
   attr :duplicate, :map, default: nil
   attr :locate_project, :map, default: nil
+  attr :picker_step, :atom, default: nil
 
   defp selection_step(assigns) do
     ~H"""
@@ -929,10 +1253,50 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         </div>
       </header>
 
-      <div class="mt-6">
+      <div :if={!@picker_step} class="mt-6">
         <.button phx-click="select_folder" data-select-folder class="w-full sm:w-auto">
           <.lucide name="folder-open" class="size-4" /> Open folder picker
         </.button>
+      </div>
+
+      <%!-- The screen says what it asked the worker to do and what it heard
+      back. It cannot see this Mac, so it never claims a panel is on screen. --%>
+      <div :if={@picker_step == :waiting} class="mt-6" data-selection-waiting>
+        <.notice variant="info" icon="refresh-cw">
+          <p class="font-semibold text-ink">Waiting for the worker</p>
+          <p class="mt-0.5">
+            We asked the worker app to open a folder picker. Choose the folder that holds {picker_target(
+              @locate_project
+            )}.
+          </p>
+        </.notice>
+
+        <div class="mt-3">
+          <.button
+            variant="secondary"
+            phx-click="cancel_selection"
+            data-cancel-selection
+            class="w-full sm:w-auto"
+          >
+            Cancel
+          </.button>
+        </div>
+      </div>
+
+      <div :if={@picker_step == :no_answer} class="mt-6" data-selection-no-answer>
+        <.notice variant="warn" icon="unplug">
+          <p class="font-semibold text-ink">No answer came back</p>
+          <p class="mt-0.5">
+            The worker didn't answer the folder request. Open the worker app on this Mac, then try
+            again.
+          </p>
+        </.notice>
+
+        <div class="mt-3">
+          <.button phx-click="select_folder" data-retry-selection class="w-full sm:w-auto">
+            <.lucide name="refresh-cw" class="size-4" /> Try again
+          </.button>
+        </div>
       </div>
 
       <div :if={@selection_error} class="mt-5" data-selection-error>
@@ -962,13 +1326,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         class="mt-5 rounded-lg border border-line bg-surface p-4"
         data-selected-repository
       >
+        <%!-- The worker answered with the folder's own name and nothing else,
+        so there is no location to show and none is stored. --%>
         <div class="flex items-center gap-2">
           <.device_connection_badge status="connected" />
           <span class="text-sm font-semibold text-ink" data-repository-name>{@selected.name}</span>
         </div>
-        <p class="mt-1.5 text-[13px] text-ink-muted break-all" data-repository-location>
-          {@selected.location}
-        </p>
 
         <.button
           :if={!@locate_project}
