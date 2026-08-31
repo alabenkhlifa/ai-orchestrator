@@ -521,6 +521,10 @@ defmodule SddOrchestrator.RepositoryAssessments do
         {:error, :unauthorized}
 
       worker ->
+        # The same reading the screen's worker list uses. `:detected` requires
+        # `Devices.worker_available?/1`, the one definition of an available
+        # worker, so a worker this action refuses was never offered and a worker
+        # that was offered is not refused a minute later.
         if WorkerDiscovery.status([worker], now: now) == :detected,
           do: {:ok, worker},
           else: {:error, :worker_unavailable}

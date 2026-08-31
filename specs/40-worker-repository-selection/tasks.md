@@ -92,7 +92,7 @@ Traceability:
   - Proof: Focused channel tests cover a request pushed to the attached worker for its workspace, a result accepted only from that attachment, a result from another attachment refused, a worker without the capability refused, and the pushed and received payloads holding identities and a folder name only.
   - Delivered: `RepositorySelection.Transport.Attachment` pushes a request to the named worker attached for its workspace, and the Mac-scoped channel answers with `repository_selection_result` credited to its own authenticated socket. `AttachmentCodec` closes both directions to their allowed fields.
 
-- [ ] Task 3 — Answer a request on the worker with identity and folder name only.
+- [x] Task 3 — Answer a request on the worker with identity and folder name only.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -100,6 +100,7 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.Worker.RepositorySelection` with `pending/0` and `answer/2`, `Worker.GatewayConnection` handling of the inbound request and outbound result, the `pending_selection.json` and `selection_answer.json` file contract under `Configuration.home/1` including their owner-only mode, the deletion of the answer on read and of a stale answer at start, the removal of the pending file when the request ends, the Git check through `Devices.RepositoryValidation`, generation through `Devices.PortableRepositoryIdentity`, candidate matching, the folder name, and the exclusion of the path from every log line on the worker.
   - Owns: AC-04, AC-11, entity:PendingSelectionFile, entity:SelectionAnswerFile
   - Proof: Focused tests cover a pending request published to its file and removed when the request ends, an answered path yielding matches and a new identity, the answer file being gone after the answer is read, a stale answer deleted unread at start, a non-repository folder answering `not_a_git_repository`, an inaccessible folder answering `inaccessible`, a cancellation answering `cancelled`, and a captured log holding no path.
+  - Delivered: `Worker.RepositorySelection` holds one request, publishes it to `pending_selection.json`, and answers from `selection_answer.json` after deleting it. The Git check, matching, and identity all run on the Mac, and no path enters state, a payload, or a log line.
 
 - [ ] Task 4 — Show the native picker from the app and hand the answer back.
   - Size: Standard
@@ -110,7 +111,7 @@ Traceability:
   - Owns: none
   - Proof: Focused Swift tests with the fake picker and a fake file store cover a pending file producing one panel, a chosen folder producing one answer file holding the path, a dismissed panel producing one cancellation answer, the pending file disappearing closing the panel without an answer, no second panel while one is open, and no source invoking the release's `rpc` command.
 
-- [ ] Task 5 — Give every list and action one definition of an available worker.
+- [x] Task 5 — Give every list and action one definition of an available worker.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -118,6 +119,7 @@ Traceability:
   - Owned surfaces: `Devices.worker_available?/1` read from the Mac-scoped registry, `Devices.WorkerDiscovery.status/2` deriving `:detected` from it, `RepositoryAssessments.authorize_worker/2`, `RepositoryAssessmentLive`'s worker list, the hosted machine picker from `specs/37`, and the stand-in's stub attachment registration under `E2E_MODE` and in tests.
   - Owns: AC-05
   - Proof: Focused tests cover a paired worker with a fresh `last_seen_at` and no attachment being neither listed nor authorized, an attached worker being both, the same refusal wording from the list and the action, `WorkerDiscovery` answering `:unavailable` for the first case, and the stub attachment making the test worker `:detected`.
+  - Delivered: `Devices.worker_available?/1` reads the Mac-scoped registry and is the one definition. `WorkerDiscovery.status/2` derives `:detected` from it, so the assessment list and `authorize_worker/2` read one answer and share one refusal wording.
 
 - [ ] Task 6 — Connect a hosted project through the worker's picker.
   - Size: Standard

@@ -10,9 +10,12 @@ defmodule SddOrchestrator.Devices do
 
   alias SddOrchestrator.Accounts.DeviceWorkspace
 
+  alias SddOrchestrator.Delivery.WorkerAttachment
+
   alias SddOrchestrator.Devices.{
     DeviceProject,
     DeviceTransaction,
+    LocalWorker,
     Pairing,
     PortableRepositoryIdentity,
     WorkerDiscovery
@@ -38,6 +41,40 @@ defmodule SddOrchestrator.Devices do
     |> Pairing.active_workers()
     |> WorkerDiscovery.status()
   end
+
+  @doc """
+  Whether this paired worker is attached to the control plane right now.
+
+  This is the one definition of an available worker. Every list that offers a
+  worker and every action that then uses one asks this same question, because a
+  list that says a worker is available and an action that refuses the same
+  worker a minute later is a product defect, not two views of the truth.
+
+  The answer is read from the Mac-scoped attachment registry
+  (`SddOrchestrator.Delivery.WorkerAttachment`), keyed by the worker's device
+  workspace and matched on the worker identity the credential named. It is
+  therefore true only while an authenticated channel process is alive.
+  `LocalWorker.last_seen_at` is not consulted here: it is stamped on a timer and
+  stays for display and for the staleness rule in `WorkerDiscovery`.
+  """
+  @spec worker_available?(LocalWorker.t()) :: boolean()
+  def worker_available?(%LocalWorker{} = worker) do
+    # Development and test stand-in: no native worker attaches, so a paired
+    # worker counts as attached. `:device_worker_stub` is off in a production
+    # build, which therefore has no stand-in at all.
+    if Application.get_env(:sdd_orchestrator, :device_worker_stub, false),
+      do: true,
+      else: attached?(worker)
+  end
+
+  defp attached?(%LocalWorker{device_workspace_id: workspace_id, id: worker_id})
+       when is_binary(workspace_id) and is_binary(worker_id) do
+    workspace_id
+    |> WorkerAttachment.attached()
+    |> Enum.any?(fn {_channel, contract} -> contract.worker_id == worker_id end)
+  end
+
+  defp attached?(_worker), do: false
 
   @doc "Returns the established device workspace, or `{:error, :not_found}` after loss."
   @spec get_workspace() :: {:ok, DeviceWorkspace.t()} | {:error, :not_found}

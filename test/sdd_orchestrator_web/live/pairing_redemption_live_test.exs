@@ -11,6 +11,7 @@ defmodule SddOrchestratorWeb.PairingRedemptionLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Devices
 
   alias SddOrchestrator.Devices.{
@@ -53,7 +54,9 @@ defmodule SddOrchestratorWeb.PairingRedemptionLiveTest do
   end
 
   # What the app itself does a moment after the code is bound: report the
-  # versions only it knows and take its own credential.
+  # versions only it knows, take its own credential, and attach to the control
+  # plane. The attachment is what makes the worker available, so a screen that
+  # reports `detected` without one would be reporting the old two-reading rule.
   defp app_finishes(code) do
     policy = WorkerDiscovery.compatibility_policy()
 
@@ -66,6 +69,14 @@ defmodule SddOrchestratorWeb.PairingRedemptionLiveTest do
       })
 
     {:ok, _seen} = Pairing.mark_seen(worker)
+
+    {:ok, _owner} =
+      WorkerAttachment.attach(worker.device_workspace_id, %{
+        worker_id: worker.id,
+        protocol_version: 1,
+        capabilities: []
+      })
+
     worker
   end
 
