@@ -44,8 +44,8 @@ Included:
 - Creating a feature's own specification with the feature and linking it from creation.
 - The four-part guided requirements document, its form on the feature page, and revision saves with the expected head.
 - Readiness read from the feature's linked specification, structural findings, the not-configured guidance flag, and the readiness section with check, dismiss, `Make ready`, and `Back to draft`.
-- The start preconditions readout, the profile-derived manifest, removal of `:delivery_execution`, the `Start development` action, and the run-begun state on the page.
-- `project_bound` and `project_unbound` over the Mac-scoped attachment and the worker's on-demand join of the project's run topic.
+- The start preconditions readout, the profile-derived manifest with its three new `ExecutionManifest` fields, the move of the four other manifest builders onto the profile, removal of `:delivery_execution`, the `Start development` action, and the run-begun state on the page.
+- `project_bound` and `project_unbound` over the Mac-scoped attachment, the worker's on-demand project-scoped connection, and the cross-scope join refused rather than crashed.
 - Browser-suite bootstrap changes that seed an approved profile and a feature-owned specification.
 
 Excluded:
@@ -113,14 +113,14 @@ Traceability:
   - Owns: AC-04, AC-05
   - Proof: Focused LiveView tests cover `Make ready` moving a blocker-free feature to `Ready for development`, a blocker refusing it with the blocker named, a save after ready rendering the verdict stale and hiding both `Make ready` and the start action, and `Back to draft` returning the column.
 
-- [ ] Task 5 — Build the manifest from the approved execution profile.
+- [ ] Task 5 — Build the started run's manifest from the approved execution profile.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Run the repository's real checks and commands instead of values only a test ever set.
-  - Owned surfaces: `Start.start/4` reading the project's approved `RepositoryExecutionProfile` for base revision, required checks, commands, allowed scope, and root, the `:no_execution_profile` refusal, removal of the `:delivery_execution` application key, and the browser-suite bootstrap seeding an approved profile for its delivery scenarios.
+  - Owned surfaces: `RepositoryAssessments.approved_profile/2`, the `ExecutionManifest` fields `repository_root`, `commands`, and `allowed_scope` with their validation at `manifest_version` 1, and `Start.start/4` building the manifest from the approved profile with the `:no_execution_profile` refusal. `Start.execution_config/0` stays until `Task 10`.
   - Owns: AC-09
-  - Proof: Focused tests cover a manifest carrying the profile's values, a project without an approved profile refused, no read of `:delivery_execution` remaining, and the bootstrap's delivery scenarios still seeding a startable feature.
+  - Proof: Focused tests cover a started run's manifest carrying the profile's base revision, required checks, root, commands, and allowed scope, a project without an approved profile refused with `:no_execution_profile` and creating nothing, and a profile whose commands and scope exceed a reference value's byte cap still producing a valid manifest.
 
 - [ ] Task 6 — Show every start precondition with a way to resolve it.
   - Size: Standard
@@ -136,9 +136,9 @@ Traceability:
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Let a run reach a worker that was paired for its Mac and only later connected to the project.
-  - Owned surfaces: `project_bound` and `project_unbound` pushes over the Mac-scoped attachment on connect, disconnect, and attach with existing bindings, `Worker.GatewayConnection` exchanging the project credential and joining or leaving the project's `worker:` topic on its socket, and idempotent handling for a project already joined from configuration.
+  - Owned surfaces: `project_bound` and `project_unbound` pushes over the Mac-scoped attachment on connect, disconnect, and attach with existing bindings, the `DynamicSupervisor` under `Worker.Supervisor` starting and stopping one project-scoped `Worker.GatewayConnection` per bound project, idempotent handling for a project already connected from configuration, and `WorkerChannel.confirm_execution_target/2` refusing a cross-scope join instead of crashing.
   - Owns: none
-  - Proof: Focused tests cover a bound project pushed on attach and on connect, the worker joining the topic and appearing in the project-keyed registry, `deliver/1` reaching it, an unbind leaving the topic, and a duplicate `project_bound` changing nothing.
+  - Proof: Focused tests cover a bound project pushed on attach and on connect, the worker's project connection joining the topic and appearing in the project-keyed registry, `deliver/1` reaching it, an unbind stopping the connection, a duplicate `project_bound` opening no second connection, and a Mac-scoped socket refused on a project topic with the channel still alive.
 
 - [ ] Task 8 — Start development from the feature page and show the run begin.
   - Size: Standard
@@ -157,6 +157,15 @@ Traceability:
   - Owned surfaces: The integration scenario from feature creation through requirements, readiness, ready, preconditions, and start to a delivered run command for owner and participant, the non-member fail-closed check on every new route and event, and the log review for document content, which together establish `capability:feature-delivery-from-the-ui`.
   - Owns: AC-10
   - Proof: An integration scenario drives the full path as owner and again as participant to a delivered `RunCommand`, a non-member is refused on every new event and page, and a log review finds no requirements text.
+
+- [ ] Task 10 — Move the four continuation manifests onto the profile and delete the configuration key.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 5
+  - Purpose: Leave one source for every manifest, so no run path can still take its checks from configuration.
+  - Owned surfaces: The manifest builders in `Delivery.Answers`, `Delivery.Retry`, `Delivery.Reconciliation`, and `Delivery.ReviewContinuation` reading the approved profile through the authority they already hold, removal of `Start.execution_config/0` and the `:delivery_execution` application key, the delivery test fixtures seeding a connected repository and an approved profile, and the browser-suite bootstrap seeding an approved profile for its delivery scenarios instead of setting the key.
+  - Owns: none
+  - Proof: Focused tests cover a continuation manifest from each of the four paths carrying the profile's values, a repository-wide search finding no `:delivery_execution` and no `execution_config`, and the bootstrap's delivery scenarios still seeding a startable feature.
 
 ## Verification Gate
 

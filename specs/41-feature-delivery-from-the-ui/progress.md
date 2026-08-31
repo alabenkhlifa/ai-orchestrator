@@ -1,5 +1,16 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-08-31 - Two decided mechanisms found unworkable, replaced with the user
+
+Implementation of `Task 5` and `Task 7` stopped on the agreement, not on code. Both replacements were chosen by the user.
+
+- The worker cannot join a project's run topic on its Mac socket. `WorkerSocket.connect/3` assigns `project_id` only from a project-scoped connect token, and `WorkerChannel.confirm_execution_target/2` compares the topic against `socket.assigns.project_id`. A Mac-scoped socket has no such key, so the join raises `KeyError` and crashes the channel instead of refusing. A join param is negotiated as a protocol contract and never read as a credential, so the project credential exchange the design relied on could not reach the check. Replacement: the worker starts a second project-scoped `Worker.GatewayConnection` per bound project, which reuses the whole verified connect, join, registry, and `deliver/1` path and leaves the topic's authorization untouched. The rejected alternative was to accept a credential as a join param, which widens a boundary `specs/33` and `specs/37` verified.
+- The crash itself is a fail-closed defect predating this slice, from `specs/39`. `Task 7` now owns the one-line correction and its refusal test.
+- The manifest cannot carry the profile's lists in `agent_ref` or `worker_ref`. Both are flat string maps capped at `ProtocolLimits.max_reference_bytes`, 512 bytes per value, while a profile holds up to 64 commands and scope entries of up to 1024 bytes each, so a legitimate profile could produce a manifest that `ExecutionManifest.validate_reference/2` refuses. Replacement: three typed fields, `repository_root`, `commands`, and `allowed_scope`, at `manifest_version` 1.
+- `Task 5` as written was two outcomes. Removing `:delivery_execution` also forces the four other manifest builders, in `Answers` at `answers.ex:216`, `Retry` at `retry.ex:397`, `Reconciliation` at `reconciliation.ex:400`, and `ReviewContinuation` at `review_continuation.ex:116`, onto the profile, and ten test files set the key. Those four hold an authority and no actor, so they derive the profile viewer differently from `Start`. `DeliveryFixtures` also has no profile: both `AssessmentStore.Hosted.put/2` and `ProfileStore.Hosted.append/5` require a connected repository binding, which `delivery_project_fixture/0` does not create. Split: `Task 5` keeps the start manifest and AC-09; the new `Task 10` moves the four builders, seeds the fixtures, and deletes the key.
+- Task labels stayed stable. The second half became `Task 10` rather than renumbering. The slice is now 10 tasks with a longest `Depends on:` path of 7, inside the Slice Size Gate.
+- No code changed in this update.
+
 ### 2026-08-31 - Task 1 complete: a feature owns its specification from creation
 
 - `Features.create/3` runs one `Repo.transaction`: it validates the title, resolves the project owner's `PersonalWorkspace` from the project, creates the specification through `SpecificationStore.create/4` under that authority with the acting person as the revision actor, inserts the feature, then links it. A refused specification rolls the whole thing back, so no feature is left behind.
