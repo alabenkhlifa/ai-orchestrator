@@ -142,7 +142,7 @@ Traceability:
   - Proof: Focused tests cover a legacy candidate matching its own repository on the worker, the same legacy candidate not matching a different repository, a legacy candidate salted for another workspace not matching, a portable candidate still matching as before, and the stand-in giving the same answers as the worker.
   - Delivered: The worker and the stand-in dispatch on the identity's own format, so a legacy candidate is compared against the workspace salt exactly as `Devices.matches_repository?/3` compares it. The worker reads that salt from its own paired configuration.
 
-- [ ] Task 7 — Select and locate an accountless repository through the worker's picker.
+- [x] Task 7 — Select and locate an accountless repository through the worker's picker.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 6, Task 10
@@ -150,6 +150,7 @@ Traceability:
   - Owned surfaces: `LocalOnboardingLive`'s `select_folder` and locate mode requesting a selection with the workspace's project identities as candidates, the duplicate outcome from the worker's match list, the folder name as the suggested project name with no location shown, and reuse of the shared waiting, cancel, no-answer, and retry states; removal of the LiveView's own `worker_stub?/0` gate.
   - Owns: AC-02
   - Proof: Focused LiveView tests with the test transport cover a new repository suggesting its folder name and continuing to the storage step, a matched existing project being reported as the duplicate with its link, locate mode reconnecting a moved repository on a match and refusing a different one, and no path in any assign or render.
+  - Delivered: Accountless selection and `Locate repository` both ask the worker. The duplicate outcome is the worker's match list, the folder name is the suggested project name, and no path reaches the screen. A legacy project still upgrades, because the other projects ride along as candidates and the worker generates the replacement.
 
 - [x] Task 8 — Report the worker truthfully and offer to pair again.
   - Size: Standard

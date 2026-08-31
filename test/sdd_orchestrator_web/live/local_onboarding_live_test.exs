@@ -15,15 +15,24 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
   the bottom: `Check again` reports only what the control plane knows, the
   `Code accepted` panel appears only after this session accepted a code, and an
   unavailable worker can be paired again without losing the worker it has.
+
+  Task 7 reshapes repository selection into a request the worker answers. The
+  click renders a waiting state and the verdicts arrive a moment later, so those
+  proofs settle the page through `SddOrchestrator.SelectionSettling` instead of
+  reading it once.
   """
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import SddOrchestrator.SelectionSettling, only: [settle: 2]
 
   alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
+  alias SddOrchestrator.Devices.PortableRepositoryIdentity
+  alias SddOrchestrator.Devices.RepositoryValidation
   alias SddOrchestrator.Devices.{Pairing, PairingIssuanceThrottle, WorkerDiscovery}
+  alias SddOrchestrator.Projects
   alias SddOrchestratorWeb.RepositoryAssessmentLive
 
   # Shell-command shapes that would mean the user was asked to use a terminal.
@@ -184,7 +193,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       %{repo: repo}
     end
 
-    test "a detected worker continues to native folder selection and shows the repository", %{
+    test "a detected worker asks the worker and shows what came back", %{
       conn: conn,
       workspace: workspace,
       repo: repo
@@ -197,11 +206,16 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       render_click(view, "continue_to_selection")
       assert has_element?(view, "[data-step=selection]")
 
-      render_click(view, "select_folder")
+      # The click asks the worker and nothing more. The screen says what it asked
+      # for, never that a panel is open on this Mac.
+      waiting = render_click(view, "select_folder")
+      assert waiting =~ "data-selection-waiting"
+      assert waiting =~ "We asked the worker app to open a folder picker."
+      assert waiting =~ "data-cancel-selection"
 
-      assert has_element?(view, "[data-selected-repository]")
+      settle(view, "data-selected-repository")
       assert has_element?(view, "[data-repository-name]", Path.basename(repo))
-      assert render(view) =~ repo
+      refute render(view) =~ repo
     end
 
     test "a non-git folder is reported without selecting anything", %{
@@ -217,7 +231,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       render_click(view, "continue_to_selection")
       render_click(view, "select_folder")
 
-      assert has_element?(view, "[data-selection-error]", "Git repository")
+      assert settle(view, "data-selection-error") =~ "Git repository"
       refute has_element?(view, "[data-selected-repository]")
     end
 
@@ -232,8 +246,201 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
       render_click(view, "continue_to_selection")
       render_click(view, "select_folder")
 
-      assert has_element?(view, "[data-selection-error]")
+      settle(view, "data-selection-error")
       refute has_element?(view, "[data-selected-repository]")
+    end
+  end
+
+  # `specs/40-worker-repository-selection` Task 7. The folder question goes to
+  # the worker and comes back as verdicts, so these prove what the screen does
+  # with an answer rather than what it used to compute here from a path.
+  describe "a worker-answered selection (AC-02)" do
+    setup %{workspace: workspace} do
+      workspace.id |> pair(%{os_major: "26"}) |> seen_now()
+
+      repo = git_repo_fixture()
+      on_exit(fn -> File.rm_rf!(repo) end)
+      stub_folder(repo)
+
+      %{repo: repo}
+    end
+
+    test "a new repository suggests its folder name and continues to the storage step", context do
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local")
+      render_click(view, "continue_to_selection")
+      render_click(view, "select_folder")
+
+      settle(view, "data-selected-repository")
+      assert has_element?(view, "[data-repository-name]", Path.basename(context.repo))
+
+      render_click(view, "continue_to_storage")
+      {to, _flash} = assert_redirect(view)
+      assert to =~ ~r"^/onboarding/local/storage/"
+
+      # The suggested name that travels on is the folder's own name, which is
+      # the only thing about the folder the worker reported.
+      attempt = Projects.get_device_onboarding_attempt(context.workspace, Path.basename(to))
+      assert attempt.selected_repository["name"] == Path.basename(context.repo)
+      refute attempt |> inspect(limit: :infinity) |> String.contains?(context.repo)
+    end
+
+    test "a repository the worker matched is reported as the duplicate with its link", context do
+      {:ok, identity} = PortableRepositoryIdentity.generate(context.repo)
+
+      {:ok, existing} =
+        Devices.register_project(%{
+          name: "Ledger",
+          repository_fingerprint: identity,
+          status: "connected"
+        })
+
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local")
+      render_click(view, "continue_to_selection")
+      render_click(view, "select_folder")
+
+      html = settle(view, "data-duplicate")
+      assert html =~ "already connected"
+      assert html =~ "Ledger"
+      assert has_element?(view, "[data-duplicate] a[href='/local/projects/#{existing.id}']")
+      refute has_element?(view, "[data-selected-repository]")
+
+      # The duplicate is the worker's own match list, so nothing new was
+      # allocated for a repository this workspace already holds.
+      assert [^existing] = Devices.list_projects()
+    end
+
+    test "no path reaches an assign or the rendered page", context do
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local")
+      render_click(view, "continue_to_selection")
+      render_click(view, "select_folder")
+
+      html = settle(view, "data-selected-repository")
+      refute html =~ context.repo
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.selected.name == Path.basename(context.repo)
+      assert Map.get(assigns.selected, :location) == nil
+      refute assigns |> inspect(limit: :infinity) |> String.contains?(context.repo)
+    end
+
+    test "locate mode upgrades a legacy identity and leaves nothing of the old one", context do
+      {:ok, %{fingerprint: legacy}} =
+        RepositoryValidation.validate(context.repo, context.workspace.id)
+
+      {:ok, project} =
+        Devices.register_project(%{
+          name: "Moved",
+          repository_fingerprint: legacy,
+          status: "unavailable"
+        })
+
+      # A second project rides along as a candidate, because the upgrade rechecks
+      # that no other project holds the same repository before it replaces
+      # anything. It must come through untouched.
+      other_repo = git_repo_fixture()
+      on_exit(fn -> File.rm_rf!(other_repo) end)
+      {:ok, other_identity} = PortableRepositoryIdentity.generate(other_repo)
+
+      {:ok, other} =
+        Devices.register_project(%{
+          name: "Untouched",
+          repository_fingerprint: other_identity,
+          status: "connected"
+        })
+
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local?#{[locate: project.id]}")
+      assert has_element?(view, "[data-step=selection][data-locate=true]")
+      render_click(view, "select_folder")
+
+      {to, flash} = assert_redirect(view, 5_000)
+      assert to == "/local/projects/#{project.id}"
+      assert flash["info"] =~ "ready for future project exports"
+
+      assert {:ok, upgraded} = Devices.get_project(project.id)
+      refute upgraded.repository_fingerprint == legacy
+      assert {:ok, _portable} = PortableRepositoryIdentity.parse(upgraded.repository_fingerprint)
+      assert Devices.find_by_fingerprint(legacy) == {:error, :not_found}
+      assert Devices.get_project(other.id) == {:ok, other}
+    end
+
+    test "locate mode reports another project holding the same repository", context do
+      {:ok, %{fingerprint: legacy}} =
+        RepositoryValidation.validate(context.repo, context.workspace.id)
+
+      {:ok, project} =
+        Devices.register_project(%{
+          name: "Moved",
+          repository_fingerprint: legacy,
+          status: "unavailable"
+        })
+
+      {:ok, portable} = PortableRepositoryIdentity.generate(context.repo)
+
+      {:ok, existing} =
+        Devices.register_project(%{
+          name: "Already Here",
+          repository_fingerprint: portable,
+          status: "connected"
+        })
+
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local?#{[locate: project.id]}")
+      render_click(view, "select_folder")
+
+      html = settle(view, "data-duplicate")
+      assert html =~ "Already Here"
+      assert has_element?(view, "[data-duplicate] a[href='/local/projects/#{existing.id}']")
+
+      # The upgrade is refused whole: the legacy identity stays exactly as it was.
+      assert {:ok, unchanged} = Devices.get_project(project.id)
+      assert unchanged.repository_fingerprint == legacy
+    end
+
+    test "a request nobody answers offers a retry and selects nothing", context do
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local")
+      render_click(view, "continue_to_selection")
+
+      waiting = render_click(view, "select_folder")
+      assert waiting =~ "data-selection-waiting"
+
+      send(view.pid, {:repository_selection, open_request_id(view), :timeout})
+
+      html = render(view)
+      assert html =~ "data-selection-no-answer"
+      assert html =~ "data-retry-selection"
+      refute html =~ "data-selection-waiting"
+      refute html =~ "data-selected-repository"
+
+      # The retry is the same action again, so it opens a fresh request.
+      assert render_click(view, "select_folder") =~ "data-selection-waiting"
+    end
+
+    test "an outcome for another request changes nothing", context do
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local")
+      render_click(view, "continue_to_selection")
+      render_click(view, "select_folder")
+
+      send(view.pid, {:repository_selection, Ecto.UUID.generate(), :timeout})
+
+      # The request this screen is waiting on still answers for itself.
+      settle(view, "data-selected-repository")
+      refute render(view) =~ "data-selection-no-answer"
+    end
+
+    test "an unavailable worker is refused instead of asked", context do
+      # Paired with nothing attached, which is what `:unavailable` means. The
+      # stand-in that counts a paired worker as attached is off, so availability
+      # is read where it really lives.
+      Application.put_env(:sdd_orchestrator, :device_worker_stub, false)
+      on_exit(fn -> Application.put_env(:sdd_orchestrator, :device_worker_stub, true) end)
+
+      {:ok, view, _html} = live(context.conn, ~p"/onboarding/local")
+      render_click(view, "continue_to_selection")
+
+      html = render_click(view, "select_folder")
+      assert html =~ "data-selection-error"
+      assert html =~ RepositoryAssessmentLive.worker_unavailable_message()
+      refute html =~ "data-selection-waiting"
+      refute html =~ "data-selected-repository"
     end
   end
 
@@ -396,6 +603,10 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
 
   # ---- helpers ----
 
+  # The request this screen is waiting on. A test that drives an outcome has to
+  # name the same request, because an outcome for any other one is ignored.
+  defp open_request_id(view), do: :sys.get_state(view.pid).socket.assigns.selection_request_id
+
   # The stand-in reports every paired worker as attached, which hides the
   # unavailable state entirely. Turning it off is what makes these proofs real.
   defp without_stub(fun) do
@@ -489,7 +700,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     {_, 0} = System.cmd("git", ["-C", dir, "init", "--quiet"], stderr_to_stdout: true)
     {_, 0} = System.cmd("git", ["-C", dir, "config", "user.email", "t@example.com"])
     {_, 0} = System.cmd("git", ["-C", dir, "config", "user.name", "Test"])
-    File.write!(Path.join(dir, "README.md"), "hello")
+    # Unique content, so two fixtures committed in the same second cannot share a
+    # root commit and therefore a repository identity.
+    File.write!(Path.join(dir, "README.md"), "hello #{System.unique_integer([:positive])}")
     {_, 0} = System.cmd("git", ["-C", dir, "add", "."], stderr_to_stdout: true)
 
     {_, 0} =

@@ -1,5 +1,22 @@
 # Worker-Driven Repository Selection Progress Log
 
+### 2026-08-31 - Task 7: accountless selection and locate ask the worker
+
+- `LocalOnboardingLive` no longer receives a path. Selection requests every existing project's identity as a candidate with `generate: true`, so the worker's match list is the duplicate outcome `Devices.select_repository/2` used to compute from a path, its generated identity is the new project's fingerprint, and its folder name is the suggested project name. `location` is gone from the `selected` map and its rendered paragraph is deleted, so no path can be shown.
+- `Locate repository` plans its request from the target's identity format. A portable target is sent alone. A legacy target is sent with every other project as candidates and `generate: true`, which is what preserves the upgrade: the target matching while no other candidate matches is exactly the `ensure_repository_unlinked` check `upgrade_legacy_repository/4` performs before replacing.
+- One function added to `Devices`, `upgrade_located_repository_identity/3`. It calls the existing `adapter().replace_repository_identity/4` with the worker's generated identity and the same `%{project_id => identity}` comparison snapshot, so `:identity_race` and `:identity_changed` still come from the adapter. `select_repository/2` and `locate_repository/3` are untouched and keep their other callers in `repository_initialization/handoff.ex` and the backup tests.
+- Deviation from the brief, and the right call: `worker_stub?/0` was not deleted. The same flag also drives the pairing stand-in that `Task 8`'s tests and the browser suite's pairing scenarios depend on, so deleting it would have broken pairing. `stub_folder/0` is deleted, the flag is gone from the folder path, and the survivor is renamed `pairing_stub?/0` to say what it actually drives now.
+- The screen reuses `ProjectDashboardLive`'s waiting, cancel, no-answer, and retry states and its wording, and refuses an unavailable worker with the value the screen already owns rather than a new sentence.
+- Latent fixture bug found and fixed: `git_repo_fixture/0` in `local_onboarding_live_test.exs` committed identical content, so two repositories created in the same second shared a root commit and therefore an identity. Content is now unique.
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/local_onboarding_live_test.exs test/sdd_orchestrator_web/live/local_onboarding_flow_test.exs` — exit `0`.
+- That run was 35 tests, 35 passed. Regression across devices, every LiveView, and the selection suites: exit `0`, 587 passed with the flake below excluded. `mix format --check-formatted` and `mix compile --warnings-as-errors` both exit `0`.
+
+### 2026-08-31 - Flake identified: project_assistant_panel_test.exs:277
+
+- The sub-agent reported this failure as pre-existing. That claim was checked rather than accepted, because a failing check is not evidence until it is reproduced.
+- First check was misleading: a `main` worktree passed the file on its own random seed, which looked like proof of a regression in this slice. Running `main` again with the seeds this branch had actually used, `166640`, `424242`, and `0`, failed 12 of 13 every time.
+- Conclusion: `SddOrchestratorWeb.ProjectAssistantPanelTest` "a failed turn shows safe copy and a retry affordance" is seed-dependent on `main` and unrelated to this slice. It also fails standalone on `main`, so it depends on state an earlier test in its own file leaves behind. Recorded as gate evidence rather than re-run until green, and left for its own owner.
+
 ### 2026-08-31 - Task 10: the worker compares a legacy identity as the control plane does
 
 - `Worker.RepositorySelection` and `RepositorySelection.Stub` now parse each candidate and dispatch: a portable identity through `PortableRepositoryIdentity.match/2`, a legacy one through `match_legacy/3`, an invalid one never a match. That is the same dispatch `Devices.matches_repository?/3` makes, which is the point: the worker must answer exactly what the control plane would have answered, or the duplicate rule changes meaning depending on who asks.
