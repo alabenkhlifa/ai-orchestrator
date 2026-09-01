@@ -185,6 +185,17 @@ config :sdd_orchestrator,
   command_transport: SddOrchestrator.Delivery.CommandTransport.Channel,
   command_envelope_source: SddOrchestrator.Delivery.CommandTransport.StartEnvelopeSource
 
+# A person's own words reach the terminal at `:debug`. LiveView renders the
+# `save_requirements` parameters, which carry all four guided requirement
+# parts, and Ecto logs the same values again as query parameters. Production
+# already runs at `:info` and emits neither. Development now matches it, so
+# requirement text never reaches a terminal at all.
+#
+# The cost is real: this also silences Ecto query logging and every other
+# debug line. Raise a single source back to `:debug` while working on it
+# rather than lowering this level again.
+config :logger, level: :info
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
