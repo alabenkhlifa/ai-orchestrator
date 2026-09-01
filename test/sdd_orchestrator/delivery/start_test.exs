@@ -53,6 +53,11 @@ defmodule SddOrchestrator.Delivery.StartTest do
 
   @second_revision String.duplicate("2", 40)
 
+  # Sorts before every generated specification id, so a test that needs the
+  # project's "first" specification to be one the feature is not linked to gets
+  # that ordering every run instead of most runs.
+  @lowest_specification_id "00000000-0000-4000-8000-000000000000"
+
   # Matches `AIRuntimeFixtures`' own default catalog/quota `retrieved_at`, so a
   # pin against a fixture-built catalog is proven against the snapshot's own
   # freshness window instead of the real wall clock racing its 300-second TTL.
@@ -148,11 +153,11 @@ defmodule SddOrchestrator.Delivery.StartTest do
       owner: owner,
       ready: ready
     } do
+      # The feature's own linked specification, which this project is not the
+      # only one of. Readiness judged that document, so the run has to start
+      # against the same one.
       {:ok, current} =
-        SpecificationStore.current_snapshot(authority, project.id)
-        |> then(fn {:ok, %{specifications: [entry | _]}} ->
-          SpecificationStore.get_current(authority, project.id, entry.id)
-        end)
+        SpecificationStore.get_current(authority, project.id, ready.specification_id)
 
       {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
 
@@ -161,6 +166,40 @@ defmodule SddOrchestrator.Delivery.StartTest do
       assert results.run.effective_revision_id == results.run.starting_revision_id
       assert results.run.branch == "sdd/run-#{results.run.id}"
       assert results.run.approved_slice == "slice-07"
+    end
+
+    # Readiness reads the feature's own linked specification. A project holding
+    # more than one would otherwise have a verdict about one document and a run
+    # beginning against another, which is the one thing the business rule
+    # forbids outright.
+    test "starts against the feature's own specification, not the project's first", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      {:ok, other} =
+        SpecificationStore.create(
+          authority,
+          project.id,
+          SpecificationFixtures.specification_attrs(%{id: @lowest_specification_id}),
+          actor_ref: "owner"
+        )
+
+      # The project's first specification by id is deliberately not the
+      # feature's, so binding to the wrong one is visible rather than lucky.
+      {:ok, snapshot} = SpecificationStore.current_snapshot(authority, project.id)
+      assert hd(snapshot.specifications).id == other.specification.id
+      refute other.specification.id == ready.specification_id
+
+      {:ok, own} = SpecificationStore.get_current(authority, project.id, ready.specification_id)
+
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert results.run.starting_revision_id == own.revision.id
+      assert results.run.starting_revision_digest == own.revision.content_digest
+      assert results.attempt.effective_revision_id == own.revision.id
+      refute results.run.starting_revision_id == other.revision.id
     end
 
     test "records who started it, on which branch, against which revision", %{
@@ -864,7 +903,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
   end
 
   describe "availability" do
-    test "is false until ready, confirmed, and in the right column", %{
+    test "is false until ready, confirmed, in the right column, and worker-connected", %{
       authority: authority,
       project: project,
       feature: feature,
@@ -873,6 +912,12 @@ defmodule SddOrchestrator.Delivery.StartTest do
       refute Start.available?(authority, owner, %{project: project, feature: feature})
 
       ready = prepare(%{authority: authority, project: project, feature: feature, owner: owner})
+
+      # A ready, confirmed feature is still not startable while no worker is
+      # connected to run it. `specs/41` Task 6 covers that item on its own.
+      refute Start.available?(authority, owner, %{project: project, feature: ready})
+
+      bind_local_worker(project)
 
       assert Start.available?(authority, owner, %{project: project, feature: ready})
     end

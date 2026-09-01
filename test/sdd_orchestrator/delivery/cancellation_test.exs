@@ -32,10 +32,12 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
     Suggestions
   }
 
+  alias SddOrchestrator.AIRuntimeFixtures
   alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.Participation.Revocations
   alias SddOrchestrator.ParticipationDeliveryDouble
   alias SddOrchestrator.ParticipationFixtures
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.ReadinessGuidanceDouble
   alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationFixtures
@@ -438,6 +440,10 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
       {:ok, canceled} =
         Cancellation.cancel(authority, initiator, %{project: project, feature: feature})
 
+      # Starting also needs a worker connected to run it, so the project is
+      # bound to one before the offer is asked for.
+      bind_local_worker(project)
+
       assert Start.available?(authority, initiator, %{project: project, feature: canceled.feature})
 
       assert {:ok, restarted} =
@@ -564,6 +570,23 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
       attempt: dispatched,
       feature: Repo.get!(Feature, results.feature.id)
     })
+  end
+
+  # The routing record the connect path writes. Starting requires a worker
+  # connected for the project, and the test stand-in reports a paired one as
+  # attached, so the binding is all a restart needs here.
+  defp bind_local_worker(project) do
+    worker = AIRuntimeFixtures.personal_ai_worker_fixture()
+
+    %HostedLocalRepositoryBinding{}
+    |> HostedLocalRepositoryBinding.changeset(%{
+      project_id: project.id,
+      worker_id: worker.id,
+      last_validated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.insert!()
+
+    worker
   end
 
   defp cancel_commands do

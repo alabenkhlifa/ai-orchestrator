@@ -1,5 +1,17 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Task 6 complete: the readout, and the specification the run actually uses
+
+- `Start.preconditions/3` answers five ordered items, each `%{key:, met?:, route:}`, keyed `:ready, :boundary, :execution_profile, :worker, :ai_connection`. `available?/3` is that list fully met. One function answers both the screen and the check, which is the point: they cannot drift apart. `start/4` still revalidates everything, because the answer can change between render and press.
+- Every item reuses what `start/4` already calls. The worker item is the only new check, and it uses `Devices.worker_available?/1`, the single existing definition of attached now, which also honours the stand-in the browser suite depends on.
+- Fixed the defect recorded in the previous entry. `current_revision` read the project's first specification while readiness read the feature's own, so a project with two specifications could judge one document and run against another. It now reads `feature.specification_id` through `SpecificationStore.get_current/3`. The new test was confirmed to fail against the old behavior before the fix was restored.
+- The same first-specification assumption was making an existing `start_test` case flaky by UUID ordering. It now reads the feature's own specification and is deterministic.
+- Adding the worker item to `available?/3` correctly broke two existing assertions that expected a start to be available on a project with no worker binding at all. Both now bind a worker, which is what the design requires.
+- A participant question the readout exposed, decided with the user: `/projects/:id/overview` and `/ai-connections` are in the `:authenticated` live session, so a participant clicking either lands on the sign-in gate. AC-06 promises a way to resolve each unmet item, so a link that bounces is exactly the dead end it exists to prevent. Those two items now render `The project owner resolves this one.` for a participant and keep the link for the owner. No route moved and the router is unchanged. `/projects/:id/profile` is already in `:participation`, so its link stays for everyone.
+- The worker copy states only what the control plane can see, that no worker is connected right now, and offers two branches rather than claiming the app is missing from a Mac it cannot inspect. A test asserts the readout never says not installed and carries no em dash.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/start_preconditions_test.exs test/sdd_orchestrator/delivery/start_test.exs test/sdd_orchestrator/delivery/cancellation_test.exs test/sdd_orchestrator_web/live/feature_start_preconditions_test.exs test/sdd_orchestrator_web/live/feature_lifecycle_actions_test.exs` — exit `0`.
+- Confirmed on the main thread by real exit status. 75 tests passed.
+
 ### 2026-08-31 - Task 4 complete: the two lifecycle moves the board withholds
 
 - `Make ready` calls `Suggestions.promote/4` with the operation key `ready:` plus the feature id and its state version. The state version belongs in the key: a bare feature-id key would absorb a second press, but it would also silently replay the first press's result for a feature that had since gone back to draft.

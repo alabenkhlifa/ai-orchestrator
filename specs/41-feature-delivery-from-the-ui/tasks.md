@@ -126,7 +126,7 @@ Traceability:
   - Proof: Focused tests cover a started run's manifest carrying the profile's base revision, required checks, root, commands, and allowed scope, a project without an approved profile refused with `:no_execution_profile` and creating nothing, a profile whose commands and scope exceed a reference value's byte cap still producing a valid manifest, a version 1 map refused as an unsupported version, and a profile holding 64 required checks starting.
   - Delivered: `Start` builds the manifest from `RepositoryAssessments.approved_profile/2` and refuses `:no_execution_profile` without one. `ExecutionManifest` carries the profile's root, commands, and allowed scope in fields of its own at version 2, and the required-check cap now matches the profile's 64.
 
-- [ ] Task 6 — Show every start precondition with a way to resolve it.
+- [x] Task 6 — Show every start precondition with a way to resolve it.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4, Task 5
@@ -134,6 +134,7 @@ Traceability:
   - Owned surfaces: `Start.preconditions/3` with ready, boundary, approved profile, attached bound worker, and AI connection choice, `Start.available?/3` derived from it, `Start.current_revision/2` reading the feature's own linked specification rather than the project's first, and the start section rendering each item with its resolving route while keeping the existing disclosure and `confirm_boundary` control.
   - Owns: AC-06, entity:StartReadout
   - Proof: Focused tests cover each unmet item rendered with its route and the button absent, all items met rendering the button, the worker item unmet for a bound worker that is not attached now, the readout and `available?/3` agreeing on every combination tested, and a project holding two specifications starting against the feature's own.
+  - Delivered: `Start.preconditions/3` answers the five ordered items and `available?/3` is that list fully met, so the readout and the check cannot disagree. `current_revision` now reads the feature's own linked specification. An item whose resolving page needs the owner's account session renders who resolves it instead of a link a participant cannot follow.
 
 - [x] Task 7 — Join a bound project's run topic when the control plane says so.
   - Size: Standard

@@ -35,6 +35,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     Retry,
     Review,
     ReviewDecision,
+    Start,
     Suggestions
   }
 
@@ -122,6 +123,50 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   # not the reader's computer, and it never implies a model judged anything.
   @readiness_not_configured "No guidance model is configured here. " <>
                               "These findings come from the guided parts alone."
+
+  # Every start precondition named once. `Start.preconditions/3` decides which
+  # are met and where each is resolved, so these maps only put words to the
+  # answer it gives. The label names the item in both states; the note and the
+  # link are read only when the item is unmet.
+  @precondition_labels %{
+    ready: "Ready, with a readiness check about these exact words",
+    boundary: "The processing boundary confirmed",
+    execution_profile: "An approved execution profile",
+    worker: "A worker connected for this project",
+    ai_connection: "One AI connection to run this"
+  }
+
+  # What is true now, and the one thing to do about it. The worker line states
+  # only what the control plane can see, which is its own connections. It cannot
+  # see the Mac, so the rest is offered as two branches the reader picks from.
+  @precondition_notes %{
+    ready:
+      "The readiness check is missing, or it is about older words. " <>
+        "Check readiness again, then make this feature ready.",
+    boundary: "Read what this run will do, above, and confirm it.",
+    execution_profile:
+      "This project has no approved execution profile. Assess the repository, then approve one.",
+    worker:
+      "No worker is connected to this project right now. " <>
+        "Connect this project to a Mac, or open the worker app on the Mac it is connected to.",
+    ai_connection:
+      "More than one active AI connection could run this. Leave one active for this project."
+  }
+
+  @precondition_actions %{
+    ready: "Go to the readiness check",
+    boundary: "Read the boundary above",
+    execution_profile: "Open the execution profile",
+    worker: "Open the project's connection",
+    ai_connection: "Open AI connections"
+  }
+
+  # Two of the five pages are the owner's own. A participant is told who
+  # resolves those rather than being handed a link that will not open for them.
+  # It says nothing about starting, which stays theirs to do.
+  @precondition_owner_routes [:project_connection, :ai_connections]
+
+  @precondition_owner_only "The project owner resolves this one."
 
   # A lifecycle move this page can no longer make. Naming the shape of the
   # refusal would describe a race to somebody who can only act on one thing:
@@ -405,7 +450,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
         {:noreply,
          socket
          |> assign(:readiness, assessment)
-         |> assign(:readiness_error, nil)}
+         |> assign(:readiness_error, nil)
+         |> assign_start_preconditions()}
 
       {:error, :unauthorized} ->
         {:noreply, push_navigate(socket, to: ~p"/projects")}
@@ -555,7 +601,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> ProcessingDisclosure.confirm(socket.assigns.actor, digest)
     |> case do
       {:ok, _confirmation} ->
-        {:noreply, assign_disclosure(socket)}
+        {:noreply, socket |> assign_disclosure() |> assign_start_preconditions()}
 
       {:error, :unauthorized} ->
         {:noreply, push_navigate(socket, to: ~p"/projects")}
@@ -564,7 +610,11 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       # shown the boundary that is actually in force rather than agreeing to
       # one that no longer exists.
       {:error, _reason} ->
-        {:noreply, socket |> assign_disclosure() |> assign(:boundary_changed?, true)}
+        {:noreply,
+         socket
+         |> assign_disclosure()
+         |> assign(:boundary_changed?, true)
+         |> assign_start_preconditions()}
     end
   end
 
@@ -767,6 +817,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:requirements_carried, carried_documents(revision))
     |> assign(:requirements_parts, GuidedRequirements.parse(revision.requirements_document))
     |> assign(:requirements_error, nil)
+    |> assign_start_preconditions()
   end
 
   # The design and tasks documents belong to the coding agent. The form carries
@@ -792,7 +843,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
         {:noreply,
          socket
          |> assign(:readiness, updated)
-         |> assign(:readiness_error, nil)}
+         |> assign(:readiness_error, nil)
+         |> assign_start_preconditions()}
 
       {:error, :unauthorized} ->
         {:noreply, push_navigate(socket, to: ~p"/projects")}
@@ -955,6 +1007,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> load_activity(project_id, actor, feature)
     |> assign_runtime_projection(actor)
     |> assign_disclosure()
+    |> assign_start_preconditions()
   end
 
   # The same fail-closed check this screen already passed, re-asked for its role
@@ -1185,6 +1238,20 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:boundary_changed?, socket.assigns[:boundary_changed?] || false)
   end
 
+  # The readout describes this instant and is kept nowhere, so it is worked out
+  # again wherever something it reads can have moved: the feature, the verdict,
+  # the written words, or the boundary confirmation.
+  defp assign_start_preconditions(socket) do
+    assign(
+      socket,
+      :start_preconditions,
+      Start.preconditions(storage_authority(socket), socket.assigns.actor, %{
+        project: socket.assigns.project,
+        feature: socket.assigns.feature
+      })
+    )
+  end
+
   defp load_activity(socket, project_id, actor, feature) do
     case Activity.list(project_id, actor, feature.id, limit: Activity.max_limit()) do
       {:ok, entries} ->
@@ -1348,6 +1415,35 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp column_label(column), do: Map.fetch!(@column_labels, column)
   defp status_label(status), do: Map.get(@status_labels, status)
   defp gated_action(column), do: Map.fetch!(@gated_actions, column)
+
+  ## Start preconditions
+
+  defp precondition_label(key), do: Map.fetch!(@precondition_labels, key)
+  defp precondition_note(key), do: Map.fetch!(@precondition_notes, key)
+  defp precondition_action(key), do: Map.fetch!(@precondition_actions, key)
+  defp precondition_owner_only, do: @precondition_owner_only
+
+  # Whether the acting person can open the page that resolves one item. The
+  # role comes from the `ParticipantGuard` answer this screen already holds, so
+  # the readout cannot offer a destination the route itself would refuse.
+  defp precondition_linkable?(route, owner?),
+    do: owner? or route not in @precondition_owner_routes
+
+  # The page that resolves one precondition, for the three that are elsewhere.
+  defp precondition_navigate(:repository_profile, project_id),
+    do: ~p"/projects/#{project_id}/profile"
+
+  defp precondition_navigate(:project_connection, project_id),
+    do: ~p"/projects/#{project_id}/overview"
+
+  defp precondition_navigate(:ai_connections, _project_id), do: ~p"/ai-connections"
+  defp precondition_navigate(_route, _project_id), do: nil
+
+  # The place on this page that resolves one precondition, for the two that are
+  # here. Both are sections the reader can already see.
+  defp precondition_anchor(:readiness), do: "#readiness-heading"
+  defp precondition_anchor(:processing_boundary), do: "#start-disclosure-heading"
+  defp precondition_anchor(_route), do: nil
 
   defp transfer_summary(%{leaves_authoritative_store: false}),
     do: "Stays in this project's own store"
@@ -2356,6 +2452,54 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           >
             <.lucide name="check" class="size-4" /> I understand, continue
           </.button>
+
+          <%!-- Every start precondition, met or not, with the one place each
+          unmet one is resolved. It is a readout, not a hidden gate: a person who
+          cannot start yet reads why here rather than finding no button. --%>
+          <div class="mt-4 border-t border-line pt-4" data-start-preconditions>
+            <h3 class="text-[13px] font-semibold text-ink">Before you can start</h3>
+            <ul class="mt-2 flex flex-col gap-3">
+              <li
+                :for={item <- @start_preconditions}
+                data-start-precondition={item.key}
+                data-precondition-met={to_string(item.met?)}
+              >
+                <p class={[
+                  "flex items-start gap-1.5 text-[13px]",
+                  (item.met? && "text-ok-fg") || "text-err-fg"
+                ]}>
+                  <.lucide
+                    name={(item.met? && "circle-check") || "circle-alert"}
+                    class="size-3.5 flex-none translate-y-0.5"
+                  />
+                  {precondition_label(item.key)}
+                </p>
+                <p :if={not item.met?} class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                  {precondition_note(item.key)}
+                </p>
+                <%!-- Three of the five are resolved on another page and two on
+                this one, so a link carries whichever of the two destinations
+                applies and `<.link>` renders the right anchor for it. --%>
+                <.link
+                  :if={not item.met? and precondition_linkable?(item.route, @owner?)}
+                  navigate={precondition_navigate(item.route, @project_id)}
+                  href={precondition_anchor(item.route)}
+                  class="mt-1 inline-flex items-center gap-1.5 rounded text-[13px] font-semibold text-primary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  data-precondition-route={item.key}
+                >
+                  {precondition_action(item.key)}
+                  <.lucide name="arrow-right" class="size-3.5 flex-none" />
+                </.link>
+                <p
+                  :if={not item.met? and not precondition_linkable?(item.route, @owner?)}
+                  class="mt-1 text-[13px] leading-relaxed text-ink-muted"
+                  data-precondition-owner-only={item.key}
+                >
+                  {precondition_owner_only()}
+                </p>
+              </li>
+            </ul>
+          </div>
         </section>
 
         <section class="mt-6" aria-labelledby="evidence-heading" data-evidence>
