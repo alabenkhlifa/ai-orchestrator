@@ -20,6 +20,14 @@ config :sdd_orchestrator, SddOrchestratorWeb.Endpoint,
     ]
   ]
 
+# A started run reaches the worker only when something turns its durable
+# command into the envelope the worker executes. Production runs the real
+# channel transport against the real stored records; a command it cannot build
+# an envelope for stays queued rather than being delivered or lost.
+config :sdd_orchestrator,
+  command_transport: SddOrchestrator.Delivery.CommandTransport.Channel,
+  command_envelope_source: SddOrchestrator.Delivery.CommandTransport.StartEnvelopeSource
+
 # Do not print debug messages in production
 config :logger, level: :info
 

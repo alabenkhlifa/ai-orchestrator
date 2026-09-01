@@ -58,9 +58,10 @@ defmodule SddOrchestrator.FeatureDeliveryEndToEndTest do
   The last hop, a claimed command handed to a transport, runs on
   `SddOrchestrator.CommandTransportDouble`, the double `specs/33`'s own outbox
   tests use. The command's identity and its durable state change are real; only
-  the connected worker is stood in for. Nothing under `lib/` or `config/`
-  installs a transport, which is recorded as a finding rather than worked
-  around here.
+  the connected worker is stood in for. `Task 12` installs the real transport
+  for development and production; this scenario keeps the double so the round
+  trip stays a domain proof that needs no socket. The real hop is what the
+  slice's product proof covers.
 
   `async: false`: the worker stand-in flag, the command transport, and the
   attachment registry are all node-wide.

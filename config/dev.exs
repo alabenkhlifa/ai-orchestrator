@@ -175,6 +175,16 @@ if e2e_mode? do
          SddOrchestrator.RepositorySelection.Stub
 end
 
+# A started run reaches the worker only when something turns its durable
+# command into the envelope the worker executes. Development runs the real
+# channel transport against the real stored records, so a press here goes the
+# same way it goes in production. This is not set in `config/config.exs`
+# because the test environment installs its own transport and its own envelope
+# source per test, and inheriting these would take that choice away from it.
+config :sdd_orchestrator,
+  command_transport: SddOrchestrator.Delivery.CommandTransport.Channel,
+  command_envelope_source: SddOrchestrator.Delivery.CommandTransport.StartEnvelopeSource
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

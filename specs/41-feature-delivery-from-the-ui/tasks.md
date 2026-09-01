@@ -186,7 +186,7 @@ Traceability:
   - Proof: Focused tests cover a continuation manifest from each of the four paths carrying the profile's values, a repository-wide search finding no `:delivery_execution` and no `execution_config`, and the bootstrap's delivery scenarios still seeding a startable feature.
   - Delivered: `Delivery.ExecutionProfile` maps an authority to the profile viewer and answers the five manifest values, and the four continuation builders read it. `Start.execution_config/0` and the `:delivery_execution` key are gone.
 
-- [ ] Task 12 — Carry a started run's command to the worker in the real product.
+- [x] Task 12 — Carry a started run's command to the worker in the real product.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8
@@ -194,6 +194,7 @@ Traceability:
   - Owned surfaces: A production `CommandTransport.Channel` envelope source building one `start` envelope from a stored `RunCommand`, the `:command_envelope_source` and `:command_transport` configuration for development and production, and the refusal when a command cannot be turned into an envelope, which together establish `capability:feature-delivery-from-the-ui`.
   - Owns: none
   - Proof: Focused tests cover a stored start command becoming a valid protocol envelope, the configured transport delivering it to a worker joined on the project topic, a command that cannot build an envelope staying queued rather than lost, and no test-only module supplying either configuration key.
+  - Delivered: `CommandTransport.StartEnvelopeSource` rebuilds a start envelope from the durable command, its run, and the approved profile, and accepts it only when the manifest digest matches the stored row. Development and production now use the real channel transport. `capability:feature-delivery-from-the-ui` is established.
 
 ## Verification Gate
 

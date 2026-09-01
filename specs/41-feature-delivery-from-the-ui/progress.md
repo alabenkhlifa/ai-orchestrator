@@ -1,5 +1,17 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Task 12 complete: a press now reaches a real worker
+
+- `CommandTransport.StartEnvelopeSource` rebuilds the start envelope from the durable `RunCommand`, its run, its current attempt, and `ExecutionProfile.manifest_fields/2`, the same reader the continuation builders use. It accepts the result only when `ExecutionManifest.digest/1` equals the digest stored on the row, so a command can never be delivered against a manifest that is not the one it was created with.
+- `config/dev.exs` and `config/prod.exs` now set `:command_transport` to `CommandTransport.Channel` and `:command_envelope_source` to the new module. `config/config.exs` and `config/test.exs` are untouched, so every existing double still overrides cleanly.
+- Only `start` is built. `resume`, `retry`, and `cancel` need a prior attempt number or a reason that no record holds, so they answer `:unsupported_operation` and stay queued exactly as they do today. That is the same shape as the envelope failure below, not a new behavior.
+- A command whose envelope cannot be built stays `claimed` with `delivery_count` 0 and no failure code, and is claimable again once the lease expires. It is neither lost nor failed, which is the outbox contract.
+- The proof drives one genuine `Start.start/4`, validates the envelope through `ProtocolCodec` rather than asserting on a hand-built map, delivers it to a worker joined on the project topic through `Dispatcher.dispatch_now/1`, and asserts both configuration keys resolve to modules compiled from `lib/` rather than `test/`.
+- Under `E2E_MODE` the browser suite now also configures the real transport. No worker registers on a project topic there, so delivery still answers `:no_worker` and seeded commands stay queued, exactly as before.
+- Found and left for a separate look: `DeliveryFixtures.approve_profile!/3` does not append a second version when called again with a different `commit:`, so it does not do what its own documentation says. The envelope-failure case was proved with a superseded attempt instead.
+- Proof receipt: `Task 12` — scope `Focused` — command `mix test test/sdd_orchestrator/delivery/start_envelope_source_test.exs` — exit `0`.
+- Confirmed on the main thread by real exit status. 7 tests passed. `capability:feature-delivery-from-the-ui` is established.
+
 ### 2026-09-01 - Task 9 complete, and the hop that never reached a worker
 
 - One scenario drives creation, the four guided parts, the readiness check, `Make ready`, the preconditions, and the press through the LiveView to a delivered `RunCommand`, first as the owner and again as an invited participant. Every action succeeds for the participant exactly as for the owner, which is AC-10's whole claim.
