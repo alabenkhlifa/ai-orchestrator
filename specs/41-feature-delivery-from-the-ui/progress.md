@@ -1,5 +1,11 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Slice Verified, release gated on the missing hosted local project
+
+- Status moved to `Verified`. Every task is complete with a confirmed proof, `mix check` passed 4876 with exit `0`, the browser suite passed 153 with exit `0`, and AC-01 through AC-06 were proven by a person clicking from `/` with the worker stand-in off and no seeding.
+- The AC-07 and AC-08 product proof moved from the verification gate to the release gate rather than being left unchecked. Both criteria pass their focused and integration proofs, so verification is genuinely complete; what is blocked is only the real-worker click path, and it is blocked by a product gap this slice does not own. `Verified` is not releasable, and this slice is a plain example of the difference.
+- Release readiness is therefore blocked, and the release gate names exactly why and what would clear it.
+
 ### 2026-09-01 - Product proof: AC-01 through AC-06 clicked, AC-07 and AC-08 blocked
 
 Run against `mix phx.server` on this branch with `:device_worker_stub` off, no `/_e2e` seeding, in Chrome, with the real Mac worker app attached. The click path from `/`:
