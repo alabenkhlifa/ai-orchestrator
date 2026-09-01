@@ -118,7 +118,7 @@ Required boundaries:
 
 ### A worker's event is stored before anyone is told about it
 
-- Choice: `WorkerChannel` calls `EventIngestion.ingest/3` in its `event` intake, before it publishes and before it answers the worker, exactly as it already treats an acknowledgement through `CommandOutbox.acknowledge/2`.
+- Choice: `WorkerChannel` calls `EventIngestion.ingest/3` in its `event` intake, before it publishes and before it answers the worker, exactly as it already treats an acknowledgement through `CommandOutbox.acknowledge/2`. Only the event types `EventIngestion.handled_event_types/0` names go through it; `evidence`, `blocked`, `failed`, `canceled`, and `verification_completed` belong to other modules and publish unchanged.
 - Reason: The channel validated the event and broadcast it, and nothing stored it. `EventIngestion.ingest/3` had no caller under `lib/` at all, so a real worker's progress was announced and dropped, and the page had nothing to re-read.
 - Consequence: The worker is told `accepted` only for an event that was actually stored, and a refusal reaches the worker instead of silence. A consumer subscribing to the topic instead would leave a gap where an event is announced, the consumer restarts, and the worker has been told a stored event exists when it does not.
 

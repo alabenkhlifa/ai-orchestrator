@@ -236,7 +236,7 @@ defmodule SddOrchestrator.Worker.CommandLifecycleTest do
       assert {:ok, %{current: %{agent_thread_ref: original_thread_ref}}} = RunState.load(home)
       assert original_thread_ref == "thr_lifecycle_probe"
 
-      Repo.update!(RunAttempt.transition_changeset(start_attempt, "superseded", 1))
+      supersede!(start_attempt)
 
       {resume_command, resume_envelope, resume_attempt} =
         enqueue_attempt(project, feature, run, revision,
@@ -269,7 +269,7 @@ defmodule SddOrchestrator.Worker.CommandLifecycleTest do
       assert {:ok, %{current: %{agent_thread_ref: resumed_thread_ref}}} = RunState.load(home)
       assert resumed_thread_ref == original_thread_ref
 
-      Repo.update!(RunAttempt.transition_changeset(resume_attempt, "superseded", 1))
+      supersede!(resume_attempt)
 
       {retry_command, retry_envelope, _retry_attempt} =
         enqueue_attempt(project, feature, run, revision,
@@ -760,6 +760,16 @@ defmodule SddOrchestrator.Worker.CommandLifecycleTest do
         1_000 -> :ok
       end
     end
+  end
+
+  # The control plane stores every event the worker reports, and each stored one
+  # moves the attempt's own version. A supersession therefore reads the version
+  # the attempt holds now instead of the one it held before the run said
+  # anything.
+  defp supersede!(attempt) do
+    current = Repo.get!(RunAttempt, attempt.id)
+
+    Repo.update!(RunAttempt.transition_changeset(current, "superseded", current.state_version))
   end
 
   defp wait_until(fun, timeout \\ 3_000) do

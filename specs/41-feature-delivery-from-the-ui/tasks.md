@@ -156,14 +156,15 @@ Traceability:
   - Proof: Focused LiveView tests with a test transport cover a press creating one run and moving the feature to `In development`, an acknowledgement and a progress event rendering, a refusal for a worker detached between readout and press changing nothing and naming the reason, and a second press while the run is live refused.
   - Delivered: `Start development` renders only when every precondition is met, and the press re-asks `Start.preconditions/3` before calling `Start.start/4`, so a worker that detached since the render is refused. Every refusal reason maps to one sentence, and the five precondition reasons reuse the readout's own wording.
 
-- [ ] Task 11 — Persist a worker's event so the run's progress is durable.
+- [x] Task 11 — Persist a worker's event so the run's progress is durable.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8
   - Purpose: Make the first progress event survive being announced, so the page has something to re-read.
-  - Owned surfaces: `WorkerChannel`'s `event` intake calling `EventIngestion.ingest/3` before it publishes, the project authority resolved inside the channel, and the refusal answered to the worker when an event cannot be stored.
+  - Owned surfaces: `WorkerChannel`'s `event` intake calling `EventIngestion.ingest/3` for the event types it handles, before it publishes, the project authority resolved inside the channel, and the refusal answered to the worker when an event cannot be stored.
   - Owns: none
   - Proof: Focused tests cover a progress event from a joined worker persisted as activity and readable afterwards, the worker told accepted only when it was stored, a refused event answered as a refusal with nothing persisted, and the page re-reading it on the existing broadcast.
+  - Delivered: `WorkerChannel` stores an event `EventIngestion` owns before it publishes and before it answers the worker. Event types other slices own pass through to the broadcast exactly as before.
 
 - [ ] Task 9 — Prove participant parity, fail-closed access, and the round trip.
   - Size: Standard

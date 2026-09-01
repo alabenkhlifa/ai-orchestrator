@@ -1,5 +1,15 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Task 11 complete: the first progress event is now durable
+
+- `WorkerChannel.handle_in("event", ...)` stores the event before it publishes and before it answers the worker, so `accepted` now means stored. `reconcile` still goes through the untouched shared intake.
+- The authority is resolved inside the channel from the project id alone: a hosted project answers its owner's `PersonalWorkspace`, and anything else answers nil, which fails closed in `DeliveryStore`'s dispatch. The worker's credential is never used as an authority, because it names an execution target rather than a person.
+- Corrected against the brief, and the correction was right: `EventIngestion` handles only `progress` and `workspace_ready`. The other five protocol event types belong to `EvidenceIngestion`, `Blocking`, `Retry`, and `VerificationCompletion`. Sending them through ingestion would have refused them to the worker as `:unsupported_event` and stopped publishing them, breaking four worker suites and reaching into behavior this slice's boundary excludes. The intake gates on `EventIngestion.handled_event_types/0`, and a test pins the pass-through so it cannot be lost later.
+- Storing events made attempt `state_version` genuinely move, which broke three call sites that hardcoded `RunAttempt.transition_changeset(attempt, "superseded", 1)`. Each now reads the version the row actually holds. The supersession still has to be a legal transition; nothing was weakened.
+- Mutation check: replacing the store with a bare `:ok` fails 5 of the 6 new tests, so the persistence is what they hold.
+- Proof receipt: `Task 11` — scope `Focused` — command `mix test test/sdd_orchestrator_web/channels/worker_event_persistence_test.exs test/sdd_orchestrator_web/channels/worker_channel_test.exs test/sdd_orchestrator/privacy/delivery_routing_boundary_test.exs test/sdd_orchestrator_web/live/feature_start_development_test.exs test/sdd_orchestrator/worker/command_lifecycle_test.exs test/sdd_orchestrator/worker/agent_event_delivery_test.exs` — exit `0`.
+- Confirmed on the main thread by real exit status. 74 tests passed, and only `worker_channel.ex` changed under `lib/`.
+
 ### 2026-09-01 - Task 8 complete, and the event nobody stored
 
 - `Start development` renders only when `Start.preconditions/3` reports every item met, and carries `data-start-development`, the attribute `Task 4`'s stale-verdict test already asserts is absent.

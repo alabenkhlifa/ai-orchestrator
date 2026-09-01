@@ -454,7 +454,7 @@ defmodule SddOrchestrator.Worker.AgentEventDeliveryTest do
       # only one attempt of a run may be current at a time — so a genuine
       # second attempt first transitions the first one out of the way,
       # exactly like `CommandHandlingTest`'s own AC-07 supersession test.
-      Repo.update!(RunAttempt.transition_changeset(first_attempt, "superseded", 1))
+      supersede!(first_attempt)
 
       {second_command, second_envelope, _second_attempt} =
         enqueue_start(project, feature, run, attempt_number: 2, fence_token: 2)
@@ -594,6 +594,16 @@ defmodule SddOrchestrator.Worker.AgentEventDeliveryTest do
     socket = :sys.get_state(pid)
     Slipstream.disconnect(socket)
     :ok
+  end
+
+  # The control plane stores every event the worker reports, and each stored one
+  # moves the attempt's own version. A supersession therefore reads the version
+  # the attempt holds now instead of the one it held before the run said
+  # anything.
+  defp supersede!(attempt) do
+    current = Repo.get!(RunAttempt, attempt.id)
+
+    Repo.update!(RunAttempt.transition_changeset(current, "superseded", current.state_version))
   end
 
   defp wait_until(fun, timeout \\ 3_000) do
