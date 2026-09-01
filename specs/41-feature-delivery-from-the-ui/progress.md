@@ -1,5 +1,21 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Task 9 complete, and the hop that never reached a worker
+
+- One scenario drives creation, the four guided parts, the readiness check, `Make ready`, the preconditions, and the press through the LiveView to a delivered `RunCommand`, first as the owner and again as an invited participant. Every action succeeds for the participant exactly as for the owner, which is AC-10's whole claim.
+- The slice added seven events and no route: `validate_requirements`, `save_requirements`, `check_readiness`, `dismiss_suggestion`, `make_ready`, `back_to_draft`, and `start_development`. All seven refuse a non-member, along with the feature page, the board, and `create_feature`. Because a non-member cannot mount the page at all, the event half is driven on a page opened while the person was still a participant and then revoked. Making the revoke a no-op fails 8 of 12 tests, so the refusal is what they hold.
+- `validate_requirements` has no authorization check. It is a pure assign that stores nothing, and the test asserts the stored revisions are unchanged rather than pretending a guard exists.
+- The log review is split rather than blanket. LiveView renders `save_requirements` parameters and `create_feature`'s title at `:debug`, and Ecto logs the same values as query parameters. Production runs at `:info` and emits neither, which the review asserts. Development sets no level and prints them on the developer's own machine. Decided with the user: recorded as known and reviewed, not silenced, since raising the dev level would hide every other debug line to close a gap only reachable on the developer's own machine.
+- Proof receipt: `Task 9` — scope `Focused` — command `mix test test/sdd_orchestrator/feature_delivery_end_to_end_test.exs test/sdd_orchestrator_web/live/feature_delivery_access_test.exs` — exit `0`.
+- Confirmed on the main thread by real exit status. 15 tests passed.
+
+The last hop, found by this task and verified on the main thread.
+
+- `CommandTransport.transport/0` defaults to `CommandTransport.Unavailable`, and `:command_transport` is set only by a test double. `:command_envelope_source` has no producer under `lib/` or `config/` at all; every implementation in the repo is a test module. So a press in the real product enqueues a durable `RunCommand` whose delivery answers `{:error, :no_worker}` forever, and the slice's own product proof cannot pass.
+- `specs/33` did not defer this. It was Verified on domain proofs that install the double, the same pattern this slice was written to break.
+- Decision: `Task 12` closes it. The slice's outcome is watching a run begin on this Mac's worker, so a loop that stops one hop short does not deliver it. Twelve tasks, at the slice gate limit, with a longest dependency path of 8.
+- `Task 9` keeps proving the domain round trip through the transport double. The real path is what the Verification Gate's product proof covers.
+
 ### 2026-09-01 - Task 11 complete: the first progress event is now durable
 
 - `WorkerChannel.handle_in("event", ...)` stores the event before it publishes and before it answers the worker, so `accepted` now means stored. `reconcile` still goes through the untouched shared intake.

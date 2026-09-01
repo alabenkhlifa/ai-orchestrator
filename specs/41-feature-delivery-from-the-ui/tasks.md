@@ -22,7 +22,7 @@ Requires:
 
 Provides:
 
-- `capability:feature-delivery-from-the-ui` — ready after `Task 9`.
+- `capability:feature-delivery-from-the-ui` — ready after `Task 12`.
 
 ## Slice Size Gate
 
@@ -166,14 +166,15 @@ Traceability:
   - Proof: Focused tests cover a progress event from a joined worker persisted as activity and readable afterwards, the worker told accepted only when it was stored, a refused event answered as a refusal with nothing persisted, and the page re-reading it on the existing broadcast.
   - Delivered: `WorkerChannel` stores an event `EventIngestion` owns before it publishes and before it answers the worker. Event types other slices own pass through to the broadcast exactly as before.
 
-- [ ] Task 9 — Prove participant parity, fail-closed access, and the round trip.
+- [x] Task 9 — Prove participant parity, fail-closed access, and the round trip.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8, Task 11
   - Purpose: Show the loop works for the people `specs/07` allows and for no one else, and establish `capability:feature-delivery-from-the-ui`.
-  - Owned surfaces: The integration scenario from feature creation through requirements, readiness, ready, preconditions, and start to a delivered run command for owner and participant, the non-member fail-closed check on every new route and event, and the log review for document content, which together establish `capability:feature-delivery-from-the-ui`.
+  - Owned surfaces: The integration scenario from feature creation through requirements, readiness, ready, preconditions, and start to a delivered run command for owner and participant, the non-member fail-closed check on every new event, and the log review for document content.
   - Owns: AC-10
   - Proof: An integration scenario drives the full path as owner and again as participant to a delivered `RunCommand`, a non-member is refused on every new event and page, and a log review finds no requirements text.
+  - Delivered: One scenario drives creation, the four parts, readiness, ready, preconditions, and the press to a delivered `RunCommand` as owner and again as participant. All seven events this slice added refuse a non-member, and the log review is split so the framework's two debug renderings are named and every other entry is refuted.
 
 - [x] Task 10 — Move the four continuation manifests onto the profile and delete the configuration key.
   - Size: Standard
@@ -184,6 +185,15 @@ Traceability:
   - Owns: none
   - Proof: Focused tests cover a continuation manifest from each of the four paths carrying the profile's values, a repository-wide search finding no `:delivery_execution` and no `execution_config`, and the bootstrap's delivery scenarios still seeding a startable feature.
   - Delivered: `Delivery.ExecutionProfile` maps an authority to the profile viewer and answers the five manifest values, and the four continuation builders read it. `Start.execution_config/0` and the `:delivery_execution` key are gone.
+
+- [ ] Task 12 — Carry a started run's command to the worker in the real product.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 8
+  - Purpose: Close the last hop, so a press reaches the worker outside a test.
+  - Owned surfaces: A production `CommandTransport.Channel` envelope source building one `start` envelope from a stored `RunCommand`, the `:command_envelope_source` and `:command_transport` configuration for development and production, and the refusal when a command cannot be turned into an envelope, which together establish `capability:feature-delivery-from-the-ui`.
+  - Owns: none
+  - Proof: Focused tests cover a stored start command becoming a valid protocol envelope, the configured transport delivering it to a worker joined on the project topic, a command that cannot build an envelope staying queued rather than lost, and no test-only module supplying either configuration key.
 
 ## Verification Gate
 
