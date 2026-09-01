@@ -32,6 +32,25 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryAssessments
 
+  # Some scenarios authorize a preview path for their project, and the harness
+  # writes that into application configuration rather than a row, because the
+  # browser suite runs against one live server. Nothing restores it, so without
+  # this a scenario leaves a preview provider configured for every test that
+  # runs afterwards, and one that expects none reads `preview_not_authorized`
+  # where it should read `preview_not_configured`.
+  setup do
+    original = Application.get_env(:sdd_orchestrator, :preview)
+
+    on_exit(fn ->
+      case original do
+        nil -> Application.delete_env(:sdd_orchestrator, :preview)
+        value -> Application.put_env(:sdd_orchestrator, :preview, value)
+      end
+    end)
+
+    :ok
+  end
+
   describe "production exclusion" do
     test "answers 404 when the harness flag is off", %{conn: conn} do
       original = Application.get_env(:sdd_orchestrator, :e2e_bootstrap)
