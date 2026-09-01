@@ -198,13 +198,13 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Feature lifecycle, review, evidence, comment, and assignment tests pass unchanged.
-- [ ] Run transitions, outbox, delivery, and run-execution tests pass unchanged.
-- [ ] Readiness, promotion, precondition, and start-refusal transitions pass.
-- [ ] The log, diagnostic, and no-analytics review finds no requirements text, feature, or person.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass, with the bootstrap seeding an approved profile.
+- [x] Active-slice acceptance criteria pass.
+- [x] Feature lifecycle, review, evidence, comment, and assignment tests pass unchanged.
+- [x] Run transitions, outbox, delivery, and run-execution tests pass unchanged.
+- [x] Readiness, promotion, precondition, and start-refusal transitions pass.
+- [x] The log, diagnostic, and no-analytics review finds no requirements text, feature, or person.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass, with the bootstrap seeding an approved profile.
 - [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in, open a connected hosted project with an approved profile, create a feature, write its four parts, make it ready, confirm the boundary, press `Start development`, and see the worker acknowledge, recorded in `progress.md`.
 
 ## Blocked Decisions

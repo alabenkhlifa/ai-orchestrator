@@ -1,5 +1,20 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Slice gate green, and three regressions it caught
+
+Every automated gate line passes. The product proof is the one line still open, and it needs the paired worker app on the user's Mac.
+
+- Proof receipt: `slice` — command `env MIX_TEST_PARTITION=slice41 mix check` — exit `0`. 4876 passed, 6 properties, 1 excluded.
+- Proof receipt: `slice` — command `npm --prefix assets run test:e2e` — exit `0`. 153 passed, 2 skipped.
+
+Three defects the gate found in this slice's own work, all fixed.
+
+- The `guidance` column `Task 3` added to `readiness_assessments` had no privacy inventory record, so `DeliveryProcessingInventoryTest` refused it on both completeness checks. Every schema field must carry a purpose, and this one now says why the flag is kept: so the page can state the findings are structural only. This is exactly the check that requirement exists for.
+- The browser-suite bootstrap writes an authorized preview path into application configuration, and nothing restores it. `Task 10`'s new bootstrap test made the `review` scenario run in the unit suite for the first time, so from then on every later test saw a preview provider configured, and `ReviewHandoffTest` read `preview_not_authorized` where it expects `preview_not_configured`. Confirmed as this slice's own regression by running the same two files against `main` in a worktree, where they pass. The bootstrap test now restores the value.
+- The `project_assistant` browser scenario seeded one specification and reported its title, then created a feature, which since `Task 1` creates a specification of its own. The snapshot sorts by generated id, so which one the panel cites was a coin flip, and the browser assertion failed on the toss it lost. The scenario now reports the title the panel will actually show, so the assertion stays exact instead of being loosened to accept any specification.
+
+Environment note: `drop_test_databases.sh` does not match the `sdd_orchestrator_e2e_desktop` and `sdd_orchestrator_e2e_mobile` databases the browser suite uses. A stale one carried a half-applied migration and failed the kit scenario with a duplicate column, which reads as a product defect and is not one. They have to be dropped directly.
+
 ### 2026-09-01 - Task 12 complete: a press now reaches a real worker
 
 - `CommandTransport.StartEnvelopeSource` rebuilds the start envelope from the durable `RunCommand`, its run, its current attempt, and `ExecutionProfile.manifest_fields/2`, the same reader the continuation builders use. It accepts the result only when `ExecutionManifest.digest/1` equals the digest stored on the row, so a command can never be delivered against a manifest that is not the one it was created with.
