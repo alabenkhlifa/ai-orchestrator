@@ -883,11 +883,18 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       %{project: project, owner: owner} = member_graph()
       actor = %{account_id: owner.account.id, hosted_identity_id: nil}
 
-      current = seed_specification(owner, project)
+      seed_specification(owner, project)
 
       {:ok, feature} = Features.create(project.id, actor, %{title: "Reviewed feature"})
       feature = advance(project.id, actor, feature, "ready_for_review")
       %{run: run} = seed_evidence(owner.personal_workspace, project, feature)
+
+      # The feature carries a specification of its own, so this project holds
+      # two, and the model cites whichever the snapshot lists first. The
+      # snapshot sorts by id, which is a generated value, so the scenario
+      # reports the title the panel will actually show rather than the one it
+      # happened to seed first.
+      cited = cited_specification_title(owner.personal_workspace, project)
 
       link_assistant_connection(owner.account, params["state"] || "available")
 
@@ -898,8 +905,14 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         project_name: project.name,
         feature_id: feature.id,
         run_id: run.id,
-        specification_title: current.specification.title
+        specification_title: cited
       })
+    end
+
+    defp cited_specification_title(authority, project) do
+      {:ok, snapshot} = SpecificationStore.current_snapshot(authority, project.id)
+      [first | _rest] = snapshot.specifications
+      first.title
     end
 
     defp run(conn, _unknown_scenario, _params),
