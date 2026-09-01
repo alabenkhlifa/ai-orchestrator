@@ -698,24 +698,6 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
           actor_ref: "owner"
         )
 
-      previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
-
-      Application.put_env(:sdd_orchestrator, :delivery_execution,
-        approved_slice: "slice-07",
-        repository_base_revision: "a1b2c3d4e5f6a7b8",
-        required_checks: [],
-        agent_ref: %{"provider" => "configured-agent"},
-        worker_ref: %{"target" => "configured-worker"}
-      )
-
-      on_exit(fn ->
-        if previous do
-          Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
-        else
-          Application.delete_env(:sdd_orchestrator, :delivery_execution)
-        end
-      end)
-
       feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
       run = DeliveryFixtures.run_fixture(project, feature)
       attempt = DeliveryFixtures.attempt_fixture(run, %{fence_token: 1})
@@ -800,24 +782,6 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
 
   describe "the failed run [AC-34]" do
     setup %{project: project, account: account} do
-      previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
-
-      Application.put_env(:sdd_orchestrator, :delivery_execution,
-        approved_slice: "slice-07",
-        repository_base_revision: "a1b2c3d4e5f6a7b8",
-        required_checks: [],
-        agent_ref: %{"provider" => "configured-agent"},
-        worker_ref: %{"target" => "configured-worker"}
-      )
-
-      on_exit(fn ->
-        if previous do
-          Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
-        else
-          Application.delete_env(:sdd_orchestrator, :delivery_execution)
-        end
-      end)
-
       feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
       run = DeliveryFixtures.run_fixture(project, feature, %{initiator_account_id: account.id})
       attempt = DeliveryFixtures.attempt_fixture(run, %{fence_token: 1})
@@ -1677,7 +1641,6 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
       # verdict, so this block is configured with the same execution boundary a
       # run is started from. Without it a rejection would raise, and the screen
       # would be proved against a crash rather than against the domain.
-      configure_execution()
 
       feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
       run = proven_run(context.workspace, project, feature)
@@ -1980,7 +1943,6 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
   # sending the agent back to work against an agreement that no longer holds.
   describe "continuing rejected work [AC-26, AC-35]" do
     setup %{project: project, account: account, context: context} do
-      configure_execution()
       configure_workspace_root()
 
       feature = project |> DeliveryFixtures.feature_fixture(account) |> in_development()
@@ -2691,30 +2653,6 @@ defmodule SddOrchestratorWeb.FeatureDetailLiveTest do
     {:ok, %{applied?: true}} = ReviewHandoff.deliver(context.workspace, project.id, run.run)
 
     Repo.get!(Feature, feature.id)
-  end
-
-  # The execution boundary a continuation's manifest is built from. It is the
-  # same one the start and retry paths are proved against, because a rejection
-  # binds its next attempt to the configured branch, worker, and agent rather
-  # than to anything the reviewer wrote.
-  defp configure_execution do
-    previous = Application.get_env(:sdd_orchestrator, :delivery_execution)
-
-    Application.put_env(:sdd_orchestrator, :delivery_execution,
-      approved_slice: "slice-07",
-      repository_base_revision: "a1b2c3d4e5f6a7b8",
-      required_checks: [],
-      agent_ref: %{"provider" => "configured-agent"},
-      worker_ref: %{"target" => "configured-worker"}
-    )
-
-    on_exit(fn ->
-      if previous do
-        Application.put_env(:sdd_orchestrator, :delivery_execution, previous)
-      else
-        Application.delete_env(:sdd_orchestrator, :delivery_execution)
-      end
-    end)
   end
 
   # A declared contradiction locates the run's own workspace before it opens a

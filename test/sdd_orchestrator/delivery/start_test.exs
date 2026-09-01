@@ -21,6 +21,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
     Feature,
     LocalWorkerRunGovernance,
     ProcessingDisclosure,
+    ProtocolLimits,
     Readiness,
     RunAttempt,
     RunCommand,
@@ -35,16 +36,27 @@ defmodule SddOrchestrator.Delivery.StartTest do
   alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.ReadinessGuidanceDouble
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfile
+
   alias SddOrchestrator.SpecificationFixtures
   alias SddOrchestrator.SpecificationStore
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
+  @base_revision DeliveryFixtures.base_revision()
+
+  # The most required checks a profile may hold. A profile its owner approved
+  # must always fit in a manifest, so this is the count the manifest allows.
+  # The proposal payload takes its lists already sorted, so the index is padded
+  # to keep the written order and the sorted order the same.
+  @max_checks Enum.map(1..64, fn index ->
+                "mix test --only case_#{String.pad_leading(Integer.to_string(index), 2, "0")}"
+              end)
+
+  @second_revision String.duplicate("2", 40)
+
+  # Sorts before every generated specification id, so a test that needs the
+  # project's "first" specification to be one the feature is not linked to gets
+  # that ordering every run instead of most runs.
+  @lowest_specification_id "00000000-0000-4000-8000-000000000000"
 
   # Matches `AIRuntimeFixtures`' own default catalog/quota `retrieved_at`, so a
   # pin against a fixture-built catalog is proven against the snapshot's own
@@ -64,7 +76,6 @@ defmodule SddOrchestrator.Delivery.StartTest do
 
     for {key, value} <- [
           participation_email_delivery: ParticipationDeliveryDouble,
-          delivery_execution: @execution,
           processing_boundary: @boundary
         ] do
       previous = Application.get_env(:sdd_orchestrator, key)
@@ -82,7 +93,14 @@ defmodule SddOrchestrator.Delivery.StartTest do
     ParticipationDeliveryDouble.succeed()
 
     context = DeliveryFixtures.delivery_project_fixture()
-    feature = DeliveryFixtures.feature_fixture(context.project, context.account)
+
+    # Every guided part is written, so nothing structural blocks readiness and
+    # these tests keep proving what starting a run does rather than what an
+    # unfinished requirement stops.
+    feature =
+      DeliveryFixtures.feature_fixture(context.project, context.account, %{
+        requirements: :filled
+      })
 
     {:ok, _current} =
       SpecificationStore.create(
@@ -99,7 +117,8 @@ defmodule SddOrchestrator.Delivery.StartTest do
       feature: feature,
       owner: context.owner_actor,
       participant: context.participant_actor,
-      owner_account: context.account
+      owner_account: context.account,
+      profile: context.profile
     }
   end
 
@@ -134,11 +153,11 @@ defmodule SddOrchestrator.Delivery.StartTest do
       owner: owner,
       ready: ready
     } do
+      # The feature's own linked specification, which this project is not the
+      # only one of. Readiness judged that document, so the run has to start
+      # against the same one.
       {:ok, current} =
-        SpecificationStore.current_snapshot(authority, project.id)
-        |> then(fn {:ok, %{specifications: [entry | _]}} ->
-          SpecificationStore.get_current(authority, project.id, entry.id)
-        end)
+        SpecificationStore.get_current(authority, project.id, ready.specification_id)
 
       {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
 
@@ -147,6 +166,40 @@ defmodule SddOrchestrator.Delivery.StartTest do
       assert results.run.effective_revision_id == results.run.starting_revision_id
       assert results.run.branch == "sdd/run-#{results.run.id}"
       assert results.run.approved_slice == "slice-07"
+    end
+
+    # Readiness reads the feature's own linked specification. A project holding
+    # more than one would otherwise have a verdict about one document and a run
+    # beginning against another, which is the one thing the business rule
+    # forbids outright.
+    test "starts against the feature's own specification, not the project's first", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      {:ok, other} =
+        SpecificationStore.create(
+          authority,
+          project.id,
+          SpecificationFixtures.specification_attrs(%{id: @lowest_specification_id}),
+          actor_ref: "owner"
+        )
+
+      # The project's first specification by id is deliberately not the
+      # feature's, so binding to the wrong one is visible rather than lucky.
+      {:ok, snapshot} = SpecificationStore.current_snapshot(authority, project.id)
+      assert hd(snapshot.specifications).id == other.specification.id
+      refute other.specification.id == ready.specification_id
+
+      {:ok, own} = SpecificationStore.get_current(authority, project.id, ready.specification_id)
+
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert results.run.starting_revision_id == own.revision.id
+      assert results.run.starting_revision_digest == own.revision.content_digest
+      assert results.attempt.effective_revision_id == own.revision.id
+      refute results.run.starting_revision_id == other.revision.id
     end
 
     test "records who started it, on which branch, against which revision", %{
@@ -189,6 +242,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
       authority: authority,
       project: project,
       owner: owner,
+      profile: profile,
       ready: ready
     } do
       {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
@@ -205,15 +259,150 @@ defmodule SddOrchestrator.Delivery.StartTest do
           "starting_revision_digest" => results.run.starting_revision_digest,
           "effective_revision_id" => results.run.effective_revision_id,
           "effective_revision_digest" => results.run.effective_revision_digest,
-          "repository_base_revision" => "a1b2c3d4e5f6a7b8",
+          "repository_base_revision" => profile.base_revision,
           "target_branch" => results.run.branch,
-          "required_checks" => [%{"name" => "mix test", "command" => "mix test"}],
-          "agent_ref" => %{"provider" => "configured-agent"},
-          "worker_ref" => %{"target" => "configured-worker"},
+          "required_checks" =>
+            Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1}),
+          "repository_root" => profile.root,
+          "commands" => profile.commands,
+          "allowed_scope" => profile.allowed_scope,
+          "agent_ref" => %{},
+          "worker_ref" => %{},
           "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
         })
 
       assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
+    end
+  end
+
+  describe "the manifest comes from the approved execution profile [AC-09]" do
+    setup ctx, do: %{ready: prepare(ctx)}
+
+    test "carries the profile's base revision, required checks, root, commands, and scope", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      profile: profile,
+      ready: ready
+    } do
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      manifest = started_manifest(results, project, ready, profile)
+
+      assert manifest.repository_base_revision == profile.base_revision
+      assert manifest.repository_root == profile.root
+      assert manifest.commands == profile.commands
+      assert manifest.allowed_scope == profile.allowed_scope
+
+      assert manifest.required_checks ==
+               Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1})
+
+      # The attempt snapshots the same contract the manifest was digested from.
+      assert results.attempt.required_checks == manifest.required_checks
+      assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
+    end
+
+    test "refuses a project with no approved profile and creates nothing", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      ready: ready
+    } do
+      {_count, nil} = Repo.delete_all(RepositoryExecutionProfile)
+
+      assert {:error, :no_execution_profile} =
+               Start.start(authority, owner, %{project: project, feature: ready})
+
+      assert Repo.aggregate(AgentRun, :count) == 0
+      assert Repo.aggregate(RunAttempt, :count) == 0
+      assert Repo.aggregate(RunCommand, :count) == 0
+      assert Repo.get!(Feature, ready.id).lifecycle_column == "ready_for_development"
+    end
+
+    test "a profile heavier than a reference value's byte cap still yields a valid manifest", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      profile: profile,
+      ready: ready
+    } do
+      max_reference_bytes = ProtocolLimits.get(:max_reference_bytes)
+
+      assert byte_size(Enum.join(profile.commands)) > max_reference_bytes
+      assert byte_size(Enum.join(profile.allowed_scope)) > max_reference_bytes
+      assert Enum.any?(profile.commands, &(byte_size(&1) > max_reference_bytes))
+
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      manifest = started_manifest(results, project, ready, profile)
+
+      # A real manifest: it survives its own validation and its own encoding,
+      # neither of which a reference value that size would have survived.
+      assert {:ok, ^manifest} = manifest |> ExecutionManifest.to_map() |> ExecutionManifest.new()
+      assert {:ok, encoded} = ExecutionManifest.encode(manifest)
+      assert {:ok, ^manifest} = ExecutionManifest.decode(encoded)
+      assert manifest.commands == profile.commands
+      assert manifest.allowed_scope == profile.allowed_scope
+    end
+
+    test "carries every required check of a profile approved with the most it may hold", %{
+      authority: authority,
+      project: project,
+      owner: owner,
+      owner_account: owner_account,
+      ready: ready
+    } do
+      fields = %{
+        DeliveryFixtures.profile_fields()
+        | commands: @max_checks,
+          required_checks: @max_checks
+      }
+
+      profile =
+        DeliveryFixtures.approve_profile!(owner_account.id, project,
+          fields: fields,
+          commit: @second_revision,
+          now: DateTime.add(DateTime.utc_now(), 3_600, :second)
+        )
+
+      # The newest approved version is the one in force.
+      assert profile.version == 2
+      assert length(profile.required_checks) == 64
+
+      {:ok, results} = Start.start(authority, owner, %{project: project, feature: ready})
+
+      manifest = started_manifest(results, project, ready, profile)
+
+      assert length(manifest.required_checks) == 64
+      assert manifest.repository_base_revision == @second_revision
+      assert {:ok, encoded} = ExecutionManifest.encode(manifest)
+      assert {:ok, ^manifest} = ExecutionManifest.decode(encoded)
+    end
+
+    test "an absent root, commands, and scope still decode as an empty manifest value" do
+      attrs = %{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => Ecto.UUID.generate(),
+        "feature_id" => Ecto.UUID.generate(),
+        "run_id" => Ecto.UUID.generate(),
+        "attempt_number" => 1,
+        "approved_slice" => "slice-07",
+        "starting_revision_id" => Ecto.UUID.generate(),
+        "starting_revision_digest" => String.duplicate("c", 64),
+        "effective_revision_id" => Ecto.UUID.generate(),
+        "effective_revision_digest" => String.duplicate("c", 64),
+        "repository_base_revision" => @base_revision,
+        "target_branch" => "sdd/run-1",
+        "required_checks" => [],
+        "agent_ref" => %{},
+        "worker_ref" => %{},
+        "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
+      }
+
+      assert {:ok, manifest} = ExecutionManifest.from_map(attrs)
+      assert manifest.repository_root == ""
+      assert manifest.commands == []
+      assert manifest.allowed_scope == []
     end
   end
 
@@ -292,16 +481,16 @@ defmodule SddOrchestrator.Delivery.StartTest do
     } do
       ready = prepare(%{authority: authority, project: project, feature: feature, owner: owner})
 
-      {:ok, %{specifications: [entry | _rest]}} =
-        SpecificationStore.current_snapshot(authority, project.id)
-
-      {:ok, current} = SpecificationStore.get_current(authority, project.id, entry.id)
+      # The feature's own specification is the one readiness judged, so it is
+      # the one an edit has to move for the verdict to go stale.
+      {:ok, current} =
+        SpecificationStore.get_current(authority, project.id, feature.specification_id)
 
       {:ok, _appended} =
         SpecificationStore.append_revision(
           authority,
           project.id,
-          entry.id,
+          feature.specification_id,
           current.revision.id,
           %{
             revision_id: Ecto.UUID.generate(),
@@ -714,7 +903,7 @@ defmodule SddOrchestrator.Delivery.StartTest do
   end
 
   describe "availability" do
-    test "is false until ready, confirmed, and in the right column", %{
+    test "is false until ready, confirmed, in the right column, and worker-connected", %{
       authority: authority,
       project: project,
       feature: feature,
@@ -723,6 +912,12 @@ defmodule SddOrchestrator.Delivery.StartTest do
       refute Start.available?(authority, owner, %{project: project, feature: feature})
 
       ready = prepare(%{authority: authority, project: project, feature: feature, owner: owner})
+
+      # A ready, confirmed feature is still not startable while no worker is
+      # connected to run it. `specs/41` Task 6 covers that item on its own.
+      refute Start.available?(authority, owner, %{project: project, feature: ready})
+
+      bind_local_worker(project)
 
       assert Start.available?(authority, owner, %{project: project, feature: ready})
     end
@@ -786,6 +981,39 @@ defmodule SddOrchestrator.Delivery.StartTest do
     |> Repo.insert!()
 
     worker
+  end
+
+  # The started run's own manifest. `Start` stores only its digest, so the
+  # manifest is rebuilt from the approved profile and is accepted only when its
+  # digest is the one the attempt recorded. The digest covers every field, so a
+  # match can only happen if the run really carried these values.
+  defp started_manifest(results, project, feature, profile) do
+    {:ok, manifest} =
+      ExecutionManifest.new(%{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => project.id,
+        "feature_id" => feature.id,
+        "run_id" => results.run.id,
+        "attempt_number" => 1,
+        "approved_slice" => "slice-07",
+        "starting_revision_id" => results.run.starting_revision_id,
+        "starting_revision_digest" => results.run.starting_revision_digest,
+        "effective_revision_id" => results.run.effective_revision_id,
+        "effective_revision_digest" => results.run.effective_revision_digest,
+        "repository_base_revision" => profile.base_revision,
+        "target_branch" => results.run.branch,
+        "required_checks" => Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1}),
+        "repository_root" => profile.root,
+        "commands" => profile.commands,
+        "allowed_scope" => profile.allowed_scope,
+        "agent_ref" => %{},
+        "worker_ref" => %{},
+        "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
+      })
+
+    assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
+
+    manifest
   end
 
   defp blocker do

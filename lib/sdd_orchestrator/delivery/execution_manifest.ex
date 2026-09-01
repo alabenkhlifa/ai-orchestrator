@@ -5,12 +5,26 @@ defmodule SddOrchestrator.Delivery.ExecutionManifest do
   A manifest binds one attempt to the exact starting and effective
   specification revisions, the approved slice, the repository base revision,
   the isolated target branch, the snapshotted required-check contract, the
-  configured agent and worker references, and the continuation reason.
+  approved repository root, commands, and allowed scope, the configured agent
+  and worker references, and the continuation reason.
 
   It carries identities, digests, and opaque configured references only.
   Specification documents, repository content, and credentials stay outside
   the manifest so the same value can travel over the worker channel and be
-  digested for replay comparison.
+  digested for replay comparison. The repository root is the one path-like
+  value, and it is the root the repository's owner approved.
+
+  `repository_root`, `commands`, and `allowed_scope` are their own typed
+  fields rather than entries in `agent_ref` or `worker_ref`, because those two
+  references are flat maps capped at `ProtocolLimits.max_reference_bytes` per
+  value while an approved profile holds far larger lists. They default to
+  empty so a manifest built by a path that has not yet moved onto the approved
+  profile is still a valid manifest.
+
+  Those three fields arrived with `manifest_version` 2. The version was raised
+  because a manifest carries no unknown field: a worker that only knows
+  version 1 would otherwise refuse the new one as malformed. It refuses on the
+  version instead, which is the answer that tells the reader what is wrong.
   """
 
   alias SddOrchestrator.Delivery.{
@@ -20,13 +34,18 @@ defmodule SddOrchestrator.Delivery.ExecutionManifest do
     WorkerProtocol
   }
 
-  @manifest_version 1
+  @manifest_version 2
   @continuation_reasons ~w(automatic_retry blocking_answer initial manual_retry review_feedback)
   @branch_pattern ~r{\A[A-Za-z0-9][A-Za-z0-9._/-]*\z}
   @digest_pattern ~r/\A[0-9a-f]{64}\z/
   @revision_pattern ~r/\A[0-9a-f]{7,64}\z/
 
-  @enforce_keys [
+  # The approved profile's own limits, mirrored here so a legitimate profile
+  # can never produce a manifest this module refuses.
+  @max_profile_entries 64
+  @max_profile_entry_bytes 1_024
+
+  @required_keys [
     :manifest_version,
     :project_id,
     :feature_id,
@@ -45,7 +64,16 @@ defmodule SddOrchestrator.Delivery.ExecutionManifest do
     :continuation
   ]
 
-  defstruct @enforce_keys
+  @optional_defaults [repository_root: "", commands: [], allowed_scope: []]
+
+  @field_names Enum.map(
+                 @required_keys ++ Keyword.keys(@optional_defaults),
+                 &Atom.to_string/1
+               )
+
+  @enforce_keys @required_keys
+
+  defstruct @required_keys ++ @optional_defaults
 
   @type required_check :: %{required(String.t()) => String.t()}
   @type reference_map :: %{required(String.t()) => String.t()}
@@ -64,6 +92,9 @@ defmodule SddOrchestrator.Delivery.ExecutionManifest do
           repository_base_revision: String.t(),
           target_branch: String.t(),
           required_checks: [required_check()],
+          repository_root: String.t(),
+          commands: [String.t()],
+          allowed_scope: [String.t()],
           agent_ref: reference_map(),
           worker_ref: reference_map(),
           continuation: map()
@@ -145,24 +176,35 @@ defmodule SddOrchestrator.Delivery.ExecutionManifest do
   def decode(_encoded), do: {:error, :invalid_manifest}
 
   defp fetch_fields(attrs) do
-    Enum.reduce_while(@enforce_keys, {:ok, %{}}, fn key, {:ok, acc} ->
+    with :ok <- reject_unknown_fields(attrs),
+         {:ok, required} <- fetch_required_fields(attrs) do
+      {:ok, put_optional_fields(attrs, required)}
+    end
+  end
+
+  defp reject_unknown_fields(attrs) do
+    if Enum.all?(Map.keys(attrs), &(&1 in @field_names)) do
+      :ok
+    else
+      {:error, :unknown_manifest_field}
+    end
+  end
+
+  defp fetch_required_fields(attrs) do
+    Enum.reduce_while(@required_keys, {:ok, %{}}, fn key, {:ok, acc} ->
       case Map.fetch(attrs, Atom.to_string(key)) do
         {:ok, value} -> {:cont, {:ok, Map.put(acc, key, value)}}
         :error -> {:halt, {:error, :missing_manifest_field}}
       end
     end)
-    |> case do
-      {:ok, fields} -> reject_unknown_fields(attrs, fields)
-      {:error, _reason} = error -> error
-    end
   end
 
-  defp reject_unknown_fields(attrs, fields) do
-    if map_size(attrs) == length(@enforce_keys) do
-      {:ok, fields}
-    else
-      {:error, :unknown_manifest_field}
-    end
+  # A manifest written before these fields existed still decodes: an absent
+  # field takes its empty default rather than failing the whole manifest.
+  defp put_optional_fields(attrs, fields) do
+    Enum.reduce(@optional_defaults, fields, fn {key, default}, acc ->
+      Map.put(acc, key, Map.get(attrs, Atom.to_string(key), default))
+    end)
   end
 
   defp validate_fields(fields) do
@@ -173,6 +215,9 @@ defmodule SddOrchestrator.Delivery.ExecutionManifest do
          :ok <- validate_revisions(fields),
          :ok <- validate_branch(fields.target_branch),
          :ok <- validate_required_checks(fields.required_checks),
+         :ok <- validate_repository_root(fields.repository_root),
+         :ok <- validate_profile_list(fields.commands, :invalid_commands),
+         :ok <- validate_profile_list(fields.allowed_scope, :invalid_allowed_scope),
          :ok <- validate_reference(fields.agent_ref, :invalid_agent_ref),
          :ok <- validate_reference(fields.worker_ref, :invalid_worker_ref) do
       validate_continuation(fields.continuation, fields.attempt_number)
@@ -275,6 +320,26 @@ defmodule SddOrchestrator.Delivery.ExecutionManifest do
       do: :ok,
       else: {:error, :duplicate_required_check}
   end
+
+  # The root is allowed to be empty, unlike every other text field, because
+  # empty means the builder carried no approved profile rather than an owner
+  # approving a blank root.
+  defp validate_repository_root(value) do
+    if is_binary(value) and byte_size(value) <= @max_profile_entry_bytes,
+      do: :ok,
+      else: {:error, :invalid_repository_root}
+  end
+
+  defp validate_profile_list(values, error) when is_list(values) do
+    if length(values) <= @max_profile_entries and Enum.all?(values, &profile_entry?/1),
+      do: :ok,
+      else: {:error, error}
+  end
+
+  defp validate_profile_list(_values, error), do: {:error, error}
+
+  defp profile_entry?(value),
+    do: is_binary(value) and value != "" and byte_size(value) <= @max_profile_entry_bytes
 
   defp validate_reference(reference, error) when is_map(reference) do
     max_bytes = ProtocolLimits.get(:max_reference_bytes)

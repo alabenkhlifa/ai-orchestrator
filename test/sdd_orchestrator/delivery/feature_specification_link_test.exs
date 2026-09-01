@@ -141,8 +141,12 @@ defmodule SddOrchestrator.Delivery.FeatureSpecificationLinkTest do
 
       assert resolved.id == first_feature.id
 
+      # The refused link left the second feature pointing where it already
+      # pointed: at the specification created with it, never at the first
+      # feature's.
       unchanged = Repo.get!(Feature, second_feature.id)
-      assert is_nil(unchanged.specification_id)
+      assert unchanged.specification_id == second_feature.specification_id
+      refute unchanged.specification_id == current.specification.id
     end
   end
 
@@ -173,8 +177,11 @@ defmodule SddOrchestrator.Delivery.FeatureSpecificationLinkTest do
                  current.specification.id
                )
 
+      # The refused link left the feature pointing at the specification created
+      # with it, never at the one the participant tried to link.
       unchanged = Repo.get!(Feature, feature.id)
-      assert is_nil(unchanged.specification_id)
+      assert unchanged.specification_id == feature.specification_id
+      refute unchanged.specification_id == current.specification.id
     end
 
     test "a non-owner participant is refused unlink_specification/3, and the feature is unchanged",

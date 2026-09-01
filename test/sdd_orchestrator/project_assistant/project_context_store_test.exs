@@ -66,13 +66,14 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectContextStoreTest do
                "lifecycle_state" => project.lifecycle_state
              }
 
-      assert content["specifications"] == [
+      # The feature carries a specification of its own, so the assertion names
+      # the one under test instead of assuming it is the only one.
+      assert Enum.find(content["specifications"], &(&1["id"] == current.specification.id)) ==
                %{
                  "id" => current.specification.id,
                  "title" => "Read-only project assistant",
                  "revision_id" => current.revision.id
                }
-             ]
 
       assert Map.keys(content["board"]) |> Enum.sort() == Enum.sort(Feature.columns())
       [board_entry] = content["board"]["draft"]
@@ -130,13 +131,17 @@ defmodule SddOrchestrator.ProjectAssistant.ProjectContextStoreTest do
 
       assert {:ok, projection} = ProjectContextStore.refresh(workspace, project.id, owner_actor)
 
-      assert projection.content["specifications"] == [
+      specifications = projection.content["specifications"]
+
+      assert Enum.find(specifications, &(&1["id"] == current.specification.id)) ==
                %{
                  "id" => current.specification.id,
                  "title" => current.specification.title,
                  "revision_id" => updated.revision.id
                }
-             ]
+
+      # One entry per specification: the superseded revision adds no second row.
+      assert length(specifications) == length(Enum.uniq_by(specifications, & &1["id"]))
 
       refute updated.revision.id == current.revision.id
     end

@@ -24,9 +24,10 @@ defmodule SddOrchestrator.Delivery.ReviewContinuation do
   because that is what lets an accepted answer resume this run rather than
   needing a new one.
 
-  Nothing a reviewer writes reaches the manifest. The branch, the worker, and the
-  agent are read from the run and the configured execution boundary, so feedback
-  cannot steer the next attempt onto a different branch or a different worker.
+  Nothing a reviewer writes reaches the manifest. The branch is read from the
+  run and the execution contract from the profile the repository's owner
+  approved, so feedback cannot steer the next attempt onto a different branch,
+  a different worker, or a different set of checks.
   """
 
   alias SddOrchestrator.Delivery.{
@@ -34,9 +35,9 @@ defmodule SddOrchestrator.Delivery.ReviewContinuation do
     BlockingQuestion,
     DeliveryStore,
     ExecutionManifest,
+    ExecutionProfile,
     Feature,
-    RunAttempt,
-    Start
+    RunAttempt
   }
 
   alias SddOrchestrator.Delivery.Worker.Workspace
@@ -61,6 +62,7 @@ defmodule SddOrchestrator.Delivery.ReviewContinuation do
   @type error ::
           :question_already_open
           | :run_not_continuable
+          | :no_execution_profile
           | Workspace.error()
           | atom()
 
@@ -94,7 +96,7 @@ defmodule SddOrchestrator.Delivery.ReviewContinuation do
   def plan(authority, request) do
     request = Map.put_new(request, :opts, [])
 
-    with {:ok, manifest} <- manifest(request.run, request.attempt, request.opts) do
+    with {:ok, manifest} <- manifest(authority, request.run, request.attempt, request.opts) do
       if request.contradicts_agreement? do
         block(authority, request, manifest)
       else
@@ -110,32 +112,32 @@ defmodule SddOrchestrator.Delivery.ReviewContinuation do
   what it says about the branch, the continuation reason, and the attempt it
   follows has to be provable without reaching into a commit.
   """
-  @spec manifest(AgentRun.t(), RunAttempt.t(), keyword()) ::
+  @spec manifest(authority(), AgentRun.t(), RunAttempt.t(), keyword()) ::
           {:ok, ExecutionManifest.t()} | {:error, atom()}
-  def manifest(%AgentRun{} = run, %RunAttempt{} = attempt, opts \\ []) do
-    config = Keyword.merge(Start.execution_config(), opts)
-
-    ExecutionManifest.new(%{
-      "manifest_version" => ExecutionManifest.manifest_version(),
-      "project_id" => run.project_id,
-      "feature_id" => run.feature_id,
-      "run_id" => run.id,
-      "attempt_number" => next_attempt_number(run, attempt),
-      "approved_slice" => run.approved_slice,
-      "starting_revision_id" => run.starting_revision_id,
-      "starting_revision_digest" => run.starting_revision_digest,
-      "effective_revision_id" => run.effective_revision_id,
-      "effective_revision_digest" => run.effective_revision_digest,
-      "repository_base_revision" => Keyword.fetch!(config, :repository_base_revision),
-      "target_branch" => run.branch,
-      "required_checks" => Keyword.get(config, :required_checks, []),
-      "agent_ref" => Keyword.get(config, :agent_ref, %{}),
-      "worker_ref" => Keyword.get(config, :worker_ref, %{}),
-      "continuation" => %{
-        "reason" => @reason,
-        "prior_attempt_number" => attempt.attempt_number
+  def manifest(authority, %AgentRun{} = run, %RunAttempt{} = attempt, opts \\ []) do
+    with {:ok, profile_fields} <- ExecutionProfile.manifest_fields(authority, run.project_id) do
+      %{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => run.project_id,
+        "feature_id" => run.feature_id,
+        "run_id" => run.id,
+        "attempt_number" => next_attempt_number(run, attempt),
+        "approved_slice" => run.approved_slice,
+        "starting_revision_id" => run.starting_revision_id,
+        "starting_revision_digest" => run.starting_revision_digest,
+        "effective_revision_id" => run.effective_revision_id,
+        "effective_revision_digest" => run.effective_revision_digest,
+        "target_branch" => run.branch,
+        "agent_ref" => Keyword.get(opts, :agent_ref, %{}),
+        "worker_ref" => Keyword.get(opts, :worker_ref, %{}),
+        "continuation" => %{
+          "reason" => @reason,
+          "prior_attempt_number" => attempt.attempt_number
+        }
       }
-    })
+      |> Map.merge(profile_fields)
+      |> ExecutionManifest.new()
+    end
   end
 
   # The run's own ordering wins over the attempt it was read from, so a stale

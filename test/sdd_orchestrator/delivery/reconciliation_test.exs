@@ -29,6 +29,7 @@ defmodule SddOrchestrator.Delivery.ReconciliationTest do
   alias SddOrchestrator.Delivery.{
     CommandOutbox,
     DeliveryStore,
+    ExecutionManifest,
     Feature,
     Reconciliation,
     Retry,
@@ -42,14 +43,6 @@ defmodule SddOrchestrator.Delivery.ReconciliationTest do
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.ParticipationDeliveryDouble
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
-
   # A fixed clock: the lease boundary is the whole subject here, so it must not
   # depend on how long a test takes to run.
   @now ~U[2026-07-29 09:00:00Z]
@@ -58,8 +51,7 @@ defmodule SddOrchestrator.Delivery.ReconciliationTest do
 
   setup context do
     for {key, value} <- [
-          participation_email_delivery: ParticipationDeliveryDouble,
-          delivery_execution: @execution
+          participation_email_delivery: ParticipationDeliveryDouble
         ] do
       previous = Application.get_env(:sdd_orchestrator, key)
       Application.put_env(:sdd_orchestrator, key, value)
@@ -107,7 +99,8 @@ defmodule SddOrchestrator.Delivery.ReconciliationTest do
       hosted: hosted,
       project: hosted.project,
       feature: feature,
-      account: hosted.account
+      account: hosted.account,
+      profile: hosted.profile
     }
   end
 
@@ -410,6 +403,33 @@ defmodule SddOrchestrator.Delivery.ReconciliationTest do
       assert run.branch == ctx.run.branch
       assert run.current_attempt_number == 2
       assert run.state == "running"
+    end
+
+    test "binds the scheduled retry to the approved execution profile", ctx do
+      snapshot = snapshot(ctx, %{"state" => "stopped"})
+
+      assert {:ok, [decision]} =
+               Reconciliation.reconcile(ctx.authority, ctx.project.id, snapshot,
+                 now: later(),
+                 jitter: 0.0
+               )
+
+      next = decision.results.attempt
+
+      # The digest covers every field, so an equal digest is proof that the
+      # reconnecting worker's next attempt carries the profile's base revision,
+      # checks, root, commands, and scope rather than anything it reported.
+      expected =
+        DeliveryFixtures.continuation_manifest(ctx.run, next, ctx.profile, %{
+          "reason" => "automatic_retry",
+          "prior_attempt_number" => ctx.attempt.attempt_number
+        })
+
+      assert ExecutionManifest.digest(expected) == next.manifest_digest
+      assert decision.results.command.manifest_digest == next.manifest_digest
+
+      assert next.required_checks ==
+               DeliveryFixtures.required_check_contract(ctx.profile.required_checks)
     end
 
     test "ends the current attempt in the commit that creates its successor", ctx do

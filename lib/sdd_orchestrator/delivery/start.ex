@@ -16,7 +16,9 @@ defmodule SddOrchestrator.Delivery.Start do
   storage authority.
   """
 
+  alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
   alias SddOrchestrator.AIRuntime.{ModelCatalogs, PersonalConnections, RuntimeSessions}
+  alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.LocalWorker
 
   alias SddOrchestrator.Delivery.{
@@ -32,10 +34,28 @@ defmodule SddOrchestrator.Delivery.Start do
 
   alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryAssessments
   alias SddOrchestrator.SpecificationStore
 
   @type authority :: Readiness.authority()
   @type actor :: ParticipantGuard.actor()
+
+  @type precondition_key ::
+          :ready | :boundary | :execution_profile | :worker | :ai_connection
+
+  @type precondition_route ::
+          :readiness
+          | :processing_boundary
+          | :repository_profile
+          | :project_connection
+          | :ai_connections
+
+  @typedoc "One start precondition, its state right now, and where it is resolved."
+  @type precondition :: %{
+          key: precondition_key(),
+          met?: boolean(),
+          route: precondition_route()
+        }
 
   @type error ::
           :unauthorized
@@ -43,9 +63,21 @@ defmodule SddOrchestrator.Delivery.Start do
           | :boundary_unconfirmed
           | :already_started
           | :no_specification
+          | :no_execution_profile
           | :invalid_manifest
           | {:ai_connection_selection_required, [Ecto.UUID.t()]}
           | term()
+
+  # Every start precondition, in the order a person meets them, each with the
+  # page that resolves it. The list is the readout's order, so a reader works
+  # down it instead of hunting for the one item that stopped them.
+  @precondition_routes [
+    ready: :readiness,
+    boundary: :processing_boundary,
+    execution_profile: :repository_profile,
+    worker: :project_connection,
+    ai_connection: :ai_connections
+  ]
 
   @doc """
   Starts development for the acting participant.
@@ -59,9 +91,9 @@ defmodule SddOrchestrator.Delivery.Start do
     with {:ok, member} <- ParticipantGuard.authorize_action(project.id, actor, :start_run),
          :ok <- boundary_confirmed(project.id, actor),
          :ok <- ready?(authority, project.id, actor, feature.id),
-         {:ok, current} <- current_revision(authority, project.id),
+         {:ok, current} <- current_revision(authority, project.id, feature),
          :ok <- not_already_started(authority, project, feature),
-         {:ok, manifest} <- manifest_for(project, feature, current, opts),
+         {:ok, manifest} <- manifest_for(authority, project, feature, current, opts),
          {:ok, ai_connection_id} <- resolve_ai_connection(project.id, member.account_id, opts),
          {:ok, session_id} <- pin_governed_session(manifest, ai_connection_id, member, opts),
          {:ok, results} <- commit(authority, project, feature, member, manifest, opts) do
@@ -71,22 +103,78 @@ defmodule SddOrchestrator.Delivery.Start do
   end
 
   @doc """
-  Reports whether the start action may be offered right now.
+  The ordered start preconditions for one feature, each met or unmet.
 
-  The screen uses this to decide whether to show the button at all; `start/4`
-  revalidates every part of it, because the answer can change between render
-  and press.
+  A person who cannot start has to see why and where to go, so this answers
+  every item rather than one verdict. The screen renders the list and offers
+  the action only when all of it is met, and `available?/3` asks this same list
+  the same question, so the readout and the check cannot disagree.
+
+  Nothing here is stored. It describes this instant, and `start/4` revalidates
+  every part of it, because the answer can change between render and press.
   """
-  @spec available?(authority(), actor(), map()) :: boolean()
-  def available?(authority, actor, %{project: project, feature: feature}) do
-    feature.lifecycle_column == "ready_for_development" and
-      Readiness.start_available?(authority, project.id, actor, feature.id) and
-      ProcessingDisclosure.confirmed?(project.id, actor)
+  @spec preconditions(authority(), actor(), map()) :: [precondition()]
+  def preconditions(authority, actor, %{project: project, feature: feature}) do
+    met = met_preconditions(authority, actor, project, feature)
+
+    Enum.map(@precondition_routes, fn {key, route} ->
+      %{key: key, met?: Map.fetch!(met, key), route: route}
+    end)
   end
 
-  @doc "The configured execution references bound into every manifest."
-  @spec execution_config() :: keyword()
-  def execution_config, do: Application.get_env(:sdd_orchestrator, :delivery_execution, [])
+  @doc """
+  Reports whether the start action may be offered right now.
+
+  Exactly `preconditions/3` with every item met, so the list a person reads and
+  the answer the screen acts on are one thing.
+  """
+  @spec available?(authority(), actor(), map()) :: boolean()
+  def available?(authority, actor, subject),
+    do: authority |> preconditions(actor, subject) |> Enum.all?(& &1.met?)
+
+  # Someone who may not start this feature is told nothing is met, rather than
+  # which parts of a project they are not in are already in order.
+  defp met_preconditions(authority, actor, project, feature) do
+    case ParticipantGuard.authorize_action(project.id, actor, :start_run) do
+      {:ok, member} ->
+        checked_preconditions(authority, actor, project, feature, member)
+
+      {:error, _unauthorized} ->
+        Map.new(@precondition_routes, fn {key, _route} -> {key, false} end)
+    end
+  end
+
+  # Each item is the same question `start/4` asks, asked through the same
+  # helper, so an item can never report a state the press would then refuse.
+  defp checked_preconditions(authority, actor, project, feature, member) do
+    %{
+      ready:
+        feature.lifecycle_column == "ready_for_development" and
+          Readiness.start_available?(authority, project.id, actor, feature.id),
+      boundary: ProcessingDisclosure.confirmed?(project.id, actor),
+      execution_profile: approved_profile?(authority, project.id),
+      worker: worker_attached?(project.id),
+      ai_connection: match?({:ok, _id}, resolve_ai_connection(project.id, member.account_id, []))
+    }
+  end
+
+  defp approved_profile?(authority, project_id) do
+    match?(
+      {:ok, _profile},
+      RepositoryAssessments.approved_profile(profile_viewer(authority), project_id)
+    )
+  end
+
+  # The binding names the machine this project's work runs on, and
+  # `Devices.worker_available?/1` is the one definition of whether that
+  # machine's worker is attached to the control plane right now. A project with
+  # no binding has no worker to be attached, so it is not met.
+  defp worker_attached?(project_id) do
+    case bound_local_worker(project_id) do
+      nil -> false
+      worker -> Devices.worker_available?(worker)
+    end
+  end
 
   defp commit(authority, project, feature, member, manifest, opts) do
     digest = ExecutionManifest.digest(manifest)
@@ -167,35 +255,57 @@ defmodule SddOrchestrator.Delivery.Start do
     ]
   end
 
-  defp manifest_for(project, feature, current, opts) do
-    config = Keyword.merge(execution_config(), opts)
+  # The repository's own base revision, checks, root, commands, and scope come
+  # from the version of the execution profile its owner approved. Nothing here
+  # falls back to configuration, so a run can only ever execute the contract a
+  # person actually approved for that repository.
+  defp manifest_for(authority, project, feature, current, opts) do
     run_id = Keyword.get(opts, :run_id, Ecto.UUID.generate())
 
-    ExecutionManifest.new(%{
-      "manifest_version" => ExecutionManifest.manifest_version(),
-      "project_id" => project.id,
-      "feature_id" => feature.id,
-      "run_id" => run_id,
-      "attempt_number" => 1,
-      "approved_slice" => Keyword.get(config, :approved_slice, "slice-07"),
-      "starting_revision_id" => revision_id(current),
-      "starting_revision_digest" => revision_digest(current),
-      "effective_revision_id" => revision_id(current),
-      "effective_revision_digest" => revision_digest(current),
-      "repository_base_revision" => Keyword.fetch!(config, :repository_base_revision),
-      "target_branch" => branch_for(run_id, config),
-      "required_checks" => Keyword.get(config, :required_checks, []),
-      "agent_ref" => Keyword.get(config, :agent_ref, %{}),
-      "worker_ref" => Keyword.get(config, :worker_ref, %{}),
-      "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
-    })
+    with {:ok, profile} <-
+           RepositoryAssessments.approved_profile(profile_viewer(authority), project.id) do
+      ExecutionManifest.new(%{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => project.id,
+        "feature_id" => feature.id,
+        "run_id" => run_id,
+        "attempt_number" => 1,
+        "approved_slice" => Keyword.get(opts, :approved_slice, "slice-07"),
+        "starting_revision_id" => revision_id(current),
+        "starting_revision_digest" => revision_digest(current),
+        "effective_revision_id" => revision_id(current),
+        "effective_revision_digest" => revision_digest(current),
+        "repository_base_revision" => profile.base_revision,
+        "target_branch" => branch_for(run_id, opts),
+        "required_checks" => required_checks(profile),
+        "repository_root" => profile.root,
+        "commands" => profile.commands,
+        "allowed_scope" => profile.allowed_scope,
+        "agent_ref" => Keyword.get(opts, :agent_ref, %{}),
+        "worker_ref" => Keyword.get(opts, :worker_ref, %{}),
+        "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
+      })
+    end
+  end
+
+  # The profile store answers the owner's approved versions, so the viewer is
+  # built from the project's storage authority rather than from the person who
+  # pressed start. Their right to press it was already checked.
+  defp profile_viewer(%PersonalWorkspace{account_id: account_id}), do: {:hosted, account_id}
+  defp profile_viewer(%DeviceWorkspace{} = workspace), do: {:device, workspace}
+
+  # A profile names its required checks by the command that runs them, and
+  # those names are already unique, so the manifest's named-check contract
+  # carries the command as both the name and the command.
+  defp required_checks(profile) do
+    Enum.map(profile.required_checks, &%{"name" => &1, "command" => &1})
   end
 
   # One run owns one branch for its whole lifetime, so the branch name is
   # derived from the run identity rather than from the feature title, which a
   # person can change.
-  defp branch_for(run_id, config) do
-    prefix = Keyword.get(config, :branch_prefix, "sdd")
+  defp branch_for(run_id, opts) do
+    prefix = Keyword.get(opts, :branch_prefix, "sdd")
 
     "#{prefix}/run-#{run_id}"
   end
@@ -349,15 +459,19 @@ defmodule SddOrchestrator.Delivery.Start do
     :ok
   end
 
-  defp current_revision(authority, project_id) do
-    with {:ok, %{specifications: [entry | _rest]}} <-
-           SpecificationStore.current_snapshot(authority, project_id),
-         {:ok, current} <- SpecificationStore.get_current(authority, project_id, entry.id) do
-      {:ok, current}
-    else
+  # The feature's own linked specification, and never another of the project's.
+  # Readiness judges that document, so the run has to start against the same
+  # one: a project holding two specifications would otherwise have readiness
+  # answer for one document and the run begin against a different one.
+  defp current_revision(authority, project_id, %{specification_id: specification_id})
+       when is_binary(specification_id) do
+    case SpecificationStore.get_current(authority, project_id, specification_id) do
+      {:ok, current} -> {:ok, current}
       _unavailable -> {:error, :no_specification}
     end
   end
+
+  defp current_revision(_authority, _project_id, _feature), do: {:error, :no_specification}
 
   defp revision_id(%{revision: revision}), do: revision.id
   defp revision_digest(%{revision: revision}), do: revision.content_digest

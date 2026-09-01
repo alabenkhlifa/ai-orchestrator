@@ -357,10 +357,6 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # The required-check contract the seeded attempt is bound to.
     @required_checks ["mix format --check-formatted", "mix credo --strict", "mix dialyzer"]
 
-    # The repository revision a continued attempt's manifest is anchored to. It
-    # is configuration, not evidence: the seeded runs prove their own commits.
-    @repository_base_revision "a1b2c3d4e5f6a7b8"
-
     # The preview scenario verifies for real, so its attempt is bound to a
     # contract it can actually satisfy: one check, passed against one commit.
     @preview_checks ["mix test"]
@@ -713,8 +709,14 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # owner. `as` therefore decides whether the browser holds someone who may
     # decide or a participant who may not, which is what makes the refusal
     # provable in a real browser rather than only in a unit test.
+    #
+    # The project's repository is connected, because a rejection continues the
+    # run against the approved execution profile, and no profile may be
+    # approved for a project whose repository is not.
     defp run(conn, "review", params) do
-      %{project: project, owner: owner, participant: participant} = member_graph()
+      %{project: project, owner: owner, participant: participant} =
+        member_graph(configured?: true)
+
       actor = %{account_id: owner.account.id, hosted_identity_id: nil}
       authority = owner.personal_workspace
 
@@ -722,7 +724,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       feature = start_development(project.id, actor, feature)
 
       authorize_preview(project)
-      configure_continuation()
+      configure_continuation(owner, project)
 
       ready = seed_preview(authority, project, feature, E2EPreviewAdapter.ready_path())
 
@@ -881,11 +883,18 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       %{project: project, owner: owner} = member_graph()
       actor = %{account_id: owner.account.id, hosted_identity_id: nil}
 
-      current = seed_specification(owner, project)
+      seed_specification(owner, project)
 
       {:ok, feature} = Features.create(project.id, actor, %{title: "Reviewed feature"})
       feature = advance(project.id, actor, feature, "ready_for_review")
       %{run: run} = seed_evidence(owner.personal_workspace, project, feature)
+
+      # The feature carries a specification of its own, so this project holds
+      # two, and the model cites whichever the snapshot lists first. The
+      # snapshot sorts by id, which is a generated value, so the scenario
+      # reports the title the panel will actually show rather than the one it
+      # happened to seed first.
+      cited = cited_specification_title(owner.personal_workspace, project)
 
       link_assistant_connection(owner.account, params["state"] || "available")
 
@@ -896,8 +905,14 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         project_name: project.name,
         feature_id: feature.id,
         run_id: run.id,
-        specification_title: current.specification.title
+        specification_title: cited
       })
+    end
+
+    defp cited_specification_title(authority, project) do
+      {:ok, snapshot} = SpecificationStore.current_snapshot(authority, project.id)
+      [first | _rest] = snapshot.specifications
+      first.title
     end
 
     defp run(conn, _unknown_scenario, _params),
@@ -1588,21 +1603,17 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # Sending work back continues the run that produced it, so a rejection plans
     # the next attempt's execution manifest in the same commit as its verdict,
     # and a declared contradiction locates that run's own workspace before it
-    # opens a question about it. Neither is configured in the environment this
-    # harness serves, and `Review.reject/5` would raise rather than refuse
-    # without them — which would prove the review screen against a crash instead
-    # of against the domain.
+    # opens a question about it. Neither exists in the environment this harness
+    # serves, and `Review.reject/5` would refuse rather than continue without
+    # them, which would prove the review screen against a refusal instead of
+    # against the domain.
     #
-    # The values are the ordinary configured boundary rather than anything the
-    # browser supplies: nothing a reviewer types may reach a manifest.
-    defp configure_continuation do
-      Application.put_env(:sdd_orchestrator, :delivery_execution,
-        approved_slice: "slice-07",
-        repository_base_revision: @repository_base_revision,
-        required_checks: [],
-        agent_ref: %{"provider" => "e2e-agent"},
-        worker_ref: %{"target" => "e2e-worker"}
-      )
+    # The manifest is built from the profile the owner approved, so the scenario
+    # approves one the same way the profile screens do. Nothing a reviewer types
+    # can reach it.
+    defp configure_continuation(owner, project) do
+      completed = seed_completed_assessment(owner, project)
+      _profile = approve_profile!(owner, project, completed)
 
       Application.put_env(:sdd_orchestrator, :worker_workspace_root, workspace_root())
     end

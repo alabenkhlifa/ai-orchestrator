@@ -47,7 +47,11 @@ defmodule SddOrchestrator.Delivery.ReadinessGuidance do
   # Only these reasons survive the boundary. A provider adapter that invents its
   # own error atom is reported as a plain failure, because an unrecognized
   # reason must not reach readiness logic that switches on it.
-  @adapter_reasons ~w(guidance_timeout guidance_unavailable guidance_failed)a
+  #
+  # `not_configured` is the one reason that says nothing about this feature. It
+  # reports the deployment, so readiness records it as a fact instead of a
+  # failed judgement, while every other reason means nobody judged the feature.
+  @adapter_reasons ~w(guidance_timeout guidance_unavailable guidance_failed not_configured)a
 
   @type input :: %{required(String.t()) => term()}
   @type finding :: %{required(String.t()) => term()}
@@ -358,13 +362,18 @@ defmodule SddOrchestrator.Delivery.ReadinessGuidance.Unconfigured do
   @moduledoc """
   The default adapter: no guidance provider is configured.
 
-  It reports the boundary as unavailable instead of answering with no findings.
-  An empty finding list is the shape of "this specification is ready", so a
-  deployment without a provider would otherwise mark every feature ready without
-  anything having assessed it.
+  It never answers with a finding list. An empty list is the shape of "this
+  specification is ready", so a deployment without a provider would otherwise
+  mark every feature ready without anything having assessed it.
+
+  Its reason is `:not_configured` rather than a failure, because those are
+  different things to the person reading the page. A configured provider that
+  cannot be reached may work on the next press. A deployment with no provider
+  will answer the same way every time, and readiness says so in plain words
+  instead of showing an error nobody can act on.
   """
   @behaviour SddOrchestrator.Delivery.ReadinessGuidance
 
   @impl true
-  def assess(_input), do: {:error, :guidance_unavailable}
+  def assess(_input), do: {:error, :not_configured}
 end

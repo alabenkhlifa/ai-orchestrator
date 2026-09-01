@@ -65,20 +65,11 @@ defmodule SddOrchestrator.Delivery.RunNotificationsTest do
   @lease_seconds 60
   @worker "wrk_alpha"
 
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
-
   setup do
     root = Path.join(System.tmp_dir!(), "run-notifications-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf(root) end)
 
-    put_env(:delivery_execution, @execution)
     put_env(:worker_workspace_root, root)
 
     hosted = DeliveryFixtures.delivery_project_fixture()

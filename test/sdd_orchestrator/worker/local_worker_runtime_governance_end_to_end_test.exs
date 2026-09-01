@@ -58,9 +58,10 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
 
   Since `Start.start/4` builds its own `ExecutionManifest` internally (a
   private `manifest_for/4`), this scenario reconstructs an equivalent
-  manifest from the run's and attempt's own persisted fields and proves the
-  reconstruction is exact by asserting its digest equals the one `Start.start/4`
-  actually stored, before using it to build the worker command envelope.
+  manifest from the run's and attempt's own persisted fields and the approved
+  execution profile the rest of it comes from, and proves the reconstruction is
+  exact by asserting its digest equals the one `Start.start/4` actually stored,
+  before using it to build the worker command envelope.
   """
 
   use SddOrchestrator.DataCase, async: false
@@ -103,9 +104,23 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
   alias SddOrchestrator.Worker.RuntimeGovernanceEnvelopeSource, as: EnvelopeSource
   alias SddOrchestratorWeb.WorkerChannel
 
-  # Same minimal, fast, deterministic check `EndToEndTest` uses, for the same
-  # reason: real, fast, and never dependent on this repository's own state.
-  @required_checks [%{"name" => "revision", "command" => "git rev-parse HEAD"}]
+  # The one required check the approved profile carries. It is minimal, fast,
+  # and deterministic for the same reason `EndToEndTest`'s own check is, and it
+  # is spelled as a project command because a profile only accepts commands a
+  # project actually runs. The fixture repository below carries the `Makefile`
+  # that answers it.
+  @check "make revision"
+  @required_checks [%{"name" => @check, "command" => @check}]
+
+  # A profile the assessment domain accepts, holding exactly that check.
+  @profile_fields %{
+    commands: [@check],
+    required_checks: [@check],
+    allowed_scope: ["lib"],
+    gaps: [],
+    conflicts: [],
+    multi_root_blockers: []
+  }
 
   # Matches `AIRuntimeFixtures`' own default catalog/quota `retrieved_at`, so
   # the pin this scenario drives through `Start.start/4` lands inside the
@@ -168,7 +183,11 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
       owner = context.owner_actor
       owner_account = context.account
 
-      feature = DeliveryFixtures.feature_fixture(project, owner_account)
+      # Every guided part is written, so readiness clears and this test reaches
+      # the governed run it is about.
+      feature =
+        DeliveryFixtures.feature_fixture(project, owner_account, %{requirements: :filled})
+
       ready = prepare_ready_feature(authority, project, feature, owner)
 
       workspace_root = unique_tmp_dir("governance-workspace-root")
@@ -226,15 +245,24 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
       {revision, directory, _default_branch, _default_branch_sha_before} =
         init_repository(project, feature, run_id)
 
+      # The run executes the contract the repository's owner approved, so the
+      # profile in force is the one bound to the commit this fixture repository
+      # actually has. Approval is append-only, so this later version wins over
+      # the one the shared fixture seeded.
+      profile =
+        DeliveryFixtures.approve_profile!(owner_account.id, project,
+          fields: @profile_fields,
+          commit: revision,
+          now: DateTime.add(DateTime.utc_now(), 3_600, :second)
+        )
+
       assert {:ok, results} =
                Start.start(authority, owner, %{project: project, feature: ready},
                  run_id: run_id,
-                 repository_base_revision: revision,
-                 required_checks: @required_checks,
                  now: @pin_time
                )
 
-      manifest = reconstruct_manifest(project, feature, run_id, revision, results)
+      manifest = reconstruct_manifest(project, feature, run_id, profile, results)
       assert ExecutionManifest.digest(manifest) == results.attempt.manifest_digest
 
       envelope =
@@ -282,7 +310,7 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
                         "source" => "check",
                         "payload" =>
                           %{
-                            "name" => "revision",
+                            "name" => @check,
                             "outcome" => "passed",
                             "exit_code" => 0
                           } = evidence_payload
@@ -413,12 +441,13 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
   end
 
   # Rebuilds the exact manifest `Start.start/4`'s own private `manifest_for/4`
-  # built internally, from the run's and attempt's own persisted fields
-  # (`agent_ref`/`worker_ref` are always `%{}` — `Start.start/4` never received
-  # opts for either, so `manifest_for/4`'s own defaults apply). The digest
-  # equality asserted right after calling this is what proves the
-  # reconstruction is exact rather than merely plausible.
-  defp reconstruct_manifest(project, feature, run_id, revision, results) do
+  # built internally, from the run's and attempt's own persisted fields and the
+  # approved profile the rest of it comes from (`agent_ref`/`worker_ref` are
+  # always `%{}` — `Start.start/4` never received opts for either, so
+  # `manifest_for/4`'s own defaults apply). The digest equality asserted right
+  # after calling this is what proves the reconstruction is exact rather than
+  # merely plausible.
+  defp reconstruct_manifest(project, feature, run_id, profile, results) do
     DeliveryProtocolFixtures.manifest(%{
       "project_id" => project.id,
       "feature_id" => feature.id,
@@ -429,9 +458,12 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
       "starting_revision_digest" => results.run.starting_revision_digest,
       "effective_revision_id" => results.attempt.effective_revision_id,
       "effective_revision_digest" => results.attempt.effective_revision_digest,
-      "repository_base_revision" => revision,
+      "repository_base_revision" => profile.base_revision,
       "target_branch" => results.run.branch,
       "required_checks" => results.attempt.required_checks,
+      "repository_root" => profile.root,
+      "commands" => profile.commands,
+      "allowed_scope" => profile.allowed_scope,
       "agent_ref" => %{},
       "worker_ref" => %{},
       "continuation" => %{"reason" => "initial", "prior_attempt_number" => nil}
@@ -501,6 +533,22 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
     end
   end
 
+  # The required check has to be a command a project genuinely runs, so the
+  # fixture repository carries the one the approved profile names. It prints
+  # the commit the workspace is on, which is what the evidence artifact is then
+  # checked against.
+  #
+  # The path is built from a directory this test created under the temporary
+  # workspace root and carries nothing from a request. Documented false
+  # positive.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp write_revision_makefile(directory) do
+    File.write!(
+      Path.join(directory, "Makefile"),
+      "revision:\n\t@git rev-parse HEAD\n"
+    )
+  end
+
   defp git!(directory, args) do
     identity = [
       "-c",
@@ -535,7 +583,9 @@ defmodule SddOrchestrator.Worker.LocalWorkerRuntimeGovernanceEndToEndTest do
     {:ok, directory} = Workspace.working_directory(probe)
 
     git!(directory, ["init", "--quiet"])
-    git!(directory, ["commit", "--allow-empty", "--quiet", "--message", "base"])
+    write_revision_makefile(directory)
+    git!(directory, ["add", "Makefile"])
+    git!(directory, ["commit", "--quiet", "--message", "base"])
     revision = git!(directory, ["rev-parse", "HEAD"])
     default_branch = git!(directory, ["symbolic-ref", "--short", "HEAD"])
     default_branch_sha_before = git!(directory, ["rev-parse", default_branch])

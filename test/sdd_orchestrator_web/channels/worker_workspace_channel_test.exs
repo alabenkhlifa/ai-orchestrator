@@ -7,8 +7,13 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelTest do
   aimed at another one is refused before anything is negotiated or recorded; an
   overlapping reconnect is admitted rather than stranded; and the record lives
   and dies with the channel process, because it is liveness and nothing else.
+
+  specs/41-feature-delivery-from-the-ui Task 7 gives the join one database read:
+  the projects already bound to this Mac, announced so a worker that attached
+  after the binding still learns about it. That is why this file now takes the
+  shared sandbox rather than no database at all.
   """
-  use ExUnit.Case, async: true
+  use SddOrchestrator.DataCase, async: false
 
   import ExUnit.CaptureLog
   import Phoenix.ChannelTest
@@ -122,19 +127,32 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelTest do
       {:ok, socket} = connect(WorkerSocket, %{"token" => token})
 
       # The project channel reads the project its socket authenticated, and a
-      # workspace-scoped socket carries none, so the join dies on the absent
-      # assign instead of attaching. The refusal is what matters here: the
-      # project topic stays owned by the project-scoped credential, and this
-      # slice changes nothing on it.
+      # workspace-scoped socket carries none, so the join matches no topic and
+      # is refused. The project topic stays owned by the project-scoped
+      # credential, and this slice changes nothing on it.
+      #
+      # specs/41 Task 7 corrected how that refusal is reached. Reading the
+      # absent assign directly raised, so the channel process died and the join
+      # answered "join crashed" instead of naming the refusal. Nothing that was
+      # refused became allowed: the refusal is the same, the crash is gone.
       log =
         capture_log(fn ->
-          assert {:error, %{reason: "join crashed"}} =
+          assert {:error, %{reason: "unauthorized_execution_target"}} =
                    subscribe_and_join(socket, "worker:#{project_id}", announcement())
         end)
 
       assert Transport.attached(project_id) == []
       assert WorkerAttachment.attached(workspace) == []
       refute log =~ token
+      refute log =~ "join crashed"
+      refute log =~ "KeyError"
+
+      # The socket survived the refusal and still attaches for its own Mac, so
+      # one mis-aimed join costs a correct worker nothing.
+      assert {:ok, _reply, _channel} =
+               subscribe_and_join(socket, "worker_workspace:#{workspace}", announcement())
+
+      assert [{_pid, _contract}] = WorkerAttachment.attached(workspace)
     end
 
     test "a project-scoped socket cannot attach for a Mac" do

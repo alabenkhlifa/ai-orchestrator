@@ -32,22 +32,16 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
     Suggestions
   }
 
+  alias SddOrchestrator.AIRuntimeFixtures
   alias SddOrchestrator.DeliveryFixtures
   alias SddOrchestrator.Participation.Revocations
   alias SddOrchestrator.ParticipationDeliveryDouble
   alias SddOrchestrator.ParticipationFixtures
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.ReadinessGuidanceDouble
   alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationFixtures
   alias SddOrchestrator.SpecificationStore
-
-  @execution [
-    approved_slice: "slice-07",
-    repository_base_revision: "a1b2c3d4e5f6a7b8",
-    required_checks: [%{"name" => "mix test", "command" => "mix test"}],
-    agent_ref: %{"provider" => "configured-agent"},
-    worker_ref: %{"target" => "configured-worker"}
-  ]
 
   @boundary [
     execution_location: "this computer",
@@ -62,7 +56,6 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
 
     for {key, value} <- [
           participation_email_delivery: ParticipationDeliveryDouble,
-          delivery_execution: @execution,
           processing_boundary: @boundary
         ] do
       previous = Application.get_env(:sdd_orchestrator, key)
@@ -80,7 +73,13 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
     ParticipationDeliveryDouble.succeed()
 
     context = DeliveryFixtures.delivery_project_fixture()
-    feature = DeliveryFixtures.feature_fixture(context.project, context.account)
+
+    # Every guided part is written, so readiness clears and these tests reach
+    # the run they are about to cancel.
+    feature =
+      DeliveryFixtures.feature_fixture(context.project, context.account, %{
+        requirements: :filled
+      })
 
     {:ok, _current} =
       SpecificationStore.create(
@@ -441,6 +440,10 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
       {:ok, canceled} =
         Cancellation.cancel(authority, initiator, %{project: project, feature: feature})
 
+      # Starting also needs a worker connected to run it, so the project is
+      # bound to one before the offer is asked for.
+      bind_local_worker(project)
+
       assert Start.available?(authority, initiator, %{project: project, feature: canceled.feature})
 
       assert {:ok, restarted} =
@@ -567,6 +570,23 @@ defmodule SddOrchestrator.Delivery.CancellationTest do
       attempt: dispatched,
       feature: Repo.get!(Feature, results.feature.id)
     })
+  end
+
+  # The routing record the connect path writes. Starting requires a worker
+  # connected for the project, and the test stand-in reports a paired one as
+  # attached, so the binding is all a restart needs here.
+  defp bind_local_worker(project) do
+    worker = AIRuntimeFixtures.personal_ai_worker_fixture()
+
+    %HostedLocalRepositoryBinding{}
+    |> HostedLocalRepositoryBinding.changeset(%{
+      project_id: project.id,
+      worker_id: worker.id,
+      last_validated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.insert!()
+
+    worker
   end
 
   defp cancel_commands do

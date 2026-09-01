@@ -24,15 +24,22 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     DeliveryStore,
     EvidencePresentation,
     Features,
+    GuidedRequirements,
     LocalWorkerRuntimeProjection,
     ParticipantGuard,
     PreviewPresentation,
     ProcessingDisclosure,
     QuestionRouting,
+    Readiness,
+    ReadinessAssessment,
     Retry,
     Review,
-    ReviewDecision
+    ReviewDecision,
+    Start,
+    Suggestions
   }
+
+  alias SddOrchestrator.SpecificationStore
 
   @column_labels %{
     "draft" => "Draft",
@@ -70,6 +77,117 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     revision_conflict: "The specification changed while you were answering. Try again.",
     no_specification: "This project has no specification to write the answer into."
   }
+
+  # A refused save always leaves the stored revision exactly as it was, so every
+  # sentence here says what to do next rather than what broke. The head moving
+  # is the one a person can act on: their words are still in the form, and a
+  # reload shows what the other save wrote.
+  @requirements_messages %{
+    stale_revision:
+      "This feature was saved by someone else while you were writing. Reload the page to " <>
+        "read that version, then make your change again.",
+    revision_conflict:
+      "This save could not be recorded. Reload the page and make your change again.",
+    no_specification: "This feature has no specification to save into.",
+    document_too_large: "That is too long to save. Shorten it and try again.",
+    revision_too_large: "That is too long to save. Shorten it and try again."
+  }
+
+  @requirements_unsaved "That did not save, and nothing changed. Try again."
+
+  # Three readiness states the section shows and the lifecycle actions answer
+  # with. Each is written once and rendered wherever it applies, so the note a
+  # person reads and the refusal a press returns cannot drift apart.
+  @readiness_check_first "Check readiness first."
+
+  @readiness_stale_note "The requirements changed after this check. Check readiness again."
+
+  @readiness_blocked_note "Something still blocks this feature. " <>
+                            "Clear the blockers above, then check readiness again."
+
+  # A refused check leaves the last verdict exactly as it was. Each sentence
+  # says what to do next, because the reader can act on the words in the form
+  # or on pressing again, never on the shape of the failure.
+  @readiness_messages %{
+    no_specification: "This feature has no specification to check.",
+    guidance_timeout: "The guidance model did not answer in time. Try again.",
+    guidance_unavailable: "The guidance model could not be reached. Try again.",
+    not_dismissible: "That one blocks development, so it cannot be dismissed.",
+    stale_assessment: "This changed while you were reading it. Check readiness again.",
+    not_found: @readiness_check_first
+  }
+
+  @readiness_unchecked "Readiness could not be checked, and nothing changed. Try again."
+
+  # What the page may say when no model took part. It states this deployment,
+  # not the reader's computer, and it never implies a model judged anything.
+  @readiness_not_configured "No guidance model is configured here. " <>
+                              "These findings come from the guided parts alone."
+
+  # Every start precondition named once. `Start.preconditions/3` decides which
+  # are met and where each is resolved, so these maps only put words to the
+  # answer it gives. The label names the item in both states; the note and the
+  # link are read only when the item is unmet.
+  @precondition_labels %{
+    ready: "Ready, with a readiness check about these exact words",
+    boundary: "The processing boundary confirmed",
+    execution_profile: "An approved execution profile",
+    worker: "A worker connected for this project",
+    ai_connection: "One AI connection to run this"
+  }
+
+  # What is true now, and the one thing to do about it. The worker line states
+  # only what the control plane can see, which is its own connections. It cannot
+  # see the Mac, so the rest is offered as two branches the reader picks from.
+  @precondition_notes %{
+    ready:
+      "The readiness check is missing, or it is about older words. " <>
+        "Check readiness again, then make this feature ready.",
+    boundary: "Read what this run will do, above, and confirm it.",
+    execution_profile:
+      "This project has no approved execution profile. Assess the repository, then approve one.",
+    worker:
+      "No worker is connected to this project right now. " <>
+        "Connect this project to a Mac, or open the worker app on the Mac it is connected to.",
+    ai_connection:
+      "More than one active AI connection could run this. Leave one active for this project."
+  }
+
+  @precondition_actions %{
+    ready: "Go to the readiness check",
+    boundary: "Read the boundary above",
+    execution_profile: "Open the execution profile",
+    worker: "Open the project's connection",
+    ai_connection: "Open AI connections"
+  }
+
+  # Two of the five pages are the owner's own. A participant is told who
+  # resolves those rather than being handed a link that will not open for them.
+  # It says nothing about starting, which stays theirs to do.
+  @precondition_owner_routes [:project_connection, :ai_connections]
+
+  @precondition_owner_only "The project owner resolves this one."
+
+  # The refusals `Start.start/4` answers with that no precondition already puts
+  # words to. Everything a precondition covers is answered with that item's own
+  # sentence instead, so the list above the button and the answer below it read
+  # the same. Each of these says what the control plane saw and what to do, not
+  # what happened on anybody's machine.
+  @start_refusals %{
+    already_started: "This feature already has a run going. Nothing new was started.",
+    no_specification: "This feature has no specification to start from.",
+    invalid_manifest:
+      "This project's development settings cannot produce this run's instructions. " <>
+        "Nothing started, and that has to be fixed first."
+  }
+
+  @start_unstarted "That did not start, and nothing changed. Try again."
+
+  # A lifecycle move this page can no longer make. Naming the shape of the
+  # refusal would describe a race to somebody who can only act on one thing:
+  # reading where the feature actually is now.
+  @lifecycle_refused "This feature changed while you were looking at it. " <>
+                       "Reload the page and try again."
 
   @retry_messages %{
     no_failed_run: "This run is going again already.",
@@ -315,6 +433,101 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
+  # The typed words are kept in the form and nowhere else until the person
+  # saves. Nothing here writes them to a log or an activity entry.
+  def handle_event("validate_requirements", %{"requirements" => parts}, socket) do
+    {:noreply,
+     socket
+     |> assign(:requirements_parts, normalize_requirements(parts))
+     |> assign(:requirements_error, nil)}
+  end
+
+  def handle_event("save_requirements", %{"requirements" => parts}, socket) do
+    document = GuidedRequirements.render(parts)
+
+    socket
+    |> assign(:requirements_parts, GuidedRequirements.parse(document))
+    |> save_requirements(document)
+  end
+
+  # Readiness is checked when the person asks for it, never as a side effect of
+  # opening the page. A verdict that appeared on its own would be about words
+  # somebody was still writing.
+  def handle_event("check_readiness", _params, socket) do
+    socket
+    |> storage_authority()
+    |> Readiness.assess(socket.assigns.actor, %{
+      project: socket.assigns.project,
+      feature: socket.assigns.feature
+    })
+    |> case do
+      {:ok, assessment} ->
+        {:noreply,
+         socket
+         |> assign(:readiness, assessment)
+         |> assign(:readiness_error, nil)
+         |> assign_start_preconditions()}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :readiness_error, readiness_message(reason))}
+    end
+  end
+
+  # The stored version travels with the press, so a dismissal aimed at the list
+  # that was on screen is refused once readiness has been checked again.
+  def handle_event("dismiss_suggestion", %{"id" => finding_id}, socket) do
+    case socket.assigns.readiness do
+      nil ->
+        {:noreply, assign(socket, :readiness_error, readiness_message(:not_found))}
+
+      assessment ->
+        dismiss_suggestion(socket, assessment, finding_id)
+    end
+  end
+
+  # Ready is a decision, so the press is answered against the verdict the page
+  # is showing. What the screen does not offer is refused here too: a page left
+  # open can still send this event after the words moved on.
+  def handle_event("make_ready", _params, socket) do
+    case make_ready_state(
+           socket.assigns.feature,
+           socket.assigns.readiness,
+           socket.assigns.requirements_revision_id,
+           socket.assigns.requirements_digest
+         ) do
+      :ready -> promote_feature(socket)
+      refused -> {:noreply, assign(socket, :lifecycle_error, make_ready_refusal(refused))}
+    end
+  end
+
+  # The way back out of `Ready for development`. It moves the column and nothing
+  # else: the written words, the verdict, and its findings stay exactly as they
+  # are, so the person picks up where they left off.
+  def handle_event("back_to_draft", _params, socket) do
+    feature = socket.assigns.feature
+
+    socket.assigns.project_id
+    |> Features.transition(socket.assigns.actor, feature, "draft",
+      expected_state_version: feature.state_version
+    )
+    |> case do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(:lifecycle_error, nil)
+         |> assign_feature(socket.assigns.project_id, socket.assigns.actor, updated)}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :lifecycle_error, @lifecycle_refused)}
+    end
+  end
+
   def handle_event("retry", _params, socket) do
     socket
     |> storage_authority()
@@ -403,7 +616,7 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> ProcessingDisclosure.confirm(socket.assigns.actor, digest)
     |> case do
       {:ok, _confirmation} ->
-        {:noreply, assign_disclosure(socket)}
+        {:noreply, socket |> assign_disclosure() |> assign_start_preconditions()}
 
       {:error, :unauthorized} ->
         {:noreply, push_navigate(socket, to: ~p"/projects")}
@@ -412,7 +625,25 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       # shown the boundary that is actually in force rather than agreeing to
       # one that no longer exists.
       {:error, _reason} ->
-        {:noreply, socket |> assign_disclosure() |> assign(:boundary_changed?, true)}
+        {:noreply,
+         socket
+         |> assign_disclosure()
+         |> assign(:boundary_changed?, true)
+         |> assign_start_preconditions()}
+    end
+  end
+
+  # The readout the person pressed can already be out of date, so every item is
+  # asked again here rather than trusted from the screen. A worker that went
+  # away between the two is refused with the sentence that item now shows, and
+  # nothing is created. Only a fully met list reaches `Start.start/4`, which
+  # re-checks everything it owns for itself.
+  def handle_event("start_development", _params, socket) do
+    socket = assign_start_preconditions(socket)
+
+    case Enum.find(socket.assigns.start_preconditions, &(not &1.met?)) do
+      nil -> start_development(socket)
+      unmet -> {:noreply, assign(socket, :start_error, precondition_note(unmet.key))}
     end
   end
 
@@ -555,6 +786,230 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp specification_link_message(_reason),
     do: "This feature changed while you were looking at it. It has been refreshed."
 
+  # Only the four guided parts are carried, exactly as typed. Trimming happens
+  # when the document is rendered, so a person is not fighting the field for a
+  # blank line while they are still writing in it.
+  defp normalize_requirements(parts) do
+    Map.new(GuidedRequirements.keys(), fn key -> {key, requirements_value(parts, key)} end)
+  end
+
+  defp requirements_value(parts, key) do
+    case Map.get(parts, key) do
+      value when is_binary(value) -> value
+      _absent -> ""
+    end
+  end
+
+  # The save goes against the revision the page read, never against whatever is
+  # current now. A head that moved is somebody else's save, and appending over
+  # it would drop their words with nobody seeing it happen.
+  defp save_requirements(socket, document) do
+    project_id = socket.assigns.project_id
+
+    with {:ok, member} <-
+           ParticipantGuard.authorize_action(project_id, socket.assigns.actor, :answer_question),
+         {:ok, expected, carried} <- requirements_base(socket),
+         {:ok, appended} <-
+           SpecificationStore.append_revision(
+             storage_authority(socket),
+             project_id,
+             socket.assigns.feature.specification_id,
+             expected,
+             %{
+               revision_id: Ecto.UUID.generate(),
+               documents: Map.put(carried, :requirements, document),
+               actor_ref: member.account_id
+             }
+           ) do
+      {:noreply, saved_requirements(socket, appended)}
+    else
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :requirements_error, requirements_message(reason))}
+    end
+  end
+
+  defp requirements_base(%{assigns: %{requirements_revision_id: nil}}),
+    do: {:error, :no_specification}
+
+  defp requirements_base(%{assigns: assigns}),
+    do: {:ok, assigns.requirements_revision_id, assigns.requirements_carried}
+
+  # The stored document is read back rather than the typed text kept, so the
+  # form shows what was actually written.
+  defp saved_requirements(socket, %{revision: revision}) do
+    socket
+    |> assign(:requirements_revision_id, revision.id)
+    |> assign(:requirements_digest, revision.content_digest)
+    |> assign(:requirements_carried, carried_documents(revision))
+    |> assign(:requirements_parts, GuidedRequirements.parse(revision.requirements_document))
+    |> assign(:requirements_error, nil)
+    |> assign_start_preconditions()
+  end
+
+  # The design and tasks documents belong to the coding agent. The form carries
+  # them forward exactly as they are, so writing requirements never edits them.
+  defp carried_documents(revision),
+    do: %{design: revision.design_document, tasks: revision.tasks_document}
+
+  defp requirements_message(reason) when is_atom(reason),
+    do: Map.get(@requirements_messages, reason, @requirements_unsaved)
+
+  defp requirements_message(_reason), do: @requirements_unsaved
+
+  defp dismiss_suggestion(socket, assessment, finding_id) do
+    socket.assigns.project_id
+    |> Suggestions.dismiss(
+      socket.assigns.actor,
+      socket.assigns.feature.id,
+      finding_id,
+      assessment.version
+    )
+    |> case do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(:readiness, updated)
+         |> assign(:readiness_error, nil)
+         |> assign_start_preconditions()}
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :readiness_error, readiness_message(reason))}
+    end
+  end
+
+  defp readiness_message(reason) when is_atom(reason),
+    do: Map.get(@readiness_messages, reason, @readiness_unchecked)
+
+  defp readiness_message(_reason), do: @readiness_unchecked
+
+  # The state version travels in the operation key, so a double press from one
+  # screen is absorbed while a feature that went back to draft can be made ready
+  # again rather than answering with the first press's result.
+  defp promote_feature(socket) do
+    feature = socket.assigns.feature
+
+    socket
+    |> storage_authority()
+    |> Suggestions.promote(
+      socket.assigns.actor,
+      %{project: socket.assigns.project, feature: feature},
+      "ready:#{feature.id}:#{feature.state_version}"
+    )
+    |> case do
+      # The absorbed repeat carries the earlier activity and no feature, so the
+      # feature is read back either way and both presses land on one screen.
+      {:ok, _outcome} ->
+        reload_feature(socket)
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :lifecycle_error, promote_message(reason))}
+    end
+  end
+
+  # The feature the page rendered travels into the start, so its `state_version`
+  # is the version the move is locked against: a press from a screen the feature
+  # has moved on from is refused rather than applied to whatever it became.
+  defp start_development(socket) do
+    socket
+    |> storage_authority()
+    |> Start.start(socket.assigns.actor, %{
+      project: socket.assigns.project,
+      feature: socket.assigns.feature
+    })
+    |> case do
+      {:ok, _results} ->
+        run_begun(socket)
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      # Nothing was created, so the readout is worked out again and the reason
+      # is put beside the button the person pressed.
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:start_error, start_message(reason))
+         |> assign_start_preconditions()}
+    end
+  end
+
+  # The run is now the worker's to do, and everything it reports arrives as this
+  # project's worker traffic. The page listens from here on and reads the feature
+  # back, so the run's acknowledgement and its progress appear through the
+  # sections that already render a running run.
+  defp run_begun(socket) do
+    socket
+    |> watch_worker()
+    |> assign(:start_error, nil)
+    |> reload_feature()
+  end
+
+  # One subscription for as long as this page lives. What arrives is never read
+  # for its content: a worker envelope is taken only as a sign to read the
+  # stored history again, so nothing a worker says can reach the screen without
+  # passing the checks that make it durable first.
+  defp watch_worker(%{assigns: %{watching_worker?: true}} = socket), do: socket
+
+  defp watch_worker(socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(
+        SddOrchestrator.PubSub,
+        SddOrchestratorWeb.WorkerChannel.topic(socket.assigns.project_id)
+      )
+
+      assign(socket, :watching_worker?, true)
+    else
+      socket
+    end
+  end
+
+  defp start_message(:not_ready), do: precondition_note(:ready)
+  defp start_message(:boundary_unconfirmed), do: precondition_note(:boundary)
+  defp start_message(:no_execution_profile), do: precondition_note(:execution_profile)
+
+  defp start_message({:ai_connection_selection_required, _eligible_ids}),
+    do: precondition_note(:ai_connection)
+
+  defp start_message(reason) when is_atom(reason),
+    do: Map.get(@start_refusals, reason, @start_unstarted)
+
+  defp start_message(_reason), do: @start_unstarted
+
+  defp reload_feature(socket) do
+    project_id = socket.assigns.project_id
+    actor = socket.assigns.actor
+
+    case Features.fetch(project_id, actor, socket.assigns.feature.id) do
+      {:ok, feature} ->
+        {:noreply,
+         socket
+         |> assign(:lifecycle_error, nil)
+         |> assign_feature(project_id, actor, feature)}
+
+      {:error, _reason} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects/#{project_id}/features")}
+    end
+  end
+
+  # The domain refuses a blocker on its own, and it says the same thing the
+  # screen already says, so the reader gets one instruction either way.
+  defp promote_message(:not_ready), do: @readiness_blocked_note
+  defp promote_message(_reason), do: @lifecycle_refused
+
+  defp make_ready_refusal(:unchecked), do: @readiness_check_first
+  defp make_ready_refusal(:stale), do: @readiness_stale_note
+  defp make_ready_refusal(:blocked), do: @readiness_blocked_note
+  defp make_ready_refusal(:not_draft), do: @lifecycle_refused
+
   defp review_subject(socket),
     do: %{project: socket.assigns.project, feature: socket.assigns.feature}
 
@@ -589,6 +1044,26 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
      |> assign(:review_feedback, feedback)
      |> assign(:review_contradicts?, contradicts?)
      |> assign(:review_error, Map.get(@review_messages, reason, @review_unaccepted))}
+  end
+
+  # A worker said something about this project. What it said is deliberately
+  # ignored; the feature and its history are read back instead, which is the
+  # only place a worker's word becomes something a person may read.
+  @impl true
+  def handle_info({:worker_event, _envelope}, socket), do: {:noreply, reread_feature(socket)}
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Unlike `reload_feature/1` this leaves the page's messages alone. A run's own
+  # progress must never quietly clear a refusal somebody is still reading.
+  defp reread_feature(socket) do
+    project_id = socket.assigns.project_id
+    actor = socket.assigns.actor
+
+    case Features.fetch(project_id, actor, socket.assigns.feature.id) do
+      {:ok, feature} -> assign_feature(socket, project_id, actor, feature)
+      {:error, _reason} -> socket
+    end
   end
 
   @impl true
@@ -638,15 +1113,21 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign_preview(actor, feature)
     |> assign_review(actor, feature)
     |> assign_available_specifications(project_id, actor, feature)
+    |> assign_requirements(feature)
+    |> assign_readiness(project_id, actor, feature)
     |> assign(:answer_body, socket.assigns[:answer_body] || "")
     |> assign(:answer_error, socket.assigns[:answer_error])
     |> assign(:assignment_error, socket.assigns[:assignment_error])
     |> assign(:specification_link_error, socket.assigns[:specification_link_error])
+    |> assign(:lifecycle_error, socket.assigns[:lifecycle_error])
+    |> assign(:start_error, socket.assigns[:start_error])
+    |> assign(:watching_worker?, socket.assigns[:watching_worker?] || false)
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
     |> assign_runtime_projection(actor)
     |> assign_disclosure()
+    |> assign_start_preconditions()
   end
 
   # The same fail-closed check this screen already passed, re-asked for its role
@@ -678,6 +1159,71 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
       end
 
     assign(socket, :available_specifications, available)
+  end
+
+  # The verdict already on record, if there is one. A reader who cannot see it
+  # sees nothing rather than an error, which is the answer the rest of this
+  # screen gives someone outside the project.
+  defp assign_readiness(socket, project_id, actor, feature) do
+    assessment =
+      case Readiness.current(project_id, actor, feature.id) do
+        {:ok, assessment} -> assessment
+        {:error, _reason} -> nil
+      end
+
+    socket
+    |> assign(:readiness, assessment)
+    |> assign(:readiness_error, socket.assigns[:readiness_error])
+  end
+
+  # The feature's own requirements, read once and then held. Every later action
+  # on this screen leaves them alone, so words typed and not yet saved survive a
+  # comment or an answer, and the revision the save is checked against stays the
+  # one the page actually showed.
+  defp assign_requirements(socket, feature) do
+    if Map.has_key?(socket.assigns, :requirements_parts) do
+      socket
+    else
+      load_requirements(socket, feature)
+    end
+  end
+
+  # The revision's digest is held beside its id because a verdict is bound to
+  # both. That pair is what lets the readiness section tell a verdict about the
+  # words on screen from one about words that have since changed.
+  defp load_requirements(socket, feature) do
+    case current_specification(socket, feature) do
+      {:ok, %{revision: revision}} ->
+        socket
+        |> assign(:requirements_revision_id, revision.id)
+        |> assign(:requirements_digest, revision.content_digest)
+        |> assign(:requirements_carried, carried_documents(revision))
+        |> assign(:requirements_parts, GuidedRequirements.parse(revision.requirements_document))
+        |> assign(:requirements_error, nil)
+
+      :error ->
+        socket
+        |> assign(:requirements_revision_id, nil)
+        |> assign(:requirements_digest, nil)
+        |> assign(:requirements_carried, nil)
+        |> assign(:requirements_parts, GuidedRequirements.parse(""))
+        |> assign(:requirements_error, nil)
+    end
+  end
+
+  # Only the feature's own linked specification is ever read here. A feature
+  # created before it owned one, or a store that refuses, reads as nothing to
+  # write into rather than as another specification of the project.
+  defp current_specification(_socket, %{specification_id: nil}), do: :error
+
+  defp current_specification(socket, feature) do
+    socket
+    |> storage_authority()
+    |> SpecificationStore.get_current(socket.assigns.project_id, feature.specification_id)
+    |> case do
+      {:ok, current} -> {:ok, current}
+      {:error, _reason} -> :error
+    end
   end
 
   # The stopped run this reader may restart, if any. Resolved after the project
@@ -812,6 +1358,20 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:boundary_changed?, socket.assigns[:boundary_changed?] || false)
   end
 
+  # The readout describes this instant and is kept nowhere, so it is worked out
+  # again wherever something it reads can have moved: the feature, the verdict,
+  # the written words, or the boundary confirmation.
+  defp assign_start_preconditions(socket) do
+    assign(
+      socket,
+      :start_preconditions,
+      Start.preconditions(storage_authority(socket), socket.assigns.actor, %{
+        project: socket.assigns.project,
+        feature: socket.assigns.feature
+      })
+    )
+  end
+
   defp load_activity(socket, project_id, actor, feature) do
     case Activity.list(project_id, actor, feature.id, limit: Activity.max_limit()) do
       {:ok, entries} ->
@@ -918,9 +1478,97 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp failure_message(reason),
     do: Map.get(@failure_messages, reason, "The run stopped: #{reason}")
 
+  defp guided_parts, do: GuidedRequirements.structure()
+
+  defp requirements_body(parts, key), do: Map.get(parts, key, "")
+
+  # Read only inside the block the checked verdict guards, so there is no
+  # absent-assessment clause to keep in step with it.
+  defp readiness_blockers(assessment), do: ReadinessAssessment.blockers(assessment)
+
+  defp readiness_suggestions(assessment), do: ReadinessAssessment.suggestions(assessment)
+
+  # The page says a model was not asked only when the stored verdict says so.
+  # It never infers it from an empty finding list, which is also what a model
+  # that found nothing answers.
+  defp guidance_unconfigured?(assessment),
+    do: not ReadinessAssessment.guidance_configured?(assessment)
+
+  defp readiness_not_configured, do: @readiness_not_configured
+
+  defp readiness_stale_note, do: @readiness_stale_note
+
+  # A verdict judged one exact revision. Once the specification has moved past
+  # it, the findings on screen describe words nobody is looking at any more, so
+  # the section says so instead of letting an old answer stand for a new one.
+  defp readiness_stale?(nil, _revision_id, _digest), do: false
+
+  defp readiness_stale?(assessment, revision_id, digest)
+       when is_binary(revision_id) and is_binary(digest),
+       do: not ReadinessAssessment.current_for?(assessment, revision_id, digest)
+
+  defp readiness_stale?(_assessment, _revision_id, _digest), do: true
+
+  # Whether this feature may be made ready, and when it may not, which state
+  # says so. The control and the press read this one answer, so nothing is
+  # offered that would be refused and nothing is refused that was offered.
+  defp make_ready_state(%{lifecycle_column: "draft"}, nil, _revision_id, _digest), do: :unchecked
+
+  defp make_ready_state(%{lifecycle_column: "draft"}, assessment, revision_id, digest) do
+    cond do
+      readiness_stale?(assessment, revision_id, digest) -> :stale
+      not ReadinessAssessment.start_available?(assessment) -> :blocked
+      true -> :ready
+    end
+  end
+
+  defp make_ready_state(_feature, _assessment, _revision_id, _digest), do: :not_draft
+
+  defp make_ready?(feature, assessment, revision_id, digest),
+    do: make_ready_state(feature, assessment, revision_id, digest) == :ready
+
+  # The only column a feature comes back from. `In development` is a running
+  # agent's, and ending that is cancellation rather than a change of mind.
+  defp back_to_draft?(%{lifecycle_column: "ready_for_development"}), do: true
+  defp back_to_draft?(_feature), do: false
+
   defp column_label(column), do: Map.fetch!(@column_labels, column)
   defp status_label(status), do: Map.get(@status_labels, status)
   defp gated_action(column), do: Map.fetch!(@gated_actions, column)
+
+  ## Start preconditions
+
+  defp precondition_label(key), do: Map.fetch!(@precondition_labels, key)
+  defp precondition_note(key), do: Map.fetch!(@precondition_notes, key)
+  defp precondition_action(key), do: Map.fetch!(@precondition_actions, key)
+  defp precondition_owner_only, do: @precondition_owner_only
+
+  # Whether the start may be offered at all: the readout above the button, with
+  # every item met. The control and the press read this one list, so nothing is
+  # offered that the press would then refuse.
+  defp start_offered?(preconditions), do: Enum.all?(preconditions, & &1.met?)
+
+  # Whether the acting person can open the page that resolves one item. The
+  # role comes from the `ParticipantGuard` answer this screen already holds, so
+  # the readout cannot offer a destination the route itself would refuse.
+  defp precondition_linkable?(route, owner?),
+    do: owner? or route not in @precondition_owner_routes
+
+  # The page that resolves one precondition, for the three that are elsewhere.
+  defp precondition_navigate(:repository_profile, project_id),
+    do: ~p"/projects/#{project_id}/profile"
+
+  defp precondition_navigate(:project_connection, project_id),
+    do: ~p"/projects/#{project_id}/overview"
+
+  defp precondition_navigate(:ai_connections, _project_id), do: ~p"/ai-connections"
+  defp precondition_navigate(_route, _project_id), do: nil
+
+  # The place on this page that resolves one precondition, for the two that are
+  # here. Both are sections the reader can already see.
+  defp precondition_anchor(:readiness), do: "#readiness-heading"
+  defp precondition_anchor(:processing_boundary), do: "#start-disclosure-heading"
+  defp precondition_anchor(_route), do: nil
 
   defp transfer_summary(%{leaves_authoritative_store: false}),
     do: "Stays in this project's own store"
@@ -1131,6 +1779,246 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
             {status_label(@feature.status)}
           </span>
         </div>
+
+        <%!-- The feature's own words come first: this is what a person opens
+        the page to write, and everything below it judges or acts on it. --%>
+        <section
+          class="mt-6 rounded-lg border border-line bg-surface p-4"
+          aria-labelledby="requirements-heading"
+          data-requirements
+        >
+          <h2 id="requirements-heading" class="text-[13px] font-semibold text-ink">
+            What this feature should do
+          </h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Write it in your own words. Each save keeps a new version, so nothing you wrote
+            before is lost.
+          </p>
+
+          <p
+            :if={is_nil(@requirements_revision_id)}
+            class="mt-3 text-[13px] leading-relaxed text-ink-muted"
+            data-requirements-unavailable
+          >
+            This feature has no specification of its own, so there is nowhere to write this
+            down yet.
+          </p>
+
+          <form
+            :if={@requirements_revision_id}
+            id="requirements-form"
+            phx-change="validate_requirements"
+            phx-submit="save_requirements"
+            class="mt-4"
+            data-requirements-form
+          >
+            <div :for={part <- guided_parts()} class="mt-4 first:mt-0">
+              <label
+                for={"requirements-#{part.key}"}
+                class="block text-[13px] font-semibold text-ink"
+              >
+                {part.label}
+              </label>
+              <textarea
+                id={"requirements-#{part.key}"}
+                name={"requirements[#{part.key}]"}
+                rows="3"
+                aria-describedby={"requirements-#{part.key}-hint"}
+                class={[
+                  "mt-1.5 w-full rounded-lg border bg-surface px-3 py-2 text-sm text-ink outline-none",
+                  "focus:outline-solid focus:outline-2 focus:outline-offset-0 focus:outline-focus",
+                  (@requirements_error && "border-err-fg") || "border-line-strong focus:border-focus"
+                ]}
+                phx-debounce="200"
+                data-requirements-part={part.key}
+              >{requirements_body(@requirements_parts, part.key)}</textarea>
+              <p
+                id={"requirements-#{part.key}-hint"}
+                class="mt-2 text-xs text-ink-muted"
+                data-requirements-hint={part.key}
+              >
+                {part.hint}
+              </p>
+            </div>
+
+            <p
+              :if={@requirements_error}
+              class="mt-4 flex items-start gap-1.5 text-xs text-err-fg"
+              data-requirements-error
+            >
+              <.lucide name="circle-alert" class="size-3.5 flex-none" />
+              {@requirements_error}
+            </p>
+
+            <.button type="submit" class="mt-4 w-full sm:w-auto" data-save-requirements>
+              <.lucide name="check" class="size-4" /> Save
+            </.button>
+          </form>
+        </section>
+
+        <%!-- What the words above still need. Blockers first, because they are
+        the only ones that stop development. --%>
+        <section
+          class="mt-6 rounded-lg border border-line bg-surface p-4"
+          aria-labelledby="readiness-heading"
+          data-readiness
+        >
+          <h2 id="readiness-heading" class="text-[13px] font-semibold text-ink">
+            What is still missing
+          </h2>
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            Check this before development starts. Every empty part is a blocker.
+          </p>
+
+          <.button
+            type="button"
+            phx-click="check_readiness"
+            class="mt-3 w-full sm:w-auto"
+            data-check-readiness
+          >
+            <.lucide name="circle-check" class="size-4" /> Check readiness
+          </.button>
+
+          <p
+            :if={@readiness_error}
+            class="mt-3 flex items-start gap-1.5 text-xs text-err-fg"
+            data-readiness-error
+          >
+            <.lucide name="circle-alert" class="size-3.5 flex-none" />
+            {@readiness_error}
+          </p>
+
+          <p
+            :if={is_nil(@readiness)}
+            class="mt-3 text-[13px] leading-relaxed text-ink-muted"
+            data-readiness-unchecked
+          >
+            This has not been checked yet.
+          </p>
+
+          <div :if={@readiness} data-readiness-checked>
+            <%!-- The verdict comes first when it is about older words, because
+            everything under it is then a judgement of text nobody can see. --%>
+            <div
+              :if={readiness_stale?(@readiness, @requirements_revision_id, @requirements_digest)}
+              class="mt-3"
+              data-readiness-stale
+            >
+              <.notice variant="warn" icon="triangle-alert">
+                {readiness_stale_note()}
+              </.notice>
+            </div>
+
+            <p
+              :if={guidance_unconfigured?(@readiness)}
+              class="mt-3 text-[13px] leading-relaxed text-ink-muted"
+              data-readiness-guidance="not_configured"
+            >
+              {readiness_not_configured()}
+            </p>
+
+            <div :if={readiness_blockers(@readiness) != []} class="mt-4" data-readiness-blockers>
+              <h3 class="text-[13px] font-semibold text-ink">Blockers</h3>
+              <ul class="mt-2 flex flex-col gap-2">
+                <li
+                  :for={finding <- readiness_blockers(@readiness)}
+                  class="rounded-lg border border-err-fg/40 bg-err-bg p-3"
+                  data-readiness-blocker={finding["id"]}
+                >
+                  <p class="flex items-start gap-1.5 text-[13px] font-semibold text-err-fg">
+                    <.lucide name="circle-alert" class="size-3.5 flex-none" />
+                    {finding["summary"]}
+                  </p>
+                  <p class="mt-1 text-[13px] leading-relaxed text-ink">
+                    {finding["explanation"]}
+                  </p>
+                </li>
+              </ul>
+            </div>
+
+            <div
+              :if={readiness_suggestions(@readiness) != []}
+              class="mt-4"
+              data-readiness-suggestions
+            >
+              <h3 class="text-[13px] font-semibold text-ink">Suggestions</h3>
+              <ul class="mt-2 flex flex-col gap-2">
+                <li
+                  :for={finding <- readiness_suggestions(@readiness)}
+                  class="rounded-lg border border-line p-3"
+                  data-readiness-suggestion={finding["id"]}
+                >
+                  <p class="flex items-start gap-1.5 text-[13px] font-semibold text-ink">
+                    <.lucide name="info" class="size-3.5 flex-none" />
+                    {finding["summary"]}
+                  </p>
+                  <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                    {finding["explanation"]}
+                  </p>
+                  <.button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    phx-click="dismiss_suggestion"
+                    phx-value-id={finding["id"]}
+                    class="mt-3 w-full sm:w-auto"
+                    data-dismiss-suggestion={finding["id"]}
+                  >
+                    <.lucide name="x" class="size-4" /> Dismiss
+                  </.button>
+                </li>
+              </ul>
+            </div>
+
+            <p
+              :if={readiness_blockers(@readiness) == [] and readiness_suggestions(@readiness) == []}
+              class="mt-3 text-[13px] leading-relaxed text-ink"
+              data-readiness-clear
+            >
+              Nothing is blocking this feature.
+            </p>
+          </div>
+
+          <%!-- The two moves the board withholds. They live with the findings
+          because the findings are what decides whether either is offered. --%>
+          <p
+            :if={@lifecycle_error}
+            class="mt-4 flex items-start gap-1.5 text-xs text-err-fg"
+            data-lifecycle-error
+          >
+            <.lucide name="circle-alert" class="size-3.5 flex-none" />
+            {@lifecycle_error}
+          </p>
+
+          <div
+            :if={
+              make_ready?(@feature, @readiness, @requirements_revision_id, @requirements_digest) or
+                back_to_draft?(@feature)
+            }
+            class="mt-4 flex flex-col gap-3 sm:flex-row"
+          >
+            <.button
+              :if={make_ready?(@feature, @readiness, @requirements_revision_id, @requirements_digest)}
+              type="button"
+              phx-click="make_ready"
+              class="w-full sm:w-auto"
+              data-make-ready
+            >
+              <.lucide name="check" class="size-4" /> Make ready
+            </.button>
+
+            <.button
+              :if={back_to_draft?(@feature)}
+              type="button"
+              variant="secondary"
+              phx-click="back_to_draft"
+              class="w-full sm:w-auto"
+              data-back-to-draft
+            >
+              <.lucide name="arrow-left" class="size-4" /> Back to draft
+            </.button>
+          </div>
+        </section>
 
         <section
           :if={@feature.lifecycle_column == "ready_for_review" or @review_decision}
@@ -1689,6 +2577,79 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
           >
             <.lucide name="check" class="size-4" /> I understand, continue
           </.button>
+
+          <%!-- Every start precondition, met or not, with the one place each
+          unmet one is resolved. It is a readout, not a hidden gate: a person who
+          cannot start yet reads why here rather than finding no button. --%>
+          <div class="mt-4 border-t border-line pt-4" data-start-preconditions>
+            <h3 class="text-[13px] font-semibold text-ink">Before you can start</h3>
+            <ul class="mt-2 flex flex-col gap-3">
+              <li
+                :for={item <- @start_preconditions}
+                data-start-precondition={item.key}
+                data-precondition-met={to_string(item.met?)}
+              >
+                <p class={[
+                  "flex items-start gap-1.5 text-[13px]",
+                  (item.met? && "text-ok-fg") || "text-err-fg"
+                ]}>
+                  <.lucide
+                    name={(item.met? && "circle-check") || "circle-alert"}
+                    class="size-3.5 flex-none translate-y-0.5"
+                  />
+                  {precondition_label(item.key)}
+                </p>
+                <p :if={not item.met?} class="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                  {precondition_note(item.key)}
+                </p>
+                <%!-- Three of the five are resolved on another page and two on
+                this one, so a link carries whichever of the two destinations
+                applies and `<.link>` renders the right anchor for it. --%>
+                <.link
+                  :if={not item.met? and precondition_linkable?(item.route, @owner?)}
+                  navigate={precondition_navigate(item.route, @project_id)}
+                  href={precondition_anchor(item.route)}
+                  class="mt-1 inline-flex items-center gap-1.5 rounded text-[13px] font-semibold text-primary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  data-precondition-route={item.key}
+                >
+                  {precondition_action(item.key)}
+                  <.lucide name="arrow-right" class="size-3.5 flex-none" />
+                </.link>
+                <p
+                  :if={not item.met? and not precondition_linkable?(item.route, @owner?)}
+                  class="mt-1 text-[13px] leading-relaxed text-ink-muted"
+                  data-precondition-owner-only={item.key}
+                >
+                  {precondition_owner_only()}
+                </p>
+              </li>
+            </ul>
+
+            <%!-- The last step of the start flow, and the only control that
+            begins a run. It is offered only where the list above is fully met,
+            and the press asks that same list again before anything happens. --%>
+            <.button
+              :if={start_offered?(@start_preconditions)}
+              type="button"
+              phx-click="start_development"
+              class="mt-4 w-full sm:w-auto"
+              data-start-development
+            >
+              <.lucide name="play" class="size-4" /> Start development
+            </.button>
+
+            <%!-- Read after the button is already gone in the case that matters
+            most: the item that stopped the press is unmet again above, and this
+            says which one it was. --%>
+            <p
+              :if={@start_error}
+              class="mt-3 flex items-start gap-1.5 text-[13px] text-err-fg"
+              data-start-error
+            >
+              <.lucide name="circle-alert" class="size-3.5 flex-none translate-y-0.5" />
+              {@start_error}
+            </p>
+          </div>
         </section>
 
         <section class="mt-6" aria-labelledby="evidence-heading" data-evidence>

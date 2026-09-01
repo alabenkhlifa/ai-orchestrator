@@ -14,6 +14,7 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
 
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.GatewayConnection
+  alias SddOrchestrator.Worker.ProjectConnections
   alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.State
   alias SddOrchestrator.Worker.Supervisor, as: WorkerSupervisor
@@ -136,12 +137,17 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # specs/40 Task 3 adds `RepositorySelection` between them: it holds the one
     # open folder-picker request, and it starts before the connection so a
     # request arriving on the first join has somewhere to land.
+    # specs/41 Task 7 adds `ProjectConnections` for the same reason: it holds
+    # one connection per project this worker is told to serve, and a
+    # `project_bound` notice arriving on the first join has to have somewhere to
+    # open.
     test "starts the gateway connection for both scopes" do
       assert {:ok, {_flags, mac_only_children}} = WorkerSupervisor.init(mac_only_config())
 
       assert Enum.map(mac_only_children, & &1.id) == [
                State,
                RepositorySelection,
+               ProjectConnections,
                GatewayConnection
              ]
 
@@ -151,6 +157,7 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
       assert Enum.map(project_children, & &1.id) == [
                State,
                RepositorySelection,
+               ProjectConnections,
                GatewayConnection
              ]
     end

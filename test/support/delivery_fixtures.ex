@@ -6,14 +6,41 @@ defmodule SddOrchestrator.DeliveryFixtures do
     AgentRun,
     ArtifactStore,
     EvidenceIngestion,
-    Feature,
+    ExecutionManifest,
+    Features,
+    GuidedRequirements,
+    ParticipantGuard,
     RunAttempt,
     VerificationCompletion,
     WorkerProtocol
   }
 
+  alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
+  alias SddOrchestrator.Devices
+  alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.ParticipationFixtures
+
+  alias SddOrchestrator.Portability.{
+    DeviceRestore,
+    PackageSection,
+    ProjectPackage,
+    RestoreDecision
+  }
+
+  alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryAssessments
+  alias SddOrchestrator.SpecificationStore
+
+  alias SddOrchestrator.RepositoryAssessments.{
+    AssessmentStore,
+    RepositoryAssessment,
+    RepositoryAssessmentCacheProvenance,
+    RepositoryAssessmentResult,
+    RepositoryBindingPreparation,
+    RepositoryExecutionProfileProposalPayload,
+    WorkerRepositoryExecutionProfileProposalEnvelope
+  }
 
   # One real 1x1 PNG. Small enough to keep tests fast, and genuinely a PNG so a
   # content-type check is proven against the type it actually claims.
@@ -21,29 +48,84 @@ defmodule SddOrchestrator.DeliveryFixtures do
          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
        )
 
+  @repository_provider "github"
+  @scanner_contract_digest String.duplicate("a", 64)
+  @assessment_disclosure_digest String.duplicate("b", 64)
+
+  # The commit the seeded assessment is bound to, and so the base revision every
+  # manifest built from the approved profile carries.
+  @base_revision String.duplicate("1", 40)
+
+  # The approved profile's own values. One command, and the scope entries
+  # together, weigh more than `ProtocolLimits.max_reference_bytes`, so every
+  # manifest a test builds proves that a real profile's lists travel in fields
+  # of their own rather than squeezed into `agent_ref` or `worker_ref`.
+  @long_command "mix test " <> String.duplicate("--include slow_case ", 30)
+
+  @deep_directories Enum.map(1..6, fn index ->
+                      "lib/" <> String.duplicate("deep_module_#{index}_", 6) <> "leaf"
+                    end)
+
+  @profile_fields %{
+    commands: ["mix test", @long_command],
+    required_checks: ["mix test"],
+    allowed_scope: @deep_directories,
+    gaps: [],
+    conflicts: [],
+    multi_root_blockers: []
+  }
+
+  # One body per guided part, for a feature a test needs readiness to clear.
+  # The words are deliberately dull: a test that reads them is proving the
+  # document round-tripped, never what it says.
+  @filled_requirements %{
+    "outcome" => "A person can do the thing this feature exists for.",
+    "users" => "The project's owner and the participants invited to it.",
+    "rules" => "Nothing starts until the person confirms it.",
+    "done" => "The person walks the path once and sees the result."
+  }
+
+  @assessment_findings [
+    %{
+      category: "instruction",
+      path: "AGENTS.md",
+      bytes: 12,
+      sha256: String.duplicate("d", 64),
+      line_count: 3
+    }
+  ]
+
   @doc """
   Creates one hosted project with an owner profile and one active participant.
+
+  The repository is connected and one execution profile is approved, because
+  that is the state a project has to be in before any run may start or
+  continue: every manifest reads its base revision, checks, root, commands, and
+  scope from the approved profile, and there is no configured fallback.
 
   Returns the project together with the actor maps both members use for
   authorization.
   """
   def delivery_project_fixture do
     result = ParticipationFixtures.hosted_project_fixture()
+    project = connect_repository!(result.project)
 
-    ParticipationFixtures.member_profile_fixture(result.project, result.account, %{
+    ParticipationFixtures.member_profile_fixture(project, result.account, %{
       role: "owner",
       display_name: ParticipationFixtures.unique_display_name("Owner")
     })
 
     identity = ParticipationFixtures.invited_identity_fixture()
-    ParticipationFixtures.participant_fixture(result.project, identity.hosted_identity)
+    ParticipationFixtures.participant_fixture(project, identity.hosted_identity)
 
-    ParticipationFixtures.member_profile_fixture(result.project, identity.account, %{
+    ParticipationFixtures.member_profile_fixture(project, identity.account, %{
       role: "participant",
       display_name: ParticipationFixtures.unique_display_name("Member")
     })
 
     Map.merge(result, %{
+      project: project,
+      profile: approve_profile!(result.account.id, project),
       identity: identity,
       owner_actor: %{account_id: result.account.id, hosted_identity_id: nil},
       participant_actor: %{
@@ -53,18 +135,327 @@ defmodule SddOrchestrator.DeliveryFixtures do
     })
   end
 
-  @doc "Creates one feature in `Draft`."
+  @doc "The base revision the seeded profile, and so every manifest, is anchored to."
+  def base_revision, do: @base_revision
+
+  @doc "The proposal fields the seeded profile is approved from."
+  def profile_fields, do: @profile_fields
+
+  @doc """
+  Connects one hosted repository to a project.
+
+  Both the assessment store and the profile store refuse a project whose
+  repository binding is not connected, so nothing may be approved for a project
+  without this.
+  """
+  def connect_repository!(project) do
+    repository_id = System.unique_integer([:positive])
+
+    project =
+      project
+      |> Ecto.Changeset.change(%{
+        storage_mode: "hosted",
+        lifecycle_state: "active",
+        repository_provider: @repository_provider,
+        canonical_repository_id: Integer.to_string(repository_id)
+      })
+      |> Repo.update!()
+
+    %RepositoryConnection{}
+    |> RepositoryConnection.create_changeset(%{
+      project_id: project.id,
+      workspace_id: project.workspace_id,
+      provider: @repository_provider,
+      provider_repository_id: repository_id,
+      state: "connected"
+    })
+    |> Repo.insert!()
+
+    project
+  end
+
+  @doc """
+  Approves one execution profile by walking the real assessment path.
+
+  The profile a manifest reads is therefore one an owner could actually have
+  approved rather than a row. Approval is append-only, so a second call adds a
+  higher version instead of replacing the first.
+  """
+  def approve_profile!(authority_or_account_id, project, opts \\ [])
+
+  def approve_profile!({:device, %DeviceWorkspace{}} = authority, project, opts),
+    do: approve_through_domain!(authority, project, opts)
+
+  def approve_profile!(account_id, project, opts) when is_binary(account_id),
+    do: approve_through_domain!({:hosted, account_id}, project, opts)
+
+  @doc """
+  Approves one execution profile on this device for a project the device owns.
+
+  A device-authoritative project keeps its own profiles, so a run continued
+  under a device authority reads them from the device store. The project is
+  restored onto the device through the portability path, which is the only
+  supported way it comes to exist there holding the same stable id the hosted
+  records already use.
+  """
+  def approve_device_profile!(%DeviceWorkspace{} = workspace, project, opts \\ []) do
+    _worker = detected_worker!(workspace)
+    device_project = restore_onto_device!(workspace, project)
+
+    {:ok, connected} =
+      Devices.connect_repository(
+        device_project.id,
+        device_project.repository_provider,
+        device_project.repository_id
+      )
+
+    approve_profile!({:device, workspace}, connected, opts)
+  end
+
+  # A device restore is refused unless this device has a worker it can see, so
+  # the fixture pairs one the way the pairing screens do.
+  defp detected_worker!(%DeviceWorkspace{} = workspace) do
+    {:ok, %{code: code}} = Pairing.start_pairing(workspace.id)
+
+    {:ok, %{worker: worker}} =
+      Pairing.complete_pairing(code, %{
+        os_family: "macos",
+        os_major: "26",
+        app_version: "1.0.0",
+        protocol_version: "1"
+      })
+
+    {:ok, seen} = Pairing.mark_seen(worker)
+    seen
+  end
+
+  defp restore_onto_device!(%DeviceWorkspace{} = workspace, project) do
+    repository_id = "device-" <> Integer.to_string(System.unique_integer([:positive]))
+
+    package = %ProjectPackage{
+      project: %PackageSection{
+        name: :project,
+        version: 1,
+        content: %{"id" => project.id, "name" => project.name}
+      },
+      repository: %PackageSection{
+        name: :repository,
+        version: 1,
+        content: %{"provider" => @repository_provider, "repository_id" => repository_id}
+      },
+      specifications: %PackageSection{name: :specifications, version: 1, content: []}
+    }
+
+    decision = %RestoreDecision{
+      project_id: project.id,
+      display_name: project.name,
+      repository_provider: @repository_provider,
+      repository_id: repository_id,
+      checked_boundaries: [:device]
+    }
+
+    {:ok, %{project: restored}} =
+      DeviceRestore.restore(workspace, package, decision,
+        idempotency_key: "delivery-fixture-" <> project.id
+      )
+
+    restored
+  end
+
+  defp approve_through_domain!(authority, project, opts) do
+    completed = complete_assessment!(authority, project, opts)
+
+    {:ok, review} = RepositoryAssessments.profile_review(authority, completed.project_id)
+    {:ok, profile} = RepositoryAssessments.approve_profile(authority, project.id, review.proposal)
+
+    profile
+  end
+
+  defp complete_assessment!(authority, project, opts) do
+    fields = Keyword.get(opts, :fields, @profile_fields)
+    commit = Keyword.get(opts, :commit, @base_revision)
+    now = assessment_time(authority, project, opts)
+
+    {:ok, preparation} =
+      RepositoryBindingPreparation.new(%{
+        project_id: project.id,
+        repository_provider: project.repository_provider,
+        repository_id: repository_id(project),
+        root: ".",
+        commit: commit,
+        scanner_contract_digest: @scanner_contract_digest,
+        disclosure_digest: @assessment_disclosure_digest,
+        worker_ref: Ecto.UUID.generate(),
+        nonce: Ecto.UUID.generate(),
+        issued_at: now,
+        expires_at: DateTime.add(now, 120, :second)
+      })
+
+    {:ok, pending} = RepositoryAssessment.pending(preparation, now)
+    {:ok, stored} = AssessmentStore.put(authority, pending)
+    {:ok, command} = RepositoryAssessment.command(stored)
+    {:ok, result} = RepositoryAssessmentResult.completed(command, completed_scan(command, fields))
+    {:ok, payload} = RepositoryExecutionProfileProposalPayload.new(result, fields)
+
+    {:ok, envelope} =
+      WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
+
+    {:ok, completed} =
+      RepositoryAssessments.finish_assessment(
+        authority,
+        project.id,
+        command,
+        result,
+        assessment_provenance!(command, result),
+        now: now,
+        proposal_envelope: envelope
+      )
+
+    completed
+  end
+
+  # The time this seeded assessment is started at, never earlier than one whole
+  # second after the newest assessment the project already holds.
+  #
+  # An assessment records its time to the whole second, and the store picks the
+  # latest one by that time with a random uuid as the tie-break. Two
+  # assessments seeded inside one second therefore leave which of them counts
+  # as the latest to chance. Approval only ever reads the latest assessment, so
+  # on the losing draw a second call re-approves the first proposal, gets the
+  # first version back, and appends nothing. Only the latest assessment can be
+  # approved at all, so a later second is the one value a further call can use.
+  defp assessment_time(authority, project, opts) do
+    requested = opts |> Keyword.get(:now, DateTime.utc_now()) |> DateTime.truncate(:second)
+
+    case AssessmentStore.latest(authority, project.id) do
+      {:ok, %RepositoryAssessment{inserted_at: inserted_at}} ->
+        next = inserted_at |> DateTime.truncate(:second) |> DateTime.add(1, :second)
+
+        if DateTime.compare(next, requested) == :gt, do: next, else: requested
+
+      _no_assessment_yet ->
+        requested
+    end
+  end
+
+  # A hosted project names its repository canonically; a device project keeps
+  # the same identity under its own field.
+  defp repository_id(%{canonical_repository_id: id}) when is_binary(id), do: id
+  defp repository_id(%{repository_id: id}), do: id
+
+  # The scan reports every directory the proposal's allowed scope names, so a
+  # caller asking for its own scope gets evidence that supports it.
+  defp completed_scan(command, fields) do
+    directories = ["lib" | Map.get(fields, :allowed_scope, [])] |> Enum.uniq()
+
+    %{
+      protocol_version: command.version,
+      assessment_id: command.assessment_id,
+      project_id: command.project_id,
+      repository: %{provider: command.repository_provider, id: command.repository_id},
+      root: command.root,
+      commit: command.commit,
+      scanner_contract_digest: command.scanner_contract_digest,
+      status: "completed",
+      findings: @assessment_findings,
+      structure: Enum.map(directories, &%{path: &1, kind: "directory"}),
+      stats: %{discovered_paths: 16, inspected_files: 1, bytes_read: 20}
+    }
+  end
+
+  defp assessment_provenance!(command, result) do
+    {:ok, cache_key_sha256} = RepositoryAssessmentCacheProvenance.cache_key_sha256(command)
+    {:ok, evidence_sha256} = RepositoryAssessmentCacheProvenance.evidence_sha256(result)
+
+    {:ok, provenance} =
+      RepositoryAssessmentCacheProvenance.new(%{
+        source: "fresh_scan",
+        cache_key_sha256: cache_key_sha256,
+        evidence_sha256: evidence_sha256,
+        cache_stored: true
+      })
+
+    provenance
+  end
+
+  @doc """
+  Creates one feature in `Draft`, with the specification of its own that
+  `Features.create/3` gives every feature.
+
+  The fixture goes through the domain rather than inserting a row, so a feature
+  in a test is in the state production actually produces. A hand-rolled row
+  drifted from `Features.create/3` once already and made readiness look broken
+  when only the fixture was.
+
+  `requirements: :filled` writes a body under each guided heading, for a test
+  that needs a feature no structural finding blocks. The default leaves the four
+  headings empty, which is what a person sees on a feature they just created.
+  """
   def feature_fixture(project, creator_account, attrs \\ %{}) do
     attrs = Map.new(attrs)
 
-    %Feature{}
-    |> Feature.create_changeset(%{
-      project_id: project.id,
-      title: Map.get(attrs, :title, unique_title()),
-      creator_account_id: creator_account.id,
-      assigned_account_id: Map.get(attrs, :assigned_account_id)
-    })
-    |> Repo.insert!()
+    feature =
+      created_feature!(project, creator_account, %{
+        title: Map.get(attrs, :title, unique_title()),
+        assigned_account_id: Map.get(attrs, :assigned_account_id)
+      })
+
+    write_requirements!(project, feature, Map.get(attrs, :requirements, :empty))
+  end
+
+  # Some fixtures deliberately attribute a feature to someone the guard refuses:
+  # a member who has since left, or an identity whose participation the test is
+  # about to change. Those create through the project's owner and correct the
+  # attribution afterwards, so every feature still comes from the one production
+  # path instead of a hand-rolled row that would drift from it again.
+  defp created_feature!(project, creator_account, attrs) do
+    case Features.create(project.id, actor_for(creator_account), attrs) do
+      {:ok, feature} ->
+        feature
+
+      {:error, :unauthorized} ->
+        {:ok, owner} = ParticipantGuard.owner(project.id)
+        {:ok, feature} = Features.create(project.id, actor_for(owner), attrs)
+
+        feature
+        |> Ecto.Changeset.change(%{creator_account_id: creator_account.id})
+        |> Repo.update!()
+    end
+  end
+
+  defp actor_for(%{account_id: account_id}),
+    do: %{account_id: account_id, hosted_identity_id: nil}
+
+  defp actor_for(%{id: account_id}), do: %{account_id: account_id, hosted_identity_id: nil}
+
+  @doc "The four guided bodies `requirements: :filled` writes."
+  def filled_requirements, do: @filled_requirements
+
+  defp write_requirements!(_project, feature, :empty), do: feature
+
+  defp write_requirements!(project, feature, :filled) do
+    authority = Repo.get(PersonalWorkspace, project.workspace_id)
+
+    {:ok, current} =
+      SpecificationStore.get_current(authority, project.id, feature.specification_id)
+
+    {:ok, _appended} =
+      SpecificationStore.append_revision(
+        authority,
+        project.id,
+        feature.specification_id,
+        current.revision.id,
+        %{
+          revision_id: Ecto.UUID.generate(),
+          documents: %{
+            requirements: GuidedRequirements.render(@filled_requirements),
+            design: current.revision.design_document,
+            tasks: current.revision.tasks_document
+          }
+        }
+      )
+
+    feature
   end
 
   def unique_title(prefix \\ "Feature"),
@@ -123,6 +514,41 @@ defmodule SddOrchestrator.DeliveryFixtures do
   """
   def required_check_contract(names) do
     Enum.map(names, &%{"name" => &1, "command" => &1})
+  end
+
+  @doc """
+  The manifest one continued attempt is bound to, rebuilt from the run, the
+  attempt, and the approved execution profile.
+
+  Neither store keeps the manifest itself, only its digest, so rebuilding it and
+  comparing digests is the only way to prove which values a continuation really
+  carried. The digest covers every field, so a match cannot happen by accident.
+  """
+  def continuation_manifest(run, attempt, profile, continuation) do
+    {:ok, manifest} =
+      ExecutionManifest.new(%{
+        "manifest_version" => ExecutionManifest.manifest_version(),
+        "project_id" => run.project_id,
+        "feature_id" => run.feature_id,
+        "run_id" => run.id,
+        "attempt_number" => attempt.attempt_number,
+        "approved_slice" => run.approved_slice,
+        "starting_revision_id" => run.starting_revision_id,
+        "starting_revision_digest" => run.starting_revision_digest,
+        "effective_revision_id" => attempt.effective_revision_id,
+        "effective_revision_digest" => attempt.effective_revision_digest,
+        "repository_base_revision" => profile.base_revision,
+        "target_branch" => run.branch,
+        "required_checks" => required_check_contract(profile.required_checks),
+        "repository_root" => profile.root,
+        "commands" => profile.commands,
+        "allowed_scope" => profile.allowed_scope,
+        "agent_ref" => %{},
+        "worker_ref" => %{},
+        "continuation" => continuation
+      })
+
+    manifest
   end
 
   @doc """

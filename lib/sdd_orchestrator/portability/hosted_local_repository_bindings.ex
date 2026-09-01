@@ -12,6 +12,7 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryBindings do
   import Ecto.Query
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
+  alias SddOrchestrator.Delivery.BoundProjectNotice
 
   alias SddOrchestrator.Devices.{
     LocalWorker,
@@ -149,17 +150,29 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryBindings do
 
   def connection_state(%PersonalWorkspace{}, _project_id, _opts), do: {:error, :not_found}
 
-  @doc "Deletes the scoped project's binding. Repeating disconnect is idempotent."
+  @doc """
+  Deletes the scoped project's binding. Repeating disconnect is idempotent.
+
+  This is the single removal point, so it is also where the Mac is told the
+  project is no longer its to serve. The Mac has to be read before the delete:
+  the binding holds only a worker, so once the row is gone nothing points back
+  at the machine that has to be told. A project that was already unbound names
+  no Mac and no notice is sent.
+  """
   @spec disconnect(PersonalWorkspace.t(), String.t()) ::
           {:ok, :disconnected} | {:error, :not_found}
   def disconnect(%PersonalWorkspace{id: personal_workspace_id}, project_id)
       when is_binary(project_id) do
     with {:ok, project_id} <- cast_id(project_id),
          %Project{} = project <- scoped_project(personal_workspace_id, project_id) do
+      device_workspace_id = BoundProjectNotice.bound_device_workspace_id(project.id)
+
       Repo.delete_all(
         from binding in HostedLocalRepositoryBinding,
           where: binding.project_id == ^project.id
       )
+
+      announce_unbound(device_workspace_id, project.id)
 
       {:ok, :disconnected}
     else
@@ -175,6 +188,11 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryBindings do
     {count, _} = Repo.delete_all(HostedLocalRepositoryBinding)
     {:ok, count}
   end
+
+  defp announce_unbound(nil, _project_id), do: :ok
+
+  defp announce_unbound(device_workspace_id, project_id),
+    do: BoundProjectNotice.unbound(device_workspace_id, project_id)
 
   defp authorized_project(personal_workspace_id, project_id) do
     Repo.one(

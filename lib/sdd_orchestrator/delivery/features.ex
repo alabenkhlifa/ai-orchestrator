@@ -12,26 +12,35 @@ defmodule SddOrchestrator.Delivery.Features do
   import Ecto.Query
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
-  alias SddOrchestrator.Delivery.{Feature, ParticipantGuard}
+  alias SddOrchestrator.Delivery.{Feature, GuidedRequirements, ParticipantGuard}
+  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
   alias SddOrchestrator.SpecificationStore
 
   @type actor :: ParticipantGuard.actor()
   @type authority :: PersonalWorkspace.t() | DeviceWorkspace.t()
 
-  @doc "Creates one feature in `Draft` for the acting member."
+  # The design and tasks documents belong to the coding agent, so the feature
+  # starts with a placeholder that says so rather than an empty file the person
+  # might think is theirs to fill in.
+  @design_document "## Design\n\nThe coding agent writes this document.\n"
+  @tasks_document "## Tasks\n\nThe coding agent writes this document.\n"
+
+  @doc """
+  Creates one feature in `Draft` for the acting member, together with the
+  specification that feature holds its requirements in.
+
+  A feature needs somewhere to say what it should do from the moment it exists.
+  Adopting a specification later would leave a window where the feature can be
+  neither described nor judged, so both are written in one transaction: a
+  specification the store refuses leaves no feature behind.
+  """
   @spec create(Ecto.UUID.t(), actor(), map()) ::
-          {:ok, Feature.t()} | {:error, :unauthorized | Ecto.Changeset.t()}
+          {:ok, Feature.t()} | {:error, atom() | Ecto.Changeset.t()}
   def create(project_id, actor, attrs) do
-    with {:ok, member} <- ParticipantGuard.authorize_action(project_id, actor, :view_feature) do
-      %Feature{}
-      |> Feature.create_changeset(%{
-        project_id: project_id,
-        title: attrs[:title] || attrs["title"],
-        creator_account_id: member.account_id,
-        assigned_account_id: attrs[:assigned_account_id] || attrs["assigned_account_id"]
-      })
-      |> Repo.insert()
+    with {:ok, member} <- ParticipantGuard.authorize_action(project_id, actor, :view_feature),
+         {:ok, changeset} <- draft_feature(project_id, member, attrs) do
+      insert_with_specification(project_id, member, changeset)
     end
   end
 
@@ -187,6 +196,92 @@ defmodule SddOrchestrator.Delivery.Features do
   rescue
     Ecto.Query.CastError -> {:error, :not_linked}
   end
+
+  # The title is checked before the specification store is asked for anything.
+  # A rejected title then costs nothing, and the specification carries the same
+  # trimmed title the feature does instead of the raw text the caller sent.
+  defp draft_feature(project_id, member, attrs) do
+    changeset =
+      Feature.create_changeset(%Feature{}, %{
+        project_id: project_id,
+        title: attrs[:title] || attrs["title"],
+        creator_account_id: member.account_id,
+        assigned_account_id: attrs[:assigned_account_id] || attrs["assigned_account_id"]
+      })
+
+    case Ecto.Changeset.apply_action(changeset, :insert) do
+      {:ok, _feature} -> {:ok, changeset}
+      {:error, invalid} -> {:error, invalid}
+    end
+  end
+
+  # The feature is inserted first and linked second because the link is only
+  # expressible through `Feature.specification_link_changeset/2`, which carries
+  # the uniqueness constraint that keeps one specification to one feature. Both
+  # writes and the specification share one transaction, so a caller never sees
+  # a feature without its specification or a specification without its feature.
+  defp insert_with_specification(project_id, member, changeset) do
+    title = Ecto.Changeset.get_field(changeset, :title)
+
+    Repo.transaction(fn ->
+      with {:ok, specification_id} <- create_specification(project_id, member, title),
+           {:ok, feature} <- Repo.insert(changeset),
+           {:ok, linked} <- link_created(feature, specification_id) do
+        linked
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp link_created(feature, specification_id) do
+    feature
+    |> Feature.specification_link_changeset(specification_id)
+    |> Repo.update()
+  end
+
+  # The project's specifications live under the workspace that owns the
+  # project, so a participant's feature still writes into the owner's store.
+  # The revision records the person who actually acted, which is what makes the
+  # history readable later.
+  defp create_specification(project_id, member, title) do
+    attrs = %{
+      id: Ecto.UUID.generate(),
+      title: title,
+      documents: %{
+        requirements: empty_requirements_document(),
+        design: @design_document,
+        tasks: @tasks_document
+      }
+    }
+
+    case SpecificationStore.create(owner_authority(project_id), project_id, attrs,
+           actor_ref: member.account_id
+         ) do
+      {:ok, %{specification: specification}} -> {:ok, specification.id}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Authority comes from the project, never from the actor. A device or unknown
+  # project resolves to `nil`, which the specification store refuses closed
+  # without disclosing whether the project exists.
+  defp owner_authority(project_id) do
+    case Repo.get(Project, project_id) do
+      %Project{storage_mode: "hosted", workspace_id: workspace_id} ->
+        Repo.get(PersonalWorkspace, workspace_id)
+
+      _other ->
+        nil
+    end
+  rescue
+    Ecto.Query.CastError -> nil
+  end
+
+  # The four guided headings, with nothing under them yet. The document's shape
+  # has one owner, so the form a person fills in and the document a feature
+  # starts with cannot disagree.
+  defp empty_requirements_document, do: GuidedRequirements.empty()
 
   defp normalize_link_error({:ok, feature}), do: {:ok, feature}
 

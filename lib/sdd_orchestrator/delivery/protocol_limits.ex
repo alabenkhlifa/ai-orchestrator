@@ -5,6 +5,10 @@ defmodule SddOrchestrator.Delivery.ProtocolLimits do
   Limits bound what one peer can push through the channel before any project
   persistence exists. Deployments may tighten them without changing the
   protocol contract.
+
+  `max_required_checks` matches the number of required checks an approved
+  repository execution profile may hold, so a profile its owner approved can
+  never produce a manifest this boundary refuses.
   """
 
   @defaults [
@@ -14,7 +18,7 @@ defmodule SddOrchestrator.Delivery.ProtocolLimits do
     max_id_bytes: 64,
     max_reference_bytes: 512,
     max_text_bytes: 8_192,
-    max_required_checks: 50,
+    max_required_checks: 64,
     max_capabilities: 64,
     max_snapshot_attempts: 100
   ]

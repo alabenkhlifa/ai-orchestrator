@@ -12,18 +12,27 @@ defmodule SddOrchestratorWeb.WorkerChannel do
   changes nothing and is answered with a reason, while the session stays open
   so one bad frame does not cost a correct worker its run.
 
-  Project state belongs to the outbox and to the tasks that own ingestion, not
-  here. Acknowledgements go straight to the durable outbox; validated events,
-  heartbeats, and reconciliation snapshots are published for the tasks that own
-  their meaning.
+  Nothing is announced that a reader cannot find afterwards. An acknowledgement
+  goes straight to the durable outbox, and an event this control plane turns
+  into activity is stored before it is published and before the worker is told
+  `accepted`. A worker that hears its progress was taken can therefore trust
+  that the run's history holds it.
+
+  The rest of a project's state belongs to the modules that own it. Heartbeats,
+  reconciliation snapshots, and the event types owned outside `EventIngestion`
+  are published for the tasks that give them meaning.
   """
   use Phoenix.Channel
 
   alias Phoenix.PubSub
+  alias SddOrchestrator.Accounts.PersonalWorkspace
   alias SddOrchestrator.Delivery.CommandOutbox
   alias SddOrchestrator.Delivery.CommandTransport.Channel, as: Transport
+  alias SddOrchestrator.Delivery.EventIngestion
   alias SddOrchestrator.Delivery.ProtocolCodec
   alias SddOrchestrator.Delivery.WorkerProtocol
+  alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.Repo
 
   @doc "The PubSub topic carrying one project's validated worker traffic."
   @spec topic(Ecto.UUID.t()) :: String.t()
@@ -61,8 +70,15 @@ defmodule SddOrchestratorWeb.WorkerChannel do
     end
   end
 
-  def handle_in("event", payload, socket),
-    do: intake(payload, "event", :worker_event, socket)
+  def handle_in("event", payload, socket) do
+    with {:ok, envelope} <- accept(payload, "event", socket),
+         :ok <- store(envelope, socket) do
+      publish(socket, {:worker_event, envelope})
+      {:reply, {:ok, %{status: "accepted"}}, socket}
+    else
+      {:error, reason} -> {:reply, {:error, refusal(reason)}, socket}
+    end
+  end
 
   def handle_in("reconcile", payload, socket),
     do: intake(payload, "reconciliation_snapshot", :worker_reconciliation, socket)
@@ -81,8 +97,15 @@ defmodule SddOrchestratorWeb.WorkerChannel do
   # The socket authenticated one execution target; the topic is where a worker
   # would otherwise reach across projects, so it is checked before negotiation
   # and therefore before the worker can be sent anything.
+  #
+  # A socket holding no project at all, such as a Mac-scoped one, matches no
+  # topic here, because the value it would be compared against is absent rather
+  # than wrong. Reading the assign directly raised on that socket and killed the
+  # channel process instead of answering it, which turned a refusal into a
+  # crash. Nothing that was refused becomes allowed: an absent project can equal
+  # no topic.
   defp confirm_execution_target(project_id, socket) do
-    if project_id == socket.assigns.project_id,
+    if project_id == Map.get(socket.assigns, :project_id),
       do: :ok,
       else: {:error, :unauthorized_execution_target}
   end
@@ -100,6 +123,49 @@ defmodule SddOrchestratorWeb.WorkerChannel do
       {:error, reason} ->
         {:reply, {:error, refusal(reason)}, socket}
     end
+  end
+
+  # An announcement is not storage. The page a person is watching re-reads the
+  # run when this topic carries an event, so an event that was broadcast and
+  # never written leaves the reader with nothing to find. Storing first also
+  # means a refusal reaches the worker: a superseded attempt hears that its
+  # event was not taken instead of hearing silence.
+  #
+  # Only the event types `EventIngestion` turns into activity are stored here.
+  # The others are owned by the modules that give them meaning, so this intake
+  # passes them on exactly as it always has rather than refusing what it does
+  # not own.
+  defp store(envelope, socket) do
+    if envelope["event_type"] in EventIngestion.handled_event_types() do
+      ingest(envelope, socket)
+    else
+      :ok
+    end
+  end
+
+  defp ingest(envelope, socket) do
+    project_id = socket.assigns.project_id
+
+    case EventIngestion.ingest(project_authority(project_id), project_id, envelope) do
+      {:ok, _stored} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Authority comes from the project, never from the credential, which names an
+  # execution target rather than a store. A project that is not a hosted one, or
+  # is not there at all, resolves to no authority, and the delivery store refuses
+  # that closed without disclosing which of the two it was.
+  defp project_authority(project_id) do
+    case Repo.get(Project, project_id) do
+      %Project{storage_mode: "hosted", workspace_id: workspace_id} ->
+        Repo.get(PersonalWorkspace, workspace_id)
+
+      _other ->
+        nil
+    end
+  rescue
+    Ecto.Query.CastError -> nil
   end
 
   defp acknowledge(payload, socket) do

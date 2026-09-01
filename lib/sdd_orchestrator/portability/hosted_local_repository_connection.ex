@@ -27,6 +27,7 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryConnection do
   import Ecto.Query
 
   alias SddOrchestrator.Accounts.{DeviceWorkspace, PersonalWorkspace}
+  alias SddOrchestrator.Delivery.BoundProjectNotice
 
   alias SddOrchestrator.Devices.{
     LocalWorker,
@@ -113,6 +114,12 @@ defmodule SddOrchestrator.Portability.HostedLocalRepositoryConnection do
              repository_id,
              validated_at: validated_at
            ) do
+      # The worker may be attached for this Mac and holding no project
+      # connection, in which case a run for this project would reach nobody
+      # until it is told. The device workspace is already in hand here, so no
+      # lookup is needed to say which Mac to tell.
+      BoundProjectNotice.bound(device_workspace.id, binding.project_id)
+
       {:ok,
        %{
          project_id: binding.project_id,

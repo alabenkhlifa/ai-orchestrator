@@ -261,6 +261,8 @@ defmodule SddOrchestrator.Privacy.DeliveryProcessingInventory do
       revision_id: "Bind the verdict to the exact specification revision it judged.",
       revision_digest: "Detect a moved revision so a stale verdict is never read as current.",
       findings: "Hold the visible blocking findings and suggestions the verdict produced.",
+      guidance:
+        "Record whether a guidance model judged this verdict, so the page can say the findings are structural only.",
       dismissed_ids: "Record which non-blocking suggestions the participant has dismissed.",
       version: "Enforce optimistic concurrency on dismissal against a superseded finding list.",
       assessed_at: "Record when the verdict was produced for lifecycle accountability.",

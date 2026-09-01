@@ -65,6 +65,7 @@ defmodule SddOrchestrator.RepositoryAssessments do
           | :stale_assessment
           | :not_found
           | :persistence_failed
+          | :no_execution_profile
 
   @spec prepare_binding(authority(), String.t(), map(), keyword()) ::
           {:ok, RepositoryBindingPreparation.t()} | {:error, error()}
@@ -319,6 +320,23 @@ defmodule SddOrchestrator.RepositoryAssessments do
 
       _unavailable ->
         {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Reads the approved execution profile currently in force for one project.
+
+  Approval is append-only and every version is kept, so the highest version is
+  the one that governs a run started now. A project that has approved none has
+  no execution contract to run against, which is a refusal rather than an
+  empty profile, so nothing falls back to a generic set of commands.
+  """
+  @spec approved_profile(viewer(), String.t()) ::
+          {:ok, RepositoryExecutionProfile.t()} | {:error, :no_execution_profile}
+  def approved_profile(viewer, project_id) do
+    case ProfileStore.list(viewer, project_id) do
+      [] -> {:error, :no_execution_profile}
+      profiles -> {:ok, Enum.max_by(profiles, & &1.version)}
     end
   end
 

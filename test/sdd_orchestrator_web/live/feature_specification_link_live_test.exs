@@ -38,12 +38,28 @@ defmodule SddOrchestratorWeb.FeatureSpecificationLinkLiveTest do
 
   describe "presentation [AC-01]" do
     test "the owner sees the control with the unlinked state and every current specification",
-         %{conn: conn, project: project, workspace: workspace, feature: feature, account: account} do
+         %{
+           conn: conn,
+           context: context,
+           project: project,
+           workspace: workspace,
+           feature: feature,
+           account: account
+         } do
       first = specification(workspace, project, %{title: "First specification"})
       second = specification(workspace, project, %{title: "Second specification"})
 
+      # The unlinked state this control exists for: a feature created before a
+      # specification came with it, or one an owner has since unlinked.
+      {:ok, unlinked} =
+        SddOrchestrator.Delivery.Features.unlink_specification(
+          project.id,
+          context.owner_actor,
+          feature
+        )
+
       {:ok, view, _html} =
-        conn |> log_in_account(account) |> live(feature_path(project, feature))
+        conn |> log_in_account(account) |> live(feature_path(project, unlinked))
 
       select = view |> element("[data-specification-link-select]") |> render()
 

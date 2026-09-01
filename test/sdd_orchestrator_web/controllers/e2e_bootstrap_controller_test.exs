@@ -14,8 +14,12 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
   use SddOrchestratorWeb.ConnCase, async: false
 
   alias SddOrchestrator.Accounts
+  alias SddOrchestrator.Accounts.PersonalWorkspace
+  alias SddOrchestrator.Delivery.AgentRun
   alias SddOrchestrator.Delivery.Feature
   alias SddOrchestrator.Delivery.NotificationAccess
+  alias SddOrchestrator.Delivery.ReviewContinuation
+  alias SddOrchestrator.Delivery.RunAttempt
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.Devices.Pairing
@@ -26,6 +30,26 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryAssessments
+
+  # Some scenarios authorize a preview path for their project, and the harness
+  # writes that into application configuration rather than a row, because the
+  # browser suite runs against one live server. Nothing restores it, so without
+  # this a scenario leaves a preview provider configured for every test that
+  # runs afterwards, and one that expects none reads `preview_not_authorized`
+  # where it should read `preview_not_configured`.
+  setup do
+    original = Application.get_env(:sdd_orchestrator, :preview)
+
+    on_exit(fn ->
+      case original do
+        nil -> Application.delete_env(:sdd_orchestrator, :preview)
+        value -> Application.put_env(:sdd_orchestrator, :preview, value)
+      end
+    end)
+
+    :ok
+  end
 
   describe "production exclusion" do
     test "answers 404 when the harness flag is off", %{conn: conn} do
@@ -206,6 +230,34 @@ defmodule SddOrchestratorWeb.E2EBootstrapControllerTest do
       # rather than a flag the harness reports about itself.
       refute Projects.configured?(bare_id)
       assert Projects.configured?(configured_id)
+    end
+  end
+
+  describe "review" do
+    # Sending work back continues the run, and a continued attempt's manifest
+    # comes from the approved execution profile. Nothing configures one for this
+    # harness, so the scenario has to seed it, and a rejection in the browser
+    # would otherwise be refused before it reached the screen.
+    test "seeds a run whose continuation manifest is built from an approved profile",
+         %{conn: conn} do
+      conn = get(conn, ~p"/_e2e/session?scenario=review")
+
+      assert %{"project_id" => project_id, "feature_id" => feature_id} = json_response(conn, 200)
+
+      project = Repo.get!(Project, project_id)
+      authority = Repo.get!(PersonalWorkspace, project.workspace_id)
+
+      assert {:ok, profile} =
+               RepositoryAssessments.approved_profile({:hosted, authority.account_id}, project_id)
+
+      run = Repo.get_by!(AgentRun, feature_id: feature_id)
+      attempt = Repo.get_by!(RunAttempt, run_id: run.id, attempt_number: 1)
+
+      assert {:ok, manifest} = ReviewContinuation.manifest(authority, run, attempt)
+      assert manifest.repository_base_revision == profile.base_revision
+      assert manifest.repository_root == profile.root
+      assert manifest.commands == profile.commands
+      assert manifest.allowed_scope == profile.allowed_scope
     end
   end
 
