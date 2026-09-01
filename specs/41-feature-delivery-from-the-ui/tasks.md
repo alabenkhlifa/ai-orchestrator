@@ -205,7 +205,8 @@ Traceability:
 - [x] The log, diagnostic, and no-analytics review finds no requirements text, feature, or person.
 - [x] Build, formatting, lint, static checks, and logs review pass.
 - [x] Required browser scenarios pass, with the bootstrap seeding an approved profile.
-- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in, open a connected hosted project with an approved profile, create a feature, write its four parts, make it ready, confirm the boundary, press `Start development`, and see the worker acknowledge, recorded in `progress.md`.
+- [x] Product proof, AC-01 through AC-06: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding: sign in, create a hosted project, create a feature, write its four parts, check readiness, make it ready, confirm the boundary, and see every unmet start precondition named with its resolving route and no start control offered. Recorded in `progress.md`.
+- [ ] Product proof, AC-07 and AC-08: the same path continued to a press of `Start development` and the worker's acknowledgement, against the paired worker app. Blocked: the product cannot create a project that is both hosted and local-provider, which `Start`'s worker precondition requires. See the release gate.
 
 ## Blocked Decisions
 
@@ -213,7 +214,7 @@ Traceability:
 
 ## Release Gate
 
-- None.
+- The hosted local-repository project this slice's start path needs cannot be created by clicking. Local onboarding refuses hosted storage for a local repository, which `local_onboarding_live.ex` records as owned by the atomic-registration task; a GitHub project carries `repository_provider: "github"`, which `HostedLocalRepositoryConnection.connect/6` refuses as `:invalid_project_provider`; and restoring a device backup into the account is refused while the device project still exists, which no screen can delete. Until one of those routes closes, AC-07 and AC-08 cannot be proven against a real worker, and this slice is not releasable.
 
 ## Progress Log
 

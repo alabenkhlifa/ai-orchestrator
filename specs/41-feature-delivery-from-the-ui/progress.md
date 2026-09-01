@@ -1,5 +1,25 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Product proof: AC-01 through AC-06 clicked, AC-07 and AC-08 blocked
+
+Run against `mix phx.server` on this branch with `:device_worker_stub` off, no `/_e2e` seeding, in Chrome, with the real Mac worker app attached. The click path from `/`:
+
+1. `Login with GitHub` against the live Orchestra-workflow App, `alabenkhlifa/moveu`, storage `In my SDD Orchestrator account`, `Create project`. Lands on the feature board.
+2. `Add a feature`, "Let a rider save a favourite route". The card appears in `Draft`. Opening it shows the four-part form already there and the `Linked specification` control already naming this feature's own specification, which is AC-01: the specification exists from creation, nobody linked it by hand.
+3. Filled all four parts and saved, then reloaded. The words came back. AC-02.
+4. `Check readiness` answered "No guidance model is configured here. These findings come from the guided parts alone." with "Nothing is blocking this feature.", and `Make ready` appeared. AC-03, including the not-configured statement the page must make when no model exists.
+5. `Make ready` moved the column badge to `Ready for development` and replaced the control with `Back to draft`. AC-04.
+6. The start section rendered every precondition. Met: readiness, and the AI connection. Unmet with its own sentence and route: the boundary, the approved execution profile, and "No worker is connected to this project right now. Connect this project to a Mac, or open the worker app on the Mac it is connected to." No `Start development` control was offered. AC-06.
+7. Confirming the boundary flipped that one item to met and removed its link, with the other two still unmet and still no start control. The readout is live rather than rendered once.
+8. Saving the requirements again flipped the readiness item back to unmet in the same render, with "The requirements changed after this check. Check readiness again." in the readiness section and "The readiness check is missing, or it is about older words." in the readout. AC-05, and evidence that the two surfaces render one owned value rather than two copies.
+
+AC-07 and AC-08 could not be reached, and the reason is a product gap rather than a defect in this slice.
+
+- `Start.preconditions/3` requires a worker bound to the project, and `HostedLocalRepositoryConnection.connect/6` only accepts a project that is `storage_mode: "hosted"` and `repository_provider: "local"`.
+- No screen creates that combination. Local onboarding refuses hosted storage for a local repository, and its own comment records the reason: the work belongs to the atomic-registration task. A GitHub project is `repository_provider: "github"`, so connect refuses it as `:invalid_project_provider`. Restoring a device backup into the account is refused with "This project already exists" while the device project is still there, and `Devices.delete_project/1` has no caller under `lib/sdd_orchestrator_web/`, so no one can remove it by clicking.
+- All three routes were walked in the browser before concluding this. The verified-email sign-in, the worker reporting `Connected`, the folder picker opening on the Mac and answering with the folder name and no path, device project creation, the encrypted backup, and restore validation all worked, so `specs/37`, `specs/39`, `specs/40`, and the portability path are sound. The gap is only the hosted-plus-local combination.
+- Recorded as a release gate rather than worked around. Seeding the project directly would have proven the seed, not the product, which is the failure mode this gate exists to catch.
+
 ### 2026-09-01 - Three leftovers closed, and a production ambiguity behind one of them
 
 - `DeliveryFixtures.approve_profile!/3` did not append a second version, and the cause was a time collision rather than a domain refusal. The fixture truncated `now` to whole seconds, `AssessmentStore.Hosted.latest/2` orders by `inserted_at` then by a random `id`, so two assessments seeded in the same second tied and the winner was a coin toss. On a losing draw `profile_review/2` handed back the already-approved proposal and `append_or_replay/3` replayed version 1, answering `{:ok, profile}` with no error. Measured at 5 pass, 3 fail across 8 identical runs before the fix. The fixture now raises a further assessment to one second past the last one, and a test pins it that fails deterministically without the fix. Two existing callers were already passing an hour-ahead time to dodge this without naming it.
