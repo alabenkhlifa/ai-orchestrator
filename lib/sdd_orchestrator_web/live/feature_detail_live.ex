@@ -168,6 +168,21 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
 
   @precondition_owner_only "The project owner resolves this one."
 
+  # The refusals `Start.start/4` answers with that no precondition already puts
+  # words to. Everything a precondition covers is answered with that item's own
+  # sentence instead, so the list above the button and the answer below it read
+  # the same. Each of these says what the control plane saw and what to do, not
+  # what happened on anybody's machine.
+  @start_refusals %{
+    already_started: "This feature already has a run going. Nothing new was started.",
+    no_specification: "This feature has no specification to start from.",
+    invalid_manifest:
+      "This project's development settings cannot produce this run's instructions. " <>
+        "Nothing started, and that has to be fixed first."
+  }
+
+  @start_unstarted "That did not start, and nothing changed. Try again."
+
   # A lifecycle move this page can no longer make. Naming the shape of the
   # refusal would describe a race to somebody who can only act on one thing:
   # reading where the feature actually is now.
@@ -618,6 +633,20 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
+  # The readout the person pressed can already be out of date, so every item is
+  # asked again here rather than trusted from the screen. A worker that went
+  # away between the two is refused with the sentence that item now shows, and
+  # nothing is created. Only a fully met list reaches `Start.start/4`, which
+  # re-checks everything it owns for itself.
+  def handle_event("start_development", _params, socket) do
+    socket = assign_start_preconditions(socket)
+
+    case Enum.find(socket.assigns.start_preconditions, &(not &1.met?)) do
+      nil -> start_development(socket)
+      unmet -> {:noreply, assign(socket, :start_error, precondition_note(unmet.key))}
+    end
+  end
+
   def handle_event("comment", %{"comment" => %{"body" => body}}, socket) do
     socket.assigns.project_id
     |> Comments.add(socket.assigns.actor, socket.assigns.feature.id, body)
@@ -886,6 +915,75 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
+  # The feature the page rendered travels into the start, so its `state_version`
+  # is the version the move is locked against: a press from a screen the feature
+  # has moved on from is refused rather than applied to whatever it became.
+  defp start_development(socket) do
+    socket
+    |> storage_authority()
+    |> Start.start(socket.assigns.actor, %{
+      project: socket.assigns.project,
+      feature: socket.assigns.feature
+    })
+    |> case do
+      {:ok, _results} ->
+        run_begun(socket)
+
+      {:error, :unauthorized} ->
+        {:noreply, push_navigate(socket, to: ~p"/projects")}
+
+      # Nothing was created, so the readout is worked out again and the reason
+      # is put beside the button the person pressed.
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:start_error, start_message(reason))
+         |> assign_start_preconditions()}
+    end
+  end
+
+  # The run is now the worker's to do, and everything it reports arrives as this
+  # project's worker traffic. The page listens from here on and reads the feature
+  # back, so the run's acknowledgement and its progress appear through the
+  # sections that already render a running run.
+  defp run_begun(socket) do
+    socket
+    |> watch_worker()
+    |> assign(:start_error, nil)
+    |> reload_feature()
+  end
+
+  # One subscription for as long as this page lives. What arrives is never read
+  # for its content: a worker envelope is taken only as a sign to read the
+  # stored history again, so nothing a worker says can reach the screen without
+  # passing the checks that make it durable first.
+  defp watch_worker(%{assigns: %{watching_worker?: true}} = socket), do: socket
+
+  defp watch_worker(socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(
+        SddOrchestrator.PubSub,
+        SddOrchestratorWeb.WorkerChannel.topic(socket.assigns.project_id)
+      )
+
+      assign(socket, :watching_worker?, true)
+    else
+      socket
+    end
+  end
+
+  defp start_message(:not_ready), do: precondition_note(:ready)
+  defp start_message(:boundary_unconfirmed), do: precondition_note(:boundary)
+  defp start_message(:no_execution_profile), do: precondition_note(:execution_profile)
+
+  defp start_message({:ai_connection_selection_required, _eligible_ids}),
+    do: precondition_note(:ai_connection)
+
+  defp start_message(reason) when is_atom(reason),
+    do: Map.get(@start_refusals, reason, @start_unstarted)
+
+  defp start_message(_reason), do: @start_unstarted
+
   defp reload_feature(socket) do
     project_id = socket.assigns.project_id
     actor = socket.assigns.actor
@@ -948,6 +1046,26 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
      |> assign(:review_error, Map.get(@review_messages, reason, @review_unaccepted))}
   end
 
+  # A worker said something about this project. What it said is deliberately
+  # ignored; the feature and its history are read back instead, which is the
+  # only place a worker's word becomes something a person may read.
+  @impl true
+  def handle_info({:worker_event, _envelope}, socket), do: {:noreply, reread_feature(socket)}
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Unlike `reload_feature/1` this leaves the page's messages alone. A run's own
+  # progress must never quietly clear a refusal somebody is still reading.
+  defp reread_feature(socket) do
+    project_id = socket.assigns.project_id
+    actor = socket.assigns.actor
+
+    case Features.fetch(project_id, actor, socket.assigns.feature.id) do
+      {:ok, feature} -> assign_feature(socket, project_id, actor, feature)
+      {:error, _reason} -> socket
+    end
+  end
+
   @impl true
   def mount(%{"id" => project_id, "feature_id" => feature_id}, _session, socket) do
     actor = actor(socket)
@@ -1002,6 +1120,8 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     |> assign(:assignment_error, socket.assigns[:assignment_error])
     |> assign(:specification_link_error, socket.assigns[:specification_link_error])
     |> assign(:lifecycle_error, socket.assigns[:lifecycle_error])
+    |> assign(:start_error, socket.assigns[:start_error])
+    |> assign(:watching_worker?, socket.assigns[:watching_worker?] || false)
     |> assign(:comment_body, socket.assigns[:comment_body] || "")
     |> assign(:comment_error, socket.assigns[:comment_error])
     |> load_activity(project_id, actor, feature)
@@ -1422,6 +1542,11 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
   defp precondition_note(key), do: Map.fetch!(@precondition_notes, key)
   defp precondition_action(key), do: Map.fetch!(@precondition_actions, key)
   defp precondition_owner_only, do: @precondition_owner_only
+
+  # Whether the start may be offered at all: the readout above the button, with
+  # every item met. The control and the press read this one list, so nothing is
+  # offered that the press would then refuse.
+  defp start_offered?(preconditions), do: Enum.all?(preconditions, & &1.met?)
 
   # Whether the acting person can open the page that resolves one item. The
   # role comes from the `ParticipantGuard` answer this screen already holds, so
@@ -2499,6 +2624,31 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
                 </p>
               </li>
             </ul>
+
+            <%!-- The last step of the start flow, and the only control that
+            begins a run. It is offered only where the list above is fully met,
+            and the press asks that same list again before anything happens. --%>
+            <.button
+              :if={start_offered?(@start_preconditions)}
+              type="button"
+              phx-click="start_development"
+              class="mt-4 w-full sm:w-auto"
+              data-start-development
+            >
+              <.lucide name="play" class="size-4" /> Start development
+            </.button>
+
+            <%!-- Read after the button is already gone in the case that matters
+            most: the item that stopped the press is unmet again above, and this
+            says which one it was. --%>
+            <p
+              :if={@start_error}
+              class="mt-3 flex items-start gap-1.5 text-[13px] text-err-fg"
+              data-start-error
+            >
+              <.lucide name="circle-alert" class="size-3.5 flex-none translate-y-0.5" />
+              {@start_error}
+            </p>
           </div>
         </section>
 

@@ -39,7 +39,7 @@ Give every feature its own specification, render the four guided parts as a form
 - `Delivery.Answers`, `Delivery.Retry`, `Delivery.Reconciliation`, and `Delivery.ReviewContinuation`: the four other manifest builders, moved off `:delivery_execution` onto the same profile source.
 - `RepositoryAssessments.approved_profile/2`: the approved-profile lookup for a project.
 - Mac-scoped attachment channel from `specs/39` and `specs/40`: `project_bound` and `project_unbound` messages; `Worker.Supervisor` and `Worker.GatewayConnection`: a project-scoped connection started and stopped on demand.
-- `SddOrchestratorWeb.WorkerChannel`: a cross-scope join refused rather than crashed.
+- `SddOrchestratorWeb.WorkerChannel`: a cross-scope join refused rather than crashed, and a worker's event persisted through `EventIngestion.ingest/3` before it is published.
 - `test/support` delivery fixtures: a connected repository and an approved profile, so a delivery test project can hold one.
 - `Portability.HostedLocalRepositoryConnection` connect and disconnect: emit the bound and unbound notifications.
 - `FeatureBoardLive`: unchanged apart from creation now producing a specification.
@@ -64,7 +64,7 @@ Required boundaries:
 - `Features.create/3` now answers a feature whose `specification_id` is set.
 - `GuidedRequirements.parse/1` and `render/1` between the four-part form and the Markdown document.
 - `Readiness.assess/3` and `ReadinessAssessment` gain structural findings and a `guidance` flag with values `configured` or `not_configured`; `ReadinessGuidance` adapters may answer `{:error, :not_configured}`.
-- `Start.preconditions/3` answering the ordered item list; `Start.start/4` adding `:no_execution_profile` and `:worker_unavailable` to its error type and dropping `:delivery_execution`.
+- `Start.preconditions/3` answering the ordered item list; `Start.start/4` adding `:no_execution_profile` to its error type and dropping `:delivery_execution`. The worker check stays in `preconditions/3`, which the page re-asks before every press, so `start/4` gains no `:worker_unavailable`.
 - `RepositoryAssessments.approved_profile/2` answering the project's highest approved `RepositoryExecutionProfile`, or nothing.
 - `ExecutionManifest` gaining `repository_root`, `commands`, and `allowed_scope`, validated as the profile already validates them, at `manifest_version` 2.
 - Mac-scoped attachment messages `project_bound` and `project_unbound` with `project_id`.
@@ -115,6 +115,12 @@ Required boundaries:
 - Choice: The page renders every start precondition with its state and a resolving link, and offers the button only when all are met; `Start.start/4` re-checks all of them.
 - Reason: A person who cannot start must see why and where to go. The button is the last step, not the only feedback.
 - Consequence: The readout and the start check share one function so they cannot disagree.
+
+### A worker's event is stored before anyone is told about it
+
+- Choice: `WorkerChannel` calls `EventIngestion.ingest/3` in its `event` intake, before it publishes and before it answers the worker, exactly as it already treats an acknowledgement through `CommandOutbox.acknowledge/2`.
+- Reason: The channel validated the event and broadcast it, and nothing stored it. `EventIngestion.ingest/3` had no caller under `lib/` at all, so a real worker's progress was announced and dropped, and the page had nothing to re-read.
+- Consequence: The worker is told `accepted` only for an event that was actually stored, and a refusal reaches the worker instead of silence. A consumer subscribing to the topic instead would leave a gap where an event is announced, the consumer restarts, and the worker has been told a stored event exists when it does not.
 
 ## Risks
 

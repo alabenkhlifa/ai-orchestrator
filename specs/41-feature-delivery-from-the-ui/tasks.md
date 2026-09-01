@@ -146,7 +146,7 @@ Traceability:
   - Proof: Focused tests cover a bound project pushed on attach and on connect, the worker's project connection joining the topic and appearing in the project-keyed registry, `deliver/1` reaching it, an unbind stopping the connection, a duplicate `project_bound` opening no second connection, and a Mac-scoped socket refused on a project topic with the channel still alive.
   - Delivered: `BoundProjectNotice` pushes `project_bound` and `project_unbound` over the Mac attachment, and `Worker.ProjectConnections` opens one project-scoped gateway connection per bound project. A Mac-scoped socket aimed at a project topic is now refused instead of crashing the channel.
 
-- [ ] Task 8 — Start development from the feature page and show the run begin.
+- [x] Task 8 — Start development from the feature page and show the run begin.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 6, Task 7
@@ -154,11 +154,21 @@ Traceability:
   - Owned surfaces: The `Start development` action calling `Start.start/4` with the expected state version, one sentence per refusal reason in the start section, the page re-reading the feature and subscribing to its activity on success, and the run-begun state showing the worker's acknowledgement and first progress through the existing runtime projection and activity sections.
   - Owns: AC-07, AC-08
   - Proof: Focused LiveView tests with a test transport cover a press creating one run and moving the feature to `In development`, an acknowledgement and a progress event rendering, a refusal for a worker detached between readout and press changing nothing and naming the reason, and a second press while the run is live refused.
+  - Delivered: `Start development` renders only when every precondition is met, and the press re-asks `Start.preconditions/3` before calling `Start.start/4`, so a worker that detached since the render is refused. Every refusal reason maps to one sentence, and the five precondition reasons reuse the readout's own wording.
+
+- [ ] Task 11 — Persist a worker's event so the run's progress is durable.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 8
+  - Purpose: Make the first progress event survive being announced, so the page has something to re-read.
+  - Owned surfaces: `WorkerChannel`'s `event` intake calling `EventIngestion.ingest/3` before it publishes, the project authority resolved inside the channel, and the refusal answered to the worker when an event cannot be stored.
+  - Owns: none
+  - Proof: Focused tests cover a progress event from a joined worker persisted as activity and readable afterwards, the worker told accepted only when it was stored, a refused event answered as a refusal with nothing persisted, and the page re-reading it on the existing broadcast.
 
 - [ ] Task 9 — Prove participant parity, fail-closed access, and the round trip.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 8
+  - Depends on: Task 8, Task 11
   - Purpose: Show the loop works for the people `specs/07` allows and for no one else, and establish `capability:feature-delivery-from-the-ui`.
   - Owned surfaces: The integration scenario from feature creation through requirements, readiness, ready, preconditions, and start to a delivered run command for owner and participant, the non-member fail-closed check on every new route and event, and the log review for document content, which together establish `capability:feature-delivery-from-the-ui`.
   - Owns: AC-10

@@ -1,5 +1,22 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Task 8 complete, and the event nobody stored
+
+- `Start development` renders only when `Start.preconditions/3` reports every item met, and carries `data-start-development`, the attribute `Task 4`'s stale-verdict test already asserts is absent.
+- The press re-asks `Start.preconditions/3` before calling `Start.start/4`. That is what makes AC-08's detached-worker case real: `start/4` has no worker check, so calling it alone would start a run for a worker that had gone. The page uses `Task 4`'s pattern, where one function answers both the control and the event, so a hidden button and a guarded action stay the same answer.
+- `design.md`'s Interfaces line claimed `start/4` would gain `:worker_unavailable`. It did not, and the worker check lives in `preconditions/3` instead. The line is corrected rather than left to mislead.
+- Nine refusal reasons map to sentences. The five precondition reasons reuse the readout's own wording, so the list above the button and the answer below it cannot drift; only three sentences are new.
+- Both new mechanisms were mutation-checked: removing the subscription fails the progress test, and removing the press-time re-check lets a detached worker start a run.
+- Proof receipt: `Task 8` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/feature_start_development_test.exs test/sdd_orchestrator_web/live/feature_start_preconditions_test.exs test/sdd_orchestrator_web/live/feature_lifecycle_actions_test.exs test/sdd_orchestrator_web/live/feature_detail_live_test.exs test/sdd_orchestrator_web/live/feature_readiness_section_test.exs test/sdd_orchestrator_web/live/feature_requirements_form_test.exs` — exit `0`.
+- Confirmed on the main thread by real exit status. 124 tests passed.
+
+A gap this task exposed, and the decisions taken with the user.
+
+- `WorkerChannel` validates a worker's event, publishes `{:worker_event, envelope}`, and stores nothing. `EventIngestion.ingest/3` had no caller under `lib/` at all; the only one was the browser-suite seed. So on a real Mac the acknowledgement persists through `CommandOutbox.acknowledge/2`, but the first progress event is announced and dropped, and AC-07 cannot hold. Verified on the main thread: the only production subscriber to the worker topic is the page this task just added.
+- This is inside the slice. The Implementation Boundary defers run behavior only after the first progress event, and AC-07 names that event.
+- Decision: the channel ingests before it publishes, so the worker is told `accepted` only for an event that was stored. A consumer subscribing to the topic would leave a window where an event is announced, the consumer restarts, and the worker has been told a stored event exists when it does not.
+- Decision: this becomes `Task 11`, owned and proved on its own, rather than folded into `Task 9`. `Task 9` verifies surfaces owned elsewhere; making it own production code is the implicit-owner shape the coverage gate warns against. The slice is now 11 tasks with a longest path of 8, both inside their gates.
+
 ### 2026-09-01 - Task 6 complete: the readout, and the specification the run actually uses
 
 - `Start.preconditions/3` answers five ordered items, each `%{key:, met?:, route:}`, keyed `:ready, :boundary, :execution_profile, :worker, :ai_connection`. `available?/3` is that list fully met. One function answers both the screen and the check, which is the point: they cannot drift apart. `start/4` still revalidates everything, because the answer can change between render and press.
