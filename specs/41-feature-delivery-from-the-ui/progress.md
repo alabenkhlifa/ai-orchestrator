@@ -1,5 +1,12 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-01 - Three leftovers closed, and a production ambiguity behind one of them
+
+- `DeliveryFixtures.approve_profile!/3` did not append a second version, and the cause was a time collision rather than a domain refusal. The fixture truncated `now` to whole seconds, `AssessmentStore.Hosted.latest/2` orders by `inserted_at` then by a random `id`, so two assessments seeded in the same second tied and the winner was a coin toss. On a losing draw `profile_review/2` handed back the already-approved proposal and `append_or_replay/3` replayed version 1, answering `{:ok, profile}` with no error. Measured at 5 pass, 3 fail across 8 identical runs before the fix. The fixture now raises a further assessment to one second past the last one, and a test pins it that fails deterministically without the fix. Two existing callers were already passing an hour-ahead time to dodge this without naming it.
+- Worth a separate decision, not fixed here: the same second-granularity tie exists in production. `AssessmentStore.Hosted.latest/2`, `ProfileStore.Hosted.latest_assessment/1`, and `RepositoryAssessments.now/1` truncate to the second and tie-break on a random UUID, so two real assessments started in one second are ambiguous the same way.
+- `drop_test_databases.sh` keeps the two browser-suite databases by default, which is right, but offered no way to drop one that had gone stale. It now takes `--e2e`, and its header says why: the suite migrates them in place, so a database left by an older branch can hold a half-applied migration and fail a scenario with a duplicate column that reads as a product defect.
+- Development logging now matches production at `:info`, reversing the earlier decision to leave it. A person's four guided parts no longer reach a terminal through LiveView's event parameters or Ecto's query parameters. The cost is accepted and recorded in `config/dev.exs`: Ecto query logging and every other debug line go with it, so raise one source back while working on it rather than lowering the level again.
+
 ### 2026-09-01 - Slice gate green, and three regressions it caught
 
 Every automated gate line passes. The product proof is the one line still open, and it needs the paired worker app on the user's Mac.

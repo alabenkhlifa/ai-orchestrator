@@ -274,7 +274,7 @@ defmodule SddOrchestrator.DeliveryFixtures do
   defp complete_assessment!(authority, project, opts) do
     fields = Keyword.get(opts, :fields, @profile_fields)
     commit = Keyword.get(opts, :commit, @base_revision)
-    now = opts |> Keyword.get(:now, DateTime.utc_now()) |> DateTime.truncate(:second)
+    now = assessment_time(authority, project, opts)
 
     {:ok, preparation} =
       RepositoryBindingPreparation.new(%{
@@ -312,6 +312,30 @@ defmodule SddOrchestrator.DeliveryFixtures do
       )
 
     completed
+  end
+
+  # The time this seeded assessment is started at, never earlier than one whole
+  # second after the newest assessment the project already holds.
+  #
+  # An assessment records its time to the whole second, and the store picks the
+  # latest one by that time with a random uuid as the tie-break. Two
+  # assessments seeded inside one second therefore leave which of them counts
+  # as the latest to chance. Approval only ever reads the latest assessment, so
+  # on the losing draw a second call re-approves the first proposal, gets the
+  # first version back, and appends nothing. Only the latest assessment can be
+  # approved at all, so a later second is the one value a further call can use.
+  defp assessment_time(authority, project, opts) do
+    requested = opts |> Keyword.get(:now, DateTime.utc_now()) |> DateTime.truncate(:second)
+
+    case AssessmentStore.latest(authority, project.id) do
+      {:ok, %RepositoryAssessment{inserted_at: inserted_at}} ->
+        next = inserted_at |> DateTime.truncate(:second) |> DateTime.add(1, :second)
+
+        if DateTime.compare(next, requested) == :gt, do: next, else: requested
+
+      _no_assessment_yet ->
+        requested
+    end
   end
 
   # A hosted project names its repository canonically; a device project keeps
