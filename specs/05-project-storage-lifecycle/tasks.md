@@ -49,7 +49,7 @@ Deferred after this slice:
 
 Release boundary:
 
-- This shared selection slice and both source-owned onboarding integrations must pass before the first usable release.
+- This shared selection slice and both source-owned onboarding integrations must pass before the first usable release. The local integration is not delivered: choosing `In my SDD Orchestrator account` for a local repository is refused at runtime, so AC-06 and AC-07 do not hold for that source. `specs/44-hosted-local-repository-projects/` delivers it.
 - A public hosted deployment remains gated on its deployment-specific controller, processor, region, transfer, notice, incident, retention-enforcement, and required privacy or legal evidence.
 - Release criteria: none.
 - Release entities: none.

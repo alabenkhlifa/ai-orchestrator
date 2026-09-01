@@ -1,5 +1,13 @@
 # Project Storage Selection Progress Log
 
+### 2026-09-01 - The local half of the hosted choice was never delivered
+
+- Found while proving `specs/41-feature-delivery-from-the-ui/` in a real browser. Choosing `In my SDD Orchestrator account` for a local repository is refused with "Saving local projects to a hosted account is coming soon.", and `local_onboarding_live.ex` records that the work belongs to an atomic-registration task nobody specified.
+- This contradicts this slice's own contract. AC-06 and AC-07 require that choosing hosted storage creates a project under an authorized identity, and the business rule says repository source does not restrict project-data storage. Nothing here was deferred: `Deferred criteria: none.`
+- The storage step itself is delivered and correct. It presents both modes for a local repository, explains availability, and blocks creation without a selection. What is missing is the creation behind the hosted choice for that source.
+- The status now records the unmet criterion rather than a plain `Verified`, and the release boundary names it. `specs/44-hosted-local-repository-projects/` owns delivering it.
+- No code changed in this update.
+
 ### 2026-08-26 - Last verification item closed: mixed-catalog and identity-conflict browser proof
 
 - Closed the slice's only open gate item, the signed-in mixed-catalog and same-ID identity-conflict browser scenario. Both blockers the 2026-07-28 entries recorded are gone: `specs/06-project-portability/` is `Verified`, so the collision is seeded through its own restore path rather than asserted into place, and the harness now composes a signed-in hosted project alongside device projects.
