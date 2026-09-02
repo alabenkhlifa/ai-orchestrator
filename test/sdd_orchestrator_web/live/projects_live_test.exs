@@ -342,9 +342,9 @@ defmodule SddOrchestratorWeb.ProjectsLiveTest do
   end
 
   describe "no session at all (AC-05)" do
-    test "halts to the entry surface with the hosted-access notice" do
+    test "halts to the entry surface with the sign-in notice" do
       assert {:error, {:redirect, %{to: to}}} = live(build_conn(), ~p"/projects")
-      assert to == "/?hosted_access=required"
+      assert to == "/?project_access=required"
     end
   end
 

@@ -39,6 +39,7 @@ Included:
 - `/projects/:id/overview` and `ProjectDashboardLive` served through that hook.
 - `/projects` and `ProjectsLive` served through that hook, including its empty-workspace path and its GitHub-only handoff.
 - `/` sending a valid hosted session to the project list.
+- The notice a person reads when a project screen turns them away.
 - The project dashboard's presentation for a project whose repository is on a Mac.
 
 Excluded:
@@ -97,14 +98,15 @@ Traceability:
   - Proof: Focused LiveView tests cover a hosted-session owner seeing their own projects and no others, an account with no GitHub identity seeing no GitHub-only control and no redirect into the repository-access check, an empty hosted workspace rendering rather than redirecting, and a GitHub account's list and controls unchanged.
   - Delivered: `/projects` moved to `live_session :project_access`, and the row's GitHub badge and recheck are keyed on the entry having a repository connection, the same rule `Task 6` applies on the dashboard.
 
-- [ ] Task 4 — Send a valid hosted session from the entry page to the list.
+- [x] Task 4 — Send a valid hosted session from the entry page to the list.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
   - Purpose: Make the list reachable in a later session without a remembered address.
-  - Owned surfaces: `/`'s hosted-session resolution and the redirect to the project list, leaving the entry chooser and its existing hosted-access notices unchanged for a person with no session.
+  - Owned surfaces: `/`'s hosted-session resolution and the redirect to the project list, and the notice a person reads when a project screen turns them away, which must not name one sign-in method as the missing one. The entry chooser itself and the notices that belong to the hosted-access flow stay unchanged.
   - Owns: AC-03
-  - Proof: Focused tests cover a valid hosted session at `/` reaching the project list, an application session still reaching it, and no session still rendering the entry chooser with its notices.
+  - Proof: Focused tests cover a valid hosted session at `/` reaching the project list, an application session still reaching it, no session still rendering the entry chooser, a project screen turning a session-less person away with a notice that names no sign-in method, and the hosted-access flow's own notices unchanged.
+  - Delivered: `/` resolves a hosted session after the application one, and a project screen turns a person away to `/?project_access=required` reading `Sign in to open your projects.` The hosted-access marker and its sentence are unchanged.
 
 - [x] Task 6 — Tell the truth about a repository that is on a Mac.
   - Size: Standard

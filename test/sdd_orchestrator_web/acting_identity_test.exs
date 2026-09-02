@@ -17,7 +17,9 @@ defmodule SddOrchestratorWeb.ActingIdentityTest do
   alias SddOrchestratorWeb.ActingIdentity
   alias SddOrchestratorWeb.UserAuth
 
-  defp entry_with_notice, do: ~p"/?#{[hosted_access: "required"]}"
+  # The hook carries its own marker: either sign-in opens these screens, so the
+  # notice it asks for may not name one.
+  defp entry_with_notice, do: ~p"/?#{[project_access: "required"]}"
 
   defp socket do
     %Phoenix.LiveView.Socket{

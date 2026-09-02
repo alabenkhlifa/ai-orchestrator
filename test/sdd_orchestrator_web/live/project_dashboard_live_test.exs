@@ -388,7 +388,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
   end
 
   test "requires a session the acting identity accepts", %{conn: conn} do
-    assert {:error, {:redirect, %{to: "/?hosted_access=required"}}} =
+    assert {:error, {:redirect, %{to: "/?project_access=required"}}} =
              live(conn, ~p"/projects/#{Ecto.UUID.generate()}/overview")
   end
 

@@ -33,8 +33,11 @@ defmodule SddOrchestratorWeb.ActingIdentity do
       so preferring the hosted one would move a person between accounts
       mid-browsing. Holding two accounts in one browser is the subject of
       `specs/04-github-identity-linking/`, not of this hook.
-    * neither — halts to the entry surface with the existing hosted-access
-      notice and assigns no account and no workspace.
+    * neither — halts to the entry surface with its own marker and assigns no
+      account and no workspace. It does not reuse the hosted-access marker,
+      because that one's notice tells a person to verify their email. Either
+      sign-in opens these screens and the hook cannot know which one the person
+      meant to use, so the notice it asks for names no method.
   """
   def on_mount(:require_acting_identity, _params, session, socket) do
     case acting_identity(session) do
@@ -47,7 +50,7 @@ defmodule SddOrchestratorWeb.ActingIdentity do
       nil ->
         {:halt,
          Phoenix.LiveView.redirect(socket,
-           to: ~p"/?#{[hosted_access: "required"]}"
+           to: ~p"/?#{[project_access: "required"]}"
          )}
     end
   end

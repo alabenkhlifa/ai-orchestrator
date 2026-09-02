@@ -125,9 +125,14 @@ defmodule SddOrchestratorWeb.Router do
     # outcomes are a redirect to a destination that authorizes itself.
     get "/projects/:id", ProjectLandingController, :show
 
-    # Unauthenticated entry chooser; a valid session is sent to the catalog.
+    # Unauthenticated entry chooser; either sign-in is sent to the catalog. The
+    # application session is resolved first so it wins when a browser carries
+    # both, matching the order `ActingIdentity` uses on the catalog itself.
     live_session :redirect_if_authenticated,
-      on_mount: [{SddOrchestratorWeb.UserAuth, :redirect_if_authenticated}] do
+      on_mount: [
+        {SddOrchestratorWeb.UserAuth, :redirect_if_authenticated},
+        {SddOrchestratorWeb.EntryLive, :redirect_if_hosted_authenticated}
+      ] do
       live "/", EntryLive
     end
 
