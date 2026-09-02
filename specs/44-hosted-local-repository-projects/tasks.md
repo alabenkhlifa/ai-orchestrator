@@ -86,7 +86,7 @@ Traceability:
   - Proof: Focused tests cover a created project bound to the worker that proved the repository, a worker that is no longer usable refusing the whole creation with no project, connection, storage mode, or binding left behind, and a different worker never being substituted.
   - Delivered: the selection now records the worker that proved the repository, and `put_validated_binding/6` joins the registration multi for a device-origin hosted local attempt. A selection naming no worker is refused before any transaction starts.
 
-- [ ] Task 3 — Replace the not-yet-available refusal with creation.
+- [x] Task 3 — Replace the not-yet-available refusal with creation.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -94,6 +94,7 @@ Traceability:
   - Owned surfaces: `LocalOnboardingLive`'s `%{storage_mode: "hosted"}` clause creating the project, one sentence per refusal reason with the choice still available, routing to the hosted project's dashboard on success, and the per-account refusal naming the existing project when one already holds that repository.
   - Owns: AC-05
   - Proof: Focused LiveView tests cover a confirmed hosted attempt creating the project and routing to its dashboard, each refusal reason rendering its sentence with nothing created and the choice still offered, and a second hosted attempt for the same repository refused with a link to the existing project.
+  - Delivered: a hosted attempt resumes at the review step, names the project, reads a disclosure that states the hosted truth, and creates on confirm. Its `Back` returns to the storage step so the choice stays available.
 
 - [ ] Task 4 — Prove the click path, coexistence, and that no path leaks.
   - Size: Standard

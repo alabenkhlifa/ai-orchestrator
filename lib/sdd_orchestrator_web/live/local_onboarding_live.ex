@@ -43,6 +43,15 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
        re-prompted but the disclosure stays accessible. Confirming registers the
        project through `Devices.register_project/2` and opens its dashboard.
 
+       An attempt that chose hosted storage resumes at this same step
+       (`specs/44-hosted-local-repository-projects`): it names the project, reads
+       the disclosure, and confirms, and only then is the project created in the
+       account its own sign-in proved. Nothing is created on arrival. The parts of
+       the disclosure that differ by branch change with it, because an accountless
+       project has no account and a hosted one is saved to the person's account,
+       and saying either of the other would be false. Its `Back` returns to the
+       storage step, so the storage choice stays available.
+
   Moved or renamed repositories reconnect through `Locate repository`
   (`?locate=<project_id>`): the selected repository is accepted only when the
   worker reports that the folder matches the project's own identity; a
@@ -82,6 +91,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # How often the screen re-checks while a bound code waits for its app to finish.
   @worker_poll_ms 2_000
 
+  # One wording per name refusal, rendered by both storage branches. The device
+  # store answers with `:name_taken` and the hosted transaction with a changeset,
+  # and the person reads the same sentence either way.
+  @name_taken_message "A project already uses this name. Choose another."
+  @name_invalid_message "Enter a project name (letters, numbers, and spaces)."
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, workspace} = Devices.establish_workspace()
@@ -95,6 +110,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:project_id, nil)
      |> assign(:deep_link_code, nil)
      |> assign(:onboarding_attempt, nil)
+     # The resumed attempt's storage mode. It decides which project the confirm
+     # creates and which half of the disclosure is true.
+     |> assign(:storage_mode, nil)
      |> assign(:pairing_error, nil)
      |> assign(:code_accepted?, false)
      |> assign(:pair_again?, false)
@@ -103,6 +121,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:proving_worker_id, nil)
      |> assign(:project_name, "")
      |> assign(:name_error, nil)
+     |> assign(:create_error, nil)
      |> assign(:duplicate, nil)
      |> assign(:disclosure_required, Devices.list_projects() == [])
      |> assign(:disclosure_confirmed, false)
@@ -129,34 +148,28 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     end
   end
 
-  # The shared storage step returns here after the user chose on-device storage,
+  # The shared storage step returns here after the user chose a storage mode,
   # carrying the onboarding attempt. Resume at the review step, reconstructing the
   # selected repository from the attempt (only its fingerprint and name persist).
+  # Both modes resume the same way: the person names the project and reads the
+  # disclosure first, so nothing is created by arriving here.
   def handle_params(%{"attempt" => attempt_id}, _uri, socket) do
     case Projects.get_device_onboarding_attempt(socket.assigns.workspace, attempt_id) do
-      %{storage_mode: "device", selected_repository: %{"fingerprint" => fingerprint} = repo} =
-          attempt ->
+      %{storage_mode: mode, selected_repository: %{"fingerprint" => fingerprint} = repo} = attempt
+      when mode in ["device", "hosted"] ->
         selected = %{name: repo["name"], fingerprint: fingerprint}
 
         {:noreply,
          socket
          |> assign(:onboarding_attempt, attempt)
+         |> assign(:storage_mode, mode)
          |> assign(:selected, selected)
          |> assign(:step, :review)
          |> assign(:project_name, repo["name"] || "")
          |> assign(:name_error, nil)
+         |> assign(:create_error, nil)
          |> assign(:duplicate, nil)
          |> assign(:disclosure_confirmed, false)}
-
-      %{storage_mode: "hosted"} ->
-        # Hosted storage for accountless local projects is owned by the
-        # atomic-registration task; nothing is created here yet.
-        {:noreply,
-         put_flash(
-           socket,
-           :info,
-           "Saving local projects to a hosted account is coming soon. On-device projects are ready now."
-         )}
 
       _ ->
         # Unknown, cross-device, or not-yet-chosen attempt: stay put.
@@ -290,8 +303,18 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     end
   end
 
+  # The one `Back` on the review step, with the destination each branch has to
+  # reach. On-device returns to the folder picker it came through. A hosted attempt
+  # returns to the storage step instead, because that choice is the one it must
+  # still be able to change.
   def handle_event("back_to_selection", _params, socket) do
-    {:noreply, assign(socket, step: :selection, name_error: nil, duplicate: nil)}
+    case socket.assigns do
+      %{storage_mode: "hosted", onboarding_attempt: %{id: attempt_id}} ->
+        {:noreply, push_navigate(socket, to: ~p"/onboarding/local/storage/#{attempt_id}")}
+
+      _device_attempt ->
+        {:noreply, assign(socket, step: :selection, name_error: nil, duplicate: nil)}
+    end
   end
 
   def handle_event("toggle_disclosure", _params, socket) do
@@ -299,7 +322,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   end
 
   def handle_event("validate_name", %{"project" => %{"name" => name}}, socket) do
-    {:noreply, assign(socket, project_name: name, name_error: nil, duplicate: nil)}
+    {:noreply,
+     assign(socket, project_name: name, name_error: nil, create_error: nil, duplicate: nil)}
   end
 
   def handle_event("create_project", %{"project" => %{"name" => name}}, socket) do
@@ -598,6 +622,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         # Reached without the storage handoff: restart the flow.
         {:noreply, push_navigate(socket, to: ~p"/onboarding/local")}
 
+      attempt.storage_mode == "hosted" ->
+        register_hosted_project(socket, attempt, name)
+
       true ->
         register_device_project(socket, attempt, name)
     end
@@ -618,17 +645,112 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         {:noreply, assign(socket, :duplicate, existing)}
 
       {:error, :name_taken} ->
-        {:noreply,
-         assign(socket, :name_error, "A project already uses this name. Choose another.")}
+        {:noreply, assign(socket, :name_error, @name_taken_message)}
 
       {:error, reason} when reason in [:storage_not_ready, :storage_mode_required] ->
         # The device readiness lapsed: send the user back to re-establish it.
         {:noreply, push_navigate(socket, to: ~p"/onboarding/local")}
 
       {:error, _reason} ->
-        {:noreply,
-         assign(socket, :name_error, "Enter a project name (letters, numbers, and spaces).")}
+        {:noreply, assign(socket, :name_error, @name_invalid_message)}
     end
+  end
+
+  # Commits the hosted project into the account this attempt's own sign-in proved.
+  # The workspace is resolved from the attempt and never from a session, because
+  # this screen is public and holds no hosted identity of its own. Every refusal
+  # leaves the person here with the create control usable and nothing written.
+  defp register_hosted_project(socket, attempt, name) do
+    socket = clear_creation_feedback(socket, name)
+
+    with {:ok, workspace} <- Projects.proven_hosted_workspace(attempt),
+         {:ok, project} <-
+           Projects.register_project(workspace, attempt, name: name, allocate_suffix?: false) do
+      # The created project's landing decision is a plain request, not a
+      # LiveView, so this leaves LiveView navigation rather than pushing to it.
+      {:noreply, redirect(socket, to: ~p"/projects/#{project.id}")}
+    else
+      {:error, {:repository_already_linked, existing}} ->
+        {:noreply, assign(socket, :duplicate, existing)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :name_error, name_error_message(changeset))}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :create_error, creation_message(reason))}
+    end
+  end
+
+  # A refused create is answered fresh: the submitted name is kept and last
+  # attempt's feedback is dropped, so two reasons never show at once.
+  defp clear_creation_feedback(socket, name) do
+    socket
+    |> assign(:project_name, name)
+    |> assign(:name_error, nil)
+    |> assign(:create_error, nil)
+    |> assign(:duplicate, nil)
+  end
+
+  # A workspace name collision is the one name refusal the person fixes by
+  # choosing another name, so it says that. Anything else is an invalid name.
+  defp name_error_message(%Ecto.Changeset{} = changeset) do
+    case changeset.errors[:name] do
+      {_message, opts} ->
+        if Keyword.get(opts, :constraint) == :unique,
+          do: @name_taken_message,
+          else: @name_invalid_message
+
+      nil ->
+        @name_invalid_message
+    end
+  end
+
+  # One sentence per reason the hosted commit can refuse with. Each one names the
+  # next thing the person can do, because the choice stays available and nothing
+  # was created.
+  defp creation_message(:hosted_prerequisite_required),
+    do:
+      "The sign-in for this project wasn't recorded. Go back and sign in again to save it to your account."
+
+  # The one owned wording for no worker being attached, read from its owner, so
+  # this refusal and the discovery state cannot drift apart. A missing, refused,
+  # or unreachable worker is one fact here: the Mac that checked this repository
+  # can't be reached.
+  defp creation_message(reason)
+       when reason in [
+              :proving_worker_required,
+              :worker_unavailable,
+              :unauthorized_worker,
+              :not_found
+            ],
+       do: RepositoryAssessmentLive.worker_unavailable_message()
+
+  defp creation_message(reason)
+       when reason in [:repository_mismatch, :invalid_repository_identity],
+       do: "The folder you chose couldn't be matched to this repository. Choose it again."
+
+  defp creation_message(reason) when reason in [:storage_not_ready, :storage_mode_required],
+    do: "This project has no storage choice any more. Go back and choose where to save it."
+
+  defp creation_message(_reason), do: "Nothing was saved. Try again."
+
+  # One duplicate refusal per branch: the project it names lives in a different
+  # place, so the sentence and the link that opens it differ. Both are built here
+  # so the review step renders one owned value instead of holding two copies.
+  defp duplicate_notice(true = _hosted, existing) do
+    %{
+      lead: "This repository is already saved to your account as",
+      tail: "Open that project to keep working on it.",
+      path: ~p"/projects/#{existing.id}"
+    }
+  end
+
+  defp duplicate_notice(false = _hosted, existing) do
+    %{
+      lead: "This repository is already connected as",
+      tail: "One repository can only be one project.",
+      path: ~p"/local/projects/#{existing.id}"
+    }
   end
 
   # A bound, minimized readiness receipt from the detected worker: it marks
@@ -872,8 +994,10 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         <.review_step
           :if={@step == :review}
           selected={@selected}
+          hosted={@storage_mode == "hosted"}
           project_name={@project_name}
           name_error={@name_error}
+          create_error={@create_error}
           duplicate={@duplicate}
           disclosure_required={@disclosure_required}
           disclosure_confirmed={@disclosure_confirmed}
@@ -1362,14 +1486,23 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   # ---- review + first-connection disclosure + create step ----
 
   attr :selected, :map, default: nil
+  attr :hosted, :boolean, default: false
   attr :project_name, :string, required: true
   attr :name_error, :string, default: nil
+  attr :create_error, :string, default: nil
   attr :duplicate, :map, default: nil
   attr :disclosure_required, :boolean, required: true
   attr :disclosure_confirmed, :boolean, required: true
   attr :create_enabled, :boolean, required: true
 
   defp review_step(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :duplicate_notice,
+        assigns.duplicate && duplicate_notice(assigns.hosted, assigns.duplicate)
+      )
+
     ~H"""
     <div data-step="review">
       <header class="flex items-start gap-3">
@@ -1387,14 +1520,14 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         </div>
       </header>
 
-      <.disclosure_body :if={@disclosure_required} data-disclosure />
+      <.disclosure_body :if={@disclosure_required} hosted={@hosted} data-disclosure />
 
       <details :if={!@disclosure_required} class="mt-6 rounded-lg border border-line bg-surface p-4">
         <summary class="cursor-pointer text-sm font-semibold text-ink" data-disclosure-summary>
           What stays on this device and what's shared
         </summary>
         <div class="mt-3">
-          <.disclosure_body data-disclosure />
+          <.disclosure_body hosted={@hosted} data-disclosure />
         </div>
       </details>
 
@@ -1428,9 +1561,13 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
             data-confirm-disclosure
             class="mt-0.5 size-4 flex-none rounded border-line-strong"
           />
-          <span>
+          <span :if={!@hosted}>
             I understand what stays on this device, what is shared, and that project history can't be
             recovered without a previous export.
+          </span>
+          <span :if={@hosted}>
+            I understand what stays on this Mac, what is shared, and that my project work is saved to
+            my SDD Orchestrator account.
           </span>
         </label>
 
@@ -1442,19 +1579,24 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
           <.notice variant="warn" icon="triangle-alert">
             <div class="flex flex-col gap-2">
               <span>
-                This repository is already connected as <span class="font-semibold">{@duplicate.name}</span>. One repository can only be one
-                project.
+                {@duplicate_notice.lead} <span class="font-semibold">{@duplicate.name}</span>. {@duplicate_notice.tail}
               </span>
               <.button
                 variant="secondary"
                 size="sm"
-                navigate={~p"/local/projects/#{@duplicate.id}"}
+                navigate={@duplicate_notice.path}
                 class="w-full sm:w-auto"
               >
                 Open {@duplicate.name} <.lucide name="arrow-right" class="size-4" />
               </.button>
             </div>
           </.notice>
+        </div>
+
+        <%!-- A refused create that is not about the name: the choice is still
+        available here, so the sentence sits with the create control. --%>
+        <div :if={@create_error} class="mt-4" data-create-error>
+          <.notice variant="err" icon="triangle-alert">{@create_error}</.notice>
         </div>
 
         <div class="mt-6 flex flex-col gap-2.5 sm:flex-row sm:items-center">
@@ -1475,6 +1617,11 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     """
   end
 
+  # The first two notices are true of both branches. Only the third changes: an
+  # accountless project has no account to recover from, and a hosted one is saved
+  # to the person's account, so each branch states its own fact and never the
+  # other's.
+  attr :hosted, :boolean, default: false
   attr :rest, :global
 
   defp disclosure_body(assigns) do
@@ -1499,12 +1646,21 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
         </p>
       </.notice>
 
-      <.notice variant="warn" icon="triangle-alert">
+      <.notice :if={!@hosted} variant="warn" icon="triangle-alert">
         <p class="font-semibold">This project has no account</p>
         <p class="mt-0.5">
           It lives only on this Mac. If this device's data is lost, its project history can't be
           recovered by reconnecting the repository. That would start fresh history. Recovery is only
           possible by importing a project export you made earlier (project portability).
+        </p>
+      </.notice>
+
+      <.notice :if={@hosted} variant="info" icon="cloud">
+        <p class="font-semibold text-ink">This project is saved to your account</p>
+        <p class="mt-0.5">
+          Your project work is saved to your SDD Orchestrator account. You can reach it from other
+          devices you sign in on. The repository itself stays on this Mac, so working on its code
+          needs this Mac and its worker app.
         </p>
       </.notice>
     </div>
