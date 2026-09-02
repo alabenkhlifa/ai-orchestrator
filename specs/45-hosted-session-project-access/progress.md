@@ -37,3 +37,13 @@
 - Pre-existing flake confirmed by bisect, not a regression: `project_assistant_panel_test.exs:277` fails intermittently on its `render_async(view, 2_000)`. It failed three of four runs at `--seed 0` on `6a42ac8` with this task's changes stashed.
 - Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/project_dashboard_live_test.exs` — exit `0`.
 - 16 tests passed in that file, 5 of them new. Regression runs outside the focused proof covered the project, participation, backup, onboarding, feature-board, and connections suites: 240 and 71 passed, none failed.
+
+### 2026-09-02 - Dashboard presentation decided and added as Task 6, run paused
+
+- Decision taken with the user after `Task 2` reported it: a hosted project whose repository is on a Mac renders no `Repository` row, no GitHub connection badge, and no access-lost notice. The machine region the screen already has is the one place that states where the repository is and whether that Mac is reachable.
+- The alternatives were weighed. Printing an honest `Repository` value would need one owned wording that could drift from the machine region, and storing the folder name as a repository label would put a second copy of a repository value into the record `specs/44-hosted-local-repository-projects/` writes. Neither buys anything the machine region does not already say.
+- `AC-08` added for it and owned by the new `Task 6`. `AC-01` was made precise rather than weakened: it states what `Task 2` actually delivers, which is that the dashboard opens and shows the project, its storage mode, and its machine connection state. The repository statement now has its own criterion and its own owning task instead of being split across two.
+- `Task 5` now depends on `Task 6` as well, so the click-path proof runs against the corrected screen.
+- Run paused here at the user's request. `Task 1` and `Task 2` are complete, proven, and committed. `Task 3`, `Task 4`, `Task 6`, and `Task 5` are not started, and the slice gate has not run.
+- To resume: branch `slice/45-hosted-session-project-access`, specification `specs/45-hosted-session-project-access/`, next task `Task 3`. State to recover from is `tasks.md`, this log, and `lib/sdd_orchestrator_web/acting_identity.ex`. The branch is cut from `slice/44-hosted-local-repository-projects` rather than `main`, because `Task 5`'s scenario needs that slice's creation path, and the two merge together.
+- No code changed in this update.

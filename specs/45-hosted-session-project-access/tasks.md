@@ -39,6 +39,7 @@ Included:
 - `/projects/:id/overview` and `ProjectDashboardLive` served through that hook.
 - `/projects` and `ProjectsLive` served through that hook, including its empty-workspace path and its GitHub-only handoff.
 - `/` sending a valid hosted session to the project list.
+- The project dashboard's presentation for a project whose repository is on a Mac.
 
 Excluded:
 
@@ -104,10 +105,19 @@ Traceability:
   - Owns: AC-03
   - Proof: Focused tests cover a valid hosted session at `/` reaching the project list, an application session still reaching it, and no session still rendering the entry chooser with its notices.
 
+- [ ] Task 6 — Tell the truth about a repository that is on a Mac.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 2
+  - Purpose: Stop the screen a passwordless owner lands on from describing a GitHub repository the project does not have.
+  - Owned surfaces: `ProjectDashboardLive`'s `Repository` row, its GitHub connection badge, and its access-lost notice, each rendered only for a project that has a repository connection, leaving the machine region as the one place that states where a local repository is and whether its Mac is reachable.
+  - Owns: AC-08
+  - Proof: Focused LiveView tests cover a hosted local-repository project rendering no `Repository` row, no GitHub badge, and no access-lost notice while its machine region still states where the repository is and its reachability, and a GitHub-backed project rendering all three exactly as before in both the connected and the disconnected state.
+
 - [ ] Task 5 — Prove the click path and that nothing else widened.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 2, Task 4
+  - Depends on: Task 2, Task 4, Task 6
   - Purpose: Show a person can create a project and then reach it, and that no other screen changed who may open it.
   - Owned surfaces: The integration scenario from creating a hosted project through to opening it and its list on the same hosted session, the expired and revoked session checks, and the route review proving every excluded screen still requires the application session, which together establish `capability:hosted-session-project-access`.
   - Owns: AC-05, AC-06

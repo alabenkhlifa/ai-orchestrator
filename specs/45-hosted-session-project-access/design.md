@@ -61,6 +61,12 @@ Required boundaries:
 - Reason: Both screens already scope every query by `workspace_id` and already resolve a foreign project to nothing. The gap was never authorization; it was that one valid identity could not be seen at all.
 - Consequence: A person with both sessions in one browser acts as the application session's account, which is the one the GitHub screens also act as. Two accounts in one browser is `specs/04-github-identity-linking/`'s subject, not this slice's.
 
+### The dashboard drops its GitHub parts for a local repository
+
+- Choice: A hosted project whose repository is on a Mac renders no `Repository` row, no GitHub connection badge, and no access-lost notice. The machine region it already has is what states where the repository is and whether that Mac is reachable.
+- Reason: `Connections.to_entry/2` gives such a project `status: :disconnected` because it has no `RepositoryConnection`, so the screen currently prints `GitHub access to this repository was lost.` about a project with no GitHub repository, and renders the `Repository` label with no value. Nothing stores a repository name to print either: the folder name became the project name, and the only other repository value is the portable identity, which is not for reading.
+- Consequence: The person reads where their repository lives from one region rather than two, and no second copy of a repository value is stored. A GitHub-backed project keeps every one of those parts exactly as it has them.
+
 ### The catalog stays read-and-open for a passwordless owner
 
 - Choice: The list shows and opens projects. `Add project` continues to the GitHub repository-access check and is offered only to an account with a GitHub identity.
@@ -71,6 +77,7 @@ Required boundaries:
 
 - `ProjectsLive` sends an empty workspace to the repository-access check on mount. For a passwordless account that is a redirect into a screen it cannot use, so the empty-workspace path has to be handled rather than inherited.
 - Moving two routes between live sessions changes their mount hooks. A screen that quietly depended on `:current_account` being an application account, directly or through a component, would change behaviour without failing to compile.
+- The GitHub badge, the access-lost notice, and the `Repository` row are driven by the connection entry's status, which the catalog row shares. Hiding them for a local repository must not change what a GitHub-backed project shows.
 - The revalidation path takes an account to refresh GitHub tokens. A passwordless account has none, so revalidation must be a no-op for it rather than a failed refresh that marks a connection disconnected.
 
 ## Open Questions
