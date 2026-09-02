@@ -194,13 +194,13 @@ defmodule SddOrchestratorWeb.Router do
     # workspace, which remains the only authorization.
     live_session :project_access,
       on_mount: [{SddOrchestratorWeb.ActingIdentity, :require_acting_identity}] do
+      live "/projects", ProjectsLive
       live "/projects/:id/overview", ProjectDashboardLive
     end
 
     # Protected surfaces require a valid application session.
     live_session :authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
-      live "/projects", ProjectsLive
       live "/ai-connections", AIConnectionsLive
       live "/repository-kits", RepositoryKitsLive
       live "/projects/:id/backup", ProjectBackupLive, :hosted

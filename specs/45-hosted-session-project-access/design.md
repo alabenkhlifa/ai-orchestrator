@@ -26,7 +26,8 @@ Resolve the acting account and workspace from whichever session is present, and 
 
 - `SddOrchestratorWeb.UserAuth` or a new sibling module: the `on_mount` hook that resolves the acting account and workspace from either session and halts without one.
 - `SddOrchestratorWeb.Router`: the live session holding `/projects` and `/projects/:id/overview`, and the hosted resolution on `/`.
-- `SddOrchestratorWeb.ProjectsLive`: reading the resolved account and workspace, and offering the GitHub-only handoff only to an account that has GitHub.
+- `SddOrchestratorWeb.ProjectsLive`: reading the resolved account and workspace, its header and sign-out for an account with no GitHub identity, its empty state, and offering the GitHub-only handoff only to an account that has GitHub.
+- `SddOrchestrator.Catalog`: the entry's own record of whether a project has a repository connection, which `availability` cannot carry.
 - `SddOrchestratorWeb.ProjectDashboardLive`: reading the resolved account and workspace.
 - `SddOrchestratorWeb.EntryLive`: sending a valid hosted session to the project list.
 

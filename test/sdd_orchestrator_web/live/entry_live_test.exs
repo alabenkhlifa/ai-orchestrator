@@ -39,8 +39,10 @@ defmodule SddOrchestratorWeb.EntryLiveTest do
       assert {:error, {:redirect, %{to: "/projects"}}} = live(conn, ~p"/")
     end
 
+    # The catalog now resolves the acting identity, so a request with neither
+    # session halts to the entry surface carrying the hosted-access notice.
     test "a protected route fails closed to the entry without a session", %{conn: conn} do
-      assert {:error, {:redirect, %{to: "/"}}} = live(conn, ~p"/projects")
+      assert {:error, {:redirect, %{to: "/?hosted_access=required"}}} = live(conn, ~p"/projects")
     end
   end
 end

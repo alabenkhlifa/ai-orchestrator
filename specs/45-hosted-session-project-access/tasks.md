@@ -87,14 +87,15 @@ Traceability:
   - Proof: Focused LiveView tests cover a hosted-session owner opening their own hosted local-repository project and seeing the repository, the storage mode, and the connection state; the same project opened on an application session unchanged; and a project in another workspace resolving to not found on either session with nothing disclosed.
   - Delivered: `/projects/:id/overview` moved to `live_session :project_access`, and the dashboard reads the acting account and workspace. Revalidation was proven a no-op for a local-repository project rather than assumed.
 
-- [ ] Task 3 — List the projects the acting account owns.
+- [x] Task 3 — List the projects the acting account owns.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
   - Purpose: Give the person a way back to their project that does not depend on remembering a link.
-  - Owned surfaces: `/projects`'s live session, `ProjectsLive` reading the resolved account and workspace, its empty-workspace path for an account that cannot take the GitHub repository-access check, and the `Add project` handoff offered only to an account that has a GitHub identity.
+  - Owned surfaces: `/projects`'s live session, `ProjectsLive` reading the resolved account and workspace, its header controls and sign-out for an account with no GitHub identity, its empty-workspace path and empty state for an account that cannot take the GitHub repository-access check, the `Add project` handoff offered and accepted only for an account that has a GitHub identity, and the catalog entry's own record of whether a project has a repository connection.
   - Owns: AC-02, AC-04
   - Proof: Focused LiveView tests cover a hosted-session owner seeing their own projects and no others, an account with no GitHub identity seeing no GitHub-only control and no redirect into the repository-access check, an empty hosted workspace rendering rather than redirecting, and a GitHub account's list and controls unchanged.
+  - Delivered: `/projects` moved to `live_session :project_access`, and the row's GitHub badge and recheck are keyed on the entry having a repository connection, the same rule `Task 6` applies on the dashboard.
 
 - [ ] Task 4 — Send a valid hosted session from the entry page to the list.
   - Size: Standard
