@@ -89,12 +89,23 @@ defmodule SddOrchestratorWeb.HostedUserAuth do
     end
   end
 
+  @doc """
+  Resolves the hosted access behind a LiveView `session` map's credential, or nil.
+
+  Exposed so a hook that resolves more than this one credential reads the
+  hosted cookie through its owner rather than repeating the key and the
+  fail-closed lookup.
+  """
+  @spec hosted_access_from_session(map()) :: Sessions.access() | nil
+  def hosted_access_from_session(session) do
+    case Sessions.authenticate(session[Atom.to_string(@session_key)]) do
+      {:ok, access} -> access
+      :error -> nil
+    end
+  end
+
   defp mount_hosted_access(socket, session) do
-    access =
-      case Sessions.authenticate(session[Atom.to_string(@session_key)]) do
-        {:ok, access} -> access
-        :error -> nil
-      end
+    access = hosted_access_from_session(session)
 
     socket
     |> Phoenix.Component.assign(:current_hosted_access, access)

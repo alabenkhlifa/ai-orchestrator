@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -66,7 +66,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Resolve the acting identity from whichever session is present.
+- [x] Task 1 — Resolve the acting identity from whichever session is present.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -74,6 +74,7 @@ Traceability:
   - Owned surfaces: The `on_mount` hook assigning the acting account and personal workspace, its resolution order when both sessions exist, and its halt to the entry surface with the existing hosted-access notice when neither does.
   - Owns: entity:ActingIdentity
   - Proof: Focused tests cover an application session resolving its own account and workspace, a hosted session resolving the account behind its hosted identity and that account's workspace, both sessions together resolving the application session's account, and no session halting to the entry surface with nothing assigned.
+  - Delivered: `SddOrchestratorWeb.ActingIdentity` assigns `:acting_account` and `:acting_workspace`. Each credential is still read through the module that owns it.
 
 - [ ] Task 2 — Open a project on a hosted session.
   - Size: Standard

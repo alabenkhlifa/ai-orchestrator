@@ -13,3 +13,15 @@
 - Scope: classified `focused specification`. One outcome, one workflow, one verification gate, five tasks, longest `Depends on:` path of four. No size exceptions.
 - Consequence: `specs/44-hosted-local-repository-projects/` stays `Blocked` on its product proof and `specs/41-feature-delivery-from-the-ui/` stays blocked on its release gate until this lands.
 - No code changed in this update.
+
+### 2026-09-02 - Task 1 complete: one hook answers which account is acting
+
+- `SddOrchestratorWeb.ActingIdentity` is a new sibling of the two auth modules rather than a hook inside `UserAuth`, because it resolves the acting identity and not the application session. Putting it in `UserAuth` would have made that module read a credential it does not own. The name matches `entity:ActingIdentity` in `design.md`.
+- It assigns `:acting_account` and `:acting_workspace` under their own names. `:current_account` and the hosted assigns are untouched, so a screen that has not moved to the hook keeps exactly today's behaviour and every call site shows which value it reads.
+- Resolution order as designed: an application session wins, a hosted session alone resolves the account behind its hosted identity with the workspace that session already carries, and neither halts to `/?hosted_access=required` with nothing assigned. The halt reuses the notice `EntryLive` already renders rather than adding a second wording for the same fact.
+- The hosted branch deliberately does not call `get_or_create_personal_workspace/1`. The hosted session already resolved that workspace, and re-deriving it would make a second source for one fact.
+- Each credential is still read through its owner. `UserAuth.account_from_session/1` and `HostedUserAuth.hosted_access_from_session/1` are the existing private lookups made public and called by their own hooks, so neither the session key nor the fail-closed lookup is duplicated. Neither existing hook changed behaviour.
+- Correction to the task brief: there are no `on_mount` tests anywhere in the repository, and `user_auth_test.exs` and `hosted_user_auth_test.exs` do not exist. The proof substitutes the closest real coverage of the two modules touched: `auth_controller_test.exs`, `hosted_sessions_live_test.exs`, and `hosted_access/sessions_test.exs`.
+- Expired and revoked hosted sessions are both proven to behave as no session. `HostedAccessFixtures` has neither, so the tests build them the way `sessions_test.exs` already does.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator_web/acting_identity_test.exs test/sdd_orchestrator_web/controllers/auth_controller_test.exs test/sdd_orchestrator_web/live/hosted_sessions_live_test.exs test/sdd_orchestrator/hosted_access/sessions_test.exs` — exit `0`.
+- 25 tests passed across those four files, 7 of them new.
