@@ -1,5 +1,17 @@
 # Hosted Projects From A Local Repository Progress Log
 
+### 2026-09-02 - Slice gates green, product proof blocked by the sign-in seam
+
+- Every repository gate passes. `mix check` at slice scope: 4908 tests, exit `0`. The browser suite at slice scope: 153 passed, 2 skipped, exit `0`. Both receipts below.
+- One pre-existing repository defect had to be cleared first. `mix compile --warnings-as-errors` failed on ungrouped `defp run/3` clauses in `e2e_bootstrap_controller.ex`, a file this branch does not otherwise touch. It only surfaced here because this slice's changes forced a full recompile. Fixed in its own commit by moving the helper below the catch-all clause. No behaviour changed.
+- The product proof cannot run. Confirmed by running it, not by reading the router: a person who signs in through the storage step's passwordless link gets a hosted session on a brand new account, and `/projects/:id` sends them to `/projects/:id/overview`, which requires the application session only GitHub sign-in issues. The redirect lands on `/`. They never see the dashboard AC-02 names.
+- The seam is older than this slice and wider than it. `HostedAccess.restore_or_create_identity/1` looks up `provider: "email"`, so a passwordless sign-in never joins an existing GitHub account; it creates a separate one. Passwordless was built as the participant door (`/projects/:id/features` and invitations accept it) and GitHub as the owner door (`/projects`, `/projects/:id/overview`). `specs/04-github-identity-linking/` can merge the two accounts, but only in the order passwordless first and GitHub second, which is not the order this workflow puts a person in.
+- Nothing in this slice's own boundary can close it. The storage step's sign-in handoff belongs to `specs/05-project-storage-lifecycle/` and `specs/03-hosted-passwordless-access/`, and the dashboard's route is excluded here. Decision taken with the user: this slice stays `Blocked` with its implementation complete and its gates green, and a follow-up specification owns letting one sign-in reach the project it just created.
+- Why it stayed hidden until now: every existing test and browser scenario for a hosted local project seeds one through `/_e2e`, which grants an application session (`e2e_bootstrap_controller.ex` calls `UserAuth.put_session_token/2`). This slice is the first path that creates one without that grant.
+- Consequence for `specs/41-feature-delivery-from-the-ui/`: its release gate stays blocked. This slice removed the reason it named, since a hosted local-provider project can now be created by clicking, but the person cannot yet reach it.
+- Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `npm --prefix assets run test:e2e` — exit `0`.
+
 ### 2026-09-02 - AC-05 narrowed to the repository identity after the proof exposed it
 
 - Found while reviewing Task 4's coexistence proof. AC-05 as written ("a hosted project for that repository") can never refuse anything in the real click path. `PortableRepositoryIdentity.generate/1` draws a fresh salt on every selection, deliberately, so two selections of one repository produce two different identity strings and the per-account uniqueness index never sees a conflict.

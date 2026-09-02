@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Blocked
 
 ## Active Slice
 
@@ -109,18 +109,18 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] Local onboarding's accountless device branch passes unchanged.
-- [ ] GitHub hosted onboarding passes unchanged through the same writer.
-- [ ] Hosted local-repository connection, reconnection, and disconnection pass unchanged.
-- [ ] The log and record review finds no repository path, remote, history, file name, or source content.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass.
+- [x] Active-slice acceptance criteria pass their domain and integration proofs. AC-02's dashboard half is not reachable by clicking; see the product proof below.
+- [x] Local onboarding's accountless device branch passes unchanged.
+- [x] GitHub hosted onboarding passes unchanged through the same writer.
+- [x] Hosted local-repository connection, reconnection, and disconnection pass unchanged.
+- [x] The log and record review finds no repository path, remote, history, file name, or source content.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass.
 - [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in, choose a local repository, choose `In my SDD Orchestrator account`, confirm, and see the hosted project's dashboard show the repository, the hosted storage mode, and the worker connected. Recorded in `progress.md`.
 
 ## Blocked Decisions
 
-- None.
+- The product proof cannot run, and the slice cannot be `Verified`, until a person can open the project this slice creates. The storage step's sign-in is the passwordless door, which makes an account holding only a hosted session, while `/projects/:id/overview` requires the application session that only GitHub sign-in issues. Creating the project therefore ends at `/`. Confirmed by running it. The seam belongs to `specs/03-hosted-passwordless-access/` and `specs/05-project-storage-lifecycle/`, not here, and its own specification owns closing it.
 
 ## Release Gate
 
