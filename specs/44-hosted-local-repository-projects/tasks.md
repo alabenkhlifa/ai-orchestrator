@@ -76,7 +76,7 @@ Traceability:
   - Proof: Focused tests cover a device-origin attempt with a proven hosted workspace producing one hosted local-provider project with one authoritative storage mode and its repository connection, an attempt with no proven workspace refused with nothing created, and a hosted-origin attempt behaving exactly as before.
   - Delivered: `register_project/3` now commits a device-origin hosted attempt into the workspace the attempt itself proved, carrying the portable fingerprint as its canonical repository id. A local project writes no GitHub-shaped connection row, because that row's repository id is a provider-issued integer a local repository never has.
 
-- [ ] Task 2 — Bind the proving worker in the same commit.
+- [x] Task 2 — Bind the proving worker in the same commit.
   - Size: Exception — the project, its connection, its storage mode, and its binding are one invariant. Splitting them would leave a committed hosted project with no worker, which is the unconnected state this slice exists to avoid and which no screen could then resolve for a repository the worker has already stopped offering.
   - Proof scope: Focused
   - Depends on: Task 1
@@ -84,6 +84,7 @@ Traceability:
   - Owned surfaces: `HostedLocalRepositoryBindings.put_validated_binding/6` called inside the creation transaction with the worker recorded in the attempt's selection, and the refusal when that worker is no longer usable.
   - Owns: AC-02, AC-03
   - Proof: Focused tests cover a created project bound to the worker that proved the repository, a worker that is no longer usable refusing the whole creation with no project, connection, storage mode, or binding left behind, and a different worker never being substituted.
+  - Delivered: the selection now records the worker that proved the repository, and `put_validated_binding/6` joins the registration multi for a device-origin hosted local attempt. A selection naming no worker is refused before any transaction starts.
 
 - [ ] Task 3 — Replace the not-yet-available refusal with creation.
   - Size: Standard

@@ -100,6 +100,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
      |> assign(:pair_again?, false)
      |> assign(:selection_error, nil)
      |> assign(:selected, nil)
+     |> assign(:proving_worker_id, nil)
      |> assign(:project_name, "")
      |> assign(:name_error, nil)
      |> assign(:duplicate, nil)
@@ -259,8 +260,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
   end
 
   # Hand off to the shared storage-selection step. A device-origin onboarding
-  # attempt carries only the selected repository's fingerprint and display name,
-  # and the detected worker's readiness is recorded as a bound receipt so
+  # attempt carries the selected repository's fingerprint and display name, plus
+  # the worker that proved it, because hosted storage binds the project to that
+  # worker. The detected worker's readiness is recorded as a bound receipt so
   # on-device storage is available at the step. On-device is the accountless
   # default; the user can also sign in there to save to a hosted account.
   def handle_event("continue_to_storage", _params, socket) do
@@ -271,7 +273,8 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
          {:ok, attempt} <-
            Projects.select_local_repository(workspace, attempt.id, %{
              fingerprint: selected.fingerprint,
-             name: selected.name
+             name: selected.name,
+             worker_id: socket.assigns.proving_worker_id
            }),
          {:ok, _attempt} <-
            Projects.record_device_receipt(
@@ -354,6 +357,9 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
       |> assign(:picker_step, :waiting)
       |> assign(:selection_request_id, request_id)
       |> assign(:selection_projects, plan.projects)
+      # The worker that is about to prove this repository. A hosted project is
+      # bound to it, so it has to outlive the request it answers.
+      |> assign(:proving_worker_id, worker_id)
     else
       {:error, reason} -> assign(socket, :selection_error, refusal_message(socket, reason))
     end
@@ -570,6 +576,7 @@ defmodule SddOrchestratorWeb.LocalOnboardingLive do
     |> assign(:selection_error, nil)
     |> assign(:duplicate, nil)
     |> assign(:selected, nil)
+    |> assign(:proving_worker_id, nil)
   end
 
   defp reset_selection(socket) do
