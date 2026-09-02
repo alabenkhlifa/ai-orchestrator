@@ -29,7 +29,7 @@ Resolve the acting account and workspace from whichever session is present, and 
 - `SddOrchestratorWeb.ProjectsLive`: reading the resolved account and workspace, its header and sign-out for an account with no GitHub identity, its empty state, and offering the GitHub-only handoff only to an account that has GitHub.
 - `SddOrchestrator.Catalog`: the entry's own record of whether a project has a repository connection, which `availability` cannot carry.
 - `SddOrchestratorWeb.ProjectDashboardLive`: reading the resolved account and workspace.
-- `SddOrchestratorWeb.EntryLive`: sending a valid hosted session to the project list.
+- `SddOrchestratorWeb.EntryLive`: sending a valid hosted session to the project list, and the notice for a person a project screen turned away.
 
 ## Data and Access Boundaries
 
@@ -78,6 +78,7 @@ Required boundaries:
 
 - `ProjectsLive` sends an empty workspace to the repository-access check on mount. For a passwordless account that is a redirect into a screen it cannot use, so the empty-workspace path has to be handled rather than inherited.
 - Moving two routes between live sessions changes their mount hooks. A screen that quietly depended on `:current_account` being an application account, directly or through a component, would change behaviour without failing to compile.
+- `ActingIdentity` halts to the entry surface, which already carries the hosted-access notice for a different gate. A project screen turns away GitHub owners too, so reusing that notice would tell a person with an expired application session to verify an email.
 - The GitHub badge, the access-lost notice, and the `Repository` row are driven by the connection entry's status, which the catalog row shares. Hiding them for a local repository must not change what a GitHub-backed project shows.
 - The revalidation path takes an account to refresh GitHub tokens. A passwordless account has none, so revalidation must be a no-op for it rather than a failed refresh that marks a connection disconnected.
 

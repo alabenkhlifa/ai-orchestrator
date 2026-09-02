@@ -130,12 +130,12 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] GitHub sign-in and every screen it reaches pass unchanged.
-- [ ] The participant screens and the notification inbox pass unchanged.
-- [ ] Every excluded screen still requires the application session.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass.
+- [x] Active-slice acceptance criteria pass.
+- [x] GitHub sign-in and every screen it reaches pass unchanged.
+- [x] The participant screens and the notification inbox pass unchanged.
+- [x] Every excluded screen still requires the application session.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass.
 - [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in with the email link, create a hosted project from a local repository, land on its dashboard, return to `/`, and open the same project from the list. Recorded in `progress.md`.
 
 ## Blocked Decisions

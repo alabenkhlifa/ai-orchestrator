@@ -106,9 +106,10 @@ test.describe("signed-in combined catalog", () => {
     await page.getByRole("link", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/$/);
 
-    // The hosted catalog is protected again.
+    // The hosted catalog is protected again. It takes either sign-in (specs/45),
+    // so it turns a browser with neither away carrying its own marker.
     await page.goto("/projects");
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/\?project_access=required$/);
 
     // The device project is still available under the local OS boundary, and
     // signing out changed neither its storage mode nor its ownership.

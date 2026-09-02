@@ -21,7 +21,9 @@ test.describe("identity linking", () => {
 
     // The link is invalid, so nothing is linked and the user is returned through a
     // protected redirect to the generic entry surface — no account is disclosed.
-    await expect(page).toHaveURL(/\/$/);
+    // That redirect lands on the catalog, which takes either sign-in (specs/45)
+    // and turns an unauthenticated browser away carrying its own marker.
+    await expect(page).toHaveURL(/\/\?project_access=required$/);
     await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
   });
 });

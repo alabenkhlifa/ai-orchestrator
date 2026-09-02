@@ -97,3 +97,15 @@
 - `capability:hosted-session-project-access` is ready. `Task 5` is complete, and the path from creating a hosted project to opening it and its list on one passwordless session is proven end to end.
 - Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator_web/hosted_session_project_access_test.exs` — exit `0`.
 - 7 tests passed. Regression run outside the focused proof: the project list, dashboard, entry, acting-identity and local-onboarding-flow suites, 71 passed.
+
+### 2026-09-02 - Slice gates green, product proof still to run
+
+- `mix check` passed at slice scope: 4949 tests, exit `0`. The browser suite passed at slice scope: 153 passed, exit `0`. Both receipts below.
+- Two earlier full runs each failed on one test, a different one each time, and both are pre-existing races rather than regressions. Recorded as gate evidence rather than re-run quietly until green.
+- The first was `Participation.IdentityLifecycleCompatibilityTest`. Its root cause is proven, not guessed. Over ten `async: true` participation and privacy files install a stub transport through a global `Application.put_env(:sdd_orchestrator, :participation_email_delivery, ...)`, and that stub tags its messages `{:participation_email, ...}`. This test installs nothing, expects Swoosh's default `{:email, ...}`, and its mailbox held three stub-tagged emails, which only a concurrent test's global write can produce. It passes alone, and three of the offending files run together do not reproduce it, so it needs the full async pool. The real fix is to stop mutating that global from async cases, which belongs to the participation suite.
+- The second was `RepositoryKitsLiveTest` with `DBConnection.ConnectionError: tcp send: closed`, the pool-drop class already recorded for this repository. It passes alone and PostgreSQL was healthy throughout.
+- Four browser scenarios had pinned the old turn-away URL and were corrected. `entry.spec.js` twice, `identity-linking.spec.js`, and `mixed-catalog.spec.js` each asserted that an unauthenticated protected route lands on a URL ending in `/`. Each now lands on `/?project_access=required`.
+- The behaviour behind all four was checked rather than assumed, and none of it changed. Participation and the identity-link verification both fail closed to the catalog, which then turns an unauthenticated browser away, and the sign-out scenario reaches the catalog the same way. Every one still renders the entry chooser and still discloses nothing, so the assertions moved and the product did not. `/identity/link/:id` still halts to `/` because it remains an application-session route, and its scenario was left alone.
+- Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `npm --prefix assets run test:e2e` — exit `0`.
+- Remaining: the product proof in a real browser against the paired worker app. The slice stays unverified until it runs.

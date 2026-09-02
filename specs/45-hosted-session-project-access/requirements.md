@@ -44,6 +44,7 @@ A person whose only sign-in is the passwordless email link can see the projects 
 - Every screen resolves the acting account and its workspace from the session that is actually present, and shows only that workspace's projects. A project in another workspace is not found rather than refused, so nothing about it is disclosed.
 - A passwordless owner sees the same project list and the same project dashboard a GitHub owner sees. Controls that need GitHub, such as repository access checks, are not offered when the acting account has no GitHub identity.
 - An expired, revoked, or absent session reaches no project screen and no project data.
+- Being asked to sign in again says only that, because the product does not know which sign-in the person meant to use. It does not name one method as the missing one.
 - A project whose repository is on a Mac is never described as a GitHub repository. Its screen does not claim GitHub access was lost, and it does not leave a repository label empty.
 - The screens named out of scope keep requiring the application session, and a passwordless owner is told what is missing rather than shown a broken screen.
 
