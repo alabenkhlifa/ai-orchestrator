@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -66,7 +66,7 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Create a hosted project from a device-origin attempt.
+- [x] Task 1 — Create a hosted project from a device-origin attempt.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -74,6 +74,7 @@ Traceability:
   - Owned surfaces: `Projects.register_project/3` accepting a device-origin attempt whose storage mode is hosted, the hosted workspace resolved from the attempt's `hosted_prerequisite_workspace_id`, the refusal for an attempt that never proved one, and the `repository_provider: "local"` project carrying the portable identity as its canonical repository id.
   - Owns: AC-01, entity:HostedLocalRepositoryProject
   - Proof: Focused tests cover a device-origin attempt with a proven hosted workspace producing one hosted local-provider project with one authoritative storage mode and its repository connection, an attempt with no proven workspace refused with nothing created, and a hosted-origin attempt behaving exactly as before.
+  - Delivered: `register_project/3` now commits a device-origin hosted attempt into the workspace the attempt itself proved, carrying the portable fingerprint as its canonical repository id. A local project writes no GitHub-shaped connection row, because that row's repository id is a provider-issued integer a local repository never has.
 
 - [ ] Task 2 — Bind the proving worker in the same commit.
   - Size: Exception — the project, its connection, its storage mode, and its binding are one invariant. Splitting them would leave a committed hosted project with no worker, which is the unconnected state this slice exists to avoid and which no screen could then resolve for a repository the worker has already stopped offering.

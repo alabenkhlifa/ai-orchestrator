@@ -9,6 +9,11 @@ defmodule SddOrchestrator.Projects do
   creates a hosted project, its canonical repository connection, and its storage
   state in one transaction — or leaves no partial record — while device
   registration remains destination-owned by the worker transaction in Task 4.
+
+  A device-origin attempt reaches the same writer once a verified sign-in proves
+  a hosted workspace, so an accountless local repository can be kept hosted. Its
+  repository identity is the portable fingerprint rather than a provider id, and
+  it carries no GitHub-shaped connection row.
   """
   import Ecto.Query
 
@@ -332,6 +337,23 @@ defmodule SddOrchestrator.Projects do
     end)
   end
 
+  @doc """
+  Resolves the hosted workspace a device-origin attempt proved through a verified
+  sign-in. The identity comes from the attempt, never from the caller's session,
+  so a hosted commit can only land in the workspace the flow actually proved.
+  """
+  @spec proven_hosted_workspace(ProjectOnboardingAttempt.t()) ::
+          {:ok, PersonalWorkspace.t()} | {:error, :hosted_prerequisite_required}
+  def proven_hosted_workspace(%ProjectOnboardingAttempt{hosted_prerequisite_workspace_id: nil}),
+    do: {:error, :hosted_prerequisite_required}
+
+  def proven_hosted_workspace(%ProjectOnboardingAttempt{} = attempt) do
+    case Repo.get(PersonalWorkspace, attempt.hosted_prerequisite_workspace_id) do
+      nil -> {:error, :hosted_prerequisite_required}
+      %PersonalWorkspace{} = workspace -> {:ok, workspace}
+    end
+  end
+
   ## Registration and naming
 
   @doc """
@@ -368,6 +390,12 @@ defmodule SddOrchestrator.Projects do
       suggested default). When `false` (the default), a collision returns an
       inline changeset error so an edited name is never silently changed.
 
+  A device-origin attempt commits here too once it has chosen hosted storage. It
+  must name the hosted workspace its own verified sign-in proved, otherwise
+  registration returns `{:error, :hosted_prerequisite_required}` and writes
+  nothing. Its project carries the portable local fingerprint as its canonical
+  repository identity and no GitHub-shaped connection row.
+
   Returns `{:ok, project}` with the connection and storage preloaded, an idempotent
   `{:ok, project}` when the attempt was already consumed, `{:error, changeset}` for
   invalid or conflicting names, `{:error, {:repository_already_linked, project}}`
@@ -388,6 +416,7 @@ defmodule SddOrchestrator.Projects do
     cond do
       is_nil(attempt.selected_repository) -> {:error, :repository_required}
       is_nil(attempt.storage_mode) -> {:error, :storage_mode_required}
+      not proven_workspace?(workspace, attempt) -> {:error, :hosted_prerequisite_required}
       not is_nil(attempt.consumed_at) -> committed_project(workspace, attempt)
       not storage_ready?(attempt) -> {:error, :storage_not_ready}
       attempt.storage_mode == "device" -> {:error, :device_registration_not_available}
@@ -510,16 +539,11 @@ defmodule SddOrchestrator.Projects do
           workspace_id: workspace.id,
           storage_mode: attempt.storage_mode,
           onboarding_attempt_id: attempt.id,
-          repository_provider: repo["provider"] || "github",
-          canonical_repository_id: to_string(repo["repository_id"])
+          repository_provider: repository_provider(repo),
+          canonical_repository_id: canonical_repository_id(repo)
         })
       )
-      |> Multi.insert(:connection, fn %{project: project} ->
-        RepositoryConnection.create_changeset(
-          %RepositoryConnection{},
-          connection_attrs(project, workspace, repo)
-        )
-      end)
+      |> prepare_connection(workspace, repo)
       |> prepare_storage(attempt)
 
     multi
@@ -541,6 +565,20 @@ defmodule SddOrchestrator.Projects do
 
   defp prepare_owner_profile(multi, _workspace, _attempt), do: multi
 
+  # A local repository has no `RepositoryConnection`: that row is GitHub-shaped and
+  # requires a numeric provider repository id a local repository never has. The
+  # project's own portable `canonical_repository_id` is its repository link.
+  defp prepare_connection(multi, _workspace, %{"provider" => "local"}), do: multi
+
+  defp prepare_connection(multi, workspace, repo) do
+    Multi.insert(multi, :connection, fn %{project: project} ->
+      RepositoryConnection.create_changeset(
+        %RepositoryConnection{},
+        connection_attrs(project, workspace, repo)
+      )
+    end)
+  end
+
   # Hosted storage joins the transaction through the shared adapter contract.
   # Task 4 dispatches device registration to the worker-owned local transaction;
   # device project and connection rows are never written to hosted PostgreSQL.
@@ -555,6 +593,17 @@ defmodule SddOrchestrator.Projects do
     do: ProjectStorage.available?(:device, attempt)
 
   defp storage_ready?(_), do: false
+
+  # A device-origin attempt owns no hosted workspace, so it may only commit into
+  # the one its own verified sign-in proved. A hosted-origin attempt already owns
+  # its workspace and is unaffected.
+  defp proven_workspace?(
+         %PersonalWorkspace{id: workspace_id},
+         %{origin_kind: "device"} = attempt
+       ),
+       do: attempt.hosted_prerequisite_workspace_id == workspace_id
+
+  defp proven_workspace?(_workspace, _attempt), do: true
 
   defp registration_name(workspace, attempt, opts) do
     case Keyword.get(opts, :name) do
@@ -599,8 +648,8 @@ defmodule SddOrchestrator.Projects do
   end
 
   defp existing_project_for(%PersonalWorkspace{id: workspace_id}, repo) do
-    provider = repo["provider"] || "github"
-    repository_id = to_string(repo["repository_id"])
+    provider = repository_provider(repo)
+    repository_id = canonical_repository_id(repo)
 
     Repo.one(
       from p in Project,
@@ -609,6 +658,15 @@ defmodule SddOrchestrator.Projects do
             p.canonical_repository_id == ^repository_id
     )
   end
+
+  defp repository_provider(repo), do: repo["provider"] || "github"
+
+  # A local repository is identified by the portable fingerprint the worker
+  # generated, because it has no provider-issued id. GitHub keeps its stable
+  # numeric repository id.
+  defp canonical_repository_id(%{"provider" => "local"} = repo), do: repo["fingerprint"]
+
+  defp canonical_repository_id(repo), do: to_string(repo["repository_id"])
 
   defp connection_attrs(project, workspace, repo) do
     %{

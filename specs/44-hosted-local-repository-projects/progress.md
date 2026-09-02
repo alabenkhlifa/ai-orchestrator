@@ -1,5 +1,17 @@
 # Hosted Projects From A Local Repository Progress Log
 
+### 2026-09-02 - Task 1 complete: hosted registration from a device-origin attempt
+
+- `Projects.register_project/3` accepts a device-origin attempt whose storage mode is hosted. A `proven_workspace?/2` guard runs before every other branch: the attempt commits only into the workspace its own verified sign-in recorded in `hosted_prerequisite_workspace_id`, and any other workspace, or none, answers `{:error, :hosted_prerequisite_required}` with nothing written. A hosted-origin attempt is unaffected.
+- `Projects.proven_hosted_workspace/1` resolves that workspace from the attempt, so the LiveView in `Task 3` reads identity from the attempt and never from the session.
+- Design reading recorded, because `design.md` phrases it loosely. A local-provider project writes no `RepositoryConnection` row. That schema is GitHub-shaped: `provider_repository_id` is a required integer and a local repository has no provider-issued id. The project's own `canonical_repository_id` is its repository link, which is exactly the shape `HostedRestore`, `HostedLocalRepositoryConnection.connect/6`, `HostedLocalRepositoryBindings`, and `ProjectDashboardLive` already read. `design.md`'s `Data and Access Boundaries` already defines `HostedLocalRepositoryProject` that way; only one sentence in `Proposed Approach` reads as if a connection row is written.
+- Consequence of that shape, unchanged from the local projects restore already creates: `Projects.configured?/1` inner-joins `:repository_connection`, so a hosted local project is never `configured?` and `/projects/:id` always lands on its overview. That is the dashboard this slice's workflow names, so nothing is widened.
+- `canonical_repository_id/1` and `repository_provider/1` are shared by the project insert and by `existing_project_for/2`, so the per-account duplicate refusal resolves a local repository by `(workspace_id, "local", fingerprint)`. With no connection step for a local repository the conflict now surfaces on the `:project` step, which `handle_project_conflict/6` already covered.
+- Reachability noted for the slice gate, not a Task 1 defect. The storage step's hosted choice unlocks on the passwordless hosted session cookie, while `/projects/:id/overview` sits behind the application session that only GitHub sign-in issues. Both resolve to one `PersonalWorkspace` only when the GitHub account and the hosted identity are linked. `specs/03-hosted-passwordless-access/` and `specs/04-github-identity-linking/` own that; it is confirmed at the product proof.
+- Proof receipt: `Task 1` — scope `Focused` — command `mix test test/sdd_orchestrator/project_registration_test.exs` — exit `0`.
+- 28 tests passed in that file, 6 of them new.
+- Regression checks outside the focused proof: `mix test test/sdd_orchestrator/portability/hosted_restore_test.exs test/sdd_orchestrator_web/live/project_confirmation_live_test.exs` (19 passed) and `test/sdd_orchestrator/participation/owner_profile_test.exs` (17 passed), the other `register_project/3` callers.
+
 ### 2026-09-01 - Specification created after the gap blocked another slice's product proof
 
 - Found while proving `specs/41-feature-delivery-from-the-ui/` in a real browser. Choosing `In my SDD Orchestrator account` for a local repository answers `Saving local projects to a hosted account is coming soon.`, and `LocalOnboardingLive`'s own comment records that the work belongs to an atomic-registration task nobody had specified.

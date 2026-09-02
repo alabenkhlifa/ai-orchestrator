@@ -92,6 +92,32 @@ defmodule SddOrchestrator.ProjectsFixtures do
   end
 
   @doc """
+  Starts a device-origin attempt ready for hosted registration: a local repository
+  is selected, hosted storage is chosen, and the given hosted workspace is proven
+  by sign-in. Pass `nil` as the hosted workspace to leave the prerequisite unproven.
+  """
+  def device_attempt_ready_for_hosted(device_workspace, hosted_workspace, opts \\ []) do
+    repository = Keyword.get(opts, :repository, local_repository_metadata())
+
+    attempt =
+      device_workspace
+      |> device_attempt_with_repository(repository)
+      |> prove_hosted_prerequisite(device_workspace, hosted_workspace)
+
+    {:ok, attempt} = Projects.select_storage_mode(device_workspace, attempt.id, "hosted")
+    attempt
+  end
+
+  defp prove_hosted_prerequisite(attempt, _device_workspace, nil), do: attempt
+
+  defp prove_hosted_prerequisite(attempt, device_workspace, hosted_workspace) do
+    {:ok, attempt} =
+      Projects.record_hosted_prerequisite(device_workspace, attempt.id, hosted_workspace)
+
+    attempt
+  end
+
+  @doc """
   Builds a bound, minimized device-readiness receipt for an attempt. Binds to the
   attempt id and, for a device-origin attempt, the attempt's device workspace by
   default; override any field through `attrs`.
