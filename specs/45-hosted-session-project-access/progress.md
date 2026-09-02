@@ -1,0 +1,15 @@
+# Hosted Session Project Access Progress Log
+
+### 2026-09-02 - Specification created after a delivered slice could not be clicked through
+
+- Found while proving `specs/44-hosted-local-repository-projects/` in a real browser. A person who signs in through the storage step's passwordless link creates the project and is then sent to `/`. Confirmed by running it, not by reading the router: `/projects/:id` redirects to `/projects/:id/overview`, which sits in `live_session :authenticated` and needs the application session that only GitHub sign-in issues.
+- The gap is older and wider than that slice. `HostedAccess.restore_or_create_identity/1` looks up `provider: "email"`, so a passwordless sign-in never joins an existing GitHub account. Passwordless was built as the participant door: `/projects/:id/features`, invitations, and the notification inbox all resolve a hosted session, while `/projects` and `/projects/:id/overview` never did.
+- It is `specs/03-hosted-passwordless-access/`'s own deferred work. That specification is `Verified` and honest: its AC-20 to AC-23 cover the combined catalog and it recorded them as deferred criteria, because while a passwordless person could only be invited to a project, no screen had to list projects they own. `specs/44` made them able to create one.
+- Routing decided with the user: `specs/03` is not reopened. This specification owns letting a passwordless owner reach the projects their account owns.
+- Product decisions taken with the user: the slice covers the project list and any project the acting account owns, because a person who can only return by remembering a link has no usable outcome. Every other screen behind the application session stays as it is, which is the least-privilege default this project applies. Composing on-device projects into the same list stays deferred, since it needs migration rules `specs/05-project-storage-lifecycle/` has not settled.
+- Engineering decisions recorded in `design.md`: one `on_mount` hook resolving the acting account and workspace from whichever session is present, the passwordless sign-in deliberately not issuing an application session, and workspace scoping left as the only authorization.
+- The pieces are already there. A hosted session resolves a full `%Account{}` and its `%PersonalWorkspace{}`, both screens already scope every query by `workspace_id`, and `Connections.project/4` only touches the account to revalidate GitHub connections, which a local-repository project has none of.
+- Why it stayed hidden: every existing test and browser scenario for a hosted local project seeds one through `/_e2e`, which grants an application session.
+- Scope: classified `focused specification`. One outcome, one workflow, one verification gate, five tasks, longest `Depends on:` path of four. No size exceptions.
+- Consequence: `specs/44-hosted-local-repository-projects/` stays `Blocked` on its product proof and `specs/41-feature-delivery-from-the-ui/` stays blocked on its release gate until this lands.
+- No code changed in this update.

@@ -120,7 +120,7 @@ Traceability:
 
 ## Blocked Decisions
 
-- The product proof cannot run, and the slice cannot be `Verified`, until a person can open the project this slice creates. The storage step's sign-in is the passwordless door, which makes an account holding only a hosted session, while `/projects/:id/overview` requires the application session that only GitHub sign-in issues. Creating the project therefore ends at `/`. Confirmed by running it. The seam belongs to `specs/03-hosted-passwordless-access/` and `specs/05-project-storage-lifecycle/`, not here, and its own specification owns closing it.
+- The product proof cannot run, and the slice cannot be `Verified`, until a person can open the project this slice creates. The storage step's sign-in is the passwordless door, which makes an account holding only a hosted session, while `/projects/:id/overview` requires the application session that only GitHub sign-in issues. Creating the project therefore ends at `/`. Confirmed by running it. The seam belongs to `specs/03-hosted-passwordless-access/`, which deferred exactly this as its AC-20 to AC-23, not here. `specs/45-hosted-session-project-access/` owns closing it. No capability edge is declared, because this slice's own `capability:hosted-local-repository-projects` is what that specification consumes and an edge back would be a cycle.
 
 ## Release Gate
 
