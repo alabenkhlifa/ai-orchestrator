@@ -96,7 +96,7 @@ Traceability:
   - Proof: Focused LiveView tests cover a confirmed hosted attempt creating the project and routing to its dashboard, each refusal reason rendering its sentence with nothing created and the choice still offered, and a second hosted attempt for the same repository refused with a link to the existing project.
   - Delivered: a hosted attempt resumes at the review step, names the project, reads a disclosure that states the hosted truth, and creates on confirm. Its `Back` returns to the storage step so the choice stays available.
 
-- [ ] Task 4 — Prove the click path, coexistence, and that no path leaks.
+- [x] Task 4 — Prove the click path, coexistence, and that no path leaks.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3
@@ -104,6 +104,7 @@ Traceability:
   - Owned surfaces: The integration scenario from folder selection through the hosted choice to a connected hosted project, the coexistence check against a device project for the same repository, and the log and record review for a path, remote, history, or file name, which together establish `capability:hosted-local-repository-projects`.
   - Owns: AC-04, AC-06
   - Proof: An integration scenario drives selection, the hosted choice, and confirmation to a connected hosted project; a device project for the same repository is shown unchanged beside it; and a review of the stored records and captured logs finds only the portable identity.
+  - Delivered: the flow suite drives the whole click path to a bound hosted project and proves coexistence both ways round. A new privacy case scans every row of every table and the captured logs for repository detail.
 
 ## Verification Gate
 
