@@ -11,6 +11,12 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
   acting identity names, so the passwordless email link opens the projects that
   account owns, the GitHub session is unchanged, and workspace scoping is still
   the only authorization on either session.
+
+  And `specs/45` Task 6 (AC-08): the `Repository` row, the GitHub connection
+  badge, and the access-lost notice render only for a project that has a
+  repository connection, so a project whose repository is on a Mac is never
+  described as a GitHub repository, while a GitHub-backed project keeps all
+  three in the connected and the disconnected state.
   """
   use SddOrchestratorWeb.ConnCase, async: true
 
@@ -18,8 +24,10 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.AccountsFixtures
+  alias SddOrchestrator.Devices.{LocalWorker, WorkerDiscovery}
   alias SddOrchestrator.HostedAccess.SessionCookie
   alias SddOrchestrator.HostedAccessFixtures
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ProjectsFixtures
@@ -52,6 +60,23 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
     attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, workspace)
     {:ok, project} = Projects.register_project(workspace, attempt, name: name)
     project
+  end
+
+  # Registration binds the project to the machine that proved its repository.
+  # Ageing that worker's heartbeat is how the machine region reads as not
+  # reachable, without touching the project or its binding.
+  defp stale_bound_worker(project) do
+    binding = Repo.get!(HostedLocalRepositoryBinding, project.id)
+
+    stale =
+      DateTime.utc_now()
+      |> DateTime.add(-(WorkerDiscovery.staleness_seconds() + 60), :second)
+      |> DateTime.truncate(:second)
+
+    LocalWorker
+    |> Repo.get!(binding.worker_id)
+    |> Ecto.Changeset.change(last_seen_at: stale)
+    |> Repo.update!()
   end
 
   describe "connected project (AC-30)" do
@@ -230,7 +255,6 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
 
       assert html =~ ~s(data-screen="project-dashboard")
       assert html =~ "Ledger"
-      assert html =~ "Repository"
       assert html =~ "In my SDD Orchestrator account"
       assert html =~ ~s(data-worker-connection="connected")
       assert html =~ "Connected to your machine"
@@ -246,13 +270,16 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
 
       # The connected mount revalidates. Nothing about the machine link is
       # reported as lost, and no connection row is invented to carry a status.
-      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
       assert html =~ ~s(data-worker-connection="connected")
       assert Repo.aggregate(RepositoryConnection, :count) == 0
 
-      # `Check again` revalidates a second time with the same result.
-      rechecked = view |> element("button[data-recheck]") |> render_click()
-      assert rechecked =~ ~s(data-worker-connection="connected")
+      # There is no GitHub connection to re-check, so the screen offers no
+      # `Check again`. A second mount revalidates again with the same result.
+      refute html =~ "Check again"
+
+      {:ok, _view, again} = live(conn, ~p"/projects/#{project.id}/overview")
+      assert again =~ ~s(data-worker-connection="connected")
       assert Repo.aggregate(RepositoryConnection, :count) == 0
     end
 
@@ -266,6 +293,77 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
       assert html =~ "Ledger"
       assert html =~ "In my SDD Orchestrator account"
       assert html =~ ~s(data-worker-connection="connected")
+    end
+  end
+
+  describe "a repository that is on a Mac (AC-08)" do
+    test "shows no Repository row, no GitHub badge, and no access-lost notice", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ "Ledger"
+      refute has_element?(view, "[data-repository]")
+      refute html =~ "Repository"
+      refute html =~ "Disconnected"
+      refute has_element?(view, "[data-disconnected]")
+      refute has_element?(view, "button[data-recheck]")
+      refute html =~ "GitHub access to this repository was lost"
+    end
+
+    test "still says where the repository is and that the machine is reachable", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-worker-connection="connected")
+      assert html =~ "Connected to your machine"
+      assert html =~ "repository is on a machine you connected"
+    end
+
+    test "still says the machine is not reachable when it stops checking in", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+      stale_bound_worker(project)
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-worker-connection="temporarily_unavailable")
+      assert html =~ "isn&#39;t reachable right now"
+      assert html =~ "are unaffected"
+
+      # The machine region is the only thing reporting reachability. The GitHub
+      # notice and its recovery control are still absent.
+      refute has_element?(view, "[data-disconnected]")
+      refute has_element?(view, "button[data-recheck]")
+    end
+
+    test "a GitHub-backed project keeps its badge and Repository row", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ "Repository"
+      assert has_element?(view, "[data-repository]", "octo/example")
+      assert html =~ "Connected"
+    end
+
+    test "a GitHub-backed project that lost access keeps its notice and Check again", %{
+      conn: conn
+    } do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "noinstall-x")
+      project = ProjectsFixtures.registered_project(workspace, name: "Orphaned")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ "Disconnected"
+      assert html =~ "GitHub access to this repository was lost"
+      assert has_element?(view, "[data-disconnected]")
+      assert has_element?(view, "button[data-recheck]")
+      assert has_element?(view, "[data-repository]")
     end
   end
 

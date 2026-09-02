@@ -105,7 +105,7 @@ Traceability:
   - Owns: AC-03
   - Proof: Focused tests cover a valid hosted session at `/` reaching the project list, an application session still reaching it, and no session still rendering the entry chooser with its notices.
 
-- [ ] Task 6 — Tell the truth about a repository that is on a Mac.
+- [x] Task 6 — Tell the truth about a repository that is on a Mac.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -113,6 +113,7 @@ Traceability:
   - Owned surfaces: `ProjectDashboardLive`'s `Repository` row, its GitHub connection badge, and its access-lost notice, each rendered only for a project that has a repository connection, leaving the machine region as the one place that states where a local repository is and whether its Mac is reachable.
   - Owns: AC-08
   - Proof: Focused LiveView tests cover a hosted local-repository project rendering no `Repository` row, no GitHub badge, and no access-lost notice while its machine region still states where the repository is and its reachability, and a GitHub-backed project rendering all three exactly as before in both the connected and the disconnected state.
+  - Delivered: the GitHub connection presentation is keyed on the project having a repository connection, so a project with none renders none of it and the machine region is the one place that states where the repository is.
 
 - [ ] Task 5 — Prove the click path and that nothing else widened.
   - Size: Standard

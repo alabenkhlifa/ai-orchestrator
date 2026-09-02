@@ -47,3 +47,13 @@
 - Run paused here at the user's request. `Task 1` and `Task 2` are complete, proven, and committed. `Task 3`, `Task 4`, `Task 6`, and `Task 5` are not started, and the slice gate has not run.
 - To resume: branch `slice/45-hosted-session-project-access`, specification `specs/45-hosted-session-project-access/`, next task `Task 3`. State to recover from is `tasks.md`, this log, and `lib/sdd_orchestrator_web/acting_identity.ex`. The branch is cut from `slice/44-hosted-local-repository-projects` rather than `main`, because `Task 5`'s scenario needs that slice's creation path, and the two merge together.
 - No code changed in this update.
+
+### 2026-09-02 - Task 6 complete: the dashboard stops describing a GitHub repository the project never had
+
+- The status badge, the access-lost notice with `Check again`, and the `Repository` row now render only when the project has a repository connection. The decision is keyed on `@connection`, not on the storage mode or the provider string, because having a connection is exactly the condition under which those three have anything true to say.
+- The temporarily-unreachable notice was guarded on the same condition, one element beyond the three named. `Connections.to_entry/2` answers `:disconnected` for a missing connection, so that notice could never fire without one and the guard changes no rendered output. It keeps the whole GitHub block keyed on one condition rather than on `Connections`' internals.
+- The machine region is untouched and is now the one place that states where a local repository is and whether its Mac is reachable. No copy was added, only removed from where it was false.
+- Two tests written by `Task 2` asserted the elements this task removes and were corrected rather than deleted. The AC-01 test no longer asserts the word `Repository` for a local project, and the revalidation no-op test now refutes `Check again` and proves the second revalidating pass through a second connected mount instead of clicking a control that no longer renders.
+- `Connections` was not changed. `to_entry/2` still answers `:disconnected` for a project with no connection; the screen simply stops presenting that as lost GitHub access.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/project_dashboard_live_test.exs` — exit `0`.
+- 21 tests passed in that file. Regression runs outside the focused proof covered every suite that mounts the overview: the worker-connection, connect-machine and machine-lifecycle suites (29 passed), the assistant panel, run reachability, onboarding flow, landing controller and backup suites (46 passed), and the feature-start, participation and feature-board suites (56 passed).

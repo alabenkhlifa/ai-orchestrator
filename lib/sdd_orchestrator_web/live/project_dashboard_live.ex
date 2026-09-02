@@ -23,6 +23,14 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   their account owns (specs/45 Task 2). The screen never picks a credential
   itself, and the workspace scoping above is still the only authorization.
 
+  The GitHub connection presentation is keyed on the project having a repository
+  connection (specs/45 Task 6): the status badge, the access-lost notice with
+  `Check again`, and the `Repository` row all render only when `@connection` is
+  present. A hosted project whose repository is a local Git repository has no
+  connection row, so those three would report a lost GitHub repository the
+  project never had. The machine region below is the one place that states where
+  such a repository is and whether that Mac is reachable.
+
   A project whose repository is a local Git repository also shows its worker
   connection state (specs/37 Task 3): connected, temporarily unavailable, or not
   connected. That state is derived on read through
@@ -562,10 +570,14 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
             <h1 class="text-xl font-bold text-ink truncate" data-project-name>{@project.name}</h1>
             <p class="mt-1 text-sm text-ink-muted">Your project is ready.</p>
           </div>
-          <.connection_badge status={@status} class="flex-none" />
+          <%!-- The badge and the two notices below report GitHub access, so they
+          render only for a project that has a repository connection. Without one
+          there is no GitHub access to report, and `@status` is `:disconnected`
+          for the absence of a connection rather than for lost access. --%>
+          <.connection_badge :if={@connection} status={@status} class="flex-none" />
         </div>
 
-        <div :if={@status == :disconnected} data-disconnected class="mt-4">
+        <div :if={@connection && @status == :disconnected} data-disconnected class="mt-4">
           <.notice variant="warn" icon="unplug">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>
@@ -585,7 +597,11 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           </.notice>
         </div>
 
-        <div :if={@status == :temporarily_unavailable} data-unavailable class="mt-4">
+        <div
+          :if={@connection && @status == :temporarily_unavailable}
+          data-unavailable
+          class="mt-4"
+        >
           <.notice variant="info" icon="refresh-cw">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>
@@ -747,11 +763,13 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
         </div>
 
         <dl class="mt-6 flex flex-col gap-3">
-          <div class="rounded-lg border border-line bg-surface p-3.5">
+          <%!-- The row names a GitHub repository, so it renders only when there
+          is one. A project with no connection had an empty labelled row. --%>
+          <div :if={@connection} class="rounded-lg border border-line bg-surface p-3.5">
             <dt class="flex items-center gap-2 text-[13px] font-semibold text-ink-muted">
               <.lucide name="github" class="size-4" /> Repository
             </dt>
-            <dd :if={@connection} class="mt-1.5 text-sm font-semibold text-ink" data-repository>
+            <dd class="mt-1.5 text-sm font-semibold text-ink" data-repository>
               {@connection.full_name || @connection.name}
             </dd>
           </div>
