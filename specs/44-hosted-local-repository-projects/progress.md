@@ -1,5 +1,15 @@
 # Hosted Projects From A Local Repository Progress Log
 
+### 2026-09-02 - AC-05 narrowed to the repository identity after the proof exposed it
+
+- Found while reviewing Task 4's coexistence proof. AC-05 as written ("a hosted project for that repository") can never refuse anything in the real click path. `PortableRepositoryIdentity.generate/1` draws a fresh salt on every selection, deliberately, so two selections of one repository produce two different identity strings and the per-account uniqueness index never sees a conflict.
+- The gap is not a coding mistake. The selection step's candidate list is `Devices.list_projects()`, which is the device store, and `/onboarding/local` runs in `live_session :public` with no hosted identity at all. Selection happens before sign-in, so at the moment the worker compares folders there is no account whose hosted projects it could be given as candidates.
+- Decision taken with the user: narrow AC-05 to the identity the confirmed attempt names. Two separate selections of one repository legitimately produce two hosted projects, which is what the fresh-salt design intends and what the product's own first-connection disclosure already tells the person ("An independent connection gets a different identifier").
+- The alternative was weighed and rejected for this slice: asking the worker to compare the chosen folder against the account's hosted identities after sign-in. It needs the worker to hold the proven folder past the picker it already closed, or to open a second picker, which the design rejects for making the person prove the same repository twice. Recorded as deferred rather than dropped.
+- Requirements, design, and tasks now agree on the identity-level rule. `design.md` gains the decision and its consequence; `tasks.md` narrows the implementation boundary, `Task 3`'s owned surface and proof, and adds the deferred detection.
+- `design.md`'s `Proposed Approach` also corrected where it read as if a local project writes a `RepositoryConnection` row. Its `Data and Access Boundaries` already defined the entity correctly; the approach paragraph now says the same thing.
+- No code changed in this update, and no task was reopened. `Task 3`'s delivered behaviour already matches the narrowed criterion and its proof already asserts it.
+
 ### 2026-09-02 - Task 4 complete: the click path, coexistence, and the record and log review
 
 - The flow suite now drives the hosted path as a person does: pair the worker, continue to selection, select the real Git folder, hand off to the storage step, sign in so hosted becomes available, choose hosted, resume at review, and confirm. It asserts the redirect to the project's landing address and a project that is hosted, `repository_provider: "local"`, carrying the portable identity, and bound to the worker that proved the repository.
@@ -9,6 +19,7 @@
 - The repository fixture is a real Git repository with a real remote, a real commit, and real file content, built under a uniquely named parent directory. The folder's display name is the one repository value the approved design lets cross (`specs/05` AC-17), so the parent segment, the absolute path, and the relative path are forbidden while the display name is not.
 - The creation is silent. The captured log at `:info` is the empty string, so an absence scan would pass for free. Two tests guard that: one asserts the log is empty, so a future log line on this path fails and gets reviewed, and one proves the capture is live at `:info`. Test logging is configured at `:warning`, so the case raises the level in setup and restores it, which forces `async: false`.
 - Also confirmed for AC-06: no `RepositoryConnection` row exists, so there is nothing GitHub-shaped to hold a URL, and the consumed attempt's `selected_repository` keys are exactly `fingerprint`, `name`, `provider`, and `worker_id`.
+- `capability:hosted-local-repository-projects` is ready. `Task 4` is complete, and the click path from folder selection through the hosted choice to a bound hosted project is proved end to end.
 - Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/local_onboarding_flow_test.exs test/sdd_orchestrator/privacy/hosted_local_repository_project_boundary_test.exs` — exit `0`.
 - 20 tests passed across those two files. Regression run outside the focused proof: `local_onboarding_live_test.exs` and `project_registration_test.exs` (67 passed).
 

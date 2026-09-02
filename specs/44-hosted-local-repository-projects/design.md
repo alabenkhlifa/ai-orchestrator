@@ -15,7 +15,8 @@ The pieces this needs are already built. `ProjectOnboardingAttempt` carries `ori
 Deliver the hosted branch of the step that already exists, and bind the worker in the same commit.
 
 - `LocalOnboardingLive`'s `%{storage_mode: "hosted"}` clause stops answering a flash and creates the project. It resolves the hosted workspace from the attempt's `hosted_prerequisite_workspace_id`, so the identity comes from the sign-in the person already completed rather than from the session alone.
-- Creation goes through `Projects.register_project/3` with that workspace, so the hosted project, its repository connection, and its single authoritative storage mode commit exactly as they do for a GitHub repository. The attempt's `selected_repository` supplies `repository_provider: "local"` and the portable identity as the canonical repository id.
+- Creation goes through `Projects.register_project/3` with that workspace, so the hosted project, its repository link, and its single authoritative storage mode commit in the one transaction the GitHub path already uses. The attempt's `selected_repository` supplies `repository_provider: "local"` and the portable identity as the canonical repository id.
+- A local repository writes no `RepositoryConnection` row. That row is GitHub-shaped: its repository id is a provider-issued integer a local repository never has. The project's own `canonical_repository_id` is its repository link, which is the shape `HostedRestore`, `HostedLocalRepositoryConnection.connect/6`, `HostedLocalRepositoryBindings`, and the dashboard already read.
 - The worker binding commits with them. The worker that proved the repository during selection is the one named, taken from the attempt rather than from whatever is attached at that moment, so a different Mac cannot be substituted between selection and confirmation. `put_validated_binding/6` is the existing writer and its contract does not change.
 - One transaction covers the project, the connection, the storage mode, and the binding. A failure anywhere leaves none of them, which is what AC-07 of `specs/05` already requires and what AC-03 here restates for the binding.
 - On success the person goes to the hosted project's dashboard, which already renders the repository, the storage mode, and the live connection state for a hosted local project.
@@ -60,6 +61,12 @@ Required boundaries:
 - Choice: The hosted workspace is resolved from the attempt's `hosted_prerequisite_workspace_id`.
 - Reason: The schema already records the workspace proven by the sign-in on that attempt, which is what `specs/05-project-storage-lifecycle/` AC-14 writes when an accountless person signs in mid-flow. Reading the session instead would let a session change between the sign-in and the confirmation decide who owns the project.
 - Consequence: An attempt that never proved a hosted workspace is refused rather than falling back, and the storage step's own availability rules stay the only thing that decides whether the choice is offered.
+
+### The per-account refusal compares the identity, not the repository
+
+- Choice: Creation is refused when the account already holds a hosted project for the repository identity the confirmed attempt names.
+- Reason: `PortableRepositoryIdentity.generate/1` draws a fresh salt on every selection, deliberately, so independent onboarding creates no global repository-equality signal. The selection step also runs before sign-in, so it holds no account whose hosted projects it could hand the worker as candidates to compare against.
+- Consequence: A person who selects one repository twice gets two hosted projects. Recognising the repository across two selections would need the worker to compare the chosen folder against the account's hosted identities after sign-in, which needs the worker to hold the proven folder past the picker it already closed. That is out of this slice.
 
 ### A device project for the same repository is left alone
 

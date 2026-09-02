@@ -39,7 +39,7 @@ Included:
 - `Projects.register_project/3` accepting a device-origin attempt whose storage mode is hosted, and resolving the hosted workspace the attempt proved.
 - The worker binding written in the same transaction as the project, its repository connection, and its storage mode.
 - The hosted branch of `LocalOnboardingLive`'s confirmed attempt, replacing the not-yet-available flash with creation, its refusals, and the routing to the hosted dashboard.
-- The per-account refusal when a hosted project for that repository already exists.
+- The per-account refusal when a hosted project for the same repository identity already exists.
 
 Excluded:
 
@@ -52,6 +52,7 @@ Excluded:
 Deferred after this slice:
 
 - Moving a project between storage modes in either direction, which `specs/05-project-storage-lifecycle/` defers to its own child specification.
+- Recognising that two separately selected folders are the same repository. It needs the worker to compare the chosen folder against the account's hosted identities after sign-in, which needs the worker to hold the proven folder past the picker it closed.
 
 Release gates:
 
@@ -91,9 +92,9 @@ Traceability:
   - Proof scope: Focused
   - Depends on: Task 2
   - Purpose: Make the choice the step already offers actually work.
-  - Owned surfaces: `LocalOnboardingLive`'s `%{storage_mode: "hosted"}` clause creating the project, one sentence per refusal reason with the choice still available, routing to the hosted project's dashboard on success, and the per-account refusal naming the existing project when one already holds that repository.
+  - Owned surfaces: `LocalOnboardingLive`'s `%{storage_mode: "hosted"}` clause creating the project, one sentence per refusal reason with the choice still available, routing to the hosted project's dashboard on success, and the per-account refusal naming the existing project when the account already holds one for that repository identity.
   - Owns: AC-05
-  - Proof: Focused LiveView tests cover a confirmed hosted attempt creating the project and routing to its dashboard, each refusal reason rendering its sentence with nothing created and the choice still offered, and a second hosted attempt for the same repository refused with a link to the existing project.
+  - Proof: Focused LiveView tests cover a confirmed hosted attempt creating the project and routing to its dashboard, each refusal reason rendering its sentence with nothing created and the choice still offered, and a second hosted attempt naming the same repository identity refused with a link to the existing project.
   - Delivered: a hosted attempt resumes at the review step, names the project, reads a disclosure that states the hosted truth, and creates on confirm. Its `Back` returns to the storage step so the choice stays available.
 
 - [x] Task 4 — Prove the click path, coexistence, and that no path leaks.
