@@ -118,7 +118,7 @@ Traceability:
   - Proof: Focused LiveView tests cover a hosted local-repository project rendering no `Repository` row, no GitHub badge, and no access-lost notice while its machine region still states where the repository is and its reachability, and a GitHub-backed project rendering all three exactly as before in both the connected and the disconnected state.
   - Delivered: the GitHub connection presentation is keyed on the project having a repository connection, so a project with none renders none of it and the machine region is the one place that states where the repository is.
 
-- [ ] Task 5 — Prove the click path and that nothing else widened.
+- [x] Task 5 — Prove the click path and that nothing else widened.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2, Task 4, Task 6
@@ -126,6 +126,7 @@ Traceability:
   - Owned surfaces: The integration scenario from creating a hosted project through to opening it and its list on the same hosted session, the expired and revoked session checks, and the route review proving every excluded screen still requires the application session, which together establish `capability:hosted-session-project-access`.
   - Owns: AC-05, AC-06
   - Proof: An integration scenario creates a hosted project from a local repository on a hosted session and opens both the project and the list; an expired and a revoked session reach neither and render no project data; and every route named excluded still refuses a hosted-only session.
+  - Delivered: the scenario runs entirely through the UI, including the real magic-link sign-in, and the route review derives its list from the router rather than naming routes.
 
 ## Verification Gate
 
