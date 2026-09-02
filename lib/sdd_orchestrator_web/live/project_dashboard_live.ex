@@ -18,6 +18,11 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   Mount is workspace-scoped: an unknown, malformed, or cross-workspace project id
   routes back to the catalog so a foreign project is never rendered.
 
+  The account it acts as comes from `SddOrchestratorWeb.ActingIdentity`, so a
+  person signed in only through the passwordless email link opens the projects
+  their account owns (specs/45 Task 2). The screen never picks a credential
+  itself, and the workspace scoping above is still the only authorization.
+
   A project whose repository is a local Git repository also shows its worker
   connection state (specs/37 Task 3): connected, temporarily unavailable, or not
   connected. That state is derived on read through
@@ -54,7 +59,6 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
   import SddOrchestratorWeb.ConnectionStatus
 
-  alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
@@ -74,8 +78,8 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
-    account = socket.assigns.current_account
-    workspace = Accounts.get_or_create_personal_workspace(account)
+    account = socket.assigns.acting_account
+    workspace = socket.assigns.acting_workspace
 
     case Connections.project(account, workspace, project_id, revalidate: connected?(socket)) do
       nil ->
@@ -153,7 +157,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   def handle_event("recheck", _params, socket) do
     entry =
       Connections.project(
-        socket.assigns.current_account,
+        socket.assigns.acting_account,
         socket.assigns.workspace,
         socket.assigns.project.id,
         revalidate: true
@@ -550,7 +554,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           id={"project-assistant-" <> @project.id}
           project_id={@project.id}
           actor={@actor}
-          account={@current_account}
+          account={@acting_account}
         />
 
         <div class="flex items-start justify-between gap-3">

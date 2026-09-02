@@ -76,7 +76,7 @@ Traceability:
   - Proof: Focused tests cover an application session resolving its own account and workspace, a hosted session resolving the account behind its hosted identity and that account's workspace, both sessions together resolving the application session's account, and no session halting to the entry surface with nothing assigned.
   - Delivered: `SddOrchestratorWeb.ActingIdentity` assigns `:acting_account` and `:acting_workspace`. Each credential is still read through the module that owns it.
 
-- [ ] Task 2 — Open a project on a hosted session.
+- [x] Task 2 — Open a project on a hosted session.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -84,6 +84,7 @@ Traceability:
   - Owned surfaces: `/projects/:id/overview`'s live session, `ProjectDashboardLive` reading the resolved account and workspace instead of `:current_account`, and the connection revalidation treated as a no-op for an acting account with no GitHub credential.
   - Owns: AC-01, AC-07
   - Proof: Focused LiveView tests cover a hosted-session owner opening their own hosted local-repository project and seeing the repository, the storage mode, and the connection state; the same project opened on an application session unchanged; and a project in another workspace resolving to not found on either session with nothing disclosed.
+  - Delivered: `/projects/:id/overview` moved to `live_session :project_access`, and the dashboard reads the acting account and workspace. Revalidation was proven a no-op for a local-repository project rather than assumed.
 
 - [ ] Task 3 — List the projects the acting account owns.
   - Size: Standard

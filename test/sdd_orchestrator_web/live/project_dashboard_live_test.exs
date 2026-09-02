@@ -6,6 +6,11 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
   visible with a disconnected indicator and a recovery action when access is lost;
   never exposes the access token; and refuses unknown or cross-workspace projects
   behind a valid session.
+
+  It also proves `specs/45` Task 2: the screen acts as the account the resolved
+  acting identity names, so the passwordless email link opens the projects that
+  account owns, the GitHub session is unchanged, and workspace scoping is still
+  the only authorization on either session.
   """
   use SddOrchestratorWeb.ConnCase, async: true
 
@@ -13,6 +18,9 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.AccountsFixtures
+  alias SddOrchestrator.HostedAccess.SessionCookie
+  alias SddOrchestrator.HostedAccessFixtures
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.Repo
@@ -22,6 +30,28 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
     %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn, login: login})
     workspace = ProjectsFixtures.workspace_fixture(account)
     %{conn: conn, account: account, workspace: workspace}
+  end
+
+  # Signs the browser in through the passwordless email link only. No
+  # application session is issued, so the screen sees the hosted credential
+  # alone.
+  defp hosted_scenario(conn) do
+    hosted = HostedAccessFixtures.verified_hosted_session_fixture()
+
+    conn =
+      init_test_session(conn, %{SessionCookie.session_key() => hosted.session_cookie.value})
+
+    %{conn: conn, account: hosted.account, workspace: hosted.personal_workspace}
+  end
+
+  # The kind of project a passwordless owner can actually create: hosted
+  # storage, a local repository, and a machine bound at registration. It has no
+  # `RepositoryConnection` row at all.
+  defp hosted_local_project(workspace, name) do
+    device = ProjectsFixtures.device_workspace_fixture()
+    attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, workspace)
+    {:ok, project} = Projects.register_project(workspace, attempt, name: name)
+    project
   end
 
   describe "connected project (AC-30)" do
@@ -191,8 +221,76 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
     end
   end
 
-  test "requires an authenticated session", %{conn: conn} do
-    assert {:error, {:redirect, %{to: "/"}}} =
+  describe "hosted session access (AC-01)" do
+    test "opens the account's own hosted local-repository project", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-screen="project-dashboard")
+      assert html =~ "Ledger"
+      assert html =~ "Repository"
+      assert html =~ "In my SDD Orchestrator account"
+      assert html =~ ~s(data-worker-connection="connected")
+      assert html =~ "Connected to your machine"
+    end
+
+    test "revalidation is a no-op for an account with no GitHub credential", %{conn: conn} do
+      %{conn: conn, account: account, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      # The account has no GitHub credential, so a revalidation that actually
+      # ran would resolve to confirmed access loss.
+      assert {:error, _reason} = Accounts.valid_access_token(account.id)
+
+      # The connected mount revalidates. Nothing about the machine link is
+      # reported as lost, and no connection row is invented to carry a status.
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+      assert html =~ ~s(data-worker-connection="connected")
+      assert Repo.aggregate(RepositoryConnection, :count) == 0
+
+      # `Check again` revalidates a second time with the same result.
+      rechecked = view |> element("button[data-recheck]") |> render_click()
+      assert rechecked =~ ~s(data-worker-connection="connected")
+      assert Repo.aggregate(RepositoryConnection, :count) == 0
+    end
+
+    test "the same project opens unchanged on an application session", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-screen="project-dashboard")
+      assert html =~ "Ledger"
+      assert html =~ "In my SDD Orchestrator account"
+      assert html =~ ~s(data-worker-connection="connected")
+    end
+  end
+
+  describe "another account's project (AC-07)" do
+    test "is not found on a hosted session and discloses nothing", %{conn: conn} do
+      %{conn: conn} = hosted_scenario(conn)
+      foreign = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      foreign_project = hosted_local_project(foreign, "Theirs")
+
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               live(conn, ~p"/projects/#{foreign_project.id}/overview")
+    end
+
+    test "is not found on an application session and discloses nothing", %{conn: conn} do
+      %{conn: conn} = log_in_scenario(conn, "octo")
+      foreign = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      foreign_project = hosted_local_project(foreign, "Theirs")
+
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               live(conn, ~p"/projects/#{foreign_project.id}/overview")
+    end
+  end
+
+  test "requires a session the acting identity accepts", %{conn: conn} do
+    assert {:error, {:redirect, %{to: "/?hosted_access=required"}}} =
              live(conn, ~p"/projects/#{Ecto.UUID.generate()}/overview")
   end
 

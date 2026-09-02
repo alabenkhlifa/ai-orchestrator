@@ -187,13 +187,22 @@ defmodule SddOrchestratorWeb.Router do
       live "/projects/:id/kit", RepositoryKitOfferLive
     end
 
+    # The screens an owner reaches for their own projects. A project is owned by
+    # an account, and the passwordless sign-in issues a credential for the same
+    # account the GitHub one does, so either session opens them. The acting
+    # account is resolved once here and every query stays scoped to its personal
+    # workspace, which remains the only authorization.
+    live_session :project_access,
+      on_mount: [{SddOrchestratorWeb.ActingIdentity, :require_acting_identity}] do
+      live "/projects/:id/overview", ProjectDashboardLive
+    end
+
     # Protected surfaces require a valid application session.
     live_session :authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
       live "/projects", ProjectsLive
       live "/ai-connections", AIConnectionsLive
       live "/repository-kits", RepositoryKitsLive
-      live "/projects/:id/overview", ProjectDashboardLive
       live "/projects/:id/backup", ProjectBackupLive, :hosted
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
       live "/onboarding/storage/:attempt_id", StorageSelectionLive
