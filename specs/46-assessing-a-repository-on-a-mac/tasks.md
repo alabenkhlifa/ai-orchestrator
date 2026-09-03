@@ -84,7 +84,7 @@ Traceability:
   - Proof: Focused LiveView tests cover the screen naming such a repository with the device route's wording, rendering with no start and a stated reason when the bound Mac is not reachable, leaving the project unchanged in that state, and a GitHub project's label unchanged.
   - Delivered: both routes render one owned label for a repository on a Mac. The unreachable state needed no new code, because the screen's existing no-worker handling already produces it.
 
-- [ ] Task 3 — Prove the profile is approvable and the chain is clear.
+- [x] Task 3 — Prove the profile is approvable and the chain is clear.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -92,6 +92,7 @@ Traceability:
   - Owned surfaces: The integration scenario from opening the assessment for a repository on a Mac through to an approved execution profile, which establishes `capability:mac-repository-assessment`.
   - Owns: AC-04, AC-05
   - Proof: An integration scenario assesses such a repository, completes it, and approves the execution profile from its proposal; and a GitHub project's assessment and profile approval are shown unchanged beside it.
+  - Delivered: the journey runs through the screens, and the `execution_profile` start precondition is proven to flip from unmet to met, which is the thing the slice set out to unblock.
 
 ## Verification Gate
 
