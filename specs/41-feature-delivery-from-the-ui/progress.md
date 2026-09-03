@@ -1,5 +1,15 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-03 - The release proof ran as far as it can and found a second, more precise blocker
+
+- The click path was driven in a real browser on the hosted local-repository project that `specs/44` and `specs/45` made reachable. A feature was added from the board, its four requirement fields written, `Check readiness` reported nothing blocking, `Make ready` moved it to `Ready for development`, and the processing boundary was confirmed on its own screen.
+- Four of the five start preconditions are met by clicking: `ready`, `boundary`, `worker`, and `ai_connection`. `Start development` is correctly not offered while the fifth is unmet, which is AC-06 behaving as specified.
+- The fifth cannot be met for this project. `execution_profile` reports `This project has no approved execution profile. Assess the repository, then approve one.` The profile screen answers `No completed assessment with a verifiable minimized proposal envelope is available for this repository, so there is nothing to approve.` and offers no control.
+- The assessment that would produce it cannot be opened. `/projects/:id/assessment` redirects away for this project. Root cause confirmed in code, not inferred: `RepositoryAssessmentLive`'s `active_hosted_project?/1` requires `match?(%{state: "connected"}, project.repository_connection)`, and a hosted project whose repository is on a Mac has no `repository_connection` row at all by design.
+- This is not a session problem and not caused by the two slices just merged. It refuses a GitHub-signed-in owner of such a project in exactly the same way. It is the same GitHub-shaped assumption `specs/45` `Task 6` removed from the project dashboard, still present on the assessment screen, which `specs/14-repository-execution-profile/` owns.
+- So the release gate's blocker moved rather than closed. Creating and reaching a hosted local-repository project by clicking is delivered. AC-07 and AC-08 now wait on the assessment screen accepting a repository that lives on a Mac.
+- No code changed in this update.
+
 ### 2026-09-03 - The release gate's named blocker is closed
 
 - The gate said the hosted local-repository project this slice's start path needs cannot be created by clicking. It can now. `specs/44-hosted-local-repository-projects/` delivers the hosted branch of the storage step, and `specs/45-hosted-session-project-access/` lets the person who signed in through the email link open the project it creates. Both are `Verified`.
