@@ -70,6 +70,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   alias SddOrchestrator.Worker.ConnectionStatus
   alias SddOrchestrator.Worker.ExecutionPreparer
   alias SddOrchestrator.Worker.ProjectConnections
+  alias SddOrchestrator.Worker.RepositoryMetadata
   alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.RequiredCheckRunner
   alias SddOrchestrator.Worker.RunState
@@ -380,6 +381,38 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
       _unusable ->
         Logger.info("worker gateway ignoring a repository selection cancel with no request id")
+    end
+
+    {:ok, socket}
+  end
+
+  # A repository-metadata question from the control plane
+  # (specs/47-live-repository-metadata-binding Task 5). Everything that turns
+  # the chosen folder into the four fields the adapter contract allows happens
+  # inside `SddOrchestrator.Worker.RepositoryMetadata`; this callback only
+  # hands the question over and gives it a way to answer. The reply runs
+  # later, in that process, so it sends the payload back here rather than
+  # pushing from a process the socket does not belong to — the same
+  # deferred-push shape `handle_message(topic, "repository_selection", ...)`
+  # already uses.
+  def handle_message(topic, "repository_metadata", message, socket) do
+    connection = self()
+    reply = fn payload -> send(connection, {:repository_metadata_result, topic, payload}) end
+
+    RepositoryMetadata.open(message, reply, socket.assigns.home)
+
+    {:ok, socket}
+  end
+
+  # The control plane stopped waiting for this question, so an in-flight
+  # panel is closed and nothing is answered.
+  def handle_message(_topic, "repository_metadata_cancel", message, socket) do
+    case message do
+      %{"request_id" => request_id} when is_binary(request_id) ->
+        RepositoryMetadata.close(request_id)
+
+      _unusable ->
+        Logger.info("worker gateway ignoring a repository metadata cancel with no request id")
     end
 
     {:ok, socket}
@@ -709,6 +742,25 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
       {:error, reason} ->
         Logger.error(
           "worker gateway failed to push a repository selection result for request " <>
+            "#{inspect(payload["request_id"])}: #{inspect(reason)}"
+        )
+    end
+
+    {:noreply, socket}
+  end
+
+  # The finished metadata answer, sent here by
+  # `SddOrchestrator.Worker.RepositoryMetadata` because only this process owns
+  # the socket. The payload holds an identity, a normalized root, and a
+  # commit, or a refusal, or a cancellation; never a path.
+  def handle_info({:repository_metadata_result, topic, payload}, socket) do
+    case push(socket, topic, "repository_metadata_result", payload) do
+      {:ok, _ref} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to push a repository metadata result for request " <>
             "#{inspect(payload["request_id"])}: #{inspect(reason)}"
         )
     end

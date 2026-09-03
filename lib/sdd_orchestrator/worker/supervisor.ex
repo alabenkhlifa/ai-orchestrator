@@ -23,6 +23,7 @@ defmodule SddOrchestrator.Worker.Supervisor do
     Configuration,
     GatewayConnection,
     ProjectConnections,
+    RepositoryMetadata,
     RepositorySelection,
     State
   }
@@ -104,6 +105,11 @@ defmodule SddOrchestrator.Worker.Supervisor do
   # it for the Mac app to answer (specs/40-worker-repository-selection Task 3).
   # It starts before the gateway connection, so a request arriving on the first
   # join always has somewhere to land.
+  # `RepositoryMetadata` holds the one open repository-metadata question and
+  # the folder it has already read for an earlier one
+  # (specs/47-live-repository-metadata-binding Task 5). It starts before the
+  # gateway connection for the same reason as `RepositorySelection`, which it
+  # calls into: a `repository_metadata` message can arrive on the first join.
   # `ProjectConnections` holds one connection per project this worker is told to
   # serve (specs/41-feature-delivery-from-the-ui Task 7), and starts before the
   # gateway connection for the same reason: a `project_bound` notice arriving on
@@ -114,6 +120,7 @@ defmodule SddOrchestrator.Worker.Supervisor do
     do: [
       {State, config},
       {RepositorySelection, []},
+      {RepositoryMetadata, []},
       {ProjectConnections, []},
       {GatewayConnection, config}
     ]

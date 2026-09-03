@@ -113,7 +113,7 @@ Traceability:
   - Proof: Focused worker tests prove the added entry point opens the same pending file, answers one chosen path or a cancellation to its caller, and leaves the existing selection request, its result payload, its file names, and its deletion on read unchanged.
   - Delivered: `request_path/3` added alongside `open/3`, both funneling into one `handle_cast({:open, payload, reply, home_override, result_builder}, state)` clause. The held-request map gains one `:result_builder` field (`&result/2` for `open/3`, an identity pass-through for `request_path/3`); `finish/2` calls `request.reply.(request.result_builder.(request, choice))`. `open/3`'s signature, doc, and every existing test are unchanged.
 
-- [ ] Task 5 — Answer the metadata question on the worker.
+- [x] Task 5 — Answer the metadata question on the worker.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 3, Task 4
@@ -121,6 +121,7 @@ Traceability:
   - Owned surfaces: `Worker.RepositoryMetadata`, the identity match, the call into the verified `WorkerRepositoryMetadata.inspect/4`, the held folder and its expiry, the cancellation path, and the two `Worker.GatewayConnection` inbound handlers.
   - Owns: AC-03, AC-07, AC-08, entity:HeldRepositoryFolder
   - Proof: Focused worker tests prove a matching folder answers the four fields, a non-matching folder is refused and nothing is held, a second question with the same reference answers from the held folder with no panel, a held folder is dropped at its expiry and at restart, and no path, remote, history, file name, or content appears in an answer or a log line.
+  - Delivered: `Worker.RepositoryMetadata` holds `%{awaiting, held: %{selection_ref => %{path, expires_at}}}`. `held` is keyed by `selection_ref` (stable across prepare and revalidate); a wire cancellation names the in-flight question by `request_id` (fresh per call), resolved back to `selection_ref` from `state.awaiting`. Getting a folder reuses `RepositorySelection.request_path/3` with `selection_ref` standing in for that module's own unrelated internal request id, which is what makes `RepositorySelection.close(selection_ref)` the correct cancel call with no separate id-mapping table. Identity matching duplicates `Worker.RepositorySelection`'s private comparison rather than extracting a shared module, following `RepositoryKits.WorkerKitComparison`'s own established precedent for the same call. `Worker.GatewayConnection` gains the `repository_metadata`/`repository_metadata_cancel` inbound handlers and the deferred-push `repository_metadata_result` handler, mirroring the existing `repository_selection` trio exactly; `Worker.Supervisor` starts the new module beside `RepositorySelection`, before `GatewayConnection`.
 
 - [ ] Task 6 — Implement the live adapter and configure it outside tests.
   - Size: Standard
