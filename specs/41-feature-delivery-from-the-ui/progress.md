@@ -1,5 +1,12 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-03 - The remaining blocker is specs/14's release gate, not a defect
+
+- `specs/46-assessing-a-repository-on-a-mac/` is `Verified` and merged. The gates that refused to assess a hosted project whose repository is on a Mac are gone, so the path to the fifth start precondition is open in code.
+- What still stops the click path is one recorded release gate, not a defect. Completing an assessment needs a live worker-backed repository metadata adapter. `specs/14-repository-execution-profile/`'s `Task 7` owned the adapter and its deterministic double by name, and that specification's release gate reads `Live configured worker smoke proof for each supported deployment profile`. The configured default refuses every request, for a GitHub project as much as a Mac one.
+- This slice's release gate therefore depends on `specs/14`'s. AC-07 and AC-08 remain proven by their domain and integration tests, and the real-worker click path runs once that adapter exists.
+- No code changed in this update.
+
 ### 2026-09-03 - The release proof ran as far as it can and found a second, more precise blocker
 
 - The click path was driven in a real browser on the hosted local-repository project that `specs/44` and `specs/45` made reachable. A feature was added from the board, its four requirement fields written, `Check readiness` reported nothing blocking, `Make ready` moved it to `Ready for development`, and the processing boundary was confirmed on its own screen.
