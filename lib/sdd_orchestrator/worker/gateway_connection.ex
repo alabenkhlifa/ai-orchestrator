@@ -107,6 +107,17 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   # never waits a real 300ms per tick.
   @observe_interval 300
 
+  # How long a device-workspace-scoped worker waits before retrying its
+  # gateway-credential exchange after the control plane could not be reached
+  # at all (specs/39-mac-scoped-worker-connection Task 9). Widens across
+  # consecutive retries and then repeats its last element once exhausted,
+  # mirroring Slipstream's own `reconnect_after_msec` semantics (see
+  # `retry_time/2` in `deps/slipstream/lib/slipstream/socket.ex`). A
+  # project-scoped worker, and a device-workspace worker whose credential
+  # exchange was genuinely refused, never reach this list — see
+  # `handle_continue(:connect_gateway, socket)`.
+  @gateway_credential_retry_after_msec [1_000, 2_000, 5_000, 10_000, 30_000]
+
   # How long one delivered event's channel acknowledgement is awaited before
   # the tick gives up on it and retries on the next scheduled poll (see
   # `deliver_events/3`).
@@ -137,7 +148,19 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
   @impl Slipstream
   def init({%Configuration{} = config, opts}) do
-    socket = new_socket() |> assign(:config, config) |> assign(:opts, opts)
+    socket =
+      new_socket()
+      |> assign(:config, config)
+      |> assign(:opts, opts)
+      |> assign(
+        :gateway_credential_retry_after_msec,
+        Keyword.get(
+          opts,
+          :gateway_credential_retry_after_msec,
+          @gateway_credential_retry_after_msec
+        )
+      )
+
     {:ok, socket, {:continue, :connect_gateway}}
   end
 
@@ -152,15 +175,65 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
       {:ok, connecting_socket} ->
         {:noreply, connecting_socket}
 
-      {:error, reason} ->
-        Logger.error(
-          "worker gateway refused to start for #{describe_scope(scope(config))}: " <>
-            inspect(reason)
-        )
+      # Only a device-workspace-scoped worker's own credential exchange never
+      # getting an HTTP response at all (the control plane unreachable —
+      # connection refused, timeout, DNS failure) is retriable. A genuine
+      # refusal (`:gateway_credential_refused`), a bad `control_plane_address`
+      # (`:invalid_websocket_configuration`), and *any* failure at all for a
+      # project scope all still fall through to the unchanged `refuse_gateway_start/3`
+      # call below (specs/39-mac-scoped-worker-connection Task 9). A private
+      # function cannot be called from a guard, so the scope is matched here
+      # instead of in a `when`.
+      {:error, {:gateway_credential_transport_error, reason}} ->
+        case scope(config) do
+          {:device_workspace, _device_workspace_id} ->
+            retry_gateway_credential_exchange(socket, config, reason)
 
-        {:stop, :normal, socket}
+          {:project, _project_id} ->
+            refuse_gateway_start(socket, config, {:gateway_credential_transport_error, reason})
+        end
+
+      {:error, reason} ->
+        refuse_gateway_start(socket, config, reason)
     end
   end
+
+  defp refuse_gateway_start(socket, config, reason) do
+    Logger.error(
+      "worker gateway refused to start for #{describe_scope(scope(config))}: " <>
+        inspect(reason)
+    )
+
+    {:stop, :normal, socket}
+  end
+
+  # A worker connecting for its Mac (no project) never stops over an
+  # unreachable control plane: the credential exchange is retried with a
+  # widening delay instead, and `ConnectionStatus` is written so the reported
+  # state is never left `:connected` (or unknown) while retrying. A project
+  # connection never reaches this clause — see `handle_continue/2` above.
+  defp retry_gateway_credential_exchange(socket, config, reason) do
+    attempt = Map.get(socket.assigns, :gateway_credential_retries, 0)
+
+    delay =
+      gateway_credential_retry_delay(socket.assigns.gateway_credential_retry_after_msec, attempt)
+
+    ConnectionStatus.set_disconnected(reason)
+
+    Logger.warning(
+      "worker gateway could not reach the control plane for #{describe_scope(scope(config))}; " <>
+        "retrying in #{delay}ms: #{inspect(reason)}"
+    )
+
+    Process.send_after(self(), :retry_connect_gateway, delay)
+
+    {:noreply, assign(socket, :gateway_credential_retries, attempt + 1)}
+  end
+
+  # Mirrors Slipstream's own `retry_time/2` (`deps/slipstream/lib/slipstream/socket.ex`):
+  # widen across the list, then repeat its last element once exhausted.
+  defp gateway_credential_retry_delay(delays, attempt),
+    do: Enum.at(delays, attempt, Enum.at(delays, -1))
 
   # A connected transport is not an attached worker: the join has not been
   # answered yet and can still be refused. So this records "connected, not yet
@@ -647,6 +720,14 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   # `project_bound` notice open it again.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
     {:noreply, drop_project_connection(socket, pid)}
+  end
+
+  # A scheduled gateway-credential retry (specs/39-mac-scoped-worker-connection
+  # Task 9): re-enters the same `handle_continue(:connect_gateway, socket)`
+  # this process already started with, rather than calling `establish/2`
+  # synchronously from here.
+  def handle_info(:retry_connect_gateway, socket) do
+    {:noreply, socket, {:continue, :connect_gateway}}
   end
 
   defp poll_and_deliver(socket, envelope) do

@@ -332,6 +332,144 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
     end
   end
 
+  describe "Task 9: retrying an unreachable control plane (device-workspace scope only)" do
+    test "a device-workspace worker retries the credential exchange with a widening delay, never stopping",
+         %{} do
+      %{device_workspace: device_workspace, worker: worker, credential: credential} =
+        paired_workspace_worker()
+
+      # Port 1 is privileged; nothing in this suite (or on a normal
+      # developer machine) ever listens there, so every POST to
+      # `/worker/gateway_credentials` is refused by the OS immediately —
+      # a transport error (connection refused), never an HTTP status.
+      config =
+        build_workspace_config("http://127.0.0.1:1", credential, device_workspace.id, worker.id)
+
+      {pid, log} =
+        with_log(fn ->
+          {:ok, pid} =
+            GatewayConnection.start_link(config,
+              gateway_credential_retry_after_msec: [10, 20, 30]
+            )
+
+          on_exit(fn -> stop_gateway(pid) end)
+
+          # Long enough, at this fast injected backoff, for several scheduled
+          # retries to have already fired.
+          Process.sleep(300)
+
+          pid
+        end)
+
+      assert Process.alive?(pid)
+      assert ConnectionStatus.status().status == :disconnected
+      refute log =~ "refused to start"
+      # At least two retry warnings: `String.split/2` on N occurrences of the
+      # separator yields N + 1 parts (mirrors this file's own `JOIN REFUSED`
+      # count assertion above).
+      assert log |> String.split("retrying in") |> length() >= 3
+    end
+
+    # Bringing the setup fixture's own Bandit listener "up after a delay" is
+    # impractical: it is already started (and already reachable) before this
+    # test body ever runs, via `start_supervised!/1` in `setup`. Sending the
+    # process a fabricated `:retry_connect_gateway` while already attached
+    # (the brief's other suggested fallback) would exercise `establish/2`
+    # racing an already-open Slipstream transport — behavior this task's
+    # brief does not specify and that risks a false pass. So this test
+    # instead gives the worker its own address, on a specific (not
+    # OS-assigned) port that is genuinely unbound when `start_link/2` is
+    # called, and only starts a real `Bandit` listener on that same port
+    # after a delay — a real, honest "the control plane becomes reachable
+    # later" transition, proven through the same `pid` throughout.
+    test "the same process attaches once an initially-unreachable control plane comes up",
+         %{} do
+      %{device_workspace: device_workspace, worker: worker, credential: credential} =
+        paired_workspace_worker()
+
+      port = reserve_port()
+      control_plane_address = "http://127.0.0.1:#{port}"
+
+      config =
+        build_workspace_config(control_plane_address, credential, device_workspace.id, worker.id)
+
+      {:ok, pid} =
+        GatewayConnection.start_link(config, gateway_credential_retry_after_msec: [20])
+
+      on_exit(fn -> stop_gateway(pid) end)
+
+      # A few failed attempts happen first, against the still-unbound port.
+      Process.sleep(80)
+      assert Process.alive?(pid)
+      assert ConnectionStatus.status().status == :disconnected
+      assert WorkerAttachment.attached(device_workspace.id) == []
+
+      start_supervised!(
+        {Bandit, plug: SddOrchestratorWeb.Endpoint, scheme: :http, port: port, startup_log: false}
+      )
+
+      wait_until(fn -> ConnectionStatus.status().status == :connected end)
+
+      # Never restarted: the process this test started is the one that
+      # attached.
+      assert Process.alive?(pid)
+      assert [{_channel_pid, contract}] = WorkerAttachment.attached(device_workspace.id)
+      assert contract.worker_id == worker.id
+    end
+
+    test "a genuinely refused credential (not a transport error) still stops the process",
+         %{control_plane_address: base} do
+      %{device_workspace: device_workspace, worker: worker} = paired_workspace_worker()
+
+      # An unrecognized worker credential is rejected by
+      # `WorkerGatewayCredentialController` with a 403 — a bad HTTP status,
+      # not an absent response, so `fetch_gateway_credential/1` returns
+      # `:gateway_credential_refused`, never `:gateway_credential_transport_error`.
+      # The address itself is the real, reachable listener from `setup`.
+      config =
+        build_workspace_config(
+          base,
+          "not-a-real-worker-credential",
+          device_workspace.id,
+          worker.id
+        )
+
+      log =
+        capture_log(fn ->
+          {:ok, pid} = GatewayConnection.start_link(config)
+          on_exit(fn -> stop_gateway(pid) end)
+
+          ref = Process.monitor(pid)
+          assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 2_000
+          refute Process.alive?(pid)
+        end)
+
+      assert log =~ "worker gateway refused to start for device workspace #{device_workspace.id}"
+      refute log =~ "retrying in"
+    end
+
+    test "a project-scoped worker still stops immediately when the control plane is unreachable (regression)",
+         %{} do
+      %{project: project, credential: credential} = paired_and_bound_project()
+
+      # Same reliably-refused address as the device-workspace test above.
+      config = build_config("http://127.0.0.1:1", credential, project.id)
+
+      log =
+        capture_log(fn ->
+          {:ok, pid} = GatewayConnection.start_link(config)
+          on_exit(fn -> stop_gateway(pid) end)
+
+          ref = Process.monitor(pid)
+          assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 2_000
+          refute Process.alive?(pid)
+        end)
+
+      assert log =~ "worker gateway refused to start for project #{project.id}"
+      refute log =~ "retrying in"
+    end
+  end
+
   describe "the hardcoded protocol contract" do
     test "matches SddOrchestrator.Delivery.WorkerProtocol exactly" do
       assert GatewayConnection.protocol_version() == WorkerProtocol.version()
@@ -401,6 +539,19 @@ defmodule SddOrchestrator.Worker.GatewayConnectionTest do
     socket = :sys.get_state(pid)
     Slipstream.disconnect(socket)
     :ok
+  end
+
+  # Task 9: hands back an OS-assigned port that is free *right now*, for a
+  # test that needs to name a specific port before anything binds it (rather
+  # than `port: 0`, which only reveals the port after something is already
+  # listening on it). Immediately releasing it leaves a real, if short, race
+  # with anything else on the machine — acceptable for this suite's own
+  # serial (`async: false`) module.
+  defp reserve_port do
+    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(socket)
+    :gen_tcp.close(socket)
+    port
   end
 
   defp count_messages(message, acc \\ 0) do

@@ -2,7 +2,9 @@
 
 ## Status
 
-Verified
+In Progress
+
+Tasks 1 to 9 are complete. `Task 9`'s focused proof passes (13 tests, `mix test test/sdd_orchestrator/worker/gateway_connection_test.exs`, exit 0, run independently three times). What remains before `Verified`: the recorded recovery product-proof click path against the installed Mac app, which needs a live worker session rather than the test suite. `capability:mac-scoped-worker-connection` stays ready.
 
 ## Active Slice
 
@@ -43,6 +45,7 @@ Included:
 - A Mac-scoped attachment topic, its authorization check, and its registry.
 - Worker liveness derived from Mac-scoped attachments.
 - The app's connection state driven by attachment rather than by the transport callback, including the refused and lost cases.
+- Recovery of the Mac-scoped connection after the control plane is unreachable, and truthful reporting while it is.
 - Exclusion of both credentials from every log and diagnostic on both sides.
 
 Excluded:
@@ -153,6 +156,16 @@ Traceability:
   - Proof: An integration scenario drives a menu-bar redemption through to a worker reported reachable by the device-workspace status function with no project opened, then a log and diagnostic review across both sides finds no credential, gateway credential, or fragment of either.
   - Delivered: One integration scenario drives redemption, a projectless configuration, the exchange, the Mac-scoped attachment, and one liveness pass through to `Devices.worker_status/1` answering `:detected`, with no project created and `Pairing.mark_seen/1` never called. A second scenario repeats the leak review for a refused join. Both capture at `:debug` and scan a sliding window over each secret, and the review asserts the diagnostics it scans are genuinely present.
 
+- [x] Task 9 — Keep the Mac-scoped connection trying, and stop it reporting a connection nobody holds.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 8
+  - Purpose: A control plane that goes away for more than a few seconds currently ends the worker's only link for good, and leaves the last `connected` report behind, so the person sees a worker that says it is fine and is not there.
+  - Owned surfaces: `Worker.GatewayConnection#handle_continue(:connect_gateway, socket)`'s scope-conditional branch that retries only a transport-level credential-exchange failure for the device-workspace scope, the new retry message and its widening, repeating delay list, and `ConnectionStatus.set_disconnected/1` written before each retry so the report stays truthful while it runs. `handle_disconnect/2`'s existing Slipstream-native reconnect, the project scope's unconditional stop, and `ProjectConnections`' own temporary children are unchanged.
+  - Owns: AC-11, AC-12
+  - Proof: Focused worker tests prove a transport-level credential-exchange failure for the device-workspace scope retries with a widening, repeating delay instead of stopping the process, that `ConnectionStatus` reports disconnected (never connected) throughout, that a genuine credential refusal still stops the process on both scopes exactly as before, and that a project-scoped connection's existing behavior on every failure path is byte-for-byte unchanged.
+  - Delivered: `handle_continue(:connect_gateway, socket)` now branches only on `{:gateway_credential_transport_error, reason}` for a `{:device_workspace, _}` scope; every other shape, and every failure at all for `{:project, _}`, falls through to the unchanged `refuse_gateway_start/3` (the original log text and `{:stop, :normal, socket}`, verbatim). The retriable branch writes `ConnectionStatus.set_disconnected/1`, logs a warning, and schedules `:retry_connect_gateway` at a widening, repeating delay (`@gateway_credential_retry_after_msec`, overridable via `opts` for tests) tracked in `socket.assigns`; a new `handle_info(:retry_connect_gateway, socket)` re-enters `{:continue, :connect_gateway}}`. `handle_disconnect/2`, `handle_topic_close/3`, `ProjectConnections`, and the module's `restart: :temporary` declaration are untouched.
+
 ## Verification Gate
 
 - [x] Active-slice acceptance criteria pass.
@@ -165,6 +178,8 @@ Traceability:
 - [x] Required browser scenarios pass.
 - [x] Product proof click path, run against the paired worker app with `:device_worker_stub` off and no `/_e2e` seeding: open `/`, click `Work without GitHub`, copy the pairing code from the worker app's menu bar, paste it into `Pairing code`, click `Pair worker`, answer the app's coding-agent step, then click `Check again` and read `Connected` with `Worker connected on this Mac.`
 - [x] The worker app's own test suite passes.
+- [x] AC-11 and AC-12 pass.
+- [ ] Product proof click path for recovery, with `:device_worker_stub` off and no `/_e2e` seeding: with the worker attached, stop the control plane, wait past its retry window, start the control plane again, and read `Connected` in the menu bar and a reachable worker in the dashboard without touching the app. Deferred to the next real product-proof session against the installed Mac app (specs/47's proof needs the same live worker and will exercise this together).
 
 ## Blocked Decisions
 

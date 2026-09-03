@@ -48,6 +48,9 @@ A worker paired from the app's menu bar connects for the Mac it runs on, without
 - The coding agent is chosen once for the Mac, not once per project.
 - The app must never report Connected on the strength of a transport connection alone. Connected means the control plane has attached this worker and can see it.
 - A refused attachment is reported as refused. It is never presented as a connection, and never retried as though it had succeeded.
+- The Mac-scoped connection is the worker's only link, so it is retried for as long as the app runs. Losing the control plane, however briefly or however long, never leaves the worker permanently unable to reconnect.
+- A refusal and an unreachable control plane are different. A refusal is answered once and not retried. An unreachable control plane is retried with a widening delay, indefinitely.
+- What the app reports is written by a process that is still alive. A worker that has stopped trying may not leave a stale claim behind.
 - Reachability shown in a dashboard is derived from the control plane's own record of live attachments, never from a worker's self-report.
 - A worker that stops running stops being reported reachable within the established staleness window, without deleting or hiding any project.
 - The credential and the gateway credential are secrets. Neither, nor any fragment of either, is written to a log, crash report, analytics event, or diagnostic on either side.
@@ -65,6 +68,8 @@ A worker paired from the app's menu bar connects for the Mac it runs on, without
 - [AC-08] Given the control plane refuses the attachment, when the app reports its state, then it names the refusal and does not present it as a connection.
 - [AC-09] Given an attached worker stops running, when the staleness window has passed, then dashboards report it unavailable and every project on that Mac remains visible.
 - [AC-10] Given a pairing, an exchange, an attachment, or a refusal has occurred, when the app's and the control plane's diagnostics are inspected, then no credential, gateway credential, or fragment of either appears in any of them.
+- [AC-11] Given an attached worker whose control plane becomes unreachable for longer than any retry window, when the control plane returns, then the worker attaches again on its own, with no person quitting or reopening the app.
+- [AC-12] Given the worker is not attached, when the menu bar and every dashboard for that Mac are read, then neither says Connected, whatever the connection last managed to report.
 
 ## Open Questions
 
