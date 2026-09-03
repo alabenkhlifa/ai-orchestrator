@@ -101,7 +101,7 @@ Traceability:
   - Owns: AC-05
   - Proof: Focused transport and channel tests prove the question reaches the named capable worker, that an unattached worker is refused before anything is pushed, that a worker without the capability is refused as needing an update, and that the payload is closed to its declared fields.
 
-- [ ] Task 4 — Let the Mac's panel owner answer a chosen folder to an in-release caller.
+- [x] Task 4 — Let the Mac's panel owner answer a chosen folder to an in-release caller.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -109,6 +109,7 @@ Traceability:
   - Owned surfaces: `Worker.RepositorySelection`'s added entry point and its held-request shape.
   - Owns: none
   - Proof: Focused worker tests prove the added entry point opens the same pending file, answers one chosen path or a cancellation to its caller, and leaves the existing selection request, its result payload, its file names, and its deletion on read unchanged.
+  - Delivered: `request_path/3` added alongside `open/3`, both funneling into one `handle_cast({:open, payload, reply, home_override, result_builder}, state)` clause. The held-request map gains one `:result_builder` field (`&result/2` for `open/3`, an identity pass-through for `request_path/3`); `finish/2` calls `request.reply.(request.result_builder.(request, choice))`. `open/3`'s signature, doc, and every existing test are unchanged.
 
 - [ ] Task 5 — Answer the metadata question on the worker.
   - Size: Standard

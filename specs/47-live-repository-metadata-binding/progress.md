@@ -1,5 +1,12 @@
 # Live Repository Metadata Binding Progress Log
 
+### 2026-09-03 - Task 4 complete: the Mac's one panel owner can answer a raw path to an in-release caller
+
+- `Worker.RepositorySelection` gains `request_path/3`, additive beside the unchanged `open/3`. Both now cast into one `handle_cast({:open, payload, reply, home_override, result_builder}, state)` clause; the held-request map gains a `:result_builder` field (`&result/2` for `open/3`, `fn _request, choice -> choice end` for `request_path/3`), and `finish/2` calls `request.reply.(request.result_builder.(request, choice))` instead of hardcoding `result/2`.
+- Nothing about the pending file, the answer file, their names, the poll, the replace-on-open behavior, or the expiry/stale-file cleanup changed for either entry point — they share the one held request exactly as design intended, so the installed Mac app needs no change and no rebuild.
+- 5 new tests; all 13 pre-existing tests in `repository_selection_test.exs` pass unmodified.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/repository_selection_test.exs` — exit `0`.
+
 ### 2026-09-03 - Task 1 complete: repository_metadata is a negotiable capability
 
 - `repository_metadata` added to `WorkerProtocol.@optional_capabilities` and to `Worker.GatewayConnection`'s hardcoded twin, in the same position in both. No other list in either file changed.

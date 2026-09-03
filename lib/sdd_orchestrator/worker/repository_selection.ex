@@ -83,6 +83,9 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
   @typedoc "Sends one finished result payload back to the control plane."
   @type reply :: (map() -> any())
 
+  @typedoc "Sends the raw chosen path, or `:cancelled`, to an in-release caller."
+  @type path_reply :: (String.t() | :cancelled -> any())
+
   @doc """
   Starts the single request holder for this worker release.
 
@@ -151,7 +154,38 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
   @spec open(map(), reply(), String.t() | nil) :: :ok
   def open(payload, reply, home_override \\ nil)
       when is_map(payload) and is_function(reply, 1) do
-    GenServer.cast(__MODULE__, {:open, payload, reply, home_override})
+    GenServer.cast(__MODULE__, {:open, payload, reply, home_override, &result/2})
+  end
+
+  @doc """
+  Takes one selection request the same way `open/3` does, but hands the
+  caller the raw path directly instead of building a selection answer.
+
+  This is for a caller inside this same release, one that needs the chosen
+  folder itself so it can inspect the repository on its own terms, not the
+  wire payload `open/3` builds for its control-plane caller. `reply` is
+  called once, with the chosen absolute path, or with `:cancelled` when the
+  person dismissed the panel or the request was cancelled through `close/1`.
+  Nothing here runs the Git check, matches candidate identities, or
+  generates one: that is `open/3`'s job for its own caller, not this one's.
+
+  The request is held the same way `open/3` holds one, through the same
+  pending file, the same answer poll, and the same replace-on-open and
+  expiry handling, so the two entry points share one held request rather
+  than each keeping their own.
+
+  The path still never touches this module's own logging, and it crosses no
+  contract beyond the pending/answer files `open/3` already crosses. It is
+  handed to `reply` exactly as `open/3` already hands a path to its own
+  `result/2` internally, and the caller owns what happens to it from there.
+  """
+  @spec request_path(map(), path_reply(), String.t() | nil) :: :ok
+  def request_path(payload, reply, home_override \\ nil)
+      when is_map(payload) and is_function(reply, 1) do
+    GenServer.cast(
+      __MODULE__,
+      {:open, payload, reply, home_override, fn _request, choice -> choice end}
+    )
   end
 
   @doc """
@@ -215,8 +249,8 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
   end
 
   @impl GenServer
-  def handle_cast({:open, payload, reply, home_override}, state) do
-    case build_request(payload, reply, home_override || state.home_override) do
+  def handle_cast({:open, payload, reply, home_override, result_builder}, state) do
+    case build_request(payload, reply, home_override || state.home_override, result_builder) do
       {:ok, request} -> {:noreply, hold(state, request)}
       :error -> {:noreply, state}
     end
@@ -263,10 +297,11 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
     state
   end
 
-  # The request as it is held: identities, references, and an expiry. Nothing
-  # here names a location, and nothing here is written to the pending file
-  # except the id and the expiry.
-  defp build_request(payload, reply, home) do
+  # The request as it is held: identities, references, an expiry, and how to
+  # turn a choice into what `reply` receives. Nothing here names a location,
+  # and nothing here is written to the pending file except the id and the
+  # expiry.
+  defp build_request(payload, reply, home, result_builder) do
     case Map.get(payload, "request_id") do
       id when is_binary(id) and id != "" ->
         {:ok,
@@ -276,7 +311,8 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
            candidates: candidates(payload),
            generate?: payload["generate"] == true,
            reply: reply,
-           home: home
+           home: home,
+           result_builder: result_builder
          }}
 
       _unusable ->
@@ -297,7 +333,7 @@ defmodule SddOrchestrator.Worker.RepositorySelection do
   defp finish(state, choice) do
     request = state.request
 
-    request.reply.(result(request, choice))
+    request.reply.(request.result_builder.(request, choice))
     remove_pending(request.home)
 
     %{state | request: nil}

@@ -52,6 +52,11 @@ defmodule SddOrchestrator.Worker.RepositorySelectionTest do
   # gateway connection gives the request, so a test reads it as a message.
   defp reply_to(pid), do: fn payload -> send(pid, {:selection_result, payload}) end
 
+  # `request_path/3`'s reply function receives a raw path or `:cancelled`, so
+  # tests distinguish it from `open/3`'s wire-payload result with its own
+  # message tag.
+  defp reply_to_path(pid), do: fn value -> send(pid, {:path_result, value}) end
+
   defp request_payload(overrides \\ %{}) do
     Map.merge(
       %{
@@ -384,6 +389,85 @@ defmodule SddOrchestrator.Worker.RepositorySelectionTest do
 
       refute_receive {:selection_result, _result}, 200
       assert RepositorySelection.pending() == payload["request_id"]
+    end
+  end
+
+  describe "request_path/3" do
+    test "delivers the raw chosen path, not a wire payload", %{home: home} do
+      start_selection(home)
+      chosen = init_repo!(Path.join(home, "path-requested-repository"))
+      payload = request_payload()
+
+      :ok = RepositorySelection.request_path(payload, reply_to_path(self()), home)
+      assert :ok = RepositorySelection.answer(payload["request_id"], chosen)
+
+      assert_receive {:path_result, result}
+      assert result == chosen
+    end
+
+    test "delivers :cancelled when the person dismissed the panel", %{home: home} do
+      start_selection(home)
+      payload = request_payload()
+
+      :ok = RepositorySelection.request_path(payload, reply_to_path(self()), home)
+      assert RepositorySelection.pending() == payload["request_id"]
+
+      write_answer!(home, %{"request_id" => payload["request_id"], "cancelled" => true})
+
+      assert_receive {:path_result, result}, 2_000
+      assert result == :cancelled
+    end
+
+    test "publishes the same pending file open/3 publishes", %{home: home} do
+      start_selection(home)
+      payload = request_payload()
+
+      :ok = RepositorySelection.request_path(payload, reply_to_path(self()), home)
+      assert RepositorySelection.pending() == payload["request_id"]
+
+      file = RepositorySelection.pending_path(home)
+
+      assert Jason.decode!(File.read!(file)) == %{
+               "request_id" => payload["request_id"],
+               "expires_at" => payload["expires_at"]
+             }
+    end
+
+    test "replaces a request open/3 opened, and is replaced by one open/3 opens", %{home: home} do
+      start_selection(home)
+      opened = request_payload()
+      path_requested = request_payload()
+
+      :ok = RepositorySelection.open(opened, reply_to(self()), home)
+      :ok = RepositorySelection.request_path(path_requested, reply_to_path(self()), home)
+
+      assert RepositorySelection.pending() == path_requested["request_id"]
+
+      assert {:error, :unknown_request} =
+               RepositorySelection.answer(opened["request_id"], :cancelled)
+
+      reopened = request_payload()
+      :ok = RepositorySelection.open(reopened, reply_to(self()), home)
+
+      assert RepositorySelection.pending() == reopened["request_id"]
+
+      assert {:error, :unknown_request} =
+               RepositorySelection.answer(path_requested["request_id"], :cancelled)
+    end
+
+    test "pending/0 returns nil once an answered request_path/3 request is finished", %{
+      home: home
+    } do
+      start_selection(home)
+      chosen = init_repo!(Path.join(home, "path-requested-cleared"))
+      payload = request_payload()
+
+      :ok = RepositorySelection.request_path(payload, reply_to_path(self()), home)
+      assert :ok = RepositorySelection.answer(payload["request_id"], chosen)
+
+      assert_receive {:path_result, _result}
+      assert RepositorySelection.pending() == nil
+      refute File.exists?(RepositorySelection.pending_path(home))
     end
   end
 
