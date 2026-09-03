@@ -2,7 +2,7 @@
 
 ## Status
 
-Blocked
+Verified
 
 ## Active Slice
 
@@ -116,11 +116,11 @@ Traceability:
 - [x] The log and record review finds no repository path, remote, history, file name, or source content.
 - [x] Build, formatting, lint, static checks, and logs review pass.
 - [x] Required browser scenarios pass.
-- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in, choose a local repository, choose `In my SDD Orchestrator account`, confirm, and see the hosted project's dashboard show the repository, the hosted storage mode, and the worker connected. Recorded in `progress.md`.
+- [x] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in, choose a local repository, choose `In my SDD Orchestrator account`, confirm, and see the hosted project's dashboard show the repository, the hosted storage mode, and the worker connected. Recorded in `progress.md`.
 
 ## Blocked Decisions
 
-- The product proof cannot run, and the slice cannot be `Verified`, until a person can open the project this slice creates. The storage step's sign-in is the passwordless door, which makes an account holding only a hosted session, while `/projects/:id/overview` requires the application session that only GitHub sign-in issues. Creating the project therefore ends at `/`. Confirmed by running it. The seam belongs to `specs/03-hosted-passwordless-access/`, which deferred exactly this as its AC-20 to AC-23, not here. `specs/45-hosted-session-project-access/` owns closing it. No capability edge is declared, because this slice's own `capability:hosted-local-repository-projects` is what that specification consumes and an edge back would be a cycle.
+- None. The product proof ran on 2026-09-02 once `specs/45-hosted-session-project-access/` made the created project reachable.
 
 ## Release Gate
 

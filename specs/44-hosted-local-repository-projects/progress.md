@@ -1,5 +1,15 @@
 # Hosted Projects From A Local Repository Progress Log
 
+### 2026-09-02 - Product proof passed, slice Verified
+
+- One click path from `/` in a real browser, against the paired worker app, with the worker stand-in off and no `/_e2e` seeding. `Work without GitHub`, `Choose repository`, `Open folder picker`, answered the worker's own native macOS panel with a real Git repository, `Continue`, `Sign in` at the storage step, submitted the email, opened the delivered link, `Continue` back, chose `In my SDD Orchestrator account`, `Continue`, named the project, `Connect and create project`.
+- The person landed on `/projects/94aa8ec9-4ab1-4d42-92a1-2bb56826b0ec/overview` and the screen showed `ledger-proof`, `Project work saved: In my SDD Orchestrator account`, and `Connected to your machine` with the detail `This project's repository is on a machine you connected.` That is AC-02's repository, storage mode, and connected worker, read off the screen.
+- The record was inspected after the click path: one project, `storage_mode` hosted, `repository_provider` local, `canonical_repository_id` the portable `local-repo:v1:...` value, and a `hosted_local_repository_bindings` row naming a worker. No path or folder name anywhere in it.
+- The selection screen reported only the folder name `ledger-proof`, never a path, which is the boundary AC-06 asserts and the screen honours in a real browser.
+- The hosted disclosure rendered the branch `Task 3` added: `This project is saved to your account`, not the accountless `This project has no account` warning that would have been false here.
+- One environment incident, not a defect in this slice. The worker app's socket was refused on every attempt because its token had passed the 24 hour `@max_age_seconds` in `WorkerSocket`. Its menu read `Disconnected` rather than `Not paired`, so it offered no pairing code and the browser could not re-pair it. Quitting and relaunching the app minted a fresh token and it reported `Connected` immediately. Worth knowing: a worker whose token ages out cannot be recovered from the browser alone.
+- Every other gate item was already green on the branch that carries this slice: `mix check` at 4949 tests and the browser suite at 153, both exit `0`.
+
 ### 2026-09-02 - Slice gates green, product proof blocked by the sign-in seam
 
 - Every repository gate passes. `mix check` at slice scope: 4908 tests, exit `0`. The browser suite at slice scope: 153 passed, 2 skipped, exit `0`. Both receipts below.
