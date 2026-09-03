@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 ## Active Slice
 
@@ -147,7 +147,7 @@ Traceability:
 - [x] Every excluded screen still requires the application session.
 - [x] Build, formatting, lint, static checks, and logs review pass.
 - [x] Required browser scenarios pass.
-- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in with the email link, create a hosted project from a local repository, land on its dashboard, return to `/`, and open the same project from the list. Recorded in `progress.md`.
+- [x] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: sign in with the email link, create a hosted project from a local repository, land on its dashboard, return to `/`, and open the same project from the list. Recorded in `progress.md`.
 
 ## Blocked Decisions
 
