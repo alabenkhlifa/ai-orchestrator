@@ -27,6 +27,7 @@ defmodule SddOrchestrator.Delivery.WorkerProtocol do
     agent.thread_resume
     evidence.screenshot
     preview.request
+    repository_metadata
     repository_selection
   )
 
