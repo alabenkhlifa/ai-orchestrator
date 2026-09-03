@@ -83,7 +83,7 @@ Traceability:
   - Proof: Focused protocol tests prove the name is granted when announced, dropped when not, and that no required capability, envelope type, command operation, or event type changed.
   - Delivered: `repository_metadata` added to `WorkerProtocol.@optional_capabilities` and to `GatewayConnection`'s hardcoded twin, identically. `negotiate/1`'s existing tests reference `WorkerProtocol.capabilities/0` dynamically rather than a hardcoded list, so no test needed a change; the existing `"matches SddOrchestrator.Delivery.WorkerProtocol exactly"` test proves the two files still agree.
 
-- [ ] Task 2 — Establish the control-plane metadata request lifecycle.
+- [x] Task 2 — Establish the control-plane metadata request lifecycle.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -91,6 +91,7 @@ Traceability:
   - Owned surfaces: `RepositoryMetadata` context, its in-memory request record, correlation, expiry, cancellation, requester exit, the `Transport` behaviour, and the `Unavailable` default.
   - Owns: entity:MetadataRequest
   - Proof: Focused lifecycle tests prove one outcome per request, that an unknown, foreign, cancelled, or expired answer changes nothing, that a lost attachment ends the wait, and that no path, remote, or file name appears in a record or a log line.
+  - Delivered: `RepositoryMetadata.inspect/2` blocks its caller — the outer `GenServer.call/3` is given `:infinity`, and `RepositoryMetadata.Server` owns the actual expiry through its own timer, replying via `GenServer.reply/2` exactly once from whichever path settles the request (a worker's `MetadataAnswer`, the worker's channel going down, the requester going down, or the expiry timer). `answer/2`, `MetadataRequest`, `MetadataAnswer` (strict allowlisted-key parsing, mirroring `SelectionResult`), and `Transport`/`Transport.Unavailable` complete the lifecycle. No `cancel/1`: the calling process is expected to be a supervised task, and its own exit is the cancellation path. `SddOrchestrator.RepositoryMetadata.Server` added to the application's supervision tree beside `RepositorySelection.Server`.
 
 - [ ] Task 3 — Carry the question and its answer over the Mac-scoped attachment.
   - Size: Standard

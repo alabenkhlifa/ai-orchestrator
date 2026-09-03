@@ -137,7 +137,11 @@ defmodule SddOrchestrator.Application do
       # Open folder-selection requests, held in memory only. Losing them on
       # restart is correct: the native panel on the Mac is gone too, nothing
       # was promised, and the person simply asks again.
-      SddOrchestrator.RepositorySelection.Server
+      SddOrchestrator.RepositorySelection.Server,
+      # Open metadata requests, held in memory only. Losing them on restart is
+      # correct: every caller blocked on one is on this same node and is lost
+      # too, so nothing survives to reply to.
+      SddOrchestrator.RepositoryMetadata.Server
     ] ++
       retention_children() ++
       dispatcher_children() ++

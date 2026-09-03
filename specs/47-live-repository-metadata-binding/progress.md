@@ -1,5 +1,14 @@
 # Live Repository Metadata Binding Progress Log
 
+### 2026-09-03 - Task 2 complete: a blocking metadata request lifecycle, no worker wired yet
+
+- `SddOrchestrator.RepositoryMetadata.inspect/2` mirrors `RepositorySelection` closely but blocks the calling process instead of returning at once: the outer `GenServer.call` is `:infinity`, and `RepositoryMetadata.Server` owns the real expiry through its own timer, replying via `GenServer.reply/2` exactly once from whichever path settles the request. A transport push failure replies immediately from within `handle_call`; every other resolution (a worker's answer, the worker's channel dying, the expiry timer) defers the reply until the entry is removed first, so a second attempt at any of them finds nothing and replies to nobody.
+- The requester's own exit is the cancellation path (no public `cancel/1`): the server monitors `elem(from, 0)`, and on that process's `:DOWN` it cancels via the transport and cleans up without replying, since `GenServer.reply/2` to an exited caller is a safe no-op with nobody left to tell.
+- `MetadataAnswer.new/1` mirrors `SelectionResult.new/1`'s strict allowlisted-key parsing: an unrecognised key, an unknown outcome, or a missing value field for the outcome that requires it is refused as `:invalid_result` before it can reach a requester. Three outcomes: `:metadata` (resolves the block to `{:ok, result}`), `:refused` (resolves to `{:error, :invalid_worker_response}` for now — `:repository_mismatch` is validated and stored but not yet surfaced at the public API, so a later task can widen the mapping without re-touching this parsing), `:cancelled` (resolves to `{:error, :cancelled}`).
+- Only the `Unavailable` transport exists (`{:error, :no_worker}` always). Nothing calls `inspect/2` yet outside its own tests. `SddOrchestrator.RepositoryMetadata.Server` added to the application supervision tree beside `RepositorySelection.Server`.
+- 10 tests. `mix compile --warnings-as-errors` clean.
+- Proof receipt: `Task 2` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_metadata_test.exs` — exit `0`.
+
 ### 2026-09-03 - Task 4 complete: the Mac's one panel owner can answer a raw path to an in-release caller
 
 - `Worker.RepositorySelection` gains `request_path/3`, additive beside the unchanged `open/3`. Both now cast into one `handle_cast({:open, payload, reply, home_override, result_builder}, state)` clause; the held-request map gains a `:result_builder` field (`&result/2` for `open/3`, `fn _request, choice -> choice end` for `request_path/3`), and `finish/2` calls `request.reply.(request.result_builder.(request, choice))` instead of hardcoding `result/2`.
