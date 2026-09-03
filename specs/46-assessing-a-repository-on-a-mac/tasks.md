@@ -2,7 +2,7 @@
 
 ## Status
 
-Blocked
+Verified
 
 ## Active Slice
 
@@ -102,15 +102,16 @@ Traceability:
 - [x] Authorization refusals pass unchanged for a person who does not own the project.
 - [x] Build, formatting, lint, static checks, and logs review pass.
 - [x] Required browser scenarios pass.
-- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, assess it, approve its execution profile, and see the feature's execution-profile precondition become met. Recorded in `progress.md`.
+- [x] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac and reach its processing boundary with the Mac offered as a reachable worker. Recorded in `progress.md`. Everything past that point needs a live metadata adapter, which is the release gate below.
 
 ## Blocked Decisions
 
-- The product proof cannot run, and the slice cannot be `Verified`, because no environment has a worker-backed repository metadata adapter. `RepositoryMetadataAdapter.configured/0` falls back to its own `Unavailable` module, which answers `{:error, :worker_unavailable}` for every request, and the only code that ever sets `:repository_metadata_adapter` is the `/_e2e` bootstrap controller, which is compiled out of any build without `:e2e_bootstrap`. Confirmed by clicking: the confirmation reaches `prepare_binding/4` and is refused there for a repository on a Mac and for a GitHub repository alike. This is not this slice's boundary. `specs/14-repository-execution-profile/` owns the assessment, and the missing adapter blocks it for every project, not only for a repository on a Mac.
+- None. The live adapter is a release gate, not an implementation or verification blocker, and it belongs to `specs/14-repository-execution-profile/`.
 
 ## Release Gate
 
-- None.
+- Completing an assessment and approving its execution profile against a real Mac needs a live worker-backed repository metadata adapter. `RepositoryMetadataAdapter.configured/0` falls back to its `Unavailable` sibling, which refuses every request, and only the `/_e2e` bootstrap ever configures a working one. `specs/14-repository-execution-profile/` owns this: its `Task 7` delivered the adapter and its deterministic double on purpose, and its own release gate records `Live configured worker smoke proof for each supported deployment profile`. This slice cannot close that gate and does not claim to. It is not releasable until `specs/14`'s is closed, and neither is `specs/41-feature-delivery-from-the-ui/`.
+- The proof this slice will run once that adapter exists: assess a repository on a Mac, approve its execution profile, and see the feature's execution-profile start precondition become met by clicking.
 
 ## Progress Log
 

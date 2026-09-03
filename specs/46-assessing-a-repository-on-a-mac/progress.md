@@ -60,3 +60,13 @@
 - The slice is implementation-complete and its gates pass. It stays `Blocked` on the product proof until the assessment has a worker-backed adapter in a real environment.
 - Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
 - Proof receipt: slice — scope `Broad` — command `npm --prefix assets run test:e2e` — exit `0`.
+
+### 2026-09-03 - Reclassified as a release gate, slice Verified
+
+- The earlier entry called the missing metadata adapter a gap. That was wrong, and the correction matters. `specs/14-repository-execution-profile/`'s `Task 7` owned the adapter `and deterministic double` by name, and that specification's own release gate already records `Live configured worker smoke proof for each supported deployment profile`. The double is the delivered contract; the live adapter was always deferred to release.
+- So this slice was never blocked by a defect. It was blocked by another slice's recorded release gate, which `AGENTS.md` says is not an implementation stop condition and must not hold a stage that is otherwise done.
+- Decision taken with the user: move the live-worker half of the product proof into this slice's release gate, naming `specs/14`'s gate as the one that owns it, and verify the slice on what it does prove.
+- What the product proof did establish by clicking, and what the earlier redirect made impossible: the assessment screen opens for a hosted project whose repository is on a Mac, names it, and offers the reachable Mac as a worker with the processing boundary ready to confirm. Every gate that used to refuse that project now admits it.
+- What it cannot establish, and now says so in the release gate rather than as a blocker: completing an assessment and approving the profile against a real Mac. The refusal at `prepare_binding/4` is the `Unavailable` adapter answering, for every project including a GitHub one.
+- Status moves to `Verified`. Release readiness is separate and unchanged: this slice is not releasable until `specs/14`'s live-worker gate closes, and neither is `specs/41-feature-delivery-from-the-ui/`.
+- No code changed in this update.
