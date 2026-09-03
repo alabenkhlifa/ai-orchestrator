@@ -68,6 +68,8 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
   alias SddOrchestrator.HostedAccess.{SessionCookie, Sessions}
   alias SddOrchestrator.HostedAccessFixtures
   alias SddOrchestrator.ParticipationFixtures
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.Repo
 
@@ -126,7 +128,8 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
       device_workspace: device_workspace,
       hosted_project: hosted_project,
       owner_conn: owner_conn,
-      worker: worker
+      worker: worker,
+      workspace: workspace
     }
   end
 
@@ -224,6 +227,50 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert Adapter.events() == []
   end
 
+  test "the assessment screen opens for a project whose repository is on the owner's Mac",
+       context do
+    project = hosted_local_project(context)
+
+    assert {:ok, _view, html} =
+             live(context.owner_conn, ~p"/projects/#{project.id}/assessment")
+
+    assert html =~ ~s(data-screen="repository-assessment")
+    assert html =~ ~s(data-assessment-stage="disclosure")
+    assert Adapter.events() == []
+  end
+
+  test "a hosted project with no reachable repository still redirects away", context do
+    unreachable = hosted_local_project(context)
+
+    HostedLocalRepositoryBinding
+    |> Repo.get!(unreachable.id)
+    |> Repo.delete!()
+
+    assert {:error, {:live_redirect, %{to: "/projects"}}} =
+             live(context.owner_conn, ~p"/projects/#{unreachable.id}/assessment")
+
+    context.hosted_project.repository_connection
+    |> Ecto.Changeset.change(state: "disconnected")
+    |> Repo.update!()
+
+    assert {:error, {:live_redirect, %{to: "/projects"}}} =
+             live(context.owner_conn, ~p"/projects/#{context.hosted_project.id}/assessment")
+
+    assert Adapter.events() == []
+  end
+
+  test "a person who does not own the Mac project is redirected away", context do
+    project = hosted_local_project(context)
+    outsider = AccountsFixtures.account_fixture()
+
+    assert {:error, {:live_redirect, %{to: "/projects"}}} =
+             context.conn
+             |> log_in_account(outsider)
+             |> live(~p"/projects/#{project.id}/assessment")
+
+    assert Adapter.events() == []
+  end
+
   test "unknown device projects fail closed without a metadata call", context do
     assert {:error, {:live_redirect, %{to: "/onboarding/local"}}} =
              live(context.conn, ~p"/local/projects/#{Ecto.UUID.generate()}/assessment")
@@ -286,6 +333,20 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
       assessment: %{selected_root: root, worker_ref: worker_id, confirmed: "true"}
     )
     |> render_submit()
+  end
+
+  # A hosted project whose repository is a Git repository on the owner's Mac: no
+  # GitHub connection, and the worker binding registration writes for it.
+  defp hosted_local_project(context) do
+    attempt =
+      ProjectsFixtures.device_attempt_ready_for_hosted(
+        context.device_workspace,
+        context.workspace,
+        worker_id: context.worker.id
+      )
+
+    {:ok, project} = Projects.register_project(context.workspace, attempt)
+    project
   end
 
   defp hosted_authority(context), do: {:hosted, context.account.id}

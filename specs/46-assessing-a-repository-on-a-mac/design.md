@@ -6,6 +6,8 @@
 
 `SddOrchestrator.RepositoryAssessments.authorize_project/2` carries the same requirement at the domain boundary for `{:hosted, account_id}`.
 
+It is not two gates. Implementation found the same GitHub-shaped requirement in five places across four modules, each one refusing the project a step further along the flow: the screen's gate, the domain's `authorize_project/2`, `AssessmentStore.Hosted.put/2`, that store's `lock_project_binding/1`, and the profile store's `active_binding?/2` together with its own `lock_project_binding/1`. The two `lock_project_binding/1` functions return `nil` unless a `RepositoryConnection` row exists, so they refuse by failing to find the project at all. Fixing only the first gates moves the refusal later rather than removing it.
+
 A hosted project whose repository is on a Mac falls between the two. It is hosted, so the device route does not serve it, and it has no `RepositoryConnection` row at all, because that row is GitHub-shaped and its repository id is a provider-issued integer such a repository never has. Both gates therefore refuse it, and the screen redirects to `/projects` with no explanation.
 
 The consequence is not local to this screen. An approved execution profile is one of the five preconditions `specs/41-feature-delivery-from-the-ui/` requires before `Start development`, and the profile screen answers `No completed assessment with a verifiable minimized proposal envelope is available for this repository, so there is nothing to approve.` So a project created through `specs/44-hosted-local-repository-projects/` can never reach a run. That was proven by clicking, not inferred.
@@ -27,7 +29,9 @@ Redefine assessability by what the screen actually needs, and change nothing els
 ## Components Affected
 
 - `SddOrchestratorWeb.RepositoryAssessmentLive`: the hosted route's assessability gate, the repository label for a project whose repository is on a Mac, and the not-reachable state.
-- `SddOrchestrator.RepositoryAssessments` (`authorize_project/2`): the same assessability rule at the domain boundary.
+- `SddOrchestrator.RepositoryAssessments` (`authorize_project/2`): the same assessability rule at the domain boundary, and the one place that owns it.
+- `SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted`: its own copy of the rule in `put/2`, and its `lock_project_binding/1`, which finds no project without a connection row.
+- `SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted`: `active_binding?/2` and its `lock_project_binding/1`, which block proposing and approving the profile.
 
 ## Data and Access Boundaries
 
@@ -67,7 +71,8 @@ Required boundaries:
 
 ## Risks
 
-- The two gates are in different modules and can drift. They must be changed together and proven together, or the screen and the domain will disagree about who may assess.
+- Five gates in four modules can drift. They must read one predicate and be proven together, or a project will be admitted at one step and refused at the next, which is exactly the shape of the defect being fixed.
+- The two `lock_project_binding/1` functions refuse by answering `nil`, which reads as a missing project rather than a refused one. Widening them must keep the provider and repository-identity checks that sit beside them, so a project is still matched to its own assessment.
 - Widening an authorization gate is the kind of change that can quietly admit more than intended. The proof has to include a hosted project that is reachable by neither route, and a person who does not own the project.
 - The proposal envelope and the profile approval are assumed to work once an assessment completes, because nothing in them reads a `RepositoryConnection`. That is checked by the slice, not assumed.
 

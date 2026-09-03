@@ -7,6 +7,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
 
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryAssessments
 
@@ -57,7 +59,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
       device_workspace: device_workspace,
       hosted_project: hosted_project,
       now: now,
-      store_path: store_path
+      store_path: store_path,
+      workspace: workspace
     }
   end
 
@@ -563,6 +566,141 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
            """).num_rows == 1
   end
 
+  test "a project whose repository is on the owner's Mac completes, proposes, and approves",
+       context do
+    context = mac_context(context)
+    assessment = put_completed!(context, :hosted_local)
+
+    assert assessment.project_id == context.mac_project.id
+    assert assessment.repository_provider == "local"
+    assert Repo.get!(RepositoryAssessment, assessment.id).state == "completed"
+
+    proposal = propose!(context, :hosted_local, assessment, proposal_attrs())
+
+    assert {:ok, profile} =
+             RepositoryAssessments.approve_profile(
+               hosted_authority(context),
+               assessment.project_id,
+               proposal,
+               now: context.now
+             )
+
+    assert profile.version == 1
+    assert profile.project_id == context.mac_project.id
+    assert profile.assessment_id == assessment.id
+    assert RepositoryExecutionProfile.strict?(profile)
+  end
+
+  test "a hosted project reachable by neither link is refused at the store gates", context do
+    context = mac_context(context)
+    assessment = put_completed!(context, :hosted_local)
+    proposal = propose!(context, :hosted_local, assessment, proposal_attrs())
+
+    unbind!(context.mac_project)
+
+    assert {:error, :stale_assessment} =
+             ProfileStore.append(
+               hosted_authority(context),
+               assessment,
+               proposal,
+               context.account.id,
+               context.now
+             )
+
+    assert ProfileStore.list(hosted_authority(context), assessment.project_id) == []
+    assert Repo.aggregate(RepositoryExecutionProfile, :count) == 0
+
+    assert {:error, :unauthorized} =
+             AssessmentStore.put(
+               hosted_authority(context),
+               pending_for(
+                 context.mac_project.id,
+                 context.mac_project.repository_provider,
+                 context.mac_project.canonical_repository_id,
+                 context.now
+               )
+             )
+  end
+
+  test "an unreachable repository refuses the terminal transition and keeps the pending row",
+       context do
+    context = mac_context(context)
+    pending = put_pending!(context, :hosted_local)
+    command = command!(pending)
+    assert {:ok, result} = RepositoryAssessmentResult.canceled(command)
+
+    assert {:ok, terminal} =
+             RepositoryAssessment.terminal(pending, command, result, nil, context.now)
+
+    unbind!(context.mac_project)
+
+    assert {:error, :unauthorized} =
+             AssessmentStore.transition(hosted_authority(context), pending, terminal, nil)
+
+    assert Repo.get!(RepositoryAssessment, pending.id).state == "pending_scan"
+  end
+
+  test "an assessment naming another provider or repository is still refused", context do
+    context = mac_context(context)
+    project = context.mac_project
+
+    assert {:error, :unauthorized} =
+             AssessmentStore.put(
+               hosted_authority(context),
+               pending_for(project.id, "github", project.canonical_repository_id, context.now)
+             )
+
+    assert {:error, :unauthorized} =
+             AssessmentStore.put(
+               hosted_authority(context),
+               pending_for(
+                 project.id,
+                 project.repository_provider,
+                 local_repository_metadata().fingerprint,
+                 context.now
+               )
+             )
+
+    assessment = put_completed!(context, :hosted_local)
+    proposal = propose!(context, :hosted_local, assessment, proposal_attrs())
+
+    project
+    |> Ecto.Changeset.change(canonical_repository_id: local_repository_metadata().fingerprint)
+    |> Repo.update!()
+
+    assert {:error, :stale_assessment} =
+             ProfileStore.append(
+               hosted_authority(context),
+               assessment,
+               proposal,
+               context.account.id,
+               context.now
+             )
+
+    assert Repo.aggregate(RepositoryExecutionProfile, :count) == 0
+  end
+
+  # A hosted project whose repository is a Git repository on the owner's Mac: no
+  # GitHub connection, and the worker binding registration writes for it.
+  defp mac_context(context) do
+    worker = attached_worker_fixture(context.device_workspace)
+
+    attempt =
+      device_attempt_ready_for_hosted(context.device_workspace, context.workspace,
+        worker_id: worker.id
+      )
+
+    {:ok, project} = Projects.register_project(context.workspace, attempt)
+    Map.put(context, :mac_project, project)
+  end
+
+  # Leaves the project with neither link to a repository.
+  defp unbind!(project) do
+    HostedLocalRepositoryBinding
+    |> Repo.get!(project.id)
+    |> Repo.delete!()
+  end
+
   defp propose!(context, kind, assessment, attrs) do
     assert {:ok, proposal} =
              RepositoryAssessments.propose_profile(
@@ -665,10 +803,29 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
           context.device_project.repository_id,
           now
         )
+
+      :hosted_local ->
+        put_pending(
+          hosted_authority(context),
+          context.mac_project.id,
+          context.mac_project.repository_provider,
+          context.mac_project.canonical_repository_id,
+          now
+        )
     end
   end
 
   defp put_pending(authority, project_id, provider, repository_id, now) do
+    assert {:ok, stored} =
+             AssessmentStore.put(
+               authority,
+               pending_for(project_id, provider, repository_id, now)
+             )
+
+    stored
+  end
+
+  defp pending_for(project_id, provider, repository_id, now) do
     assert {:ok, preparation} =
              RepositoryBindingPreparation.new(%{
                project_id: project_id,
@@ -685,8 +842,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
              })
 
     assert {:ok, pending} = RepositoryAssessment.pending(preparation, now)
-    assert {:ok, stored} = AssessmentStore.put(authority, pending)
-    stored
+    pending
   end
 
   defp command!(assessment) do
@@ -745,6 +901,7 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryExecutionProfileTest d
   end
 
   defp authority(context, :hosted), do: hosted_authority(context)
+  defp authority(context, :hosted_local), do: hosted_authority(context)
   defp authority(context, :device), do: device_authority(context)
   defp hosted_authority(context), do: {:hosted, context.account.id}
   defp device_authority(context), do: {:device, context.device_workspace}

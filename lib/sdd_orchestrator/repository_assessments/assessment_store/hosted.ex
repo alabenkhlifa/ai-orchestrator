@@ -6,8 +6,10 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
   import Ecto.Query
 
   alias SddOrchestrator.Participation
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Projects.{Project, RepositoryConnection}
   alias SddOrchestrator.Repo
+  alias SddOrchestrator.RepositoryAssessments
 
   alias SddOrchestrator.RepositoryAssessments.{
     RepositoryAssessment,
@@ -150,11 +152,14 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
 
   def count(_authority, _project_id), do: 0
 
+  # The row may be written only for the repository the assessment names, and only
+  # while that repository is still reachable. Reachability is the assessment
+  # service's own rule, read here so this store refuses exactly what the service
+  # refuses.
   defp active_hosted_binding?(project, assessment) do
-    project.storage_mode == "hosted" and project.lifecycle_state == "active" and
-      project.repository_provider == assessment.repository_provider and
+    project.repository_provider == assessment.repository_provider and
       project.canonical_repository_id == assessment.repository_id and
-      match?(%{state: "connected"}, project.repository_connection)
+      RepositoryAssessments.assessable_hosted_project?(project)
   end
 
   defp transition_pending(pending, terminal) do
@@ -295,6 +300,11 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
 
   defp authorize_viewer(_viewer, _project_id), do: {:error, :not_found}
 
+  # Locks the project and the row that links it to its repository. A GitHub
+  # project is linked by its connection, a project whose repository is on a Mac
+  # by its worker binding, so either row admits the project and every present row
+  # is held for the transition. A project with neither has no repository to hold
+  # still, so it resolves to nothing at all.
   defp lock_project_binding(project_id) do
     project =
       Project
@@ -308,12 +318,20 @@ defmodule SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted do
       |> lock("FOR UPDATE")
       |> Repo.one()
 
-    case {project, connection} do
-      {%Project{} = project, %RepositoryConnection{} = connection} ->
-        %{project | repository_connection: connection}
+    binding =
+      HostedLocalRepositoryBinding
+      |> where([b], b.project_id == ^project_id)
+      |> lock("FOR UPDATE")
+      |> Repo.one()
 
-      _missing ->
-        nil
-    end
+    linked_project(project, connection, binding)
   end
+
+  defp linked_project(%Project{}, nil, nil), do: nil
+
+  defp linked_project(%Project{} = project, connection, binding) do
+    %{project | repository_connection: connection, hosted_local_repository_binding: binding}
+  end
+
+  defp linked_project(_missing_project, _connection, _binding), do: nil
 end

@@ -203,12 +203,15 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
     end
   end
 
+  # The connection is preloaded for the repository label. Whether the project may
+  # be assessed is the assessment service's own rule, read here so this screen
+  # never offers a project that service refuses, and never refuses one it admits.
   defp load_context(:hosted, project_id, socket) do
     account_id = acting_account_id(socket)
 
     with {:ok, project} <- Participation.owned_project(account_id, project_id),
          project <- Repo.preload(project, :repository_connection),
-         true <- active_hosted_project?(project) do
+         true <- RepositoryAssessments.assessable_hosted_project?(project) do
       {:ok,
        %{
          project: project,
@@ -254,11 +257,6 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   end
 
   defp load_context(_action, _project_id, _socket), do: {:error, ~p"/projects"}
-
-  defp active_hosted_project?(project) do
-    project.storage_mode == "hosted" and project.lifecycle_state == "active" and
-      match?(%{state: "connected"}, project.repository_connection)
-  end
 
   defp hosted_repository_display(project) do
     case project.repository_connection do

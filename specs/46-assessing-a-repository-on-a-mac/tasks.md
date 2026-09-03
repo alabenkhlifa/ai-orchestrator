@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+In Progress
 
 ## Active Slice
 
@@ -64,14 +64,15 @@ Traceability:
 
 ## Tasks
 
-- [ ] Task 1 — Admit a repository on a Mac at both assessability gates.
-  - Size: Exception — the screen's gate and the domain's gate express one authorization rule. Changing either alone leaves a state where the screen offers an assessment the domain refuses, or refuses one the domain would allow, which is an authorization boundary disagreeing with itself.
+- [x] Task 1 — Admit a repository on a Mac at both assessability gates.
+  - Size: Exception — five gates across four modules express one authorization rule. Changing any subset leaves a project admitted at one step and refused at the next, which is the defect itself rather than a smaller version of the fix.
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Stop the assessment refusing a project whose repository is reachable, so it can be scanned at all.
-  - Owned surfaces: `RepositoryAssessments.authorize_project/2` for a hosted authority, and `RepositoryAssessmentLive`'s `active_hosted_project?/1`, both admitting a hosted active project that is reachable through a connected GitHub connection or through its worker binding.
+  - Owned surfaces: one owned assessability predicate in `RepositoryAssessments`, and every gate that expresses the same rule reading it: `authorize_project/2`, `RepositoryAssessmentLive`'s hosted context, `AssessmentStore.Hosted`'s `put/2` and `lock_project_binding/1`, and `ProfileStore.Hosted`'s `active_binding?/2` and `lock_project_binding/1`. All admit a hosted active project reachable through a connected GitHub connection or through its worker binding, and none becomes more permissive than the domain.
   - Owns: AC-01, AC-02, AC-06
-  - Proof: Focused tests cover a hosted project whose repository is on a Mac being admitted at both gates and starting an assessment, a GitHub project unchanged at both, a hosted project reachable by neither refused at both, and a person who does not own the project refused with nothing disclosed.
+  - Proof: Focused tests cover a hosted project whose repository is on a Mac starting an assessment, finishing it, and reaching a proposed profile; a GitHub project unchanged at every gate; a hosted project reachable by neither refused at every gate; and a person who does not own the project refused with nothing disclosed.
+  - Delivered: `RepositoryAssessments.assessable_hosted_project?/1` is the one rule, and all five gates read it. A Mac project now assesses, finishes, proposes, and approves.
 
 - [ ] Task 2 — Name the repository, and name an unreachable Mac.
   - Size: Standard
