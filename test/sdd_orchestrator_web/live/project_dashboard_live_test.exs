@@ -17,12 +17,17 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
   repository connection, so a project whose repository is on a Mac is never
   described as a GitHub repository, while a GitHub-backed project keeps all
   three in the connected and the disconnected state.
+
+  And `specs/45` Task 7 (AC-09): the screen's own controls follow the acting
+  account's GitHub identity, so sign-out ends the session that person actually
+  holds and no control leads to a screen behind the application session.
   """
   use SddOrchestratorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 
   alias SddOrchestrator.Accounts
+  alias SddOrchestrator.Accounts.HostedSession
   alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.Devices.{LocalWorker, WorkerDiscovery}
   alias SddOrchestrator.HostedAccess.SessionCookie
@@ -32,6 +37,12 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
   alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.Repo
+  alias SddOrchestratorWeb.Router
+  alias SddOrchestratorWeb.UserAuth
+
+  # The gate this screen must never link into: a live session no hosted
+  # credential satisfies.
+  @application_session_hook {UserAuth, :require_authenticated}
 
   # Logs in an account whose login drives the given fake-provider scenario.
   defp log_in_scenario(conn, login) do
@@ -49,7 +60,20 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
     conn =
       init_test_session(conn, %{SessionCookie.session_key() => hosted.session_cookie.value})
 
-    %{conn: conn, account: hosted.account, workspace: hosted.personal_workspace}
+    %{
+      conn: conn,
+      account: hosted.account,
+      workspace: hosted.personal_workspace,
+      hosted: hosted
+    }
+  end
+
+  # A fresh browser carrying the same hosted credential, for the requests that
+  # follow a control rather than render one.
+  defp hosted_conn(hosted) do
+    init_test_session(build_conn(), %{
+      SessionCookie.session_key() => hosted.session_cookie.value
+    })
   end
 
   # The kind of project a passwordless owner can actually create: hosted
@@ -387,10 +411,126 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
     end
   end
 
+  describe "the screen's own controls (AC-09)" do
+    test "sign-out ends the session an account with no GitHub identity holds", context do
+      %{conn: conn, account: account, workspace: workspace, hosted: hosted} =
+        hosted_scenario(context.conn)
+
+      project = hosted_local_project(workspace, "Ledger")
+      refute Accounts.get_github_identity(account.id)
+
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      # One `Sign out` label; only the target follows the session.
+      assert has_element?(view, ~s(a[href="/hosted/session"]), "Sign out")
+      refute has_element?(view, ~s(a[href="/auth/sign_out"]))
+
+      signed_out = delete(hosted_conn(hosted), ~p"/hosted/session")
+
+      assert redirected_to(signed_out) == "/?hosted_access=signed_out"
+      refute Repo.get(HostedSession, hosted.session.id)
+    end
+
+    test "the GitHub sign-out route would leave that hosted session active", context do
+      %{workspace: workspace, hosted: hosted} = hosted_scenario(context.conn)
+      hosted_local_project(workspace, "Ledger")
+
+      # Why the target has to differ: this route revokes an application session
+      # token, and a passwordless owner has none. It clears the cookie, so the
+      # browser looks signed out while the session record stays.
+      signed_out = delete(hosted_conn(hosted), ~p"/auth/sign_out")
+
+      assert redirected_to(signed_out) == "/"
+      assert Repo.get(HostedSession, hosted.session.id)
+    end
+
+    test "offers no control leading to a screen behind the application session", context do
+      %{conn: conn, workspace: workspace} = hosted_scenario(context.conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      # The set is derived from the router, so a route added to an
+      # application-session live session later joins this check on its own. A
+      # derivation that matched nothing would pass the loop below, so it is
+      # checked for the one screen this screen used to link to.
+      blocked = application_session_paths()
+      assert "/projects/:id/backup" in blocked
+
+      for href <- rendered_hrefs(html), blocked_path <- blocked do
+        refute Regex.match?(path_pattern(blocked_path), href),
+               "#{href} leads to #{blocked_path}, which this session cannot open"
+      end
+
+      # The backup section exists to carry that one control, so its heading and
+      # its promise of a download go with it.
+      refute has_element?(view, "[data-backup-project]")
+      refute html =~ "Back up this project"
+      refute html =~ "Download an encrypted package"
+    end
+
+    test "a GitHub account keeps its sign-out target and its backup control", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert has_element?(view, ~s(a[href="/auth/sign_out"]), "Sign out")
+      refute has_element?(view, ~s(a[href="/hosted/session"]))
+
+      assert html =~ "Back up this project"
+      assert html =~ "Download an encrypted package"
+
+      assert has_element?(
+               view,
+               ~s([data-backup-project][href="/projects/#{project.id}/backup"])
+             )
+    end
+  end
+
   test "requires a session the acting identity accepts", %{conn: conn} do
     assert {:error, {:redirect, %{to: "/?project_access=required"}}} =
              live(conn, ~p"/projects/#{Ecto.UUID.generate()}/overview")
   end
 
   defp count(html, needle), do: html |> String.split(needle) |> length() |> Kernel.-(1)
+
+  # The live routes whose live session mounts the application-session gate.
+  # Keyed on the hook rather than on a live-session name, so a new live session
+  # that requires the application session joins the check on its own.
+  defp application_session_paths do
+    Router.__routes__()
+    |> Enum.filter(fn route ->
+      case route.metadata[:phoenix_live_view] do
+        {_module, _action, _opts, live_session} -> application_session_only?(live_session)
+        _other -> false
+      end
+    end)
+    |> Enum.map(& &1.path)
+  end
+
+  defp application_session_only?(%{extra: %{on_mount: hooks}}),
+    do: Enum.any?(hooks, &(&1.id == @application_session_hook))
+
+  defp application_session_only?(_live_session), do: false
+
+  # `/projects/:id/backup` as a pattern: any one segment matches `:id`.
+  defp path_pattern(path) do
+    source =
+      path
+      |> String.split("/")
+      |> Enum.map_join("/", fn
+        ":" <> _param -> "[^/]+"
+        segment -> Regex.escape(segment)
+      end)
+
+    Regex.compile!("^" <> source <> "$")
+  end
+
+  defp rendered_hrefs(html) do
+    ~r/href="([^"]*)"/
+    |> Regex.scan(html, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.map(&(&1 |> String.split("?") |> hd()))
+  end
 end

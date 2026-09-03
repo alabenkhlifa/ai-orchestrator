@@ -62,11 +62,21 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   failed replacement leaves the previous machine authoritative. Disconnect
   removes the routing only and is idempotent; the project, its specifications,
   and its repository are untouched.
+
+  The screen's own controls follow the acting account's GitHub identity
+  (specs/45 Task 7), the same way the catalog's do: a control is offered only
+  when the acting session can open what it leads to, and sign-out ends the
+  session that person actually holds. Only the GitHub sign-in issues the
+  application session, so an account with no GitHub identity signs out through
+  `SddOrchestratorWeb.SessionControls.sign_out_path/1` and is offered no backup,
+  which stays behind that session.
   """
   use SddOrchestratorWeb, :live_view
 
   import SddOrchestratorWeb.ConnectionStatus
+  import SddOrchestratorWeb.SessionControls
 
+  alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
@@ -102,6 +112,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
          |> assign(:name_error, nil)
          |> assign(:rename_saved?, false)
          |> assign(:actor, %{account_id: account.id, hosted_identity_id: nil})
+         |> assign(:identity, Accounts.get_github_identity(account.id))
          |> reset_connect()
          |> assign_worker_connection()}
     end
@@ -539,7 +550,9 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
         <.button variant="secondary" size="sm" navigate={~p"/projects"}>
           <.lucide name="arrow-left" class="size-4" /> Projects
         </.button>
-        <.button variant="secondary" size="sm" href={~p"/auth/sign_out"} method="delete">
+        <%!-- One `Sign out` label, and only the target follows the session the
+        person holds. --%>
+        <.button variant="secondary" size="sm" href={sign_out_path(@identity)} method="delete">
           <.lucide name="log-out" class="size-4" /> Sign out
         </.button>
       </:actions>
@@ -809,7 +822,12 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           </div>
         </form>
 
-        <div class="mt-6 rounded-lg border border-line bg-surface p-4">
+        <%!-- The backup screen stays behind the application session, which only
+        the GitHub sign-in issues. The section exists to carry that one control,
+        and its heading and sentence promise the download it opens, so an
+        account with no GitHub identity is offered neither rather than a
+        promise it cannot follow. --%>
+        <div :if={@identity} class="mt-6 rounded-lg border border-line bg-surface p-4">
           <p class="text-[13px] font-semibold text-ink">Back up this project</p>
           <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
             Download an encrypted package containing this project's identity, repository identity,

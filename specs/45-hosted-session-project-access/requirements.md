@@ -20,6 +20,7 @@ A person whose only sign-in is the passwordless email link can see the projects 
 - Reaching the project list from `/` in a later session, without remembering a link.
 - Keeping every screen scoped to the acting account, so one sign-in method never widens what a person can read.
 - The project dashboard telling the truth about a repository that is on a Mac rather than on GitHub.
+- The project dashboard's own controls working for whichever sign-in the person used.
 
 ## Out of Scope
 
@@ -58,6 +59,7 @@ A person whose only sign-in is the passwordless email link can see the projects 
 - [AC-06] Given a person signed in with GitHub, when they use the project list and a project dashboard, then their access and what they see are unchanged.
 - [AC-07] Given a person holds a session for one account, when they open a project owned by another account, then the project is not found and nothing about it is disclosed.
 - [AC-08] Given a hosted project whose repository is on the person's Mac, when its dashboard renders, then it says where the repository is and whether that Mac is reachable, and it makes no claim about GitHub access.
+- [AC-09] Given the acting account has no GitHub identity, when the project dashboard renders, then its sign-out ends the session that person actually holds, and no control on it leads to a screen that session cannot open.
 
 ## Open Questions
 

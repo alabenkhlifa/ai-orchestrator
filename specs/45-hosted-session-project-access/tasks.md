@@ -41,6 +41,7 @@ Included:
 - `/` sending a valid hosted session to the project list.
 - The notice a person reads when a project screen turns them away.
 - The project dashboard's presentation for a project whose repository is on a Mac.
+- The project dashboard's sign-out target and its links to other screens.
 
 Excluded:
 
@@ -117,6 +118,16 @@ Traceability:
   - Owns: AC-08
   - Proof: Focused LiveView tests cover a hosted local-repository project rendering no `Repository` row, no GitHub badge, and no access-lost notice while its machine region still states where the repository is and its reachability, and a GitHub-backed project rendering all three exactly as before in both the connected and the disconnected state.
   - Delivered: the GitHub connection presentation is keyed on the project having a repository connection, so a project with none renders none of it and the machine region is the one place that states where the repository is.
+
+- [x] Task 7 — Make the project dashboard's own controls work for either sign-in.
+  - Size: Standard
+  - Proof scope: Focused
+  - Depends on: Task 2
+  - Purpose: Stop the screen a passwordless owner lands on offering a control that ends the wrong session or leads nowhere.
+  - Owned surfaces: `ProjectDashboardLive`'s header sign-out target, and its links to screens that stay application-session only, each offered only to an acting account that can open what it leads to.
+  - Owns: AC-09
+  - Proof: Focused LiveView tests cover an acting account with no GitHub identity seeing a sign-out that ends its hosted session and no control leading to an application-session-only screen, and a GitHub account's dashboard controls unchanged.
+  - Delivered: the sign-out target is one owned value both screens read, and the backup section is offered only to an account that can open it.
 
 - [x] Task 5 — Prove the click path and that nothing else widened.
   - Size: Standard

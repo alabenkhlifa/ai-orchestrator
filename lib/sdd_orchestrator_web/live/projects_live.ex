@@ -39,6 +39,7 @@ defmodule SddOrchestratorWeb.ProjectsLive do
   use SddOrchestratorWeb, :live_view
 
   import SddOrchestratorWeb.ConnectionStatus
+  import SddOrchestratorWeb.SessionControls
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Catalog
@@ -262,12 +263,6 @@ defmodule SddOrchestratorWeb.ProjectsLive do
 
   defp device_status(:available), do: "connected"
   defp device_status(_unavailable), do: "unavailable"
-
-  # Sign out ends the session the person actually holds. Only GitHub sign-in
-  # issues the application session, so an account with no GitHub identity is
-  # here on its hosted session and that is the one to revoke.
-  defp sign_out_path(nil), do: ~p"/hosted/session"
-  defp sign_out_path(_identity), do: ~p"/auth/sign_out"
 
   defp initials(%{login: login}) when is_binary(login) do
     login |> String.replace(~r/[^A-Za-z0-9]/, "") |> String.slice(0, 2) |> String.upcase()
