@@ -909,14 +909,14 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       })
     end
 
+    defp run(conn, _unknown_scenario, _params),
+      do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
+
     defp cited_specification_title(authority, project) do
       {:ok, snapshot} = SpecificationStore.current_snapshot(authority, project.id)
       [first | _rest] = snapshot.specifications
       first.title
     end
-
-    defp run(conn, _unknown_scenario, _params),
-      do: conn |> put_status(:bad_request) |> json(%{error: "unknown scenario"})
 
     ## Scenario building blocks
 

@@ -28,11 +28,16 @@ defmodule SddOrchestrator.Catalog do
   @type availability ::
           :connected | :disconnected | :temporarily_unavailable | :available | :unavailable
 
+  # `repository_connection?` answers whether the project has a repository
+  # connection at all, which `availability` cannot: a project with no connection
+  # is not a connection that is doing badly. `repository_label` cannot answer it
+  # either, because a real connection may have a nil `full_name`.
   @type entry :: %{
           id: String.t(),
           name: String.t(),
           storage_mode: String.t(),
           availability: availability(),
+          repository_connection?: boolean(),
           repository_label: String.t() | nil,
           route: String.t(),
           identity_conflict?: boolean()
@@ -74,6 +79,7 @@ defmodule SddOrchestrator.Catalog do
         name: entry.project.name,
         storage_mode: "hosted",
         availability: entry.status,
+        repository_connection?: entry.connection != nil,
         repository_label: entry.connection && entry.connection.full_name,
         route: "/projects/#{entry.project.id}",
         identity_conflict?: false
@@ -94,6 +100,8 @@ defmodule SddOrchestrator.Catalog do
             id: project.id,
             name: project.name,
             storage_mode: "device",
+            # A device repository is never a GitHub repository connection.
+            repository_connection?: false,
             # The repository label is intentionally omitted: a device repository's
             # only identifier is its non-reversible fingerprint, never a shareable
             # name, path, or URL.

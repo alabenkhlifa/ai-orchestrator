@@ -90,12 +90,24 @@ defmodule SddOrchestratorWeb.UserAuth do
     end
   end
 
+  @doc """
+  Resolves the account behind a LiveView `session` map's session token, or nil.
+
+  Exposed so a hook that resolves more than this one credential reads the
+  session token through its owner rather than repeating the key and the
+  fail-closed lookup.
+  """
+  @spec account_from_session(map()) :: Accounts.Account.t() | nil
+  def account_from_session(session) do
+    case session[Atom.to_string(@session_token_key)] do
+      nil -> nil
+      token -> account_from_token(token)
+    end
+  end
+
   defp mount_current_account(socket, session) do
     Phoenix.Component.assign_new(socket, :current_account, fn ->
-      case session[Atom.to_string(@session_token_key)] do
-        nil -> nil
-        token -> account_from_token(token)
-      end
+      account_from_session(session)
     end)
   end
 

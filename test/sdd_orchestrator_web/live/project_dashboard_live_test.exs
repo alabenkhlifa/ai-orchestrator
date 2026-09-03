@@ -6,22 +6,101 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
   visible with a disconnected indicator and a recovery action when access is lost;
   never exposes the access token; and refuses unknown or cross-workspace projects
   behind a valid session.
+
+  It also proves `specs/45` Task 2: the screen acts as the account the resolved
+  acting identity names, so the passwordless email link opens the projects that
+  account owns, the GitHub session is unchanged, and workspace scoping is still
+  the only authorization on either session.
+
+  And `specs/45` Task 6 (AC-08): the `Repository` row, the GitHub connection
+  badge, and the access-lost notice render only for a project that has a
+  repository connection, so a project whose repository is on a Mac is never
+  described as a GitHub repository, while a GitHub-backed project keeps all
+  three in the connected and the disconnected state.
+
+  And `specs/45` Task 7 (AC-09): the screen's own controls follow the acting
+  account's GitHub identity, so sign-out ends the session that person actually
+  holds and no control leads to a screen behind the application session.
   """
   use SddOrchestratorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 
   alias SddOrchestrator.Accounts
+  alias SddOrchestrator.Accounts.HostedSession
   alias SddOrchestrator.AccountsFixtures
+  alias SddOrchestrator.Devices.{LocalWorker, WorkerDiscovery}
+  alias SddOrchestrator.HostedAccess.SessionCookie
+  alias SddOrchestrator.HostedAccessFixtures
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.RepositoryConnection
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.Repo
+  alias SddOrchestratorWeb.Router
+  alias SddOrchestratorWeb.UserAuth
+
+  # The gate this screen must never link into: a live session no hosted
+  # credential satisfies.
+  @application_session_hook {UserAuth, :require_authenticated}
 
   # Logs in an account whose login drives the given fake-provider scenario.
   defp log_in_scenario(conn, login) do
     %{conn: conn, account: account} = register_and_log_in_account(%{conn: conn, login: login})
     workspace = ProjectsFixtures.workspace_fixture(account)
     %{conn: conn, account: account, workspace: workspace}
+  end
+
+  # Signs the browser in through the passwordless email link only. No
+  # application session is issued, so the screen sees the hosted credential
+  # alone.
+  defp hosted_scenario(conn) do
+    hosted = HostedAccessFixtures.verified_hosted_session_fixture()
+
+    conn =
+      init_test_session(conn, %{SessionCookie.session_key() => hosted.session_cookie.value})
+
+    %{
+      conn: conn,
+      account: hosted.account,
+      workspace: hosted.personal_workspace,
+      hosted: hosted
+    }
+  end
+
+  # A fresh browser carrying the same hosted credential, for the requests that
+  # follow a control rather than render one.
+  defp hosted_conn(hosted) do
+    init_test_session(build_conn(), %{
+      SessionCookie.session_key() => hosted.session_cookie.value
+    })
+  end
+
+  # The kind of project a passwordless owner can actually create: hosted
+  # storage, a local repository, and a machine bound at registration. It has no
+  # `RepositoryConnection` row at all.
+  defp hosted_local_project(workspace, name) do
+    device = ProjectsFixtures.device_workspace_fixture()
+    attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, workspace)
+    {:ok, project} = Projects.register_project(workspace, attempt, name: name)
+    project
+  end
+
+  # Registration binds the project to the machine that proved its repository.
+  # Ageing that worker's heartbeat is how the machine region reads as not
+  # reachable, without touching the project or its binding.
+  defp stale_bound_worker(project) do
+    binding = Repo.get!(HostedLocalRepositoryBinding, project.id)
+
+    stale =
+      DateTime.utc_now()
+      |> DateTime.add(-(WorkerDiscovery.staleness_seconds() + 60), :second)
+      |> DateTime.truncate(:second)
+
+    LocalWorker
+    |> Repo.get!(binding.worker_id)
+    |> Ecto.Changeset.change(last_seen_at: stale)
+    |> Repo.update!()
   end
 
   describe "connected project (AC-30)" do
@@ -191,10 +270,267 @@ defmodule SddOrchestratorWeb.ProjectDashboardLiveTest do
     end
   end
 
-  test "requires an authenticated session", %{conn: conn} do
-    assert {:error, {:redirect, %{to: "/"}}} =
+  describe "hosted session access (AC-01)" do
+    test "opens the account's own hosted local-repository project", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-screen="project-dashboard")
+      assert html =~ "Ledger"
+      assert html =~ "In my SDD Orchestrator account"
+      assert html =~ ~s(data-worker-connection="connected")
+      assert html =~ "Connected to your machine"
+    end
+
+    test "revalidation is a no-op for an account with no GitHub credential", %{conn: conn} do
+      %{conn: conn, account: account, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      # The account has no GitHub credential, so a revalidation that actually
+      # ran would resolve to confirmed access loss.
+      assert {:error, _reason} = Accounts.valid_access_token(account.id)
+
+      # The connected mount revalidates. Nothing about the machine link is
+      # reported as lost, and no connection row is invented to carry a status.
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+      assert html =~ ~s(data-worker-connection="connected")
+      assert Repo.aggregate(RepositoryConnection, :count) == 0
+
+      # There is no GitHub connection to re-check, so the screen offers no
+      # `Check again`. A second mount revalidates again with the same result.
+      refute html =~ "Check again"
+
+      {:ok, _view, again} = live(conn, ~p"/projects/#{project.id}/overview")
+      assert again =~ ~s(data-worker-connection="connected")
+      assert Repo.aggregate(RepositoryConnection, :count) == 0
+    end
+
+    test "the same project opens unchanged on an application session", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-screen="project-dashboard")
+      assert html =~ "Ledger"
+      assert html =~ "In my SDD Orchestrator account"
+      assert html =~ ~s(data-worker-connection="connected")
+    end
+  end
+
+  describe "a repository that is on a Mac (AC-08)" do
+    test "shows no Repository row, no GitHub badge, and no access-lost notice", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ "Ledger"
+      refute has_element?(view, "[data-repository]")
+      refute html =~ "Repository"
+      refute html =~ "Disconnected"
+      refute has_element?(view, "[data-disconnected]")
+      refute has_element?(view, "button[data-recheck]")
+      refute html =~ "GitHub access to this repository was lost"
+    end
+
+    test "still says where the repository is and that the machine is reachable", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, _view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-worker-connection="connected")
+      assert html =~ "Connected to your machine"
+      assert html =~ "repository is on a machine you connected"
+    end
+
+    test "still says the machine is not reachable when it stops checking in", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = hosted_scenario(conn)
+      project = hosted_local_project(workspace, "Ledger")
+      stale_bound_worker(project)
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ ~s(data-worker-connection="temporarily_unavailable")
+      assert html =~ "isn&#39;t reachable right now"
+      assert html =~ "are unaffected"
+
+      # The machine region is the only thing reporting reachability. The GitHub
+      # notice and its recovery control are still absent.
+      refute has_element?(view, "[data-disconnected]")
+      refute has_element?(view, "button[data-recheck]")
+    end
+
+    test "a GitHub-backed project keeps its badge and Repository row", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ "Repository"
+      assert has_element?(view, "[data-repository]", "octo/example")
+      assert html =~ "Connected"
+    end
+
+    test "a GitHub-backed project that lost access keeps its notice and Check again", %{
+      conn: conn
+    } do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "noinstall-x")
+      project = ProjectsFixtures.registered_project(workspace, name: "Orphaned")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert html =~ "Disconnected"
+      assert html =~ "GitHub access to this repository was lost"
+      assert has_element?(view, "[data-disconnected]")
+      assert has_element?(view, "button[data-recheck]")
+      assert has_element?(view, "[data-repository]")
+    end
+  end
+
+  describe "another account's project (AC-07)" do
+    test "is not found on a hosted session and discloses nothing", %{conn: conn} do
+      %{conn: conn} = hosted_scenario(conn)
+      foreign = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      foreign_project = hosted_local_project(foreign, "Theirs")
+
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               live(conn, ~p"/projects/#{foreign_project.id}/overview")
+    end
+
+    test "is not found on an application session and discloses nothing", %{conn: conn} do
+      %{conn: conn} = log_in_scenario(conn, "octo")
+      foreign = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      foreign_project = hosted_local_project(foreign, "Theirs")
+
+      assert {:error, {:live_redirect, %{to: "/projects"}}} =
+               live(conn, ~p"/projects/#{foreign_project.id}/overview")
+    end
+  end
+
+  describe "the screen's own controls (AC-09)" do
+    test "sign-out ends the session an account with no GitHub identity holds", context do
+      %{conn: conn, account: account, workspace: workspace, hosted: hosted} =
+        hosted_scenario(context.conn)
+
+      project = hosted_local_project(workspace, "Ledger")
+      refute Accounts.get_github_identity(account.id)
+
+      {:ok, view, _html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      # One `Sign out` label; only the target follows the session.
+      assert has_element?(view, ~s(a[href="/hosted/session"]), "Sign out")
+      refute has_element?(view, ~s(a[href="/auth/sign_out"]))
+
+      signed_out = delete(hosted_conn(hosted), ~p"/hosted/session")
+
+      assert redirected_to(signed_out) == "/?hosted_access=signed_out"
+      refute Repo.get(HostedSession, hosted.session.id)
+    end
+
+    test "the GitHub sign-out route would leave that hosted session active", context do
+      %{workspace: workspace, hosted: hosted} = hosted_scenario(context.conn)
+      hosted_local_project(workspace, "Ledger")
+
+      # Why the target has to differ: this route revokes an application session
+      # token, and a passwordless owner has none. It clears the cookie, so the
+      # browser looks signed out while the session record stays.
+      signed_out = delete(hosted_conn(hosted), ~p"/auth/sign_out")
+
+      assert redirected_to(signed_out) == "/"
+      assert Repo.get(HostedSession, hosted.session.id)
+    end
+
+    test "offers no control leading to a screen behind the application session", context do
+      %{conn: conn, workspace: workspace} = hosted_scenario(context.conn)
+      project = hosted_local_project(workspace, "Ledger")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      # The set is derived from the router, so a route added to an
+      # application-session live session later joins this check on its own. A
+      # derivation that matched nothing would pass the loop below, so it is
+      # checked for the one screen this screen used to link to.
+      blocked = application_session_paths()
+      assert "/projects/:id/backup" in blocked
+
+      for href <- rendered_hrefs(html), blocked_path <- blocked do
+        refute Regex.match?(path_pattern(blocked_path), href),
+               "#{href} leads to #{blocked_path}, which this session cannot open"
+      end
+
+      # The backup section exists to carry that one control, so its heading and
+      # its promise of a download go with it.
+      refute has_element?(view, "[data-backup-project]")
+      refute html =~ "Back up this project"
+      refute html =~ "Download an encrypted package"
+    end
+
+    test "a GitHub account keeps its sign-out target and its backup control", %{conn: conn} do
+      %{conn: conn, workspace: workspace} = log_in_scenario(conn, "octo")
+      project = ProjectsFixtures.registered_project(workspace, name: "Roadmap")
+
+      {:ok, view, html} = live(conn, ~p"/projects/#{project.id}/overview")
+
+      assert has_element?(view, ~s(a[href="/auth/sign_out"]), "Sign out")
+      refute has_element?(view, ~s(a[href="/hosted/session"]))
+
+      assert html =~ "Back up this project"
+      assert html =~ "Download an encrypted package"
+
+      assert has_element?(
+               view,
+               ~s([data-backup-project][href="/projects/#{project.id}/backup"])
+             )
+    end
+  end
+
+  test "requires a session the acting identity accepts", %{conn: conn} do
+    assert {:error, {:redirect, %{to: "/?project_access=required"}}} =
              live(conn, ~p"/projects/#{Ecto.UUID.generate()}/overview")
   end
 
   defp count(html, needle), do: html |> String.split(needle) |> length() |> Kernel.-(1)
+
+  # The live routes whose live session mounts the application-session gate.
+  # Keyed on the hook rather than on a live-session name, so a new live session
+  # that requires the application session joins the check on its own.
+  defp application_session_paths do
+    Router.__routes__()
+    |> Enum.filter(fn route ->
+      case route.metadata[:phoenix_live_view] do
+        {_module, _action, _opts, live_session} -> application_session_only?(live_session)
+        _other -> false
+      end
+    end)
+    |> Enum.map(& &1.path)
+  end
+
+  defp application_session_only?(%{extra: %{on_mount: hooks}}),
+    do: Enum.any?(hooks, &(&1.id == @application_session_hook))
+
+  defp application_session_only?(_live_session), do: false
+
+  # `/projects/:id/backup` as a pattern: any one segment matches `:id`.
+  defp path_pattern(path) do
+    source =
+      path
+      |> String.split("/")
+      |> Enum.map_join("/", fn
+        ":" <> _param -> "[^/]+"
+        segment -> Regex.escape(segment)
+      end)
+
+    Regex.compile!("^" <> source <> "$")
+  end
+
+  defp rendered_hrefs(html) do
+    ~r/href="([^"]*)"/
+    |> Regex.scan(html, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.map(&(&1 |> String.split("?") |> hd()))
+  end
 end

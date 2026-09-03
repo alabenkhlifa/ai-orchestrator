@@ -9,6 +9,13 @@ defmodule SddOrchestrator.Projects do
   creates a hosted project, its canonical repository connection, and its storage
   state in one transaction — or leaves no partial record — while device
   registration remains destination-owned by the worker transaction in Task 4.
+
+  A device-origin attempt reaches the same writer once a verified sign-in proves
+  a hosted workspace, so an accountless local repository can be kept hosted. Its
+  repository identity is the portable fingerprint rather than a provider id, and
+  it carries no GitHub-shaped connection row. The worker that proved that
+  repository is bound in the same transaction, so the project, its storage mode,
+  and the Mac that can reach its repository are one invariant.
   """
   import Ecto.Query
 
@@ -17,6 +24,7 @@ defmodule SddOrchestrator.Projects do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceProject
   alias SddOrchestrator.Participation
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBindings
   alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt, RepositoryConnection}
   alias SddOrchestrator.ProjectStorage
   alias SddOrchestrator.ProjectStorage.{DeviceStorageReceipt, Hosted}
@@ -29,6 +37,14 @@ defmodule SddOrchestrator.Projects do
   # Bounds the default-name suffix search and its concurrency retry so a pathologically
   # crowded workspace can never loop unbounded.
   @max_suffix_retries 50
+
+  # What a registered project answers with: its repository link, its storage, and
+  # the worker binding a hosted local project commits with.
+  @registration_preloads [
+    :repository_connection,
+    :hosted_storage,
+    :hosted_local_repository_binding
+  ]
 
   ## Catalog
 
@@ -302,8 +318,9 @@ defmodule SddOrchestrator.Projects do
 
   @doc """
   Records the confirmed local repository on a device-origin attempt. Only the
-  device-local canonical fingerprint and display name cross into the transient
-  handoff; no path, remote URL, filename, or source content is stored.
+  device-local canonical fingerprint, display name, and the id of the worker that
+  proved the repository cross into the transient handoff; no path, remote URL,
+  filename, or source content is stored.
   """
   @spec select_local_repository(DeviceWorkspace.t(), String.t(), map()) ::
           {:ok, ProjectOnboardingAttempt.t()} | {:error, :not_found | Ecto.Changeset.t()}
@@ -330,6 +347,23 @@ defmodule SddOrchestrator.Projects do
     update_device_attempt(workspace, attempt_id, fn attempt ->
       ProjectOnboardingAttempt.hosted_prerequisite_changeset(attempt, hosted_workspace_id)
     end)
+  end
+
+  @doc """
+  Resolves the hosted workspace a device-origin attempt proved through a verified
+  sign-in. The identity comes from the attempt, never from the caller's session,
+  so a hosted commit can only land in the workspace the flow actually proved.
+  """
+  @spec proven_hosted_workspace(ProjectOnboardingAttempt.t()) ::
+          {:ok, PersonalWorkspace.t()} | {:error, :hosted_prerequisite_required}
+  def proven_hosted_workspace(%ProjectOnboardingAttempt{hosted_prerequisite_workspace_id: nil}),
+    do: {:error, :hosted_prerequisite_required}
+
+  def proven_hosted_workspace(%ProjectOnboardingAttempt{} = attempt) do
+    case Repo.get(PersonalWorkspace, attempt.hosted_prerequisite_workspace_id) do
+      nil -> {:error, :hosted_prerequisite_required}
+      %PersonalWorkspace{} = workspace -> {:ok, workspace}
+    end
   end
 
   ## Registration and naming
@@ -368,6 +402,16 @@ defmodule SddOrchestrator.Projects do
       suggested default). When `false` (the default), a collision returns an
       inline changeset error so an edited name is never silently changed.
 
+  A device-origin attempt commits here too once it has chosen hosted storage. It
+  must name the hosted workspace its own verified sign-in proved, otherwise
+  registration returns `{:error, :hosted_prerequisite_required}` and writes
+  nothing. Its project carries the portable local fingerprint as its canonical
+  repository identity and no GitHub-shaped connection row, and it is bound to the
+  worker its selection names in the same transaction. A selection naming no
+  worker returns `{:error, :proving_worker_required}`, and a worker the binding
+  boundary refuses (unauthorized, unavailable, or naming another repository)
+  returns that boundary's reason with nothing created.
+
   Returns `{:ok, project}` with the connection and storage preloaded, an idempotent
   `{:ok, project}` when the attempt was already consumed, `{:error, changeset}` for
   invalid or conflicting names, `{:error, {:repository_already_linked, project}}`
@@ -388,6 +432,8 @@ defmodule SddOrchestrator.Projects do
     cond do
       is_nil(attempt.selected_repository) -> {:error, :repository_required}
       is_nil(attempt.storage_mode) -> {:error, :storage_mode_required}
+      not proven_workspace?(workspace, attempt) -> {:error, :hosted_prerequisite_required}
+      not proving_worker?(attempt) -> {:error, :proving_worker_required}
       not is_nil(attempt.consumed_at) -> committed_project(workspace, attempt)
       not storage_ready?(attempt) -> {:error, :storage_not_ready}
       attempt.storage_mode == "device" -> {:error, :device_registration_not_available}
@@ -482,7 +528,7 @@ defmodule SddOrchestrator.Projects do
 
     case build_and_run(workspace, attempt, repo, name) do
       {:ok, %{project: project}} ->
-        {:ok, Repo.preload(project, [:repository_connection, :hosted_storage])}
+        {:ok, Repo.preload(project, @registration_preloads)}
 
       {:error, :project, %Ecto.Changeset{} = changeset, _changes} ->
         handle_project_conflict(workspace, attempt, repo, opts, changeset, tries)
@@ -492,14 +538,18 @@ defmodule SddOrchestrator.Projects do
           do: {:error, {:repository_already_linked, existing_project_for(workspace, repo)}},
           else: {:error, changeset}
 
+      # The binding boundary runs its own transaction; its rollback is caught
+      # there, so a refused binding still reaches this as an ordinary step
+      # failure and the whole registration rolls back with it.
       {:error, _step, reason, _changes} ->
         {:error, reason}
     end
   end
 
-  # One `Ecto.Multi`: insert the project, its canonical repository connection, and
-  # (for hosted storage) the storage row, then consume the attempt. Every step
-  # commits together or rolls back together.
+  # One `Ecto.Multi`: insert the project, its canonical repository connection,
+  # (for hosted storage) the storage row, and (for a hosted local repository) the
+  # worker binding, then consume the attempt. Every step commits together or
+  # rolls back together.
   defp build_and_run(workspace, attempt, repo, name) do
     {:ok, multi} =
       Multi.new()
@@ -510,23 +560,44 @@ defmodule SddOrchestrator.Projects do
           workspace_id: workspace.id,
           storage_mode: attempt.storage_mode,
           onboarding_attempt_id: attempt.id,
-          repository_provider: repo["provider"] || "github",
-          canonical_repository_id: to_string(repo["repository_id"])
+          repository_provider: repository_provider(repo),
+          canonical_repository_id: canonical_repository_id(repo)
         })
       )
-      |> Multi.insert(:connection, fn %{project: project} ->
-        RepositoryConnection.create_changeset(
-          %RepositoryConnection{},
-          connection_attrs(project, workspace, repo)
-        )
-      end)
+      |> prepare_connection(workspace, repo)
       |> prepare_storage(attempt)
 
     multi
     |> prepare_owner_profile(workspace, attempt)
+    |> prepare_binding(workspace, attempt, repo)
     |> Multi.update(:attempt, ProjectOnboardingAttempt.consume_changeset(attempt))
     |> Repo.transaction()
   end
+
+  # The worker that proved the repository is bound here, not after the commit, so
+  # a hosted local project never exists without the Mac that can reach its
+  # repository. The binding boundary rechecks both authorities itself; a refusal
+  # rolls the whole registration back. A hosted-origin (GitHub) project has no
+  # worker and gains no step.
+  defp prepare_binding(
+         multi,
+         workspace,
+         %{origin_kind: "device", storage_mode: "hosted"} = attempt,
+         %{"provider" => "local"} = repo
+       ) do
+    Multi.run(multi, :binding, fn _repo, %{project: project} ->
+      HostedLocalRepositoryBindings.put_validated_binding(
+        workspace,
+        project.id,
+        %DeviceWorkspace{id: attempt.device_workspace_id},
+        repo["worker_id"],
+        project.canonical_repository_id,
+        []
+      )
+    end)
+  end
+
+  defp prepare_binding(multi, _workspace, _attempt, _repo), do: multi
 
   # The owner's project display profile is part of the project, not a later
   # setup step: a project that committed without one would deny its own creator
@@ -540,6 +611,20 @@ defmodule SddOrchestrator.Projects do
   end
 
   defp prepare_owner_profile(multi, _workspace, _attempt), do: multi
+
+  # A local repository has no `RepositoryConnection`: that row is GitHub-shaped and
+  # requires a numeric provider repository id a local repository never has. The
+  # project's own portable `canonical_repository_id` is its repository link.
+  defp prepare_connection(multi, _workspace, %{"provider" => "local"}), do: multi
+
+  defp prepare_connection(multi, workspace, repo) do
+    Multi.insert(multi, :connection, fn %{project: project} ->
+      RepositoryConnection.create_changeset(
+        %RepositoryConnection{},
+        connection_attrs(project, workspace, repo)
+      )
+    end)
+  end
 
   # Hosted storage joins the transaction through the shared adapter contract.
   # Task 4 dispatches device registration to the worker-owned local transaction;
@@ -555,6 +640,30 @@ defmodule SddOrchestrator.Projects do
     do: ProjectStorage.available?(:device, attempt)
 
   defp storage_ready?(_), do: false
+
+  # A hosted local project is only reachable through the worker that proved its
+  # repository, so the selection has to name one. A selection that names none is
+  # refused before a transaction starts rather than committing a project no Mac
+  # can serve.
+  defp proving_worker?(%{
+         origin_kind: "device",
+         storage_mode: "hosted",
+         selected_repository: %{"provider" => "local"} = repo
+       }),
+       do: is_binary(repo["worker_id"])
+
+  defp proving_worker?(_attempt), do: true
+
+  # A device-origin attempt owns no hosted workspace, so it may only commit into
+  # the one its own verified sign-in proved. A hosted-origin attempt already owns
+  # its workspace and is unaffected.
+  defp proven_workspace?(
+         %PersonalWorkspace{id: workspace_id},
+         %{origin_kind: "device"} = attempt
+       ),
+       do: attempt.hosted_prerequisite_workspace_id == workspace_id
+
+  defp proven_workspace?(_workspace, _attempt), do: true
 
   defp registration_name(workspace, attempt, opts) do
     case Keyword.get(opts, :name) do
@@ -590,7 +699,7 @@ defmodule SddOrchestrator.Projects do
     query =
       from p in Project,
         where: p.onboarding_attempt_id == ^attempt.id and p.workspace_id == ^workspace_id,
-        preload: [:repository_connection, :hosted_storage]
+        preload: ^@registration_preloads
 
     case Repo.one(query) do
       nil -> {:error, :already_consumed}
@@ -599,8 +708,8 @@ defmodule SddOrchestrator.Projects do
   end
 
   defp existing_project_for(%PersonalWorkspace{id: workspace_id}, repo) do
-    provider = repo["provider"] || "github"
-    repository_id = to_string(repo["repository_id"])
+    provider = repository_provider(repo)
+    repository_id = canonical_repository_id(repo)
 
     Repo.one(
       from p in Project,
@@ -609,6 +718,15 @@ defmodule SddOrchestrator.Projects do
             p.canonical_repository_id == ^repository_id
     )
   end
+
+  defp repository_provider(repo), do: repo["provider"] || "github"
+
+  # A local repository is identified by the portable fingerprint the worker
+  # generated, because it has no provider-issued id. GitHub keeps its stable
+  # numeric repository id.
+  defp canonical_repository_id(%{"provider" => "local"} = repo), do: repo["fingerprint"]
+
+  defp canonical_repository_id(repo), do: to_string(repo["repository_id"])
 
   defp connection_attrs(project, workspace, repo) do
     %{
@@ -700,14 +818,21 @@ defmodule SddOrchestrator.Projects do
   end
 
   # The approved minimum local-repository metadata: provider, the non-reversible
-  # canonical fingerprint, and the display name. No path, remote URL, filename,
-  # Git history, or source content is stored.
+  # canonical fingerprint, and the display name. The worker id joins them only
+  # when the selection names one, because it is an internal reference to the
+  # worker that proved the repository rather than repository data. No path,
+  # remote URL, filename, Git history, or source content is stored.
   defp local_metadata(repository) do
-    %{
+    base = %{
       "provider" => "local",
       "fingerprint" => field(repository, :fingerprint),
       "name" => field(repository, :name)
     }
+
+    case field(repository, :worker_id) do
+      nil -> base
+      worker_id -> Map.put(base, "worker_id", worker_id)
+    end
   end
 
   # Persist only the approved metadata, with string keys for stable jsonb storage.

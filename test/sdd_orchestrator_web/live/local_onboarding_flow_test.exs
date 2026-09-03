@@ -16,16 +16,31 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
   request the worker answers, so every selection here is a click that waits and an
   answer that arrives a moment later. The scenarios are unchanged; they settle the
   page through `SddOrchestrator.SelectionSettling` rather than reading it once.
+
+  `specs/44-hosted-local-repository-projects` Task 4 adds the hosted half of the
+  same click path (AC-04): the person signs in at the storage step, chooses `In my
+  SDD Orchestrator account`, and gets a hosted project bound to the worker that
+  proved the repository. It also proves coexistence in both orders: a device
+  project and a hosted project for the same repository are separate projects with
+  their own storage mode, and creating one leaves the other untouched.
   """
   use SddOrchestratorWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
   import SddOrchestrator.SelectionSettling, only: [settle: 2]
 
+  alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.DeviceStore.Local
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Devices.PortableRepositoryIdentity
+  alias SddOrchestrator.HostedAccess.SessionCookie
+  alias SddOrchestrator.HostedAccessFixtures
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Projects
+  alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.ProjectsFixtures
+  alias SddOrchestrator.Repo
   alias SddOrchestratorWeb.RepositoryAssessmentLive
 
   setup do
@@ -173,6 +188,148 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
       assert has_element?(view2, "[data-step=selection] [data-duplicate]")
       refute has_element?(view2, "[data-selected-repository]")
       assert [^one] = Devices.list_projects()
+    end
+  end
+
+  # `specs/44-hosted-local-repository-projects` Task 4. The same path a person
+  # walks, up to the storage step where they sign in and choose to save the
+  # project to their account instead of to this Mac.
+  describe "full hosted local onboarding flow" do
+    test "pairs, selects, chooses hosted storage, confirms, and opens the hosted project", %{
+      conn: conn,
+      repo: repo,
+      workspace: workspace
+    } do
+      hosted = HostedAccessFixtures.verified_hosted_session_fixture()
+      stub_folder(repo)
+
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local")
+
+      view
+      |> form("[data-pairing-form]", pairing: %{code: "4K7Q-2P9X"})
+      |> render_submit()
+
+      assert has_element?(view, "[data-worker-status=detected]")
+
+      render_click(view, "continue_to_selection")
+      render_click(view, "select_folder")
+      settle(view, "data-selected-repository")
+      assert has_element?(view, "[data-repository-name]", Path.basename(repo))
+
+      # The storage step is where the account arrives. Nothing is created there.
+      review = proceed_to_hosted_review(conn, view, hosted)
+      assert Repo.aggregate(Project, :count) == 0
+
+      render_click(review, "toggle_disclosure")
+
+      review
+      |> form("[data-step=review] form", project: %{name: "Hosted Ledger"})
+      |> render_submit()
+
+      project = Repo.one!(Project)
+      assert_redirect(review, "/projects/#{project.id}")
+
+      # One hosted project, saved to the account this flow's own sign-in proved.
+      assert project.name == "Hosted Ledger"
+      assert project.workspace_id == hosted.personal_workspace.id
+      assert project.storage_mode == "hosted"
+      assert project.repository_provider == "local"
+
+      # Its repository link is the portable identity the worker generated, and it
+      # still proves this repository.
+      assert {:ok, _portable} = PortableRepositoryIdentity.parse(project.canonical_repository_id)
+      assert {:ok, true} = PortableRepositoryIdentity.match(repo, project.canonical_repository_id)
+
+      # The Mac that proved the repository is bound to the project.
+      binding = Repo.get_by!(HostedLocalRepositoryBinding, project_id: project.id)
+      assert [worker] = Pairing.active_workers(workspace.id)
+      assert binding.worker_id == worker.id
+
+      # A hosted project writes nothing to the device store.
+      assert Devices.list_projects() == []
+    end
+  end
+
+  # AC-04. Two projects for one repository: one saved to this Mac, one saved to an
+  # account. They are separate records with their own storage mode, and neither is
+  # merged, migrated, or changed when the other is created.
+  describe "a device project and a hosted project for the same repository" do
+    test "creating the device one after the hosted one leaves the hosted one untouched", %{
+      conn: conn,
+      repo: repo
+    } do
+      hosted = HostedAccessFixtures.verified_hosted_session_fixture()
+
+      # Hosted first, driven entirely through the click path.
+      {:ok, view, _html} = seed_detected_and_select(conn, repo)
+      hosted_review = proceed_to_hosted_review(conn, view, hosted)
+      render_click(hosted_review, "toggle_disclosure")
+
+      hosted_review
+      |> form("[data-step=review] form", project: %{name: "Ledger In Account"})
+      |> render_submit()
+
+      hosted_project = Repo.one!(Project)
+      assert_redirect(hosted_review)
+
+      # The hosted project lives in PostgreSQL, so the device store still holds
+      # nothing and this Mac sees the repository as unconnected. The device half
+      # therefore runs through the same click path too.
+      assert Devices.list_projects() == []
+
+      {:ok, second, _html} = seed_detected_and_select(conn, repo)
+      device_review = proceed_to_review(conn, second)
+      render_click(device_review, "toggle_disclosure")
+
+      device_review
+      |> form("[data-step=review] form", project: %{name: "Ledger On This Mac"})
+      |> render_submit()
+
+      assert_redirect(device_review)
+      assert [device_project] = Devices.list_projects()
+
+      assert_coexist(repo, hosted_project, device_project)
+
+      # The hosted project was not merged, migrated, or renamed by the second one.
+      reloaded = Repo.get!(Project, hosted_project.id)
+      assert reloaded == hosted_project
+    end
+
+    test "creating the hosted one after the device one leaves the device one untouched", %{
+      conn: conn,
+      repo: repo,
+      workspace: workspace
+    } do
+      # Device first, driven entirely through the click path.
+      {:ok, view, _html} = seed_detected_and_select(conn, repo)
+      device_review = proceed_to_review(conn, view)
+      render_click(device_review, "toggle_disclosure")
+
+      device_review
+      |> form("[data-step=review] form", project: %{name: "Ledger On This Mac"})
+      |> render_submit()
+
+      assert_redirect(device_review)
+      assert [device_project] = Devices.list_projects()
+
+      # This order cannot be driven through the screen: the worker compares the
+      # folder against the identities this Mac already holds, so a second
+      # selection is refused as a duplicate before it can reach the storage step.
+      # The hosted half therefore runs from the domain instead.
+      stub_folder(repo)
+      {:ok, blocked, _html} = live(conn, ~p"/onboarding/local")
+      render_click(blocked, "continue_to_selection")
+      render_click(blocked, "select_folder")
+      assert settle(blocked, "data-duplicate") =~ "already connected"
+
+      hosted_project = register_hosted_from_domain(workspace, repo, "Ledger In Account")
+
+      assert_coexist(repo, hosted_project, device_project)
+
+      # The device project was not merged, migrated, or reassigned by the hosted
+      # one: the same record, unchanged, is still the only one on this Mac.
+      assert {:ok, unchanged} = Devices.get_project(device_project.id)
+      assert unchanged == device_project
     end
   end
 
@@ -330,6 +487,68 @@ defmodule SddOrchestratorWeb.LocalOnboardingFlowTest do
     {:ok, review_view, _html} = live(conn, review_to)
     assert has_element?(review_view, "[data-step=review]")
     review_view
+  end
+
+  # The hosted sibling of `proceed_to_review/2`. Hosted storage becomes available
+  # only once the step records the workspace a verified sign-in proved, which it
+  # reads from the hosted session cookie on mount, so the step is opened on a
+  # signed-in connection.
+  defp proceed_to_hosted_review(conn, view, hosted) do
+    render_click(view, "continue_to_storage")
+    {storage_to, _flash} = assert_redirect(view)
+    assert storage_to =~ ~r"^/onboarding/local/storage/"
+
+    signed_in =
+      init_test_session(conn, %{SessionCookie.session_key() => hosted.session_cookie.value})
+
+    {:ok, storage_view, _html} = live(signed_in, storage_to)
+    storage_view |> element("#storage-hosted") |> render_click()
+    storage_view |> element("button[phx-click=continue]") |> render_click()
+    {review_to, _flash} = assert_redirect(storage_view)
+
+    {:ok, review_view, _html} = live(signed_in, review_to)
+    assert has_element?(review_view, "[data-step=review]")
+    review_view
+  end
+
+  # The hosted half of the coexistence check when the screen refuses to run it:
+  # the same worker, the same repository, and a fresh identity generated the way
+  # the worker generates one, committed through the real registration.
+  defp register_hosted_from_domain(workspace, repo, name) do
+    hosted = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+    {:ok, identity} = PortableRepositoryIdentity.generate(repo)
+    worker = ProjectsFixtures.attached_worker_fixture(workspace)
+
+    attempt =
+      ProjectsFixtures.device_attempt_ready_for_hosted(workspace, hosted,
+        repository: %{fingerprint: identity, name: Path.basename(repo)},
+        worker_id: worker.id
+      )
+
+    {:ok, project} = Projects.register_project(hosted, attempt, name: name)
+    project
+  end
+
+  # Two separate projects for one repository. Each keeps its own id, name, storage
+  # mode, and repository identity, and each identity still proves that same
+  # repository: independent connections get different identifiers by design.
+  defp assert_coexist(repo, hosted_project, device_project) do
+    assert hosted_project.id != device_project.id
+    assert hosted_project.storage_mode == "hosted"
+    assert device_project.storage_mode == "device"
+    assert hosted_project.name != device_project.name
+
+    refute device_project.repository_fingerprint == hosted_project.canonical_repository_id
+
+    assert {:ok, true} =
+             PortableRepositoryIdentity.match(repo, hosted_project.canonical_repository_id)
+
+    assert {:ok, true} =
+             PortableRepositoryIdentity.match(repo, device_project.repository_fingerprint)
+
+    # Neither store gained or lost a project behind the other's back.
+    assert Repo.aggregate(Project, :count) == 1
+    assert length(Devices.list_projects()) == 1
   end
 
   defp seed_detected_and_select(conn, repo) do

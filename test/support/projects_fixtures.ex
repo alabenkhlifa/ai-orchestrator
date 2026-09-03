@@ -4,6 +4,7 @@ defmodule SddOrchestrator.ProjectsFixtures do
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Accounts.Account
   alias SddOrchestrator.Accounts.DeviceWorkspace
+  alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.ProjectStorage.DeviceStorageReceipt
@@ -88,6 +89,72 @@ defmodule SddOrchestrator.ProjectsFixtures do
   def device_attempt_with_repository(device_workspace, repository \\ local_repository_metadata()) do
     {:ok, attempt} = Projects.start_device_onboarding_attempt(device_workspace)
     {:ok, attempt} = Projects.select_local_repository(device_workspace, attempt.id, repository)
+    attempt
+  end
+
+  @doc """
+  A worker paired to a device workspace that has never reported in, so discovery
+  never detects it. Named for the state the product shows: paired, with nothing
+  attached.
+  """
+  def unattached_worker_fixture(%DeviceWorkspace{id: device_workspace_id}) do
+    {:ok, %{code: code}} = Pairing.start_pairing(device_workspace_id)
+
+    {:ok, %{worker: worker}} =
+      Pairing.complete_pairing(code, %{
+        os_family: "macos",
+        os_major: "26",
+        app_version: "1.0.0",
+        protocol_version: "1"
+      })
+
+    worker
+  end
+
+  @doc "A paired worker that reported in just now, so discovery detects it."
+  def attached_worker_fixture(%DeviceWorkspace{} = device_workspace) do
+    {:ok, worker} = device_workspace |> unattached_worker_fixture() |> Pairing.mark_seen()
+    worker
+  end
+
+  @doc """
+  Starts a device-origin attempt ready for hosted registration: a local repository
+  is selected, hosted storage is chosen, and the given hosted workspace is proven
+  by sign-in. Pass `nil` as the hosted workspace to leave the prerequisite unproven.
+
+  Hosted registration binds the project to the worker that proved the repository,
+  so the selection names an available one by default. Pass `worker_id:` to name a
+  specific worker, or `worker_id: nil` to leave the selection without one.
+  """
+  def device_attempt_ready_for_hosted(device_workspace, hosted_workspace, opts \\ []) do
+    repository =
+      opts
+      |> Keyword.get(:repository, local_repository_metadata())
+      |> with_proving_worker(device_workspace, opts)
+
+    attempt =
+      device_workspace
+      |> device_attempt_with_repository(repository)
+      |> prove_hosted_prerequisite(device_workspace, hosted_workspace)
+
+    {:ok, attempt} = Projects.select_storage_mode(device_workspace, attempt.id, "hosted")
+    attempt
+  end
+
+  defp with_proving_worker(repository, device_workspace, opts) do
+    case Keyword.fetch(opts, :worker_id) do
+      {:ok, nil} -> repository
+      {:ok, worker_id} -> Map.put(repository, :worker_id, worker_id)
+      :error -> Map.put(repository, :worker_id, attached_worker_fixture(device_workspace).id)
+    end
+  end
+
+  defp prove_hosted_prerequisite(attempt, _device_workspace, nil), do: attempt
+
+  defp prove_hosted_prerequisite(attempt, device_workspace, hosted_workspace) do
+    {:ok, attempt} =
+      Projects.record_hosted_prerequisite(device_workspace, attempt.id, hosted_workspace)
+
     attempt
   end
 

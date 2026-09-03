@@ -65,8 +65,12 @@ test.describe("entry surface", () => {
   });
 
   test("a protected route redirects to the entry when unauthenticated", async ({ page }) => {
+    // The catalog takes either sign-in (specs/45), so it turns away a browser
+    // with neither carrying its own marker. The notice names no method, because
+    // the product cannot know which sign-in the person meant to use.
     await page.goto("/projects");
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/\?project_access=required$/);
+    await expect(page.getByText("Sign in to open your projects.")).toBeVisible();
     await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
   });
 
@@ -107,16 +111,22 @@ test.describe("entry surface", () => {
     // Participation settings expose project membership, so the route fails closed
     // for an unauthenticated browser. The authenticated owner scenarios run
     // deterministically in the LiveView proof until an e2e sign-in path exists.
+    // Participation fails closed to the catalog, which then turns an
+    // unauthenticated browser away to the entry surface with its marker.
     await page.goto("/projects/00000000-0000-0000-0000-000000000000/participation");
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/\?project_access=required$/);
     await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
   });
 
   test("the project dashboard route is protected when unauthenticated", async ({ page }) => {
     // A created project's dashboard is behind a valid session; the authenticated
     // end-to-end flow is carried by the integration task (Task 9).
+    // The dashboard takes either sign-in (specs/45), so it turns a browser with
+    // neither away carrying its own marker. The notice names no method, because
+    // the product cannot know which sign-in the person meant to use.
     await page.goto("/projects/00000000-0000-0000-0000-000000000000");
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/\?project_access=required$/);
+    await expect(page.getByText("Sign in to open your projects.")).toBeVisible();
     await expect(page.getByRole("link", { name: /Login with GitHub/i })).toBeVisible();
   });
 

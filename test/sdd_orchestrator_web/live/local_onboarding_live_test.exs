@@ -20,6 +20,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
   click renders a waiting state and the verdicts arrive a moment later, so those
   proofs settle the page through `SddOrchestrator.SelectionSettling` instead of
   reading it once.
+
+  `specs/44-hosted-local-repository-projects` Task 3 adds the review-step proofs
+  for both storage branches: a hosted attempt is created only on confirm, in the
+  account its own sign-in proved and bound to the worker that proved its
+  repository; every refusal writes nothing and keeps the choice usable; and the
+  accountless branch still commits to the device store with its own disclosure.
   """
   use SddOrchestratorWeb.ConnCase, async: false
 
@@ -38,7 +44,12 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     WorkerDiscovery
   }
 
+  alias SddOrchestrator.AccountsFixtures
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Projects
+  alias SddOrchestrator.Projects.Project
+  alias SddOrchestrator.ProjectsFixtures
+  alias SddOrchestrator.Repo
   alias SddOrchestratorWeb.RepositoryAssessmentLive
 
   # Shell-command shapes that would mean the user was asked to use a terminal.
@@ -607,7 +618,246 @@ defmodule SddOrchestratorWeb.LocalOnboardingLiveTest do
     end
   end
 
+  # `specs/44-hosted-local-repository-projects` Task 3. The storage step returns a
+  # hosted attempt to this screen, which is where the project is named, disclosed,
+  # confirmed, and only then created in the account the attempt's own sign-in
+  # proved. The screen holds no hosted session, so the account can only come from
+  # the attempt.
+  describe "a hosted attempt at the review step" do
+    setup %{workspace: workspace} do
+      hosted = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      %{hosted: hosted, device: workspace}
+    end
+
+    test "confirming creates one hosted project bound to the proving worker and opens it", %{
+      conn: conn,
+      hosted: hosted,
+      device: device
+    } do
+      worker = ProjectsFixtures.attached_worker_fixture(device)
+      repository = ProjectsFixtures.local_repository_metadata()
+
+      attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted,
+          repository: repository,
+          worker_id: worker.id
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[attempt: attempt.id]}")
+
+      # Arriving names nothing and creates nothing.
+      assert has_element?(view, "[data-step=review]")
+      assert Repo.aggregate(Project, :count) == 0
+
+      render_click(view, "toggle_disclosure")
+
+      view
+      |> form("[data-step=review] form", project: %{name: "Ledger"})
+      |> render_submit()
+
+      project = Repo.one!(Project)
+      assert project.workspace_id == hosted.id
+      assert project.name == "Ledger"
+      assert project.storage_mode == "hosted"
+      assert project.repository_provider == "local"
+      assert project.canonical_repository_id == repository.fingerprint
+
+      # The Mac that proved the repository is bound to it in the same commit.
+      binding = Repo.get_by!(HostedLocalRepositoryBinding, project_id: project.id)
+      assert binding.worker_id == worker.id
+
+      # Nothing was written to the device store, and the created project opens.
+      assert Devices.list_projects() == []
+      assert_redirect(view, "/projects/#{project.id}")
+    end
+
+    test "an attempt with no proven sign-in is refused and creates nothing", %{
+      conn: conn,
+      device: device
+    } do
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, nil)
+
+      view = confirm_hosted(conn, attempt, "Unproven")
+
+      assert render(view) =~ "The sign-in for this project wasn&#39;t recorded."
+      refute_nothing_created(view)
+    end
+
+    test "a worker that is no longer usable is refused in the one owned wording", %{
+      conn: conn,
+      hosted: hosted,
+      device: device
+    } do
+      # Paired but never attached, so no worker can serve this repository.
+      worker = ProjectsFixtures.unattached_worker_fixture(device)
+
+      attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted, worker_id: worker.id)
+
+      view = confirm_hosted(conn, attempt, "Unavailable")
+
+      assert render(view) =~ RepositoryAssessmentLive.worker_unavailable_message()
+      refute_nothing_created(view)
+    end
+
+    test "a selection naming no worker is refused with the same fact", %{
+      conn: conn,
+      hosted: hosted,
+      device: device
+    } do
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted, worker_id: nil)
+
+      view = confirm_hosted(conn, attempt, "Workerless")
+
+      assert render(view) =~ RepositoryAssessmentLive.worker_unavailable_message()
+      refute_nothing_created(view)
+    end
+
+    test "a name the account already uses is refused inline on the name field", %{
+      conn: conn,
+      hosted: hosted,
+      device: device
+    } do
+      ProjectsFixtures.project_fixture(hosted, name: "Taken")
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted)
+
+      view = confirm_hosted(conn, attempt, "Taken")
+
+      assert render(view) =~ "A project already uses this name. Choose another."
+      # The collision is the only project; the refused one was never created.
+      assert Repo.aggregate(Project, :count) == 1
+      assert has_element?(view, "[data-step=review]")
+      refute has_element?(view, "[data-create][disabled]")
+    end
+
+    test "a repository already saved to the account is refused and links to that project", %{
+      conn: conn,
+      hosted: hosted,
+      device: device
+    } do
+      repository = ProjectsFixtures.local_repository_metadata()
+
+      first =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted, repository: repository)
+
+      {:ok, existing} = Projects.register_project(hosted, first, name: "Ledger")
+
+      second =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted, repository: repository)
+
+      view = confirm_hosted(conn, second, "Ledger again")
+
+      html = render(view)
+      assert html =~ "This repository is already saved to your account as"
+      assert html =~ "Ledger"
+      assert has_element?(view, "[data-duplicate] a[href='/projects/#{existing.id}']")
+
+      # The device path's wording names a place this project does not live.
+      refute html =~ "One repository can only be one project."
+      assert Repo.aggregate(Project, :count) == 1
+      refute has_element?(view, "[data-create][disabled]")
+    end
+
+    test "Back returns to the storage step so the choice stays available", %{
+      conn: conn,
+      hosted: hosted,
+      device: device
+    } do
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted)
+
+      {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[attempt: attempt.id]}")
+      render_click(view, "back_to_selection")
+
+      assert_redirect(view, "/onboarding/local/storage/#{attempt.id}")
+    end
+
+    test "the disclosure states the account, never that the project has none", %{
+      conn: conn,
+      hosted: hosted,
+      device: device
+    } do
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device, hosted)
+
+      {:ok, _view, html} = live(conn, ~p"/onboarding/local?#{[attempt: attempt.id]}")
+
+      refute html =~ "This project has no account"
+      refute html =~ "project history can&#39;t be recovered without a previous export"
+      assert html =~ "This project is saved to your account"
+      assert html =~ "Your project work is saved to your SDD Orchestrator account."
+      assert html =~ "devices you sign in on."
+      assert html =~ "The repository itself stays on this Mac"
+
+      # The facts that hold for both branches are unchanged.
+      assert html =~ "never leave this computer"
+      assert html =~ "versioned scrambled repository"
+    end
+  end
+
+  # The accountless branch is unchanged by the hosted one: it still commits to the
+  # device store and still reads the accountless disclosure.
+  describe "an on-device attempt at the review step" do
+    test "confirming registers the on-device project and opens its device dashboard", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      attempt = device_ready_attempt(workspace)
+
+      {:ok, view, html} = live(conn, ~p"/onboarding/local?#{[attempt: attempt.id]}")
+      assert html =~ "This project has no account"
+
+      render_click(view, "toggle_disclosure")
+
+      view
+      |> form("[data-step=review] form", project: %{name: "On This Mac"})
+      |> render_submit()
+
+      assert [project] = Devices.list_projects()
+      assert project.name == "On This Mac"
+      assert project.storage_mode == "device"
+      assert Repo.aggregate(Project, :count) == 0
+      assert_redirect(view, "/local/projects/#{project.id}")
+    end
+  end
+
   # ---- helpers ----
+
+  # Confirms a hosted attempt with a name: open the review step the storage step
+  # returns to, accept the disclosure, and submit.
+  defp confirm_hosted(conn, attempt, name) do
+    {:ok, view, _html} = live(conn, ~p"/onboarding/local?#{[attempt: attempt.id]}")
+    assert has_element?(view, "[data-step=review]")
+    render_click(view, "toggle_disclosure")
+
+    view
+    |> form("[data-step=review] form", project: %{name: name})
+    |> render_submit()
+
+    view
+  end
+
+  # A refused hosted create writes nothing and leaves the choice usable.
+  defp refute_nothing_created(view) do
+    assert Repo.aggregate(Project, :count) == 0
+    assert Devices.list_projects() == []
+    assert has_element?(view, "[data-step=review]")
+    refute has_element?(view, "[data-create][disabled]")
+  end
+
+  # A device-origin attempt that chose on-device storage, with the readiness
+  # receipt the storage step records before the choice becomes available.
+  defp device_ready_attempt(workspace) do
+    attempt = ProjectsFixtures.device_attempt_with_repository(workspace)
+
+    {:ok, attempt} =
+      Projects.record_device_receipt(
+        workspace,
+        attempt.id,
+        ProjectsFixtures.device_receipt(attempt)
+      )
+
+    {:ok, attempt} = Projects.select_storage_mode(workspace, attempt.id, "device")
+    attempt
+  end
 
   # The request this screen is waiting on. A test that drives an outcome has to
   # name the same request, because an outcome for any other one is ignored.

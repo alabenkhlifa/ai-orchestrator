@@ -27,6 +27,7 @@ A signed-in person can connect a Git repository on their Mac and save the projec
 - Folder selection and repository proving on the worker, delivered by `specs/40-worker-repository-selection/` and `specs/02-local-project-onboarding/`.
 - Reconnecting, disconnecting, or moving an existing hosted project to another Mac, delivered by `specs/37-hosted-local-repository-connection/`.
 - Moving a project between storage modes in either direction. `specs/05-project-storage-lifecycle/` defers migration to its own child specification, and this slice creates a new project rather than moving one.
+- Recognising that two separately selected folders are the same repository. Each selection generates its own identity, and the selection step runs before sign-in, so it holds no account to compare against.
 - The accountless on-device path, which stays exactly as it is.
 - Anything the hosted project can then do, including features, readiness, and runs.
 
@@ -46,7 +47,8 @@ A signed-in person can connect a Git repository on their Mac and save the projec
 - The binding names the worker that proved the repository during this selection. A different worker cannot be substituted, and the binding is never created for a repository the worker did not prove.
 - A device project and a hosted project may link to the same repository and stay separate, as `specs/02-local-project-onboarding/` and `specs/05-project-storage-lifecycle/` already require. Creating one never merges, migrates, reassigns, uploads, deletes, or changes the storage mode of the other.
 - Hosted storage requires a signed-in identity. Without one the choice stays unavailable and explains what is missing, which `specs/05-project-storage-lifecycle/` already defines.
-- Creation is refused when the same account already holds a hosted project for that repository, and the person is pointed at the project they already have.
+- Creation is refused when the account already holds a hosted project for the repository identity the confirmed attempt names, and the person is pointed at the project they already have.
+- Each folder selection generates its own repository identity, so selecting one repository twice produces two hosted projects. That is the accepted consequence of identities that carry no global repository-equality signal.
 - The repository is never written to, and no repository source leaves the Mac.
 
 ## Acceptance Criteria
@@ -55,7 +57,7 @@ A signed-in person can connect a Git repository on their Mac and save the projec
 - [AC-02] Given that creation succeeds, when the project is inspected, then it is bound to the worker that proved the repository during this selection, and the project's dashboard shows the repository, the hosted storage mode, and the worker as connected.
 - [AC-03] Given any part of the creation fails, when the operation ends, then no project, repository connection, storage mode, or worker binding remains, the repository is unchanged, and the storage choice is still available with the reason shown.
 - [AC-04] Given the person already has a device project for the same repository, when they create a hosted one, then both exist as separate projects with their own storage mode, and neither is merged, migrated, or changed.
-- [AC-05] Given the account already holds a hosted project for that repository, when the person tries to create another, then creation is refused and they are pointed at the project they already have.
+- [AC-05] Given the account already holds a hosted project for the repository identity the confirmed attempt names, when the person tries to create another, then creation is refused and they are pointed at the project they already have.
 - [AC-06] Given the hosted project's stored records and logs are inspected, when the review runs, then no repository path, remote, history, file name, or source content is present, and the repository identity is the portable value the worker generated.
 
 ## Open Questions

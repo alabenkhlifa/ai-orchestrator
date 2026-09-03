@@ -10,9 +10,16 @@ defmodule SddOrchestrator.ProjectRegistrationTest do
   constraint with duplicate-repository feedback, hosted storage, rejection of
   device rows in hosted persistence, idempotent retry, rollback with no partial
   records, and stable identities.
+
+  Also covers hosted registration from a device-origin attempt: the proven hosted
+  workspace comes from the attempt, the project carries the portable local
+  fingerprint, no GitHub-shaped connection row is written, and the worker that
+  proved the repository is bound in the same transaction or nothing is created.
   """
   use SddOrchestrator.DataCase, async: true
 
+  alias SddOrchestrator.Participation.ProjectMemberProfile
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Projects
   alias SddOrchestrator.Projects.{Project, ProjectOnboardingAttempt, RepositoryConnection}
   alias SddOrchestrator.ProjectStorage.HostedProjectStorage
@@ -257,6 +264,223 @@ defmodule SddOrchestrator.ProjectRegistrationTest do
 
       only_repo = ProjectsFixtures.attempt_with_repository(workspace)
       assert {:error, :storage_mode_required} = Projects.register_project(workspace, only_repo)
+    end
+  end
+
+  describe "register_project/3 — device-origin hosted attempt" do
+    setup %{workspace: workspace} do
+      %{device_workspace: ProjectsFixtures.device_workspace_fixture(), workspace: workspace}
+    end
+
+    test "commits a hosted project carrying the portable identity and no connection", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      repository = ProjectsFixtures.local_repository_metadata()
+
+      attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace,
+          repository: repository
+        )
+
+      assert {:ok, project} = Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(Project, :count) == 1
+      assert Repo.aggregate(HostedProjectStorage, :count) == 1
+      assert Repo.aggregate(RepositoryConnection, :count) == 0
+
+      assert project.workspace_id == workspace.id
+      assert project.name == "local-example"
+      assert project.storage_mode == "hosted"
+      assert project.repository_provider == "local"
+      assert project.canonical_repository_id == repository.fingerprint
+      assert project.repository_connection == nil
+      assert project.hosted_storage.root == "hosted/" <> project.id
+    end
+
+    test "consumes the attempt and resolves a retry to the same project", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace)
+
+      {:ok, first} = Projects.register_project(workspace, attempt)
+
+      consumed = Repo.get!(ProjectOnboardingAttempt, attempt.id)
+      assert consumed.status == "completed"
+      assert consumed.consumed_at
+
+      assert {:ok, second} = Projects.register_project(workspace, consumed)
+      assert second.id == first.id
+      assert Repo.aggregate(Project, :count) == 1
+    end
+
+    test "refuses an attempt with no proven hosted workspace and creates nothing", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, nil)
+
+      assert {:error, :hosted_prerequisite_required} =
+               Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(Project, :count) == 0
+      assert Repo.aggregate(HostedProjectStorage, :count) == 0
+    end
+
+    test "refuses a workspace the attempt never proved and creates nothing", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      other = ProjectsFixtures.workspace_fixture(AccountsFixtures.account_fixture())
+      attempt = ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, other)
+
+      assert {:error, :hosted_prerequisite_required} =
+               Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(Project, :count) == 0
+      assert Repo.aggregate(HostedProjectStorage, :count) == 0
+    end
+
+    test "blocks a second attempt for the same repository and identifies the project", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      repository = ProjectsFixtures.local_repository_metadata()
+
+      first_attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace,
+          repository: repository
+        )
+
+      {:ok, existing} = Projects.register_project(workspace, first_attempt)
+
+      retry =
+        ProjectsFixtures.device_attempt_ready_for_hosted(
+          ProjectsFixtures.device_workspace_fixture(),
+          workspace,
+          repository: repository
+        )
+
+      assert {:error, {:repository_already_linked, project}} =
+               Projects.register_project(workspace, retry)
+
+      assert project.id == existing.id
+      assert Repo.aggregate(Project, :count) == 1
+    end
+
+    test "a hosted-origin attempt still creates its repository connection", %{
+      workspace: workspace
+    } do
+      attempt = ProjectsFixtures.attempt_ready(workspace)
+
+      assert {:ok, project} = Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(RepositoryConnection, :count) == 1
+      assert project.repository_connection.provider == "github"
+      assert project.repository_connection.provider_repository_id == 101
+      assert project.repository_provider == "github"
+      assert project.canonical_repository_id == "101"
+    end
+  end
+
+  describe "register_project/3 — proving-worker binding" do
+    setup %{workspace: workspace} do
+      %{device_workspace: ProjectsFixtures.device_workspace_fixture(), workspace: workspace}
+    end
+
+    test "binds the created project to the worker the attempt recorded", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      worker = ProjectsFixtures.attached_worker_fixture(device_workspace)
+
+      attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace,
+          worker_id: worker.id
+        )
+
+      assert {:ok, project} = Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(HostedLocalRepositoryBinding, :count) == 1
+      binding = Repo.get_by!(HostedLocalRepositoryBinding, project_id: project.id)
+      assert binding.worker_id == worker.id
+      assert binding.last_validated_at
+
+      # The caller can read the binding off the returned project.
+      assert project.hosted_local_repository_binding.worker_id == worker.id
+    end
+
+    test "a worker that is no longer usable refuses the whole creation", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      # Paired but never seen, so `WorkerDiscovery.status/2` is not `:detected`.
+      worker = ProjectsFixtures.unattached_worker_fixture(device_workspace)
+
+      attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace,
+          worker_id: worker.id
+        )
+
+      assert {:error, :worker_unavailable} = Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(Project, :count) == 0
+      assert Repo.aggregate(HostedProjectStorage, :count) == 0
+      assert Repo.aggregate(HostedLocalRepositoryBinding, :count) == 0
+      assert Repo.aggregate(ProjectMemberProfile, :count) == 0
+
+      # The attempt is left unconsumed, so the person can try again.
+      reloaded = Repo.get!(ProjectOnboardingAttempt, attempt.id)
+      assert is_nil(reloaded.consumed_at)
+      refute reloaded.status == "completed"
+    end
+
+    test "an attempt naming no worker creates nothing", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace,
+          worker_id: nil
+        )
+
+      assert {:error, :proving_worker_required} = Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(Project, :count) == 0
+      assert Repo.aggregate(HostedProjectStorage, :count) == 0
+      assert Repo.aggregate(HostedLocalRepositoryBinding, :count) == 0
+      assert is_nil(Repo.get!(ProjectOnboardingAttempt, attempt.id).consumed_at)
+    end
+
+    test "binds the recorded worker, not another attached to the same device", %{
+      workspace: workspace,
+      device_workspace: device_workspace
+    } do
+      proving = ProjectsFixtures.attached_worker_fixture(device_workspace)
+      other = ProjectsFixtures.attached_worker_fixture(device_workspace)
+
+      attempt =
+        ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace,
+          worker_id: proving.id
+        )
+
+      assert {:ok, project} = Projects.register_project(workspace, attempt)
+
+      binding = Repo.get_by!(HostedLocalRepositoryBinding, project_id: project.id)
+      assert binding.worker_id == proving.id
+      refute binding.worker_id == other.id
+    end
+
+    test "a hosted-origin attempt creates no binding", %{workspace: workspace} do
+      attempt = ProjectsFixtures.attempt_ready(workspace)
+
+      assert {:ok, project} = Projects.register_project(workspace, attempt)
+
+      assert Repo.aggregate(HostedLocalRepositoryBinding, :count) == 0
+      assert is_nil(project.hosted_local_repository_binding)
+      assert Repo.aggregate(RepositoryConnection, :count) == 1
+      assert Repo.aggregate(HostedProjectStorage, :count) == 1
     end
   end
 

@@ -3,9 +3,30 @@ defmodule SddOrchestratorWeb.EntryLive do
   The unauthenticated entry surface. Presents exactly two distinct primary
   actions — `Login with GitHub` and `Work without GitHub` — and, on return from
   a cancelled or failed GitHub authorization, an actionable recovery state with
-  retry. A valid session never reaches here (see `:redirect_if_authenticated`).
+  retry. Neither a valid application session nor a valid hosted session reaches
+  here: both are sent to the project list by the live session's hooks.
   """
   use SddOrchestratorWeb, :live_view
+
+  alias SddOrchestratorWeb.HostedUserAuth
+
+  @doc """
+  `on_mount(:redirect_if_hosted_authenticated, ...)` sends a valid hosted
+  session to the project list, the same destination an application session
+  already gets.
+
+  It runs after `UserAuth`'s `:redirect_if_authenticated` in the live session,
+  so the application session still wins and this only ever sees a browser
+  without one. Without it a passwordless owner who returns days later lands on
+  the chooser with no route back to projects they already own.
+  """
+  def on_mount(:redirect_if_hosted_authenticated, _params, session, socket) do
+    if HostedUserAuth.hosted_access_from_session(session) do
+      {:halt, redirect(socket, to: ~p"/projects")}
+    else
+      {:cont, socket}
+    end
+  end
 
   @impl true
   def mount(_params, _session, socket) do
@@ -17,12 +38,21 @@ defmodule SddOrchestratorWeb.EntryLive do
     {:noreply,
      socket
      |> assign(:auth_state, auth_state(params["auth"]))
-     |> assign(:hosted_notice, hosted_notice(params["hosted_access"]))}
+     |> assign(:notice, notice_for(params))}
   end
 
   defp auth_state("cancelled"), do: :cancelled
   defp auth_state("failed"), do: :failed
   defp auth_state(_), do: :idle
+
+  # Two gates turn a person away to here, and they cannot share one sentence. A
+  # hosted-only screen knows the sign-in the person needs. A project screen
+  # takes either sign-in, so it names none.
+  defp notice_for(%{"project_access" => "required"}),
+    do: {:warn, "Sign in to open your projects."}
+
+  defp notice_for(%{"hosted_access" => state}), do: hosted_notice(state)
+  defp notice_for(_params), do: nil
 
   defp hosted_notice("required"),
     do: {:warn, "Verify your email before opening hosted project data."}
@@ -63,11 +93,11 @@ defmodule SddOrchestratorWeb.EntryLive do
         </p>
 
         <.notice
-          :if={@hosted_notice}
-          variant={elem(@hosted_notice, 0) |> Atom.to_string()}
+          :if={@notice}
+          variant={elem(@notice, 0) |> Atom.to_string()}
           class="mt-5 w-full max-w-lg text-left"
         >
-          {elem(@hosted_notice, 1)}
+          {elem(@notice, 1)}
         </.notice>
 
         <p class="mt-5 max-w-md text-[13px] leading-relaxed text-ink-muted">

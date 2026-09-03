@@ -125,9 +125,14 @@ defmodule SddOrchestratorWeb.Router do
     # outcomes are a redirect to a destination that authorizes itself.
     get "/projects/:id", ProjectLandingController, :show
 
-    # Unauthenticated entry chooser; a valid session is sent to the catalog.
+    # Unauthenticated entry chooser; either sign-in is sent to the catalog. The
+    # application session is resolved first so it wins when a browser carries
+    # both, matching the order `ActingIdentity` uses on the catalog itself.
     live_session :redirect_if_authenticated,
-      on_mount: [{SddOrchestratorWeb.UserAuth, :redirect_if_authenticated}] do
+      on_mount: [
+        {SddOrchestratorWeb.UserAuth, :redirect_if_authenticated},
+        {SddOrchestratorWeb.EntryLive, :redirect_if_hosted_authenticated}
+      ] do
       live "/", EntryLive
     end
 
@@ -187,13 +192,22 @@ defmodule SddOrchestratorWeb.Router do
       live "/projects/:id/kit", RepositoryKitOfferLive
     end
 
+    # The screens an owner reaches for their own projects. A project is owned by
+    # an account, and the passwordless sign-in issues a credential for the same
+    # account the GitHub one does, so either session opens them. The acting
+    # account is resolved once here and every query stays scoped to its personal
+    # workspace, which remains the only authorization.
+    live_session :project_access,
+      on_mount: [{SddOrchestratorWeb.ActingIdentity, :require_acting_identity}] do
+      live "/projects", ProjectsLive
+      live "/projects/:id/overview", ProjectDashboardLive
+    end
+
     # Protected surfaces require a valid application session.
     live_session :authenticated,
       on_mount: [{SddOrchestratorWeb.UserAuth, :require_authenticated}] do
-      live "/projects", ProjectsLive
       live "/ai-connections", AIConnectionsLive
       live "/repository-kits", RepositoryKitsLive
-      live "/projects/:id/overview", ProjectDashboardLive
       live "/projects/:id/backup", ProjectBackupLive, :hosted
       live "/onboarding/repository-access/:attempt_id", RepositoryAccessLive
       live "/onboarding/storage/:attempt_id", StorageSelectionLive

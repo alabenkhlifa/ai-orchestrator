@@ -18,6 +18,19 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   Mount is workspace-scoped: an unknown, malformed, or cross-workspace project id
   routes back to the catalog so a foreign project is never rendered.
 
+  The account it acts as comes from `SddOrchestratorWeb.ActingIdentity`, so a
+  person signed in only through the passwordless email link opens the projects
+  their account owns (specs/45 Task 2). The screen never picks a credential
+  itself, and the workspace scoping above is still the only authorization.
+
+  The GitHub connection presentation is keyed on the project having a repository
+  connection (specs/45 Task 6): the status badge, the access-lost notice with
+  `Check again`, and the `Repository` row all render only when `@connection` is
+  present. A hosted project whose repository is a local Git repository has no
+  connection row, so those three would report a lost GitHub repository the
+  project never had. The machine region below is the one place that states where
+  such a repository is and whether that Mac is reachable.
+
   A project whose repository is a local Git repository also shows its worker
   connection state (specs/37 Task 3): connected, temporarily unavailable, or not
   connected. That state is derived on read through
@@ -49,10 +62,19 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   failed replacement leaves the previous machine authoritative. Disconnect
   removes the routing only and is idempotent; the project, its specifications,
   and its repository are untouched.
+
+  The screen's own controls follow the acting account's GitHub identity
+  (specs/45 Task 7), the same way the catalog's do: a control is offered only
+  when the acting session can open what it leads to, and sign-out ends the
+  session that person actually holds. Only the GitHub sign-in issues the
+  application session, so an account with no GitHub identity signs out through
+  `SddOrchestratorWeb.SessionControls.sign_out_path/1` and is offered no backup,
+  which stays behind that session.
   """
   use SddOrchestratorWeb, :live_view
 
   import SddOrchestratorWeb.ConnectionStatus
+  import SddOrchestratorWeb.SessionControls
 
   alias SddOrchestrator.Accounts
   alias SddOrchestrator.Devices
@@ -74,8 +96,8 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
 
   @impl true
   def mount(%{"id" => project_id}, _session, socket) do
-    account = socket.assigns.current_account
-    workspace = Accounts.get_or_create_personal_workspace(account)
+    account = socket.assigns.acting_account
+    workspace = socket.assigns.acting_workspace
 
     case Connections.project(account, workspace, project_id, revalidate: connected?(socket)) do
       nil ->
@@ -90,6 +112,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
          |> assign(:name_error, nil)
          |> assign(:rename_saved?, false)
          |> assign(:actor, %{account_id: account.id, hosted_identity_id: nil})
+         |> assign(:identity, Accounts.get_github_identity(account.id))
          |> reset_connect()
          |> assign_worker_connection()}
     end
@@ -153,7 +176,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
   def handle_event("recheck", _params, socket) do
     entry =
       Connections.project(
-        socket.assigns.current_account,
+        socket.assigns.acting_account,
         socket.assigns.workspace,
         socket.assigns.project.id,
         revalidate: true
@@ -527,7 +550,9 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
         <.button variant="secondary" size="sm" navigate={~p"/projects"}>
           <.lucide name="arrow-left" class="size-4" /> Projects
         </.button>
-        <.button variant="secondary" size="sm" href={~p"/auth/sign_out"} method="delete">
+        <%!-- One `Sign out` label, and only the target follows the session the
+        person holds. --%>
+        <.button variant="secondary" size="sm" href={sign_out_path(@identity)} method="delete">
           <.lucide name="log-out" class="size-4" /> Sign out
         </.button>
       </:actions>
@@ -550,7 +575,7 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           id={"project-assistant-" <> @project.id}
           project_id={@project.id}
           actor={@actor}
-          account={@current_account}
+          account={@acting_account}
         />
 
         <div class="flex items-start justify-between gap-3">
@@ -558,10 +583,14 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
             <h1 class="text-xl font-bold text-ink truncate" data-project-name>{@project.name}</h1>
             <p class="mt-1 text-sm text-ink-muted">Your project is ready.</p>
           </div>
-          <.connection_badge status={@status} class="flex-none" />
+          <%!-- The badge and the two notices below report GitHub access, so they
+          render only for a project that has a repository connection. Without one
+          there is no GitHub access to report, and `@status` is `:disconnected`
+          for the absence of a connection rather than for lost access. --%>
+          <.connection_badge :if={@connection} status={@status} class="flex-none" />
         </div>
 
-        <div :if={@status == :disconnected} data-disconnected class="mt-4">
+        <div :if={@connection && @status == :disconnected} data-disconnected class="mt-4">
           <.notice variant="warn" icon="unplug">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>
@@ -581,7 +610,11 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           </.notice>
         </div>
 
-        <div :if={@status == :temporarily_unavailable} data-unavailable class="mt-4">
+        <div
+          :if={@connection && @status == :temporarily_unavailable}
+          data-unavailable
+          class="mt-4"
+        >
           <.notice variant="info" icon="refresh-cw">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span>
@@ -743,11 +776,13 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
         </div>
 
         <dl class="mt-6 flex flex-col gap-3">
-          <div class="rounded-lg border border-line bg-surface p-3.5">
+          <%!-- The row names a GitHub repository, so it renders only when there
+          is one. A project with no connection had an empty labelled row. --%>
+          <div :if={@connection} class="rounded-lg border border-line bg-surface p-3.5">
             <dt class="flex items-center gap-2 text-[13px] font-semibold text-ink-muted">
               <.lucide name="github" class="size-4" /> Repository
             </dt>
-            <dd :if={@connection} class="mt-1.5 text-sm font-semibold text-ink" data-repository>
+            <dd class="mt-1.5 text-sm font-semibold text-ink" data-repository>
               {@connection.full_name || @connection.name}
             </dd>
           </div>
@@ -787,7 +822,12 @@ defmodule SddOrchestratorWeb.ProjectDashboardLive do
           </div>
         </form>
 
-        <div class="mt-6 rounded-lg border border-line bg-surface p-4">
+        <%!-- The backup screen stays behind the application session, which only
+        the GitHub sign-in issues. The section exists to carry that one control,
+        and its heading and sentence promise the download it opens, so an
+        account with no GitHub identity is offered neither rather than a
+        promise it cannot follow. --%>
+        <div :if={@identity} class="mt-6 rounded-lg border border-line bg-surface p-4">
           <p class="text-[13px] font-semibold text-ink">Back up this project</p>
           <p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
             Download an encrypted package containing this project's identity, repository identity,
