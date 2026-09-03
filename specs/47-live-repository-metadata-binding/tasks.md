@@ -93,7 +93,7 @@ Traceability:
   - Proof: Focused lifecycle tests prove one outcome per request, that an unknown, foreign, cancelled, or expired answer changes nothing, that a lost attachment ends the wait, and that no path, remote, or file name appears in a record or a log line.
   - Delivered: `RepositoryMetadata.inspect/2` blocks its caller — the outer `GenServer.call/3` is given `:infinity`, and `RepositoryMetadata.Server` owns the actual expiry through its own timer, replying via `GenServer.reply/2` exactly once from whichever path settles the request (a worker's `MetadataAnswer`, the worker's channel going down, the requester going down, or the expiry timer). `answer/2`, `MetadataRequest`, `MetadataAnswer` (strict allowlisted-key parsing, mirroring `SelectionResult`), and `Transport`/`Transport.Unavailable` complete the lifecycle. No `cancel/1`: the calling process is expected to be a supervised task, and its own exit is the cancellation path. `SddOrchestrator.RepositoryMetadata.Server` added to the application's supervision tree beside `RepositorySelection.Server`.
 
-- [ ] Task 3 — Carry the question and its answer over the Mac-scoped attachment.
+- [x] Task 3 — Carry the question and its answer over the Mac-scoped attachment.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 2
@@ -101,6 +101,7 @@ Traceability:
   - Owned surfaces: `RepositoryMetadata.Transport.Attachment`, its codec, and the `WorkerWorkspaceChannel` outbound push pair and inbound result frame.
   - Owns: AC-05
   - Proof: Focused transport and channel tests prove the question reaches the named capable worker, that an unattached worker is refused before anything is pushed, that a worker without the capability is refused as needing an update, and that the payload is closed to its declared fields.
+  - Delivered: `RepositoryMetadata.Transport.Attachment` and `AttachmentCodec` mirror the `repository_selection` precedent exactly (closed six-key request, one-key cancellation, seven-key allowlisted answer decode matching `MetadataAnswer.@keys`). `WorkerWorkspaceChannel` gains `handle_in("repository_metadata_result", ...)` and the two outbound `handle_info` clauses, purely additive beside the unchanged `repository_selection` handling. `repository_metadata` was already a negotiated capability from Task 1; this task adds no new capability name.
 
 - [x] Task 4 — Let the Mac's panel owner answer a chosen folder to an in-release caller.
   - Size: Standard

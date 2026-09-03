@@ -12,13 +12,16 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
   This channel carries no command delivery, no acknowledgements, no events, no
   heartbeats, and no reconciliation. It exists so the control plane knows this
   Mac's worker is live, which is a question every dashboard already asks of a
-  worker that has joined no project. It carries exactly one request and answer
-  pair beyond that: a `repository_selection` push asks the worker to open its
+  worker that has joined no project. It carries exactly two request and answer
+  pairs beyond that: a `repository_selection` push asks the worker to open its
   folder picker, and a `repository_selection_result` frame brings back which
-  identities matched and the folder's own name. That is not execution. The
-  worker shows a panel and reports identities, and anything a worker may
-  actually execute still stays on the project-scoped `worker:` topic, where a
-  project-scoped credential is what authorizes it.
+  identities matched and the folder's own name. A `repository_metadata` push
+  asks the worker to read the repository at a chosen root, and a
+  `repository_metadata_result` frame brings back its identity, root, and
+  commit. That is not execution. The worker shows a panel and reports
+  identities, and anything a worker may actually execute still stays on the
+  project-scoped `worker:` topic, where a project-scoped credential is what
+  authorizes it.
 
   It also carries the `project_bound` and `project_unbound` notices, which name
   a project id and nothing else. They are not delivery either. A notice tells
@@ -42,6 +45,8 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
   alias SddOrchestrator.Delivery.BoundProjectNotice
   alias SddOrchestrator.Delivery.WorkerAttachment
   alias SddOrchestrator.Delivery.WorkerProtocol
+  alias SddOrchestrator.RepositoryMetadata
+  alias SddOrchestrator.RepositoryMetadata.AttachmentCodec, as: MetadataAttachmentCodec
   alias SddOrchestrator.RepositorySelection
   alias SddOrchestrator.RepositorySelection.AttachmentCodec
 
@@ -71,6 +76,13 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
     end
   end
 
+  def handle_in("repository_metadata_result", payload, socket) do
+    case answer_metadata(payload, socket) do
+      :ok -> {:reply, :ok, socket}
+      {:error, reason} -> {:reply, {:error, %{reason: to_string(reason)}}, socket}
+    end
+  end
+
   def handle_in(_event, _payload, socket),
     do: {:reply, {:error, %{reason: "unsupported_message"}}, socket}
 
@@ -82,6 +94,16 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
 
   def handle_info({:repository_selection_cancel, payload}, socket) do
     push(socket, "repository_selection_cancel", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:repository_metadata, payload}, socket) do
+    push(socket, "repository_metadata", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:repository_metadata_cancel, payload}, socket) do
+    push(socket, "repository_metadata_cancel", payload)
     {:noreply, socket}
   end
 
@@ -104,6 +126,13 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannel do
   defp answer(payload, socket) do
     case AttachmentCodec.decode_result(payload) do
       {:ok, attrs} -> RepositorySelection.answer(attachment(socket), attrs)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp answer_metadata(payload, socket) do
+    case MetadataAttachmentCodec.decode_result(payload) do
+      {:ok, attrs} -> RepositoryMetadata.answer(attachment(socket), attrs)
       {:error, reason} -> {:error, reason}
     end
   end

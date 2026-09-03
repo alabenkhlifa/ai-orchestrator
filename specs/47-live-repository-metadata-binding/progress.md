@@ -1,5 +1,13 @@
 # Live Repository Metadata Binding Progress Log
 
+### 2026-09-03 - Task 3 complete: a metadata question now reaches a real attached worker
+
+- `RepositoryMetadata.Transport.Attachment` and `RepositoryMetadata.AttachmentCodec` mirror `RepositorySelection`'s own attachment transport and codec exactly: the same `WorkerAttachment` registry lookup keyed by device workspace then filtered by `worker_id`, the same three-way refusal (`:no_worker`, `:worker_needs_update`, `:transport_error`), the same closed-key encode/decode boundary. The outbound request carries exactly six fields (`request_id`, `selection_ref`, `repository_provider`, `repository_id`, `selected_root`, `expires_at`); the inbound answer is allowlisted to exactly the seven keys `MetadataAnswer.@keys` already accepts, so the codec's outer boundary and `MetadataAnswer.new/1`'s inner boundary agree by construction.
+- `WorkerWorkspaceChannel` gains `handle_in("repository_metadata_result", ...)` and outbound `handle_info` clauses for `:repository_metadata` and `:repository_metadata_cancel`, purely additive beside the unchanged `repository_selection` handling; the moduledoc now says the channel carries two request-and-answer pairs instead of one.
+- Nothing on the worker side understands these messages yet — that is the next task. The worker's own `Worker.GatewayConnection` was not touched.
+- 10 new tests. Regression: the existing 12-test `repository_selection` channel suite passes unmodified. `mix compile --warnings-as-errors` clean.
+- Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator_web/channels/worker_workspace_channel_repository_metadata_test.exs` — exit `0`.
+
 ### 2026-09-03 - Task 2 complete: a blocking metadata request lifecycle, no worker wired yet
 
 - `SddOrchestrator.RepositoryMetadata.inspect/2` mirrors `RepositorySelection` closely but blocks the calling process instead of returning at once: the outer `GenServer.call` is `:infinity`, and `RepositoryMetadata.Server` owns the real expiry through its own timer, replying via `GenServer.reply/2` exactly once from whichever path settles the request. A transport push failure replies immediately from within `handle_call`; every other resolution (a worker's answer, the worker's channel dying, the expiry timer) defers the reply until the entry is removed first, so a second attempt at any of them finds nothing and replies to nobody.
