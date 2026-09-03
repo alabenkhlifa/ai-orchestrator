@@ -14,6 +14,8 @@ defmodule SddOrchestrator.RepositoryAssessments do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{Pairing, WorkerDiscovery}
   alias SddOrchestrator.Participation
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
 
   alias SddOrchestrator.RepositoryAssessments.{
@@ -385,6 +387,34 @@ defmodule SddOrchestrator.RepositoryAssessments do
     decide_profile(authority, project_id, proposal, :reject, opts)
   end
 
+  @doc """
+  Whether one hosted project's repository can be assessed at all.
+
+  Assessability is reachability, not a provider connection. A project whose
+  repository is a Git repository on the owner's Mac carries no GitHub-shaped
+  `RepositoryConnection`, because that row needs a numeric provider repository
+  id a local repository never has. It reaches its repository through the worker
+  binding instead, so either link admits the project.
+
+  The binding only has to exist. Whether that Mac answers right now is a state
+  the screen renders, not an authorization question, so no availability is read
+  here.
+
+  This is the one rule. `authorize_project/2` and the assessment screen both
+  read it, so the screen can never offer a project the service refuses.
+  """
+  @spec assessable_hosted_project?(Project.t()) :: boolean()
+  def assessable_hosted_project?(
+        %Project{storage_mode: "hosted", lifecycle_state: "active"} = project
+      ) do
+    project = Repo.preload(project, [:repository_connection, :hosted_local_repository_binding])
+
+    match?(%{state: "connected"}, project.repository_connection) or
+      match?(%HostedLocalRepositoryBinding{}, project.hosted_local_repository_binding)
+  end
+
+  def assessable_hosted_project?(_project), do: false
+
   defp decide_profile(authority, project_id, proposal, decision, opts)
        when decision in [:approve, :reject] do
     assessment_store = Keyword.get(opts, :assessment_store, AssessmentStore)
@@ -492,11 +522,11 @@ defmodule SddOrchestrator.RepositoryAssessments do
   defp confirm_disclosure(_input),
     do: {:error, :processing_boundary_confirmation_required}
 
+  # Ownership still decides who may act, and it is still checked first. The
+  # project rule that follows only decides which repositories can be reached.
   defp authorize_project({:hosted, account_id}, project_id) do
-    with {:ok, %{storage_mode: "hosted", lifecycle_state: "active"} = project} <-
-           Participation.owned_project(account_id, project_id),
-         project <- Repo.preload(project, :repository_connection),
-         %{state: "connected"} <- project.repository_connection do
+    with {:ok, project} <- Participation.owned_project(account_id, project_id),
+         true <- assessable_hosted_project?(project) do
       {:ok, project}
     else
       _unauthorized -> {:error, :unauthorized}

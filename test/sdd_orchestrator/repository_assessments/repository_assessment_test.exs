@@ -52,6 +52,9 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
   alias SddOrchestrator.Accounts.DeviceWorkspace
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{DeviceStore.Local, Pairing}
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Projects
+  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryAssessments
 
@@ -106,7 +109,8 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
       hosted_project: hosted_project,
       now: now,
       store_path: store_path,
-      worker: worker
+      worker: worker,
+      workspace: workspace
     }
   end
 
@@ -227,6 +231,75 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
                other_project.id,
                Ecto.UUID.generate()
              )
+  end
+
+  test "a hosted project whose repository is on the owner's Mac is assessable and starts",
+       context do
+    project = hosted_local_project(context)
+
+    assert project.repository_provider == "local"
+    assert project.repository_connection == nil
+    assert RepositoryAssessments.assessable_hosted_project?(project)
+
+    assert {:ok, preparation} = prepare(hosted_authority(context), project.id, context, [])
+
+    assert {:ok, assessment} =
+             RepositoryAssessments.start_assessment(
+               hosted_authority(context),
+               project.id,
+               preparation,
+               now: context.now
+             )
+
+    assert assessment.project_id == project.id
+    assert assessment.state == RepositoryAssessment.pending_state()
+    assert assessment.repository_id == project.canonical_repository_id
+  end
+
+  test "a connected GitHub repository stays assessable", context do
+    assert RepositoryAssessments.assessable_hosted_project?(context.hosted_project)
+    assert {:ok, _preparation} = prepare_hosted(context)
+  end
+
+  test "a hosted project with neither a connected connection nor a binding is refused",
+       context do
+    project = hosted_local_project(context)
+
+    HostedLocalRepositoryBinding
+    |> Repo.get!(project.id)
+    |> Repo.delete!()
+
+    unreachable = Repo.get!(Project, project.id)
+
+    refute RepositoryAssessments.assessable_hosted_project?(unreachable)
+
+    assert {:error, :unauthorized} = prepare(hosted_authority(context), project.id, context, [])
+    assert Adapter.events() == []
+    assert Repo.aggregate(RepositoryAssessment, :count) == 0
+  end
+
+  test "a connection that is not connected and has no binding stays refused", context do
+    context.hosted_project.repository_connection
+    |> Ecto.Changeset.change(state: "disconnected")
+    |> Repo.update!()
+
+    disconnected = Repo.get!(Project, context.hosted_project.id)
+
+    refute RepositoryAssessments.assessable_hosted_project?(disconnected)
+
+    assert {:error, :unauthorized} = prepare_hosted(context)
+    assert Adapter.events() == []
+    assert Repo.aggregate(RepositoryAssessment, :count) == 0
+  end
+
+  test "a person who does not own the Mac project is refused and learns nothing about it",
+       context do
+    project = hosted_local_project(context)
+    other_account = account_fixture()
+
+    assert {:error, :unauthorized} = prepare({:hosted, other_account.id}, project.id, context, [])
+    assert Adapter.events() == []
+    assert Repo.aggregate(RepositoryAssessment, :count) == 0
   end
 
   test "device authority is isolated to the current owning workspace and exact project",
@@ -521,6 +594,19 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryAssessmentTest do
       },
       Keyword.merge([adapter: Adapter, now: context.now], opts)
     )
+  end
+
+  # A hosted project whose repository is a Git repository on the owner's Mac:
+  # no GitHub connection, a portable identity, and the worker binding that
+  # registration writes in the same transaction.
+  defp hosted_local_project(context) do
+    attempt =
+      device_attempt_ready_for_hosted(context.device_workspace, context.workspace,
+        worker_id: context.worker.id
+      )
+
+    {:ok, project} = Projects.register_project(context.workspace, attempt)
+    project
   end
 
   defp hosted_authority(context), do: {:hosted, context.account.id}
