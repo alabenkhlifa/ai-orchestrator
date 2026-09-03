@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Blocked
 
 ## Active Slice
 
@@ -96,17 +96,17 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] The GitHub assessment and its profile approval pass unchanged.
-- [ ] The accountless device route passes unchanged.
-- [ ] Authorization refusals pass unchanged for a person who does not own the project.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass.
+- [x] Active-slice acceptance criteria pass.
+- [x] The GitHub assessment and its profile approval pass unchanged.
+- [x] The accountless device route passes unchanged.
+- [x] Authorization refusals pass unchanged for a person who does not own the project.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass.
 - [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, assess it, approve its execution profile, and see the feature's execution-profile precondition become met. Recorded in `progress.md`.
 
 ## Blocked Decisions
 
-- None.
+- The product proof cannot run, and the slice cannot be `Verified`, because no environment has a worker-backed repository metadata adapter. `RepositoryMetadataAdapter.configured/0` falls back to its own `Unavailable` module, which answers `{:error, :worker_unavailable}` for every request, and the only code that ever sets `:repository_metadata_adapter` is the `/_e2e` bootstrap controller, which is compiled out of any build without `:e2e_bootstrap`. Confirmed by clicking: the confirmation reaches `prepare_binding/4` and is refused there for a repository on a Mac and for a GitHub repository alike. This is not this slice's boundary. `specs/14-repository-execution-profile/` owns the assessment, and the missing adapter blocks it for every project, not only for a repository on a Mac.
 
 ## Release Gate
 

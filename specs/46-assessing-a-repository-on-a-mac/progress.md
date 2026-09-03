@@ -48,3 +48,15 @@
 - Two corrections to the task brief, both found by trying it. A fabricated device workspace cannot be used at this level, because the screen lists workers from `Devices.get_workspace()` and a fabricated id offers none, so the boundary can never be confirmed; the scenario uses the established workspace with an attached worker, as the neighbouring screen tests do. And no participation fixture is needed, because `Projects.register_project/3` already writes the owner's member profile and adding a second hits the unique index.
 - Proof receipt: `Task 3` — scope `Focused` — command `mix test test/sdd_orchestrator_web/mac_repository_assessment_test.exs` — exit `0`.
 - 3 tests passed. Regression run outside the focused proof: the assessment domain suites with the assessment screen, the execution profile screen, and the feature start preconditions, 137 passed.
+
+### 2026-09-03 - Gates green, product proof blocked by a metadata adapter that exists nowhere but tests
+
+- `mix check` at slice scope: 4971 tests, exit `0`, first run. The browser suite at slice scope: 153 passed, exit `0`.
+- The product proof got further than before and then stopped on something outside this slice. The assessment screen now opens for a repository on a Mac, which is the fix, and it offers the reachable worker. Confirming the processing boundary reaches `RepositoryAssessments.prepare_binding/4`, which answers `:worker_unavailable`.
+- Root cause found by reading the configuration, not by guessing at the worker. `RepositoryMetadataAdapter.configured/0` defaults to its sibling `Unavailable`, whose `prepare/1` and `revalidate/1` both return `{:error, :worker_unavailable}` unconditionally. No configuration file in any environment sets `:repository_metadata_adapter`, and the only code that sets it at all is the `/_e2e` bootstrap controller, which is compiled out of every build that does not enable `:e2e_bootstrap`. The five other implementations of the behaviour are test stubs.
+- So the assessment cannot be prepared outside tests and the browser suite, for any project. A GitHub-connected project is refused at exactly the same point. Nothing about this is specific to a repository on a Mac, and nothing about it was introduced by this slice.
+- Why every proof in this slice still passed: each one injects an adapter, as the existing suites for this screen already did. That is the gap the project's product-proof rule exists to catch, and it caught it.
+- One environment incident, self-inflicted, recorded so it is not mistaken for a regression. A first browser-suite run reported 113 failures with `ERR_CONNECTION_REFUSED` on port 4003. A broad `pkill` issued to clear a stale development server had also killed the suite's own server mid-run. The undisturbed re-run passed 153.
+- The slice is implementation-complete and its gates pass. It stays `Blocked` on the product proof until the assessment has a worker-backed adapter in a real environment.
+- Proof receipt: slice — scope `Broad` — command `mix check` — exit `0`.
+- Proof receipt: slice — scope `Broad` — command `npm --prefix assets run test:e2e` — exit `0`.
