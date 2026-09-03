@@ -214,7 +214,7 @@ Traceability:
 ## Release Gate
 
 - Product proof for AC-07 and AC-08: the click path continued to a press of `Start development` and the worker's acknowledgement, against the paired worker app. Both criteria pass their domain and integration proofs; only the real-worker click path is blocked, by the gap below.
-- The hosted local-repository project this slice's start path needs cannot be created by clicking. `specs/44-hosted-local-repository-projects/` owns delivering it. Local onboarding refuses hosted storage for a local repository, which `local_onboarding_live.ex` records as owned by the atomic-registration task; a GitHub project carries `repository_provider: "github"`, which `HostedLocalRepositoryConnection.connect/6` refuses as `:invalid_project_provider`; and restoring a device backup into the account is refused while the device project still exists, which no screen can delete. Until one of those routes closes, AC-07 and AC-08 cannot be proven against a real worker, and this slice is not releasable.
+- That blocker is closed as of 2026-09-03. `specs/44-hosted-local-repository-projects/` delivers creating a hosted local-repository project from the storage step, and `specs/45-hosted-session-project-access/` lets the person who signs in through the email link reach it. Both are `Verified` by one click path from `/` in a real browser against the paired worker app, and that project's feature board was confirmed reachable on the same session. What remains is this slice's own click path: add a feature, take it to ready, press `Start development`, and see the worker acknowledge. Until that runs, AC-07 and AC-08 are proven only by their domain and integration tests and this slice is not releasable.
 
 ## Progress Log
 

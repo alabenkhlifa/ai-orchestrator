@@ -1,5 +1,12 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-03 - The release gate's named blocker is closed
+
+- The gate said the hosted local-repository project this slice's start path needs cannot be created by clicking. It can now. `specs/44-hosted-local-repository-projects/` delivers the hosted branch of the storage step, and `specs/45-hosted-session-project-access/` lets the person who signed in through the email link open the project it creates. Both are `Verified`.
+- Confirmed rather than assumed: a project was created by clicking from `/` in a real browser against the paired worker app, its dashboard reported `Connected to your machine`, and its feature board opened on the same passwordless session with `Add a feature` offered.
+- The release gate stays open. This slice's own click path has not run: add a feature, take it to ready, press `Start development`, and see the worker acknowledge. AC-07 and AC-08 remain proven only by their domain and integration tests, so the slice is still not releasable.
+- No code changed in this update.
+
 ### 2026-09-01 - Slice Verified, release gated on the missing hosted local project
 
 - Status moved to `Verified`. Every task is complete with a confirmed proof, `mix check` passed 4876 with exit `0`, the browser suite passed 153 with exit `0`, and AC-01 through AC-06 were proven by a person clicking from `/` with the worker stand-in off and no seeding.
