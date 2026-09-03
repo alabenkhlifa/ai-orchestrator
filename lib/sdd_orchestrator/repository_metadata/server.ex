@@ -42,7 +42,9 @@ defmodule SddOrchestrator.RepositoryMetadata.Server do
 
   @typedoc "What a blocked caller is told, once, about its request."
   @type outcome ::
-          {:ok, map()} | {:error, :worker_unavailable | :cancelled | :invalid_worker_response}
+          {:ok, map()}
+          | {:error,
+             :worker_unavailable | :cancelled | :invalid_worker_response | :repository_mismatch}
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -260,6 +262,9 @@ defmodule SddOrchestrator.RepositoryMetadata.Server do
        commit: answer.commit
      }}
   end
+
+  defp requester_outcome(%MetadataAnswer{outcome: :refused, reason: :repository_mismatch}),
+    do: {:error, :repository_mismatch}
 
   defp requester_outcome(%MetadataAnswer{outcome: :refused}), do: {:error, :invalid_worker_response}
   defp requester_outcome(%MetadataAnswer{outcome: :cancelled}), do: {:error, :cancelled}

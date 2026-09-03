@@ -164,6 +164,19 @@ config :sdd_orchestrator,
        :repository_selection_transport,
        SddOrchestrator.RepositorySelection.Transport.Attachment
 
+# A repository-metadata question travels the same Mac-scoped attachment a
+# folder-picker request does, so the real transport and the real, worker-backed
+# adapter are the default everywhere. This is what lets a repository assessment
+# reach an actual worker outside tests instead of always refusing with
+# `:worker_unavailable`.
+config :sdd_orchestrator,
+       :repository_metadata_transport,
+       SddOrchestrator.RepositoryMetadata.Transport.Attachment
+
+config :sdd_orchestrator,
+       :repository_metadata_adapter,
+       SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter.Worker
+
 # Cloak vault ciphers are configured per environment because the key is a secret.
 
 # Import environment specific config. This must remain at the bottom

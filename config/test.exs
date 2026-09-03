@@ -67,6 +67,20 @@ config :sdd_orchestrator,
        :repository_selection_transport,
        SddOrchestrator.RepositorySelection.Stub
 
+# Nothing sets `:repository_metadata_transport` or `:repository_metadata_adapter`
+# for the test environment, so both already resolve to their `Unavailable`
+# defaults. Pinning them here makes that explicit rather than accidental, the
+# same as the pin above does for `:repository_selection_transport`: a test that
+# needs a worker's answer installs `RepositoryMetadataTransportDouble` and its
+# own adapter double instead.
+config :sdd_orchestrator,
+       :repository_metadata_transport,
+       SddOrchestrator.RepositoryMetadata.Transport.Unavailable
+
+config :sdd_orchestrator,
+       :repository_metadata_adapter,
+       SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter.Unavailable
+
 # Tests use the deterministic GitHub fake, never a live provider.
 config :sdd_orchestrator, :github,
   provider: SddOrchestrator.GitHubIntegration.FakeProvider,

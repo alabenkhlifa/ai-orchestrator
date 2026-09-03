@@ -81,7 +81,7 @@ defmodule SddOrchestrator.RepositoryMetadataTest do
     assert {:ok, _result} = Task.await(task)
   end
 
-  test "a refused outcome from the worker resolves the blocked call to :invalid_worker_response",
+  test "a refused outcome naming repository_mismatch resolves the blocked call to :repository_mismatch",
        context do
     task = Task.async(fn -> RepositoryMetadata.inspect(context.request) end)
     request_id = wait_for_pushed_id()
@@ -91,6 +91,21 @@ defmodule SddOrchestrator.RepositoryMetadataTest do
                "request_id" => request_id,
                "outcome" => "refused",
                "reason" => "repository_mismatch"
+             })
+
+    assert {:error, :repository_mismatch} = Task.await(task)
+  end
+
+  test "a refused outcome naming a different reason still resolves the blocked call to :invalid_worker_response",
+       context do
+    task = Task.async(fn -> RepositoryMetadata.inspect(context.request) end)
+    request_id = wait_for_pushed_id()
+
+    assert :ok =
+             RepositoryMetadata.answer(context.attachment, %{
+               "request_id" => request_id,
+               "outcome" => "refused",
+               "reason" => "root_escape"
              })
 
     assert {:error, :invalid_worker_response} = Task.await(task)

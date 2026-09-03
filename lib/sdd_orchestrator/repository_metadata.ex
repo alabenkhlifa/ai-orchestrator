@@ -14,16 +14,18 @@ defmodule SddOrchestrator.RepositoryMetadata do
 
     * `{:ok, result}` — the worker read the repository.
     * `{:error, :cancelled}` — the read was cancelled.
-    * `{:error, :invalid_worker_response}` — the worker refused to answer, or
-      sent something this boundary cannot use.
+    * `{:error, :repository_mismatch}` — the worker checked the folder and it
+      was not the repository this request named.
+    * `{:error, :invalid_worker_response}` — the worker refused to answer for
+      any other reason, or sent something this boundary cannot use.
     * `{:error, :worker_unavailable}` — there was no worker to ask, the
       worker's attachment was lost while the request was open, or nobody
-      answered before the wait window closed. These three causes are folded
-      together here on purpose: nothing yet distinguishes a worker that
-      refused a repository it does not recognise from one that was simply
-      never there. A timeout is logged internally as its own case, at the
-      server that owns the wait window, so a later change can split it out
-      without redesigning this one.
+      answered before the wait window closed. These three causes are still
+      folded together here on purpose: nothing yet distinguishes a worker
+      that was lost mid-request from one that was simply never there. A
+      timeout is logged internally as its own case, at the server that owns
+      the wait window, so a later change can split it out without
+      redesigning this one.
     * `{:error, :invalid_request}` — the request map was missing a required
       field, or the options were invalid.
 
@@ -66,7 +68,8 @@ defmodule SddOrchestrator.RepositoryMetadata do
   @type request_error :: :invalid_request
 
   @typedoc "Why a blocked call did not resolve to a result."
-  @type inspect_error :: :worker_unavailable | :cancelled | :invalid_worker_response
+  @type inspect_error ::
+          :worker_unavailable | :cancelled | :invalid_worker_response | :repository_mismatch
 
   @typedoc "Why `inspect/2` did not resolve to a result."
   @type error :: request_error() | inspect_error()
