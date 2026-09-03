@@ -14,6 +14,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{Pairing, WorkerDiscovery}
   alias SddOrchestrator.Participation
+  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
   alias SddOrchestrator.Repo
   alias SddOrchestrator.RepositoryAssessments
 
@@ -203,14 +204,16 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
     end
   end
 
-  # The connection is preloaded for the repository label. Whether the project may
-  # be assessed is the assessment service's own rule, read here so this screen
-  # never offers a project that service refuses, and never refuses one it admits.
+  # Both repository links are preloaded for the repository label, because either
+  # one can be the project's repository. Whether the project may be assessed is
+  # the assessment service's own rule, read here so this screen never offers a
+  # project that service refuses, and never refuses one it admits.
   defp load_context(:hosted, project_id, socket) do
     account_id = acting_account_id(socket)
 
     with {:ok, project} <- Participation.owned_project(account_id, project_id),
-         project <- Repo.preload(project, :repository_connection),
+         project <-
+           Repo.preload(project, [:repository_connection, :hosted_local_repository_binding]),
          true <- RepositoryAssessments.assessable_hosted_project?(project) do
       {:ok,
        %{
@@ -244,7 +247,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          authority_kind: :device,
          denied_destination: ~p"/onboarding/local",
          back_destination: ~p"/local/projects/#{project.id}",
-         repository_display: "Local repository for #{project.name}",
+         repository_display: local_repository_display(project),
          actor: nil
        }}
     else
@@ -258,13 +261,30 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
 
   defp load_context(_action, _project_id, _socket), do: {:error, ~p"/projects"}
 
+  # A provider connection names itself. A hosted project with no connection but a
+  # worker binding is the shape the assessment service admits for a repository
+  # that lives on the owner's Mac, so it reads as the local repository it is
+  # rather than as a nameless connection.
   defp hosted_repository_display(project) do
-    case project.repository_connection do
-      %{full_name: full_name} when is_binary(full_name) and full_name != "" -> full_name
-      %{name: name} when is_binary(name) and name != "" -> name
-      _connection -> "Connected repository"
+    case {project.repository_connection, project.hosted_local_repository_binding} do
+      {%{full_name: full_name}, _binding} when is_binary(full_name) and full_name != "" ->
+        full_name
+
+      {%{name: name}, _binding} when is_binary(name) and name != "" ->
+        name
+
+      {nil, %HostedLocalRepositoryBinding{}} ->
+        local_repository_display(project)
+
+      _unnamed ->
+        "Connected repository"
     end
   end
+
+  # One owned wording for one fact: this project's repository is a Git repository
+  # on the owner's Mac. Both routes render this value, so the same repository
+  # never reads two ways.
+  defp local_repository_display(project), do: "Local repository for #{project.name}"
 
   defp acting_account_id(socket) do
     cond do

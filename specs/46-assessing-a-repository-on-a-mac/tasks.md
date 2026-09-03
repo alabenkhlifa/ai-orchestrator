@@ -74,7 +74,7 @@ Traceability:
   - Proof: Focused tests cover a hosted project whose repository is on a Mac starting an assessment, finishing it, and reaching a proposed profile; a GitHub project unchanged at every gate; a hosted project reachable by neither refused at every gate; and a person who does not own the project refused with nothing disclosed.
   - Delivered: `RepositoryAssessments.assessable_hosted_project?/1` is the one rule, and all five gates read it. A Mac project now assesses, finishes, proposes, and approves.
 
-- [ ] Task 2 — Name the repository, and name an unreachable Mac.
+- [x] Task 2 — Name the repository, and name an unreachable Mac.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 1
@@ -82,6 +82,7 @@ Traceability:
   - Owned surfaces: `RepositoryAssessmentLive`'s repository label for a project whose repository is on a Mac, reusing the device route's existing wording, and its rendered state when the bound Mac is not reachable, which offers no start and changes nothing.
   - Owns: AC-03
   - Proof: Focused LiveView tests cover the screen naming such a repository with the device route's wording, rendering with no start and a stated reason when the bound Mac is not reachable, leaving the project unchanged in that state, and a GitHub project's label unchanged.
+  - Delivered: both routes render one owned label for a repository on a Mac. The unreachable state needed no new code, because the screen's existing no-worker handling already produces it.
 
 - [ ] Task 3 — Prove the profile is approvable and the chain is clear.
   - Size: Standard

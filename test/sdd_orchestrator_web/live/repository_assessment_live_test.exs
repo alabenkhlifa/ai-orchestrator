@@ -64,12 +64,13 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
   alias SddOrchestrator.AccountsFixtures
   alias SddOrchestrator.Devices
-  alias SddOrchestrator.Devices.{DeviceStore.Local, Pairing}
+  alias SddOrchestrator.Devices.{DeviceStore.Local, Pairing, WorkerDiscovery}
   alias SddOrchestrator.HostedAccess.{SessionCookie, Sessions}
   alias SddOrchestrator.HostedAccessFixtures
   alias SddOrchestrator.ParticipationFixtures
-  alias SddOrchestrator.Portability.HostedLocalRepositoryBinding
+  alias SddOrchestrator.Portability.{HostedLocalRepositoryBinding, HostedLocalRepositoryBindings}
   alias SddOrchestrator.Projects
+  alias SddOrchestrator.Projects.Project
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.Repo
 
@@ -259,6 +260,61 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert Adapter.events() == []
   end
 
+  test "a repository on the owner's Mac is named the way the device route names one", context do
+    project = hosted_local_project(context)
+
+    {:ok, view, _html} = live(context.owner_conn, ~p"/projects/#{project.id}/assessment")
+    confirm_binding(view, context.worker.id)
+
+    assert view |> element(~s([data-binding-field="repository"])) |> render() =~
+             "Local repository for #{project.name}"
+
+    refute render(view) =~ "Connected repository"
+  end
+
+  test "a connected provider repository and the device route keep their own labels", context do
+    {:ok, hosted_view, _html} =
+      live(context.owner_conn, ~p"/projects/#{context.hosted_project.id}/assessment")
+
+    confirm_binding(hosted_view, context.worker.id)
+
+    assert hosted_view |> element(~s([data-binding-field="repository"])) |> render() =~
+             "octo/example"
+
+    {:ok, device_view, _html} =
+      live(context.conn, ~p"/local/projects/#{context.device_project.id}/assessment")
+
+    confirm_binding(device_view, context.worker.id)
+
+    assert device_view |> element(~s([data-binding-field="repository"])) |> render() =~
+             "Local repository for Device assessment"
+  end
+
+  test "an unreachable Mac opens the screen, offers no start, and changes nothing", context do
+    project = hosted_local_project(context)
+    before = Repo.get!(Project, project.id)
+    binding_before = Repo.get!(HostedLocalRepositoryBinding, project.id)
+    unattach(context.worker)
+
+    assert {:ok, %{binding: %HostedLocalRepositoryBinding{}, state: :temporarily_unavailable}} =
+             HostedLocalRepositoryBindings.connection_state(context.workspace, project.id)
+
+    {:ok, view, html} = live(context.owner_conn, ~p"/projects/#{project.id}/assessment")
+
+    assert html =~ ~s(data-assessment-stage="disclosure")
+
+    assert view |> element("[data-no-workers]") |> render() =~
+             RepositoryAssessmentLive.worker_unavailable_message()
+
+    assert has_element?(view, "[data-confirm-boundary][disabled]")
+    refute has_element?(view, "[data-start-assessment]")
+
+    assert Adapter.events() == []
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
+    assert Repo.get!(Project, project.id) == before
+    assert Repo.get!(HostedLocalRepositoryBinding, project.id) == binding_before
+  end
+
   test "a person who does not own the Mac project is redirected away", context do
     project = hosted_local_project(context)
     outsider = AccountsFixtures.account_fixture()
@@ -347,6 +403,17 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
     {:ok, project} = Projects.register_project(context.workspace, attempt)
     project
+  end
+
+  # The Mac stops reporting in. Registration binds only an available worker, so a
+  # bound Mac cannot start unattached; it goes stale afterwards, as one does when
+  # it sleeps or shuts down.
+  defp unattach(worker) do
+    stale = DateTime.add(DateTime.utc_now(), -(WorkerDiscovery.staleness_seconds() + 60), :second)
+
+    worker
+    |> Ecto.Changeset.change(last_seen_at: DateTime.truncate(stale, :second))
+    |> Repo.update!()
   end
 
   defp hosted_authority(context), do: {:hosted, context.account.id}
