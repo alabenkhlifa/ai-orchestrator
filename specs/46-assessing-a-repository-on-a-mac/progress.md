@@ -1,5 +1,17 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Task 5 complete: the lifecycle is the metadata one, deliberately twice
+
+- `RepositoryScan.Server` is `RepositoryMetadata.Server`'s shape with a different request, answer, and vocabulary. The duplication is the recorded decision, not an oversight: the two questions have different wait windows and different refusal sets, and generalising them would create a third module neither context owns. The module doc says so where a reader meets it.
+- Refusals keep their own names all the way to the caller. `RepositoryMetadata` folds every refusal but one into `:invalid_worker_response`; a scan cannot, because the domain has to tell `selection_expired` from `stale_commit` to store the right failure and say the right thing on screen. `run/2` therefore returns the worker's own reason atom.
+- The wait window is 60 seconds, not the metadata question's 130. A scan opens no panel, so it needs no allowance for a person answering one, and the bounded scanner already refuses on its own 10-second limit.
+- A malformed answer leaves the request open. It is refused at the boundary and the same attachment can still answer properly, which is right: a worker that sent one bad frame has not used up its one outcome.
+- `Server` is supervised beside `RepositoryMetadata.Server`, and `config/test.exs` pins the scan transport to `Unavailable` so no test reaches a worker by accident.
+- A second transport double was written rather than sharing the metadata one, for the same reason the contexts are separate.
+- One test was wrong before the code was, again. The refusal-reason loop waited for a fixed count of pushed requests instead of an incrementing one, so it hung on the second reason. Fixed with the index.
+- Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_scan_test.exs` — exit `0`.
+- 13 tests passed.
+
 ### 2026-09-04 - Task 4 complete: the answer is narrower than the plan assumed
 
 - The wire carries less than `design.md` predicted, and the narrower shape is the stricter one. A scanner result repeats the command it ran for: protocol version, assessment and project ids, repository identity, root, commit, and scanner-contract digest. None of it crosses now. `RepositoryAssessments` will rebuild the full result by putting its own command fields beside the three evidence fields, so a worker cannot state them at all rather than stating them and being checked.

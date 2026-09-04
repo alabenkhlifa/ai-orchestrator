@@ -113,7 +113,7 @@ Traceability:
   - Proof: Focused tests cover a valid request and a valid answer round-tripping through the codec, a request missing any required field refused, an answer carrying an unknown field refused, an answer whose scan result or proposal payload is malformed refused, and no encoding admitting an absolute path, a remote URL, or file content.
   - Delivered: a scan request leaves as four fields and an answer carries only findings, structure, stats, and the six proposal lists. The command fields a scanner result repeats are not on the wire at all, because the control plane still holds the command it issued.
 
-- [ ] Task 5 — One scan, one outcome, one wait window.
+- [x] Task 5 — One scan, one outcome, one wait window.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4
@@ -121,6 +121,7 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryScan` with `run/2` and `answer/2`, `SddOrchestrator.RepositoryScan.Server` with its supervision entry, and the `SddOrchestrator.RepositoryScan.Transport` behaviour with its refusing `Unavailable` default.
   - Owns: AC-11
   - Proof: Focused tests cover one answer resolving a blocked call, a second answer for the same request refused as unknown, an answer from an attachment the request was not pushed to refused, the calling process dying resolving the request and cancelling it on the worker, the wait window closing as an unavailable worker, and the default transport refusing at once with nothing left open.
+  - Delivered: `RepositoryScan.run/2` blocks until one outcome, and every refusal reaches the caller under its own name so the domain can tell an expired hold from a stale commit.
 
 - [ ] Task 6 — Carry a scan over the Mac-scoped attachment.
   - Size: Standard

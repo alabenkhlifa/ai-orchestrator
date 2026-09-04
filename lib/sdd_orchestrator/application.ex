@@ -141,7 +141,11 @@ defmodule SddOrchestrator.Application do
       # Open metadata requests, held in memory only. Losing them on restart is
       # correct: every caller blocked on one is on this same node and is lost
       # too, so nothing survives to reply to.
-      SddOrchestrator.RepositoryMetadata.Server
+      SddOrchestrator.RepositoryMetadata.Server,
+      # Open scan requests, held the same way and for the same reason. It is a
+      # second table rather than a shared one because a scan and a metadata
+      # read have different answers, wait windows, and refusal vocabularies.
+      SddOrchestrator.RepositoryScan.Server
     ] ++
       retention_children() ++
       dispatcher_children() ++
