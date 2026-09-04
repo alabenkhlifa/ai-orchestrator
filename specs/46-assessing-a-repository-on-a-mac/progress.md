@@ -1,5 +1,14 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Task 6 complete, and Task 7's dependency was wrong
+
+- `repository_scan` is now an optional capability in `Delivery.WorkerProtocol`, and `RepositoryScan.Transport.Attachment` asks only an attachment that negotiated it. A worker attached in the right workspace but under a different worker id is not asked, which is the property that keeps a scan on the Mac the binding was verified on.
+- `WorkerWorkspaceChannel` carries `repository_scan`, `repository_scan_cancel`, and `repository_scan_result` beside the metadata pair, and credits an answer to the socket's own authenticated assigns rather than the frame.
+- `config/config.exs` makes the real transport the default everywhere, matching the metadata transport it travels beside.
+- The plan said `Task 7` depends on `Task 4` alone. That was wrong: a worker announcing `repository_scan` before the control plane knows the name would be refused at negotiation, because `WorkerProtocol.negotiate/1` rejects unknown capabilities. `Task 7` now depends on `Task 4` and `Task 6`, and the slice's longest path is six rather than five. Found by writing `Task 6`, not by a failing check, and corrected before `Task 7` started.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator_web/channels/worker_workspace_channel_repository_scan_test.exs` — exit `0`.
+- 11 tests passed. Regression run outside the focused proof: the other three workspace-channel suites with the worker-protocol suite, 50 passed.
+
 ### 2026-09-04 - Task 5 complete: the lifecycle is the metadata one, deliberately twice
 
 - `RepositoryScan.Server` is `RepositoryMetadata.Server`'s shape with a different request, answer, and vocabulary. The duplication is the recorded decision, not an oversight: the two questions have different wait windows and different refusal sets, and generalising them would create a third module neither context owns. The module doc says so where a reader meets it.

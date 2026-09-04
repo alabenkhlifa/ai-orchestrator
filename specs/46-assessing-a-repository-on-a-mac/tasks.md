@@ -23,7 +23,7 @@ Provides:
 ## Slice Size Gate
 
 - Slice size: Standard
-- Nine tasks total, six of them active, and a longest `Depends on:` path of five: `Task 4`, `Task 5`, `Task 6`, `Task 8`, `Task 9`.
+- Nine tasks total, six of them active, and a longest `Depends on:` path of six: `Task 4`, `Task 5`, `Task 6`, `Task 7`, `Task 8`, `Task 9`.
 
 ## Task Size Gate
 
@@ -123,7 +123,7 @@ Traceability:
   - Proof: Focused tests cover one answer resolving a blocked call, a second answer for the same request refused as unknown, an answer from an attachment the request was not pushed to refused, the calling process dying resolving the request and cancelling it on the worker, the wait window closing as an unavailable worker, and the default transport refusing at once with nothing left open.
   - Delivered: `RepositoryScan.run/2` blocks until one outcome, and every refusal reaches the caller under its own name so the domain can tell an expired hold from a stale commit.
 
-- [ ] Task 6 — Carry a scan over the Mac-scoped attachment.
+- [x] Task 6 — Carry a scan over the Mac-scoped attachment.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5
@@ -131,11 +131,12 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryScan.Transport.Attachment` with its declared capability, the `repository_scan`, `repository_scan_cancel`, and `repository_scan_result` frames on `SddOrchestratorWeb.WorkerWorkspaceChannel`, and the configuration selecting the real transport outside tests.
   - Owns: none
   - Proof: Focused tests cover a scan pushed to the named worker's attachment and not to another worker in the same workspace, no attachment refused as no worker, an attached worker that did not declare the capability refused as needing an update, a result frame handed to the request it names, and a result frame sent by a different attachment refused.
+  - Delivered: `repository_scan` is a negotiated capability and the scan, cancellation, and result frames ride the workspace channel beside the metadata ones.
 
 - [ ] Task 7 — The worker scans the folder it already holds.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 4
+  - Depends on: Task 4, Task 6
   - Purpose: Scan the repository the person already verified, without asking them for the folder a second time.
   - Owned surfaces: `SddOrchestrator.Worker.RepositoryScan` with its supervision entry, the held-folder lookup by `selection_ref` it reads from `SddOrchestrator.Worker.RepositoryMetadata`, the `repository_scan` and `repository_scan_cancel` handling in `SddOrchestrator.Worker.GatewayConnection`, and the `repository_scan` capability the release declares at attach. The held folder it reads is `specs/47-live-repository-metadata-binding#Task 8`'s, recorded here rather than as a capability edge because `specs/47` already requires this specification's `Task 3` and the graph must stay acyclic.
   - Owns: AC-09
