@@ -133,7 +133,7 @@ Traceability:
   - Proof: Focused tests cover a scan pushed to the named worker's attachment and not to another worker in the same workspace, no attachment refused as no worker, an attached worker that did not declare the capability refused as needing an update, a result frame handed to the request it names, and a result frame sent by a different attachment refused.
   - Delivered: `repository_scan` is a negotiated capability and the scan, cancellation, and result frames ride the workspace channel beside the metadata ones.
 
-- [ ] Task 7 — The worker scans the folder it already holds.
+- [x] Task 7 — The worker scans the folder it already holds.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4, Task 6
@@ -141,6 +141,7 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.Worker.RepositoryScan` with its supervision entry, the held-folder lookup by `selection_ref` it reads from `SddOrchestrator.Worker.RepositoryMetadata`, the `repository_scan` and `repository_scan_cancel` handling in `SddOrchestrator.Worker.GatewayConnection`, and the `repository_scan` capability the release declares at attach. The held folder it reads is `specs/47-live-repository-metadata-binding#Task 8`'s, recorded here rather than as a capability edge because `specs/47` already requires this specification's `Task 3` and the graph must stay acyclic.
   - Owns: AC-09
   - Proof: Focused tests cover a scan of a held folder answering with the scanner's own result and proposal payload through the exact-commit cache, a `selection_ref` that is not held refused as expired with no panel opened, a held folder whose repository moved to another commit refused, a cancellation stopping an in-flight scan, and no absolute path, remote URL, or file content in any answer or log line.
+  - Delivered: `Worker.RepositoryMetadata.held_path/1` is the one read of the held folder, and a scan runs in its own task so a cancellation never waits on the read it is stopping.
 
 - [ ] Task 8 — Take a pending assessment to a terminal one.
   - Size: Standard

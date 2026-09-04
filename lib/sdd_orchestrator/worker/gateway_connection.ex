@@ -71,6 +71,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
   alias SddOrchestrator.Worker.ExecutionPreparer
   alias SddOrchestrator.Worker.ProjectConnections
   alias SddOrchestrator.Worker.RepositoryMetadata
+  alias SddOrchestrator.Worker.RepositoryScan
   alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.RequiredCheckRunner
   alias SddOrchestrator.Worker.RunState
@@ -95,6 +96,7 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
     evidence.screenshot
     preview.request
     repository_metadata
+    repository_scan
     repository_selection
   )
 
@@ -413,6 +415,37 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
 
       _unusable ->
         Logger.info("worker gateway ignoring a repository metadata cancel with no request id")
+    end
+
+    {:ok, socket}
+  end
+
+  # A repository scan from the control plane
+  # (specs/46-assessing-a-repository-on-a-mac Task 7). The folder it scans is
+  # the one this worker is already holding for the binding, and everything
+  # that turns it into minimized evidence happens inside
+  # `SddOrchestrator.Worker.RepositoryScan`. This callback hands the question
+  # over and gives it a way to answer, in the same deferred-push shape the
+  # metadata question uses.
+  def handle_message(topic, "repository_scan", message, socket) do
+    connection = self()
+    reply = fn payload -> send(connection, {:repository_scan_result, topic, payload}) end
+
+    RepositoryScan.open(message, reply)
+
+    {:ok, socket}
+  end
+
+  # The control plane stopped waiting, so an in-flight scan is stopped and
+  # nothing is answered. The scanner only reads, so stopping it leaves nothing
+  # half-finished behind.
+  def handle_message(_topic, "repository_scan_cancel", message, socket) do
+    case message do
+      %{"request_id" => request_id} when is_binary(request_id) ->
+        RepositoryScan.close(request_id)
+
+      _unusable ->
+        Logger.info("worker gateway ignoring a repository scan cancel with no request id")
     end
 
     {:ok, socket}
@@ -761,6 +794,25 @@ defmodule SddOrchestrator.Worker.GatewayConnection do
       {:error, reason} ->
         Logger.error(
           "worker gateway failed to push a repository metadata result for request " <>
+            "#{inspect(payload["request_id"])}: #{inspect(reason)}"
+        )
+    end
+
+    {:noreply, socket}
+  end
+
+  # The finished scan answer, sent here by
+  # `SddOrchestrator.Worker.RepositoryScan` because only this process owns the
+  # socket. The payload holds the scanner's own minimized findings, structure,
+  # stats, and proposal fields, or a refusal, or a cancellation; never a path.
+  def handle_info({:repository_scan_result, topic, payload}, socket) do
+    case push(socket, topic, "repository_scan_result", payload) do
+      {:ok, _ref} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "worker gateway failed to push a repository scan result for request " <>
             "#{inspect(payload["request_id"])}: #{inspect(reason)}"
         )
     end

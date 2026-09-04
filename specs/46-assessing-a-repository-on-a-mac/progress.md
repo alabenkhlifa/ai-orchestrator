@@ -1,5 +1,16 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Task 7 complete: the worker scans what it is already holding
+
+- `Worker.RepositoryMetadata` gained one read, `held_path/1`, and nothing else. The held folder was already keyed by `selection_ref` for the revalidate path, so a scan of the same binding is the same question again and needs no second panel. `Worker.RepositoryScan` never calls `Worker.RepositorySelection`, which is what makes "no panel opens because a scan arrived" a structural property rather than a promise.
+- The scan runs in its own monitored task. Running it in the holder process would make a cancellation wait for the scan it is stopping, which is the one thing a stop control cannot do. Cancelling kills the task, which is safe only because the scanner performs no checkout and no repository write; that is why the kill is the cancellation rather than the scanner's own `cancelled?` callback.
+- Scans are keyed by `request_id` and more than one may be in flight. The exact-commit cache in front of the scanner makes a repeated question cheap instead of a second full read.
+- The worker tree gained two children in one place: `WorkerRepositoryAssessmentCache` named for the release, then `RepositoryScan`, both after `RepositoryMetadata` and before `GatewayConnection`, so a `repository_scan` arriving on the first join has somewhere to land.
+- The answer's evidence keeps the scanner's own atom keys in-process and becomes strings over JSON. `ScanAnswer.new/1` accepts either at every level, so the same boundary holds for a test that calls the worker directly and for a real frame.
+- One regression, and it was correct to fail: `Worker.SupervisorTest` asserts the exact child list, so adding two children broke it. The expectation and its ordering comment were updated rather than the assertion loosened, because that test exists to make the tree's shape a decision rather than an accident.
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/repository_scan_test.exs` — exit `0`.
+- 8 tests passed. Regression run outside the focused proof: the worker metadata, selection, supervisor, and gateway suites with the assessment cache, 61 passed.
+
 ### 2026-09-04 - Task 6 complete, and Task 7's dependency was wrong
 
 - `repository_scan` is now an optional capability in `Delivery.WorkerProtocol`, and `RepositoryScan.Transport.Attachment` asks only an attachment that negotiated it. A worker attached in the right workspace but under a different worker id is not asked, which is the property that keeps a scan on the Mac the binding was verified on.
