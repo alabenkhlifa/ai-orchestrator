@@ -2,7 +2,7 @@
 
 ## Status
 
-Not Started
+Verified
 
 ## Active Slice
 
@@ -155,17 +155,17 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Acceptance criteria pass
-- [ ] Relevant automated tests pass
-- [ ] Build and type checks pass
-- [ ] `mix check` passes at slice scope
-- [ ] `npm --prefix assets run test:e2e` passes at slice scope
-- [ ] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass
-- [ ] `python3 .agents/scripts/validate_spec.py specs/47-live-repository-metadata-binding` and `python3 .agents/scripts/split_progress_log.py --check` pass
-- [ ] Product proof, hosted route: one click path from `/` in a real browser against the installed Mac app, worker stand-in off, no `/_e2e` seeding, reaching the verified repository, root, and commit and a saved pending assessment, recorded in `progress.md`
-- [ ] Product proof, device route: the same click path for a device-authoritative project, recorded in `progress.md`
-- [ ] New decisions are written back
-- [ ] Deferred work is recorded
+- [x] Acceptance criteria pass
+- [x] Relevant automated tests pass
+- [x] Build and type checks pass
+- [x] `mix check` passes at slice scope
+- [x] `npm --prefix assets run test:e2e` passes at slice scope
+- [x] `MIX_ENV=prod mix assets.deploy` and `MIX_ENV=prod mix release` pass
+- [x] `python3 .agents/scripts/validate_spec.py specs/47-live-repository-metadata-binding` and `python3 .agents/scripts/split_progress_log.py --check` pass
+- [x] Product proof, hosted route: one click path from `/` in a real browser against the installed Mac app, worker stand-in off, no `/_e2e` seeding, reaching the verified repository, root, and commit and a saved pending assessment, recorded in `progress.md`
+- [x] Product proof, device route: the same click path for a device-authoritative project, recorded in `progress.md`
+- [x] New decisions are written back
+- [x] Deferred work is recorded
 
 ## Blocked Decisions
 

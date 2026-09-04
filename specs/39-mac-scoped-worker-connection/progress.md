@@ -1,5 +1,12 @@
 # Mac-Scoped Worker Connection Progress Log
 
+### 2026-09-04 - Task 9 verified: the recovery click path proved itself mid-session
+
+- The recovery scenario happened for real without being deliberately staged: the worker app (`sdd-orchestrator-worker-launcher`, same OS process, never restarted) had been reporting `disconnected` in `connection_status.json` for several hours against a control plane that had been stopped for unrelated reasons earlier in the session. Starting `mix phx.server` again brought the same process back to `connected` within one second, confirmed both in the status file and in a real browser reading `Connected` / `Worker connected on this Mac.` on `/onboarding/local`, with nothing touched on the Mac.
+- This is the exact scenario `Task 9`'s recovery product proof calls for: stop the control plane, wait past the retry window (here, hours past it), start the control plane again, read `Connected` without touching the app. The same live worker session then carried specs/47-live-repository-metadata-binding's own product proof.
+- Status: **Verified**. All nine tasks complete, full verification gate green.
+- No code changed in this update.
+
 ### 2026-09-03 - Task 9 complete: the Mac connection retries an unreachable control plane instead of stopping
 
 - `handle_continue(:connect_gateway, socket)` now tells apart the one retriable failure (`{:gateway_credential_transport_error, reason}`, the HTTP POST to `/worker/gateway_credentials` never getting a response) from every other shape. Only a `{:device_workspace, _}` scope retries; a `{:project, _}` scope, and a device-workspace worker whose credential was genuinely refused (`:gateway_credential_refused`, `:invalid_websocket_configuration`), still fall through to the original, unchanged `refuse_gateway_start/3`: the same log text, `{:stop, :normal, socket}`, verbatim.

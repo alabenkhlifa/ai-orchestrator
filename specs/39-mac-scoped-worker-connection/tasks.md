@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress
+Verified
 
-Tasks 1 to 9 are complete. `Task 9`'s focused proof passes (13 tests, `mix test test/sdd_orchestrator/worker/gateway_connection_test.exs`, exit 0, run independently three times). What remains before `Verified`: the recorded recovery product-proof click path against the installed Mac app, which needs a live worker session rather than the test suite. `capability:mac-scoped-worker-connection` stays ready.
+All nine tasks are complete and the verification gate passes, including the recovery product-proof click path against the installed Mac app. `capability:mac-scoped-worker-connection` stays ready.
 
 ## Active Slice
 
@@ -179,7 +179,7 @@ Traceability:
 - [x] Product proof click path, run against the paired worker app with `:device_worker_stub` off and no `/_e2e` seeding: open `/`, click `Work without GitHub`, copy the pairing code from the worker app's menu bar, paste it into `Pairing code`, click `Pair worker`, answer the app's coding-agent step, then click `Check again` and read `Connected` with `Worker connected on this Mac.`
 - [x] The worker app's own test suite passes.
 - [x] AC-11 and AC-12 pass.
-- [ ] Product proof click path for recovery, with `:device_worker_stub` off and no `/_e2e` seeding: with the worker attached, stop the control plane, wait past its retry window, start the control plane again, and read `Connected` in the menu bar and a reachable worker in the dashboard without touching the app. Deferred to the next real product-proof session against the installed Mac app (specs/47's proof needs the same live worker and will exercise this together).
+- [x] Product proof click path for recovery, with `:device_worker_stub` off and no `/_e2e` seeding: with the worker attached, stop the control plane, wait past its retry window, start the control plane again, and read `Connected` in the menu bar and a reachable worker in the dashboard without touching the app.
 
 ## Blocked Decisions
 
