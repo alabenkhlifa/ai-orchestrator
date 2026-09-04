@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 ## Active Slice
 
@@ -55,7 +55,7 @@ Excluded:
 
 Deferred after this slice:
 
-- Auditing the remaining screens for the same assumption. The first slice fixed the one that blocks a run.
+- Auditing the remaining screens for the same assumption. The first slice fixed the one that blocks a run, and the product proof found the next one: the execution-profile screen labels a repository on a Mac `Connected repository`.
 - Resuming or retrying one saved assessment. Every ending is terminal, and a person starts a new one.
 
 Release gates:
@@ -175,7 +175,7 @@ Traceability:
 - [x] Nothing sent, stored, rendered, or logged by a scan carries an absolute or filesystem path, a remote URL, or file content.
 - [x] Build, formatting, lint, static checks, and logs review pass.
 - [x] Required browser scenarios pass.
-- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, verify the binding, press `Start assessment`, see the scan run and complete, then approve the execution profile it proposes. Recorded in `progress.md`.
+- [x] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, verify the binding, press `Start assessment`, see the scan run and complete, then approve the execution profile it proposes. Recorded in `progress.md`.
 
 ## Blocked Decisions
 
