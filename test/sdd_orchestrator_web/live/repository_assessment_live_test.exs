@@ -9,10 +9,16 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest.Adapter do
   end
 
   def start_link(_opts),
-    do: Agent.start_link(fn -> %{events: [], overrides: %{}} end, name: __MODULE__)
+    do:
+      Agent.start_link(
+        fn -> %{events: [], overrides: %{}, gate: nil, waiter: nil} end,
+        name: __MODULE__
+      )
 
   def install(overrides \\ %{}) do
-    Agent.update(__MODULE__, fn _state -> %{events: [], overrides: overrides} end)
+    Agent.update(__MODULE__, fn _state ->
+      %{events: [], overrides: overrides, gate: nil, waiter: nil}
+    end)
   end
 
   def events, do: Agent.get(__MODULE__, & &1.events)
@@ -23,8 +29,73 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest.Adapter do
     end)
   end
 
+  @doc """
+  Arms a gate that blocks the next `prepare/1` call until `release_gate/0` is
+  called. Lets a test observe the caller's waiting state before the adapter
+  answers, standing in for a real worker taking a while to respond.
+  """
+  def hold_gate do
+    Agent.update(__MODULE__, fn state -> %{state | gate: :armed} end)
+  end
+
+  def release_gate do
+    Agent.update(__MODULE__, fn state ->
+      if waiter = state.waiter, do: send(waiter, :adapter_gate_released)
+      %{state | gate: nil, waiter: nil}
+    end)
+  end
+
+  defp await_gate do
+    caller = self()
+
+    outcome =
+      Agent.get_and_update(__MODULE__, fn state ->
+        case state.gate do
+          :armed -> {:wait, %{state | waiter: caller}}
+          _other -> {:go, state}
+        end
+      end)
+
+    case outcome do
+      :go ->
+        :ok
+
+      :wait ->
+        receive do
+          :adapter_gate_released -> :ok
+        after
+          5_000 -> raise "adapter gate was never released"
+        end
+    end
+  end
+
   @impl true
-  def prepare(request), do: respond(:prepare, request)
+  def prepare(request) do
+    await_gate()
+
+    case Agent.get(__MODULE__, & &1.overrides[:prepare]) do
+      :raise -> die_without_answering()
+      _other -> respond(:prepare, request)
+    end
+  end
+
+  # `RepositoryAssessments.invoke/3` wraps the adapter call in its own
+  # `rescue`/`catch`, so a plain `raise` or self-`exit/1` from here is
+  # swallowed into an ordinary `{:error, :worker_unavailable}` result rather
+  # than a crash: it never proves the "task dies without answering" path.
+  # `start_async` links this process to the LiveView, so an untrappable
+  # `:kill` would take the LiveView down with it unless that link is removed
+  # first (the same order `cancel_async/3` itself uses: unlink, then exit).
+  # Removing it here first isolates this forced crash from the LiveView, the
+  # same way a real worker crash or connection drop would.
+  defp die_without_answering do
+    case Process.info(self(), :links) do
+      {:links, links} -> Enum.each(links, &Process.unlink/1)
+      _no_links -> :ok
+    end
+
+    Process.exit(self(), :kill)
+  end
 
   @impl true
   def revalidate(request), do: respond(:revalidate, request)
@@ -162,6 +233,8 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
       }
     )
     |> render_submit()
+
+    render_async(view)
 
     assert [{:prepare, request}] = Adapter.events()
     assert request.selected_root == root
@@ -383,12 +456,116 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
            )
   end
 
+  test "confirming shows the waiting stage before the worker answers, then the binding once it does",
+       context do
+    path = ~p"/projects/#{context.hosted_project.id}/assessment"
+    {:ok, view, _html} = live(context.owner_conn, path)
+
+    Adapter.hold_gate()
+
+    view
+    |> form("#assessment-binding-form",
+      assessment: %{selected_root: ".", worker_ref: context.worker.id, confirmed: "true"}
+    )
+    |> render_submit()
+
+    assert has_element?(view, "[data-preparing]")
+    assert has_element?(view, "[data-stop-preparing]")
+    refute has_element?(view, "[data-verified-binding]")
+    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+
+    Adapter.release_gate()
+    render_async(view)
+
+    assert has_element?(view, "[data-verified-binding]")
+    refute has_element?(view, "[data-preparing]")
+    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+  end
+
+  test "stopping the wait cancels the task, returns to disclosure, and persists nothing",
+       context do
+    # The device route so the persisted-nothing check reads the local device
+    # store (`Devices.repository_assessment_count/1`) instead of Postgres.
+    # `cancel_async/3` kills the waiting task mid-flight, and that kill can
+    # tear down the shared sandbox connection the task was borrowing; reading
+    # Postgres again afterward in the same test then fails with an ownership
+    # error unrelated to the product behavior under test.
+    path = ~p"/local/projects/#{context.device_project.id}/assessment"
+    {:ok, view, _html} = live(context.conn, path)
+
+    Adapter.hold_gate()
+
+    view
+    |> form("#assessment-binding-form",
+      assessment: %{selected_root: ".", worker_ref: context.worker.id, confirmed: "true"}
+    )
+    |> render_submit()
+
+    assert has_element?(view, "[data-preparing]")
+
+    view |> element("[data-stop-preparing]") |> render_click()
+
+    # `cancel_async/3` kills the task; the stage change arrives back through
+    # `handle_async/3` on its own message, separately from this click's
+    # reply. `render_async/1` waits on a fresh monitor taken out *after* the
+    # task pid is already gone, which races the LiveView's own older monitor
+    # for that same pid, so it is not a reliable wait for a cancellation
+    # (unlike a normal completion, where the result is sent before the task
+    # process exits). Poll the rendered stage instead.
+    assert await_disclosure_stage(view)
+
+    assert render(view) =~ "The wait was stopped."
+    assert has_element?(view, "[data-confirm-boundary]:not([disabled])")
+    assert Devices.repository_assessment_count(context.device_project.id) == 0
+    assert BindingStore.count() == 0
+  end
+
+  test "a task that dies without answering resolves to disclosure with a retryable message",
+       context do
+    path = ~p"/projects/#{context.hosted_project.id}/assessment"
+    {:ok, view, _html} = live(context.owner_conn, path)
+
+    Adapter.install(%{prepare: :raise})
+
+    view
+    |> form("#assessment-binding-form",
+      assessment: %{selected_root: ".", worker_ref: context.worker.id, confirmed: "true"}
+    )
+    |> render_submit()
+
+    render_async(view)
+
+    assert has_element?(view, ~s([data-screen="repository-assessment"][data-assessment-stage="disclosure"]))
+    assert render(view) =~ "The wait could not finish."
+    assert has_element?(view, "[data-confirm-boundary]:not([disabled])")
+    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert BindingStore.count() == 0
+  end
+
+  defp await_disclosure_stage(view, attempts \\ 100)
+
+  defp await_disclosure_stage(_view, 0), do: flunk("view did not return to the disclosure stage")
+
+  defp await_disclosure_stage(view, attempts) do
+    if has_element?(
+         view,
+         ~s([data-screen="repository-assessment"][data-assessment-stage="disclosure"])
+       ) do
+      true
+    else
+      Process.sleep(10)
+      await_disclosure_stage(view, attempts - 1)
+    end
+  end
+
   defp confirm_binding(view, worker_id, root \\ ".") do
     view
     |> form("#assessment-binding-form",
       assessment: %{selected_root: root, worker_ref: worker_id, confirmed: "true"}
     )
     |> render_submit()
+
+    render_async(view)
   end
 
   # A hosted project whose repository is a Git repository on the owner's Mac: no

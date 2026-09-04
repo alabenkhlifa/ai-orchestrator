@@ -275,6 +275,8 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
     )
     |> render_submit()
 
+    render_async(view)
+
     assert has_element?(view, "[data-verified-binding]")
     view
   end

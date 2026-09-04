@@ -127,29 +127,24 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          true <- params["confirmed"] == "true",
          {:ok, worker} <- selected_worker(socket.assigns.worker_choices, params["worker_ref"]),
          root when is_binary(root) <- params["selected_root"],
-         attrs <- binding_attrs(worker, root),
-         {:ok, preparation} <-
-           RepositoryAssessments.prepare_binding(
-             socket.assigns.authority,
-             socket.assigns.project.id,
-             attrs
-           ) do
+         attrs <- binding_attrs(worker, root) do
+      authority = socket.assigns.authority
+      project_id = socket.assigns.project.id
+
       {:noreply,
        socket
-       |> assign(:stage, :binding)
-       |> assign(:preparation, preparation)
-       |> assign(:selected_root, preparation.root)
-       |> assign(:error_message, nil)}
+       |> assign(:stage, :preparing)
+       |> assign(:error_message, nil)
+       |> start_async(:prepare_binding, fn ->
+         RepositoryAssessments.prepare_binding(authority, project_id, attrs)
+       end)}
     else
       false ->
         {:noreply,
          assign(socket, :error_message, "Confirm the processing boundary and choose a worker.")}
 
-      {:error, :unauthorized} ->
-        {:noreply, push_navigate(socket, to: socket.assigns.denied_destination)}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :error_message, preparation_error(reason))}
+      {:error, :worker_unavailable} ->
+        {:noreply, assign(socket, :error_message, preparation_error(:worker_unavailable))}
 
       _invalid ->
         {:noreply,
@@ -164,6 +159,11 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   def handle_event("confirm_boundary", _params, socket) do
     {:noreply,
      assign(socket, :error_message, "Confirm the processing boundary and choose a worker.")}
+  end
+
+  @impl true
+  def handle_event("stop_preparing", _params, socket) do
+    {:noreply, cancel_async(socket, :prepare_binding)}
   end
 
   def handle_event("start_assessment", _params, %{assigns: %{preparation: nil}} = socket) do
@@ -202,6 +202,44 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
            "The assessment could not be saved. No scan was started. Try again."
          )}
     end
+  end
+
+  @impl true
+  def handle_async(:prepare_binding, {:ok, {:ok, preparation}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:stage, :binding)
+     |> assign(:preparation, preparation)
+     |> assign(:selected_root, preparation.root)
+     |> assign(:error_message, nil)}
+  end
+
+  def handle_async(:prepare_binding, {:ok, {:error, :unauthorized}}, socket) do
+    {:noreply, push_navigate(socket, to: socket.assigns.denied_destination)}
+  end
+
+  def handle_async(:prepare_binding, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:stage, :disclosure)
+     |> assign(:error_message, preparation_error(reason))}
+  end
+
+  def handle_async(:prepare_binding, {:exit, {:shutdown, :cancel}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:stage, :disclosure)
+     |> assign(:error_message, "The wait was stopped. No binding was prepared. Try again.")}
+  end
+
+  def handle_async(:prepare_binding, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:stage, :disclosure)
+     |> assign(
+       :error_message,
+       "The wait could not finish. No binding was prepared. Try again."
+     )}
   end
 
   # Both repository links are preloaded for the repository label, because either
@@ -543,6 +581,38 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
           <p class="mt-3 text-xs text-ink-muted" data-before-confirmation>
             No repository metadata call or scan command is issued before confirmation.
           </p>
+        </section>
+
+        <section
+          :if={@stage == :preparing}
+          class="mt-6 rounded-xl border border-line bg-surface p-4 sm:p-5"
+          aria-labelledby="preparing-heading"
+          data-preparing
+        >
+          <div class="flex items-start gap-3">
+            <span class="rounded-lg bg-info-bg p-2 text-info-fg">
+              <.lucide name="refresh-cw" class="size-5 motion-safe:animate-spin" />
+            </span>
+            <div>
+              <h2 id="preparing-heading" class="text-base font-bold text-ink">
+                Waiting for the worker
+              </h2>
+              <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+                Waiting for the selected worker to confirm this repository. A folder picker may
+                appear on that Mac. This can take up to two minutes.
+              </p>
+            </div>
+          </div>
+
+          <.button
+            variant="secondary"
+            type="button"
+            phx-click="stop_preparing"
+            class="mt-5 w-full sm:w-auto"
+            data-stop-preparing
+          >
+            <.lucide name="x" class="size-4" /> Stop waiting
+          </.button>
         </section>
 
         <section
