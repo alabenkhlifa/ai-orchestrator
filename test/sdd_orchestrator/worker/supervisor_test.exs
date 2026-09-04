@@ -15,6 +15,7 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.GatewayConnection
   alias SddOrchestrator.Worker.ProjectConnections
+  alias SddOrchestrator.Worker.RepositoryMetadata
   alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.State
   alias SddOrchestrator.Worker.Supervisor, as: WorkerSupervisor
@@ -137,6 +138,10 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # specs/40 Task 3 adds `RepositorySelection` between them: it holds the one
     # open folder-picker request, and it starts before the connection so a
     # request arriving on the first join has somewhere to land.
+    # specs/47 Task 5 adds `RepositoryMetadata` right after it, for the same
+    # reason: it holds the one open repository-metadata question and calls into
+    # `RepositorySelection` for the folder it needs, so it starts after that and
+    # still before the connection can deliver a `repository_metadata` message.
     # specs/41 Task 7 adds `ProjectConnections` for the same reason: it holds
     # one connection per project this worker is told to serve, and a
     # `project_bound` notice arriving on the first join has to have somewhere to
@@ -147,6 +152,7 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
       assert Enum.map(mac_only_children, & &1.id) == [
                State,
                RepositorySelection,
+               RepositoryMetadata,
                ProjectConnections,
                GatewayConnection
              ]
@@ -157,6 +163,7 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
       assert Enum.map(project_children, & &1.id) == [
                State,
                RepositorySelection,
+               RepositoryMetadata,
                ProjectConnections,
                GatewayConnection
              ]

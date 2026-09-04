@@ -36,8 +36,14 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
 
   use ExUnit.Case, async: true
 
+  # `SddOrchestrator.Repo` is a regex, not a plain string: a bare substring
+  # check also matches `SddOrchestrator.RepositoryAssessments` and
+  # `SddOrchestrator.RepositoryMetadata`, which are `Repo`-free by design and
+  # allowlisted above. The lookahead refuses only a reference that stops at
+  # `Repo` — an identifier character right after it means the match is really
+  # some other, longer module name.
   @forbidden [
-    "SddOrchestrator.Repo",
+    ~r/SddOrchestrator\.Repo(?![A-Za-z0-9_])/,
     "Ecto.Repo",
     "SddOrchestrator.Projects",
     "SddOrchestrator.Portability"
@@ -85,7 +91,7 @@ defmodule SddOrchestrator.Worker.BoundaryTest do
       source = File.read!(path)
 
       for needle <- @forbidden do
-        refute source =~ needle, "#{path} unexpectedly references #{needle}"
+        refute source =~ needle, "#{path} unexpectedly references #{inspect(needle)}"
       end
 
       for [_full, submodule] <- Regex.scan(@delivery_reference, source) do

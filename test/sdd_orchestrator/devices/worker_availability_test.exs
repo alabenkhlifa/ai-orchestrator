@@ -47,6 +47,7 @@ defmodule SddOrchestrator.Devices.WorkerAvailabilityTest do
   alias SddOrchestrator.Devices.Pairing
   alias SddOrchestrator.Devices.WorkerAvailabilityTest.Adapter
   alias SddOrchestrator.Devices.WorkerDiscovery
+  alias SddOrchestrator.Projects
   alias SddOrchestrator.ProjectsFixtures
   alias SddOrchestrator.RepositoryAssessments
   alias SddOrchestrator.RepositoryAssessments.BindingStore
@@ -73,10 +74,28 @@ defmodule SddOrchestrator.Devices.WorkerAvailabilityTest do
 
     %{conn: owner_conn, account: account} = register_and_log_in_account(%{conn: conn})
     workspace = ProjectsFixtures.workspace_fixture(account)
-    hosted_project = ProjectsFixtures.registered_project(workspace, name: "Availability")
 
     {:ok, device_workspace} = Devices.establish_workspace()
     worker = paired_worker(device_workspace.id)
+
+    # A repository the confirm form actually offers: the assessment screen no
+    # longer offers confirmation at all for a GitHub-connected repository
+    # (specs/47-live-repository-metadata-binding Task 8), and this file's own
+    # proof is about worker listing and authorization, not repository
+    # provider, so the fixture needs a worker-bound local repository like the
+    # LiveView tests use. Registration itself requires the worker to verify as
+    # attached, so it is attached only for this step and detached again before
+    # any test body runs; every test re-establishes attachment on its own terms
+    # through this file's own `attach/1`.
+    registration_attachment = attach(worker)
+
+    attempt =
+      ProjectsFixtures.device_attempt_ready_for_hosted(device_workspace, workspace,
+        worker_id: worker.id
+      )
+
+    {:ok, hosted_project} = Projects.register_project(workspace, attempt)
+    detach(registration_attachment, device_workspace.id)
 
     %{
       account: account,
