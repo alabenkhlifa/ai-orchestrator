@@ -883,10 +883,12 @@ defmodule SddOrchestratorWeb.FeatureDetailLive do
     end
   end
 
-  defp readiness_message(reason) when is_atom(reason),
+  # One clause, because `Suggestions.dismiss/5` only ever refuses with an atom.
+  # The guarded pair this replaced kept an unreachable fallback that Dialyzer
+  # reported, and `Map.get/3`'s own default already answers for a reason this
+  # screen has no wording for.
+  defp readiness_message(reason),
     do: Map.get(@readiness_messages, reason, @readiness_unchecked)
-
-  defp readiness_message(_reason), do: @readiness_unchecked
 
   # The state version travels in the operation key, so a double press from one
   # screen is absorbed while a feature that went back to draft can be made ready

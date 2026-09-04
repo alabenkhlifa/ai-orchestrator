@@ -81,6 +81,16 @@ config :sdd_orchestrator,
        :repository_metadata_adapter,
        SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter.Unavailable
 
+# The scan transport is pinned for the same reason, and to the same effect: a
+# test that needs a worker's scan installs its own transport double.
+config :sdd_orchestrator,
+       :repository_scan_transport,
+       SddOrchestrator.RepositoryScan.Transport.Unavailable
+
+config :sdd_orchestrator,
+       :repository_scan_adapter,
+       SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter.Unavailable
+
 # Tests use the deterministic GitHub fake, never a live provider.
 config :sdd_orchestrator, :github,
   provider: SddOrchestrator.GitHubIntegration.FakeProvider,

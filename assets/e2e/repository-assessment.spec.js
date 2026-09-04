@@ -6,11 +6,12 @@ const {
   tabTo,
 } = require("./support/harness");
 
-// Focused browser proof for Slice 14 Task 1. The same scenario runs in the
-// desktop and mobile Playwright projects. Its deterministic worker adapter can
-// prepare and revalidate metadata only; it exposes no scan command.
+// Focused browser proof for Slice 14 Task 1, extended by specs/46 Task 9. The
+// same scenario runs in the desktop and mobile Playwright projects. Its
+// deterministic worker adapters answer both boundaries the screen reaches: the
+// metadata read that verifies the binding, and the scan the start sends.
 test.describe("repository assessment start", () => {
-  test("the owner confirms disclosure, reviews one exact binding, and starts separately", async ({
+  test("the owner confirms disclosure, reviews one exact binding, starts, and sees it complete", async ({
     page,
   }) => {
     const { project_id, worker_id, commit } = await bootstrap(page, "repository_assessment");
@@ -45,7 +46,8 @@ test.describe("repository assessment start", () => {
     );
 
     await expect(page.locator("[data-verified-binding]")).toHaveCount(0);
-    await expect(page.locator("[data-assessment-pending]")).toHaveCount(0);
+    await expect(page.locator("[data-assessment-scanning]")).toHaveCount(0);
+    await expect(page.locator("[data-assessment-completed]")).toHaveCount(0);
     await expect(page.locator("[data-before-confirmation]")).toContainText(
       "No repository metadata call or scan command",
     );
@@ -71,14 +73,18 @@ test.describe("repository assessment start", () => {
     await expect(page.locator("[data-verified-binding]")).toBeVisible();
     await expect(page.locator("[data-binding-field=root]")).toContainText(".");
     await expect(page.locator("[data-binding-field=commit]")).toContainText(commit);
-    await expect(page.locator("[data-assessment-pending]")).toHaveCount(0);
+    await expect(page.locator("[data-assessment-completed]")).toHaveCount(0);
 
     await page.locator("[data-start-assessment]").click();
 
-    await expect(screen).toHaveAttribute("data-assessment-stage", "pending");
-    await expect(page.locator("[data-assessment-pending]")).toBeVisible();
-    await expect(page.locator("[data-assessment-state]")).toHaveText("Pending scan");
+    // The scan is sent to the worker the person chose, and the screen waits for
+    // it. The deterministic adapter answers at once, so this settles on the
+    // completed state rather than on a saved request nothing moves.
+    await expect(screen).toHaveAttribute("data-assessment-stage", "completed");
+    await expect(page.locator("[data-assessment-completed]")).toBeVisible();
+    await expect(page.locator("[data-assessment-state]")).toHaveText("Completed");
     await expect(page.locator("[data-verified-binding]")).toHaveCount(0);
+    await expect(page.locator("[data-profile-link]")).toBeVisible();
     await expectNoSeriousAxeViolations(page);
   });
 });

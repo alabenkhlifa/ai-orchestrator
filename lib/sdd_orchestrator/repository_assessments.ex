@@ -30,7 +30,10 @@ defmodule SddOrchestrator.RepositoryAssessments do
     RepositoryExecutionProfile,
     RepositoryExecutionProfileProposal,
     RepositoryExecutionProfileProposalEnvelope,
-    RepositoryMetadataAdapter
+    RepositoryExecutionProfileProposalPayload,
+    RepositoryMetadataAdapter,
+    RepositoryScanAdapter,
+    WorkerRepositoryExecutionProfileProposalEnvelope
   }
 
   @ttl_seconds 2 * 60
@@ -161,6 +164,76 @@ defmodule SddOrchestrator.RepositoryAssessments do
         {:error, :persistence_failed}
     end
   end
+
+  @doc """
+  Scans a pending assessment's repository on its Mac and stores the outcome.
+
+  This is the one place a saved assessment stops being a request and becomes a
+  result. `attrs` supplies the two values the pending row does not hold: the
+  `device_workspace_id` of the Mac and the `selection_ref` the binding was
+  verified under. Both are in-flight correlation values belonging to the
+  session that prepared the binding, which is why they are passed rather than
+  persisted.
+
+  Every ending is terminal. A completed scan is stored with the envelope this
+  function derives; a refusal, a lost worker, an unanswered wait window, a
+  cancellation, and an answer that does not match the command it was sent for
+  are each stored through the same `finish_assessment/6`. A row is therefore
+  left at `pending_scan` only while a scan is genuinely still running.
+
+  Returns `{:ok, completed}` for a scan that finished, and `{:error, reason}`
+  otherwise, where `reason` keeps the name the worker gave it so a caller can
+  tell an expired folder hold from a repository that moved off its commit. A
+  reason is returned whether or not the failure could be stored; a store that
+  refuses the failure is reported under its own reason instead.
+
+  The control plane derives the result and the envelope from the command it
+  issued. The worker's answer supplies evidence, the six proposal fields, and
+  the provenance of its own cache, and nothing else it says is taken.
+  """
+  @spec run_assessment(authority(), String.t(), RepositoryAssessment.t(), map(), keyword()) ::
+          {:ok, RepositoryAssessment.t()} | {:error, error()}
+  def run_assessment(authority, project_id, assessment, attrs, opts \\ [])
+
+  def run_assessment(authority, project_id, %RepositoryAssessment{} = assessment, attrs, opts)
+      when is_binary(project_id) and is_map(attrs) do
+    adapter = Keyword.get(opts, :adapter, RepositoryScanAdapter.configured())
+
+    with {:ok, command} <- RepositoryAssessment.command(assessment),
+         {:ok, request} <- scan_request(command, attrs) do
+      case adapter.scan(request) do
+        {:ok, evidence} -> store_scan(authority, project_id, command, evidence, opts)
+        {:error, reason} -> store_scan_failure(authority, project_id, command, reason, opts)
+      end
+    end
+  end
+
+  def run_assessment(_authority, _project_id, _assessment, _attrs, _opts),
+    do: {:error, :invalid_command}
+
+  @doc """
+  Ends one pending assessment as cancelled, because the person stopped waiting.
+
+  A stop is an ending like any other, so it is stored rather than left behind.
+  Without this, a caller whose process is killed mid-scan would leave a row at
+  `pending_scan` that no later reader could tell from a scan still running.
+  """
+  @spec cancel_assessment(authority(), String.t(), RepositoryAssessment.t(), keyword()) ::
+          :ok | {:error, error()}
+  def cancel_assessment(authority, project_id, assessment, opts \\ [])
+
+  def cancel_assessment(authority, project_id, %RepositoryAssessment{} = assessment, opts)
+      when is_binary(project_id) do
+    with {:ok, command} <- RepositoryAssessment.command(assessment) do
+      case store_scan_failure(authority, project_id, command, :cancelled, opts) do
+        {:error, :cancelled} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  def cancel_assessment(_authority, _project_id, _assessment, _opts),
+    do: {:error, :invalid_command}
 
   @doc """
   Atomically records one exact command-bound terminal assessment result.
@@ -749,6 +822,115 @@ defmodule SddOrchestrator.RepositoryAssessments do
   end
 
   defp opaque_ref(_value), do: :error
+
+  defp scan_request(command, attrs) do
+    with {:ok, device_workspace_id} <- uuid(Map.get(attrs, :device_workspace_id)),
+         {:ok, selection_ref} <- selection_ref(Map.get(attrs, :selection_ref)) do
+      {:ok,
+       %{
+         project_id: command.project_id,
+         device_workspace_id: device_workspace_id,
+         worker_ref: command.worker_ref,
+         selection_ref: selection_ref,
+         command: command
+       }}
+    else
+      :error -> {:error, :invalid_command}
+    end
+  end
+
+  # The scanner result is rebuilt here rather than carried: every field but
+  # the evidence is the control plane's own command, so a worker cannot state
+  # them at all. `completed/2` then validates the evidence against those same
+  # limits and anchors before anything is stored.
+  defp store_scan(authority, project_id, command, evidence, opts) do
+    with {:ok, result} <-
+           RepositoryAssessmentResult.completed(command, worker_result(command, evidence)),
+         {:ok, payload} <-
+           RepositoryExecutionProfileProposalPayload.new(result, Map.get(evidence, :proposal)),
+         true <- RepositoryExecutionProfileProposalPayload.valid_for?(payload, command, result),
+         {:ok, envelope} <-
+           WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result),
+         {:ok, provenance} <- scan_provenance(command, result, evidence) do
+      finish_assessment(
+        authority,
+        project_id,
+        command,
+        result,
+        provenance,
+        Keyword.put(opts, :proposal_envelope, envelope)
+      )
+    else
+      # Only the derivation above can reach here: `finish_assessment/6` is the
+      # body of the `with`, so its own refusals are returned untouched rather
+      # than turned into a second write.
+      _unusable_answer ->
+        store_scan_failure(authority, project_id, command, :invalid_worker_response, opts)
+    end
+  end
+
+  defp worker_result(command, evidence) do
+    %{
+      protocol_version: command.version,
+      assessment_id: command.assessment_id,
+      project_id: command.project_id,
+      repository: %{provider: command.repository_provider, id: command.repository_id},
+      root: command.root,
+      commit: command.commit,
+      scanner_contract_digest: command.scanner_contract_digest,
+      status: "completed",
+      findings: Map.get(evidence, :findings),
+      structure: Map.get(evidence, :structure),
+      stats: Map.get(evidence, :stats)
+    }
+  end
+
+  # Both digests are derived here from the command and the result. Only the
+  # worker's own cache facts come from the answer, because only the worker can
+  # know them.
+  defp scan_provenance(command, result, evidence) do
+    with %{source: source, cache_stored: cache_stored} <- Map.get(evidence, :provenance),
+         {:ok, cache_key_sha256} <- RepositoryAssessmentCacheProvenance.cache_key_sha256(command),
+         {:ok, evidence_sha256} <- RepositoryAssessmentCacheProvenance.evidence_sha256(result) do
+      RepositoryAssessmentCacheProvenance.new(%{
+        source: source,
+        cache_key_sha256: cache_key_sha256,
+        evidence_sha256: evidence_sha256,
+        cache_stored: cache_stored
+      })
+    else
+      _unusable -> {:error, :invalid_cache_provenance}
+    end
+  end
+
+  # A cancellation is its own terminal state; everything else is a failure
+  # under the closest allowlisted code. The caller still learns the original
+  # reason, because the stored code is coarser than what the screen has to
+  # say: an expired folder hold and a worker that never answered are both
+  # `repository_unavailable` in storage and two different sentences on screen.
+  defp store_scan_failure(authority, project_id, command, reason, opts) do
+    case terminal_for(command, reason) do
+      {:ok, result} ->
+        case finish_assessment(authority, project_id, command, result, nil, opts) do
+          {:ok, _stored} -> {:error, reason}
+          {:error, store_reason} -> {:error, store_reason}
+        end
+
+      {:error, _invalid} ->
+        {:error, reason}
+    end
+  end
+
+  defp terminal_for(command, :cancelled), do: RepositoryAssessmentResult.canceled(command)
+
+  defp terminal_for(command, reason),
+    do: RepositoryAssessmentResult.failed(command, failure_code(reason))
+
+  defp failure_code(reason) do
+    if Atom.to_string(reason) in RepositoryAssessmentResult.failure_codes(),
+      do: reason,
+      else: :repository_unavailable
+  end
 
   defp selection_ref(value) when is_binary(value) do
     normalized = String.trim(value)

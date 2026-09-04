@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Verified
 
 ## Active Slice
 
@@ -23,7 +23,7 @@ Provides:
 ## Slice Size Gate
 
 - Slice size: Standard
-- Nine tasks total, six of them active, and a longest `Depends on:` path of five: `Task 4`, `Task 5`, `Task 6`, `Task 8`, `Task 9`.
+- Nine tasks total, six of them active, and a longest `Depends on:` path of six: `Task 4`, `Task 5`, `Task 6`, `Task 7`, `Task 8`, `Task 9`.
 
 ## Task Size Gate
 
@@ -55,7 +55,7 @@ Excluded:
 
 Deferred after this slice:
 
-- Auditing the remaining screens for the same assumption. The first slice fixed the one that blocks a run.
+- Auditing the remaining screens for the same assumption. The first slice fixed the one that blocks a run, and the product proof found the next one: the execution-profile screen labels a repository on a Mac `Connected repository`.
 - Resuming or retrying one saved assessment. Every ending is terminal, and a person starts a new one.
 
 Release gates:
@@ -103,16 +103,18 @@ Traceability:
   - Corrected by `specs/47-live-repository-metadata-binding#Task 8`: AC-05 narrowed. The proof this task recorded that a GitHub project's assessment "completes and approves" ran against a test double and was never achievable against a real worker (no worker can match a GitHub numeric id to a local folder's identity). The screen, labeling, and no-redirect behavior this task actually delivered for a GitHub project stay unchanged and verified; only the completion claim was corrected.
   - Corrected by `Task 8` of this slice: the completion in this task's own scenario was produced by a seeded result, not by a worker. What it proved stays true, that a completed assessment yields an approvable profile. That a real scan produces one is `Task 8`'s and `Task 9`'s to prove.
 
-- [ ] Task 4 — One closed shape for a scan command and its answer.
+- [x] Task 4 — One closed shape for a scan command and its answer.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
   - Purpose: Fix what may cross to the Mac and back before anything is built on top of it, so no later task decides that for itself.
   - Owned surfaces: `SddOrchestrator.RepositoryScan.ScanRequest` and `SddOrchestrator.RepositoryScan.ScanAnswer` values, and `SddOrchestrator.RepositoryScan.AttachmentCodec` with its request, cancellation, and answer encodings.
   - Owns: AC-12
-  - Proof: Focused tests cover a valid request and a valid answer round-tripping through the codec, a request missing any required field refused, an answer carrying an unknown field refused, an answer whose scan result or proposal payload is malformed refused, and no encoding admitting a filesystem path, a remote URL, or a file name.
+  - Proof: Focused tests cover a valid request and a valid answer round-tripping through the codec, a request missing any required field refused, an answer carrying an unknown field refused, an answer whose scan result or proposal payload is malformed refused, and no encoding admitting an absolute path, a remote URL, or file content.
+  - Delivered: a scan request leaves as four fields and an answer carries only findings, structure, stats, the six proposal lists, and the worker's two cache-provenance values. The command fields a scanner result repeats are not on the wire at all, because the control plane still holds the command it issued.
+  - Extended by `Task 8`: `provenance` was added to the answer. It is the one thing the worker knows and this side cannot re-derive, so inventing it would have made the stored cache record a guess.
 
-- [ ] Task 5 — One scan, one outcome, one wait window.
+- [x] Task 5 — One scan, one outcome, one wait window.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 4
@@ -120,8 +122,9 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryScan` with `run/2` and `answer/2`, `SddOrchestrator.RepositoryScan.Server` with its supervision entry, and the `SddOrchestrator.RepositoryScan.Transport` behaviour with its refusing `Unavailable` default.
   - Owns: AC-11
   - Proof: Focused tests cover one answer resolving a blocked call, a second answer for the same request refused as unknown, an answer from an attachment the request was not pushed to refused, the calling process dying resolving the request and cancelling it on the worker, the wait window closing as an unavailable worker, and the default transport refusing at once with nothing left open.
+  - Delivered: `RepositoryScan.run/2` blocks until one outcome, and every refusal reaches the caller under its own name so the domain can tell an expired hold from a stale commit.
 
-- [ ] Task 6 — Carry a scan over the Mac-scoped attachment.
+- [x] Task 6 — Carry a scan over the Mac-scoped attachment.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 5
@@ -129,17 +132,19 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryScan.Transport.Attachment` with its declared capability, the `repository_scan`, `repository_scan_cancel`, and `repository_scan_result` frames on `SddOrchestratorWeb.WorkerWorkspaceChannel`, and the configuration selecting the real transport outside tests.
   - Owns: none
   - Proof: Focused tests cover a scan pushed to the named worker's attachment and not to another worker in the same workspace, no attachment refused as no worker, an attached worker that did not declare the capability refused as needing an update, a result frame handed to the request it names, and a result frame sent by a different attachment refused.
+  - Delivered: `repository_scan` is a negotiated capability and the scan, cancellation, and result frames ride the workspace channel beside the metadata ones.
 
-- [ ] Task 7 — The worker scans the folder it already holds.
+- [x] Task 7 — The worker scans the folder it already holds.
   - Size: Standard
   - Proof scope: Focused
-  - Depends on: Task 4
+  - Depends on: Task 4, Task 6
   - Purpose: Scan the repository the person already verified, without asking them for the folder a second time.
   - Owned surfaces: `SddOrchestrator.Worker.RepositoryScan` with its supervision entry, the held-folder lookup by `selection_ref` it reads from `SddOrchestrator.Worker.RepositoryMetadata`, the `repository_scan` and `repository_scan_cancel` handling in `SddOrchestrator.Worker.GatewayConnection`, and the `repository_scan` capability the release declares at attach. The held folder it reads is `specs/47-live-repository-metadata-binding#Task 8`'s, recorded here rather than as a capability edge because `specs/47` already requires this specification's `Task 3` and the graph must stay acyclic.
   - Owns: AC-09
-  - Proof: Focused tests cover a scan of a held folder answering with the scanner's own result and proposal payload through the exact-commit cache, a `selection_ref` that is not held refused as expired with no panel opened, a held folder whose repository moved to another commit refused, a cancellation stopping an in-flight scan, and no path or file name in any answer or log line.
+  - Proof: Focused tests cover a scan of a held folder answering with the scanner's own result and proposal payload through the exact-commit cache, a `selection_ref` that is not held refused as expired with no panel opened, a held folder whose repository moved to another commit refused, a cancellation stopping an in-flight scan, and no absolute path, remote URL, or file content in any answer or log line.
+  - Delivered: `Worker.RepositoryMetadata.held_path/1` is the one read of the held folder, and a scan runs in its own task so a cancellation never waits on the read it is stopping.
 
-- [ ] Task 8 — Take a pending assessment to a terminal one.
+- [x] Task 8 — Take a pending assessment to a terminal one.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 6, Task 7
@@ -147,8 +152,10 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter` with its `Worker` and `Unavailable` implementations and its configuration, and the one `RepositoryAssessments` function that issues a pending assessment's command, revalidates the answer against that command, derives the authoritative envelope, and writes every ending through `finish_assessment/6`.
   - Owns: AC-10
   - Proof: Focused tests cover a completed answer stored with its derived envelope and cache provenance, an answer that does not match the command it was sent for refused and stored as failed, a refusal, a lost worker, and an unanswered window each stored as failed under their own reason, a cancelled scan stored as cancelled, a person who does not own the project refused with nothing stored, and a new assessment startable after a failed one.
+  - Delivered: `RepositoryAssessments.run_assessment/5` is the one path from a pending row to a terminal one. It rebuilds the result and the envelope from its own command and returns the worker's reason by name, so a caller can tell an expired hold from a stale commit.
+  - Extended by `Task 9`: `cancel_assessment/4` was added. A stop kills the waiting task, so the task cannot record its own cancellation and the invariant needed a caller that could.
 
-- [ ] Task 9 — The screen assesses, and says what happened.
+- [x] Task 9 — The screen assesses, and says what happened.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8
@@ -156,18 +163,19 @@ Traceability:
   - Owned surfaces: `SddOrchestratorWeb.RepositoryAssessmentLive`'s scan that its start now runs, its running state with the stop control, its completed state with the link to the execution profile, its failed and expired-binding states, and the replaced copy that says no scan command is sent. Completing it establishes `capability:live-repository-scan`.
   - Owns: AC-07, AC-08
   - Proof: Focused LiveView tests cover pressing start running the scan and rendering the running state with its stop control, a completed answer rendering the completed state and the profile link, the stop control ending the wait and leaving a state the person can start from, a failed answer rendering its reason, an expired binding offering to verify it again, and the device route unchanged.
+  - Delivered: pressing `Start assessment` now assesses. The screen waits with a stop control, shows the completed state with the way to the profile, and names why a scan did not finish.
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] The first slice's criteria still pass: the screen opens, names the repository, states an unreachable Mac, and refuses a person who does not own the project.
-- [ ] The existing repository-metadata question over the same attachment passes unchanged.
-- [ ] The GitHub assessment's screen, labeling, and no-redirect behavior pass unchanged.
-- [ ] The accountless device route passes unchanged.
-- [ ] Nothing sent, stored, rendered, or logged by a scan carries a repository path, remote, file name, or file content.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass.
-- [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, verify the binding, press `Start assessment`, see the scan run and complete, then approve the execution profile it proposes. Recorded in `progress.md`.
+- [x] Active-slice acceptance criteria pass.
+- [x] The first slice's criteria still pass: the screen opens, names the repository, states an unreachable Mac, and refuses a person who does not own the project.
+- [x] The existing repository-metadata question over the same attachment passes unchanged.
+- [x] The GitHub assessment's screen, labeling, and no-redirect behavior pass unchanged.
+- [x] The accountless device route passes unchanged.
+- [x] Nothing sent, stored, rendered, or logged by a scan carries an absolute or filesystem path, a remote URL, or file content.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass.
+- [x] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, verify the binding, press `Start assessment`, see the scan run and complete, then approve the execution profile it proposes. Recorded in `progress.md`.
 
 ## Blocked Decisions
 

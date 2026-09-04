@@ -122,6 +122,24 @@ defmodule SddOrchestrator.Worker.RepositoryMetadata do
     GenServer.cast(__MODULE__, {:close, request_id})
   end
 
+  @doc """
+  Answers with the unexpired folder held for `selection_ref`, if there is one.
+
+  This is the read `SddOrchestrator.Worker.RepositoryScan` needs: a scan of a
+  binding is a second question about the same folder, and asking the person
+  for it again because a scan is bigger than a metadata read would be the
+  product acting without being asked. `:none` means nothing usable is held,
+  either because none ever was or because the hold has expired, and the
+  caller refuses rather than opening a panel.
+
+  The path never leaves this process for any other reason, and it is still
+  never logged.
+  """
+  @spec held_path(String.t()) :: {:ok, Path.t()} | :none
+  def held_path(selection_ref) when is_binary(selection_ref) do
+    GenServer.call(__MODULE__, {:held_path, selection_ref})
+  end
+
   @impl GenServer
   def init(opts) do
     {:ok,
@@ -130,6 +148,14 @@ defmodule SddOrchestrator.Worker.RepositoryMetadata do
        awaiting: nil,
        held: %{}
      }}
+  end
+
+  @impl GenServer
+  def handle_call({:held_path, selection_ref}, _from, state) do
+    case usable_held_entry(state.held, selection_ref) do
+      {:ok, entry} -> {:reply, {:ok, entry.path}, state}
+      :none -> {:reply, :none, state}
+    end
   end
 
   @impl GenServer

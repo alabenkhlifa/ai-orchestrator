@@ -12,10 +12,12 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
   # concurrently-running tests over that shared global state.
   use ExUnit.Case, async: false
 
+  alias SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache
   alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.GatewayConnection
   alias SddOrchestrator.Worker.ProjectConnections
   alias SddOrchestrator.Worker.RepositoryMetadata
+  alias SddOrchestrator.Worker.RepositoryScan
   alias SddOrchestrator.Worker.RepositorySelection
   alias SddOrchestrator.Worker.State
   alias SddOrchestrator.Worker.Supervisor, as: WorkerSupervisor
@@ -146,6 +148,10 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
     # one connection per project this worker is told to serve, and a
     # `project_bound` notice arriving on the first join has to have somewhere to
     # open.
+    # specs/46 Task 7 adds `WorkerRepositoryAssessmentCache` and
+    # `RepositoryScan`, in that order: the scan holder scans through the cache,
+    # and reads the folder `RepositoryMetadata` is holding, so it starts after
+    # both and still before a `repository_scan` message can arrive.
     test "starts the gateway connection for both scopes" do
       assert {:ok, {_flags, mac_only_children}} = WorkerSupervisor.init(mac_only_config())
 
@@ -153,6 +159,8 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
                State,
                RepositorySelection,
                RepositoryMetadata,
+               WorkerRepositoryAssessmentCache,
+               RepositoryScan,
                ProjectConnections,
                GatewayConnection
              ]
@@ -164,6 +172,8 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
                State,
                RepositorySelection,
                RepositoryMetadata,
+               WorkerRepositoryAssessmentCache,
+               RepositoryScan,
                ProjectConnections,
                GatewayConnection
              ]

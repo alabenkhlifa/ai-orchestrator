@@ -1,5 +1,104 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Product proof: a repository on a Mac was scanned and its profile approved by clicking
+
+- One click path from `/`, worker stand-in off, no `/_e2e` seeding, against the installed Mac worker app: `/` to `Projects`, `sdd-product-proof-repo-hosted`, `Assessment`, choose the worker, confirm the processing boundary, answer the folder picker on the Mac with `/private/tmp/sdd-product-proof-repo-hosted`, press `Start assessment`, `Assessment complete`, `Review the execution profile`, `Approve profile`.
+- Screens seen: the assessment screen's disclosure, its verified binding naming `Local repository for sdd-product-proof-repo-hosted` with root `.` and commit `5f74d6942a49f8ae78d2a7f8367bb0922d695381`, its completed state, and the execution-profile screen showing `Approved profile version 1`.
+- Verified in storage rather than on screen alone: the assessment row is `completed` with `cache_source` `fresh_scan`, `cache_stored` true, and the same commit; the profile row is version 1 bound to that commit; and the stored evidence holds one anchor, `README.md`, with no absolute path and no file content. The repository has only a README, so the empty findings and the three `missing_*` gaps are the honest result of a real scan.
+- The first attempt failed, and the failure was the design working. The installed worker app was built before this branch, so it never negotiated `repository_scan`. The transport refused it as a worker too old to ask, the scan resolved to `worker_unavailable`, the assessment was stored `failed` with `repository_unavailable`, and the screen said `No worker is available right now` and returned a startable step. That is `AC-10` proven against a real worker rather than a double.
+- Two environment lessons for the next person running this. The worker app must be rebuilt with `native/worker-app/build.sh` after any change to its capability list, and killing `sdd-orchestrator-worker-launcher` is not enough: the release beam under `Contents/Resources/release` survives it and keeps the old attachment. Both must be killed before `open`. Pairing itself survives a rebuild, because the worker configuration lives in `~/.sdd_orchestrator/worker` rather than in the bundle.
+- One residual finding, outside this slice and recorded in the deferred boundary: the execution-profile screen labels this repository `Connected repository`. That is the same GitHub-shaped assumption `Task 2` removed from the assessment screen, on a screen this slice does not own.
+- The slice is `Verified`. Release readiness is separate and unchanged: `specs/14-repository-execution-profile/` still owns the deployment-specific controller, processor, region, transfer, notice, retention, and privacy evidence a production managed run needs.
+
+### 2026-09-04 - Slice gate: every automated check passes, the product proof is what remains
+
+- `mix check` ran the full suite in 587 seconds with two failures, both the recorded load-only flakes. Re-run alone together they pass: `mix test test/sdd_orchestrator/delivery/worker/isolation_test.exs test/sdd_orchestrator/ai_runtime/runtime_observations_test.exs` — 82 passed. Neither test touches this slice.
+- Credo found two issues in this slice's own test support and both were fixed rather than suppressed: an alias out of order and a function nested one level too deep.
+- Dialyzer failed on a defect this slice did not introduce. `feature_detail_live.ex`'s `readiness_message/1` kept an unreachable non-atom clause, and the same warning reproduces on `main` at the same line, byte for byte. Confirmed by checking out `main`, compiling, and running `mix dialyzer` there. Fixed in its own commit outside this slice's boundary, with the user's agreement, because the gate cannot pass while it stands. Dialyzer is now green.
+- The browser suite caught the one thing the focused proofs could not: `repository-assessment.spec.js` still asserted the `pending` stage this slice removed. The fix is a better proof than the assertion it replaced. The harness now supplies the scan boundary the way it already supplied the metadata one, so the scenario clicks from disclosure through binding, scan, and completion to the profile link, and the control plane still derives the result and the envelope from its own command.
+- Full browser suite green afterwards: 153 passed, 2 skipped, no failures, in each of the desktop and mobile projects.
+- Also green: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix deps.audit`, `mix sobelow --config`, `MIX_ENV=prod mix assets.deploy`, `MIX_ENV=prod mix release`, both specification validators, `split_progress_log.py --check`, `test_validate_spec.py` (72), `test_run_proof.py` (25), `cmp -s AGENTS.md CLAUDE.md`, no dangling skill links, and `git diff --check`.
+- Two environment incidents worth recording, both self-inflicted and both costly. Dropping the per-partition test database while `mix check` held it left the run hung for forty minutes with no output; the run was killed and restarted. Then a scoped browser run invoked the Playwright binary without the environment `run-e2e.js` sets, so it defaulted to `sdd_orchestrator_dev_slice03`, the development database, and failed at migration. Nothing ran against it, but a scoped browser run needs `E2E_DATABASE_NAME`, `E2E_MODE`, `E2E_ISOLATED_RUN`, `E2E_DEVICE_STORE_PATH`, and `MIX_BUILD_PATH` set the way that runner sets them.
+- What remains before `Verified`: the product proof. One click path from `/` in a real browser, with the worker stand-in off and no `/_e2e` seeding, against the paired Mac worker app.
+
+### 2026-09-04 - Task 9 complete: pressing Start assessment now assesses
+
+- The screen waits the way it already waited. `start_async(:run_scan, ...)` with a stop control mirrors the binding preparation directly above it, so there is one wait behaviour on this screen rather than two.
+- Stopping needed a domain call `Task 8` did not have. `cancel_async/2` kills the waiting task, and a killed task cannot record its own cancellation, so a stop would have left a row at `pending_scan` and broken the invariant the whole slice rests on. `RepositoryAssessments.cancel_assessment/4` closes it, and the stop handler cancels and then records.
+- The two selection values ride in assigns, not in storage. `device_workspace_id` and `selection_ref` are set when the boundary is confirmed and read when the scan starts, which keeps a worker-local correlation token out of authoritative storage.
+- Every ending that is not a completion returns the person to the step they start from, with the reason named: an expired binding says to verify again, a stale commit says the repository moved, an unavailable worker renders the screen's one owned wording, and the size limits share one sentence about choosing a narrower root.
+- Three earlier tests asserted the state this task removed, and all three were correct to fail. Two live tests moved from `data-assessment-pending` to `data-assessment-scanning`, keeping their own claim about which store the row lands in.
+- The third is better for it. `MacRepositoryAssessmentTest` carried a comment that the scan "is the only step of this journey that is not a click", and finished the assessment by calling the domain directly. It now supplies the worker's answer through the scan adapter and clicks the whole way, so `specs/46`'s own integration scenario proves what the slice set out to make true.
+- One debugging detour worth recording: a helper edit silently did not apply, because an earlier edit had already changed the text it matched. The symptom read as a database-visibility problem, and two rounds of inspecting rows were spent before reading the helper itself. Check the file, not the theory.
+- All six tasks in this slice are now complete, so `capability:live-repository-scan` is ready. What remains before `Verified`: the full verification gate and the product-proof click path against the paired Mac app.
+- Proof receipt: `Task 9` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/repository_assessment_scan_test.exs` — exit `0`.
+- 9 tests passed. Regression run outside the focused proof: the Mac assessment journey, both assessment screens, the profile screen, and the assessment domain suites, 161 passed.
+
+### 2026-09-04 - Task 8 complete: two things the control plane cannot re-derive
+
+- `RepositoryAssessments.run_assessment/5` is the one path from a pending row to a terminal one. It rebuilds the scanner result from its own command beside the answer's three evidence fields, revalidates the proposal payload, derives the envelope, and writes through the existing `finish_assessment/6`. A row is left at `pending_scan` only while a scan is genuinely running.
+- It returns the worker's reason by name rather than a narrowed union. The stored failure code is coarser than the sentence a person needs: an expired folder hold and a worker that never answered are both `repository_unavailable` in storage and two different things on screen.
+- `Task 4`'s answer shape was wrong by omission, found here. Cache provenance is a fact about a cache the control plane cannot see, so `source` and `cache_stored` now cross. Inventing `fresh_scan` for every answer would have made the stored provenance a guess about the worker's own cache. The two digests that complete a provenance are still derived on this side from the command and the result.
+- A test premise was wrong, and correcting it found a real limit worth naming. It asserted that a proposal not implied by the findings would be refused. It is not, and it cannot be: deriving a proposal needs the repository's file contents, which deliberately never leave the Mac, so `derive/3` only runs there and `valid_for?/3` checks self-consistency and command binding rather than derivation.
+- What actually bounds the six proposal fields is their own validation: a known command shape, required checks drawn from the commands, a scope inside the root, allowlisted gap and conflict codes, and item and byte limits. That is now a named decision in `design.md` and a test that states the trust rather than a test that pretends there is none.
+- The two selection values are passed, not persisted. `device_workspace_id` and `selection_ref` belong to the session that prepared the binding, and storing a worker-local correlation token in authoritative storage would be the wrong place for it.
+- `RepositoryScanAdapter` defaults to refusing, is pinned to the refusing one in `config/test.exs`, and is the real one everywhere else. Unlike `RepositoryMetadataAdapter.Worker`, it narrows nothing.
+- Proof receipt: `Task 8` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_assessments/repository_scan_run_test.exs` — exit `0`.
+- 15 tests passed. Regression run outside the focused proof: the whole scan vertical with the assessment domain suite, 65 passed after the earlier tasks' fixtures gained the new `provenance` field.
+
+### 2026-09-04 - Task 7 complete: the worker scans what it is already holding
+
+- `Worker.RepositoryMetadata` gained one read, `held_path/1`, and nothing else. The held folder was already keyed by `selection_ref` for the revalidate path, so a scan of the same binding is the same question again and needs no second panel. `Worker.RepositoryScan` never calls `Worker.RepositorySelection`, which is what makes "no panel opens because a scan arrived" a structural property rather than a promise.
+- The scan runs in its own monitored task. Running it in the holder process would make a cancellation wait for the scan it is stopping, which is the one thing a stop control cannot do. Cancelling kills the task, which is safe only because the scanner performs no checkout and no repository write; that is why the kill is the cancellation rather than the scanner's own `cancelled?` callback.
+- Scans are keyed by `request_id` and more than one may be in flight. The exact-commit cache in front of the scanner makes a repeated question cheap instead of a second full read.
+- The worker tree gained two children in one place: `WorkerRepositoryAssessmentCache` named for the release, then `RepositoryScan`, both after `RepositoryMetadata` and before `GatewayConnection`, so a `repository_scan` arriving on the first join has somewhere to land.
+- The answer's evidence keeps the scanner's own atom keys in-process and becomes strings over JSON. `ScanAnswer.new/1` accepts either at every level, so the same boundary holds for a test that calls the worker directly and for a real frame.
+- One regression, and it was correct to fail: `Worker.SupervisorTest` asserts the exact child list, so adding two children broke it. The expectation and its ordering comment were updated rather than the assertion loosened, because that test exists to make the tree's shape a decision rather than an accident.
+- Proof receipt: `Task 7` — scope `Focused` — command `mix test test/sdd_orchestrator/worker/repository_scan_test.exs` — exit `0`.
+- 8 tests passed. Regression run outside the focused proof: the worker metadata, selection, supervisor, and gateway suites with the assessment cache, 61 passed.
+
+### 2026-09-04 - Task 6 complete, and Task 7's dependency was wrong
+
+- `repository_scan` is now an optional capability in `Delivery.WorkerProtocol`, and `RepositoryScan.Transport.Attachment` asks only an attachment that negotiated it. A worker attached in the right workspace but under a different worker id is not asked, which is the property that keeps a scan on the Mac the binding was verified on.
+- `WorkerWorkspaceChannel` carries `repository_scan`, `repository_scan_cancel`, and `repository_scan_result` beside the metadata pair, and credits an answer to the socket's own authenticated assigns rather than the frame.
+- `config/config.exs` makes the real transport the default everywhere, matching the metadata transport it travels beside.
+- The plan said `Task 7` depends on `Task 4` alone. That was wrong: a worker announcing `repository_scan` before the control plane knows the name would be refused at negotiation, because `WorkerProtocol.negotiate/1` rejects unknown capabilities. `Task 7` now depends on `Task 4` and `Task 6`, and the slice's longest path is six rather than five. Found by writing `Task 6`, not by a failing check, and corrected before `Task 7` started.
+- Proof receipt: `Task 6` — scope `Focused` — command `mix test test/sdd_orchestrator_web/channels/worker_workspace_channel_repository_scan_test.exs` — exit `0`.
+- 11 tests passed. Regression run outside the focused proof: the other three workspace-channel suites with the worker-protocol suite, 50 passed.
+
+### 2026-09-04 - Task 5 complete: the lifecycle is the metadata one, deliberately twice
+
+- `RepositoryScan.Server` is `RepositoryMetadata.Server`'s shape with a different request, answer, and vocabulary. The duplication is the recorded decision, not an oversight: the two questions have different wait windows and different refusal sets, and generalising them would create a third module neither context owns. The module doc says so where a reader meets it.
+- Refusals keep their own names all the way to the caller. `RepositoryMetadata` folds every refusal but one into `:invalid_worker_response`; a scan cannot, because the domain has to tell `selection_expired` from `stale_commit` to store the right failure and say the right thing on screen. `run/2` therefore returns the worker's own reason atom.
+- The wait window is 60 seconds, not the metadata question's 130. A scan opens no panel, so it needs no allowance for a person answering one, and the bounded scanner already refuses on its own 10-second limit.
+- A malformed answer leaves the request open. It is refused at the boundary and the same attachment can still answer properly, which is right: a worker that sent one bad frame has not used up its one outcome.
+- `Server` is supervised beside `RepositoryMetadata.Server`, and `config/test.exs` pins the scan transport to `Unavailable` so no test reaches a worker by accident.
+- A second transport double was written rather than sharing the metadata one, for the same reason the contexts are separate.
+- One test was wrong before the code was, again. The refusal-reason loop waited for a fixed count of pushed requests instead of an incrementing one, so it hung on the second reason. Fixed with the index.
+- Proof receipt: `Task 5` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_scan_test.exs` — exit `0`.
+- 13 tests passed.
+
+### 2026-09-04 - Task 4 complete: the answer is narrower than the plan assumed
+
+- The wire carries less than `design.md` predicted, and the narrower shape is the stricter one. A scanner result repeats the command it ran for: protocol version, assessment and project ids, repository identity, root, commit, and scanner-contract digest. None of it crosses now. `RepositoryAssessments` will rebuild the full result by putting its own command fields beside the three evidence fields, so a worker cannot state them at all rather than stating them and being checked.
+- The same held for the proposal. `RepositoryExecutionProfileProposalPayload.new/2` re-derives `cache_key_sha256`, `evidence_sha256`, and `payload_digest` from the result, so only the six fields a worker actually derives are on the wire.
+- A scan answer is therefore `findings`, `structure`, `stats`, and six lists of strings. A request is four fields, one of them `RepositoryAssessmentCommand.to_value/1`, which is already closed.
+- Key closure runs at every level, not just the top. A finding, a structure entry, the stats map, and the proposal map each refuse an unrecognised key, which is what keeps an absolute path out of a nested position where a top-level check would not look.
+- Value validation is deliberately not duplicated here. `ScanAnswer` owns shape and key closure; `RepositoryAssessmentResult.completed/2` owns categories, anchors, byte ranges, and digests, and it already refuses everything this boundary lets through.
+- The ten refusal reasons are the bounded scanner's own nine terminal errors, which are also `RepositoryAssessmentResult`'s allowlisted failure codes, plus `selection_expired` for a folder the worker no longer holds. No new failure code was added to `specs/14`'s allowlist.
+- The size bound is the domain's own `max_result_bytes` plus headroom for the proposal, applied to the encoded payload before it is decoded. A scan answer is the first worker payload large enough for that to matter.
+- One test was wrong before the code was. Asserting the request payload contains no `"path"` substring failed on `max_paths`, a limit. Replaced by walking every string value and refusing an absolute path, a home-relative path, or a URL, which is the property that was meant.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_scan/attachment_codec_test.exs` — exit `0`.
+- 17 tests passed.
+
+### 2026-09-04 - Correction before Task 4: findings carry repository-relative anchors by design
+
+- The privacy statement written into this slice hours earlier was wrong. It forbade a "repository path" and a "file name" in a scan answer, but `RepositoryAssessmentResult`'s own `safe_anchor/1` requires each finding to carry a plain relative anchor such as `Makefile` or `.github/workflows/ci.yml`. That evidence is the point of a finding and is `specs/14-repository-execution-profile/`'s approved shape.
+- Corrected in place: the business rule, `AC-12`, the design boundary, `Task 4`'s and `Task 7`'s proof, and the Verification Gate now forbid what is actually forbidden, an absolute or filesystem path, a remote URL, and file content, and name what does cross.
+- Found while reading `validate_completed/2` for `Task 4`'s wire shape, before any code was written.
+- Second discovery from the same read, recorded in `design.md` as a risk: a scanner result uses atom keys, including nested ones, while a metadata answer is strings throughout. The codec has to rebuild the exact atom-keyed shape rather than pass a decoded payload through.
+- No code changed in this update.
+
 ### 2026-09-04 - Second slice opened: the scan itself was never wired to a worker
 
 - The first slice's gate is closed and its result stands: the screen opens for a repository on a Mac, names it, states an unreachable Mac, and the profile is approvable. `tasks.md` moves from `Verified` to `In Progress` for the new slice, and the Verification Gate is reset to the active one.

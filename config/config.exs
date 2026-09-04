@@ -177,6 +177,17 @@ config :sdd_orchestrator,
        :repository_metadata_adapter,
        SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter.Worker
 
+# A repository scan travels the same Mac-scoped attachment, and for the same
+# reason: the folder it scans is the one that Mac's worker is already holding
+# for the binding. The real transport is the default everywhere.
+config :sdd_orchestrator,
+       :repository_scan_transport,
+       SddOrchestrator.RepositoryScan.Transport.Attachment
+
+config :sdd_orchestrator,
+       :repository_scan_adapter,
+       SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter.Worker
+
 # Cloak vault ciphers are configured per environment because the key is a secret.
 
 # Import environment specific config. This must remain at the bottom

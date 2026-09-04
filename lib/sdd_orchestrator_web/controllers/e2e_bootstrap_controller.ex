@@ -10,9 +10,10 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     Deterministic metadata-only repository binding for the browser harness.
 
     It returns only the identity already present in the authorized request, the
-    selected relative root, and one full commit. It implements no scan command
-    and is excluded from production by the same compile-time gate as the
-    session bootstrap that configures it.
+    selected relative root, and one full commit. The scan that follows is
+    `SddOrchestratorWeb.E2ERepositoryScanAdapter`'s, and both are excluded from
+    production by the same compile-time gate as the session bootstrap that
+    configures them.
     """
     @behaviour SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter
 
@@ -33,6 +34,51 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
          repository_id: request.repository_id,
          root: request.selected_root,
          commit: @commit
+       }}
+    end
+  end
+
+  defmodule SddOrchestratorWeb.E2ERepositoryScanAdapter do
+    @moduledoc """
+    Deterministic repository scan for the browser harness.
+
+    It reads nothing. It answers with the minimized evidence a real bounded
+    scanner would have produced for a small repository: one repository-relative
+    anchor, its size, line count, and digest, the structure beside it, the
+    stats, the six proposal fields, and the provenance of a fresh read.
+
+    `SddOrchestrator.RepositoryAssessments.run_assessment/5` still rebuilds the
+    result and the proposal envelope from its own command, so what the browser
+    proof exercises is the real derivation, not a seeded completion.
+    """
+    @behaviour SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter
+
+    @sha256 "5f2b8c1d4e6a3f97b0c2d8e4a6f1b3c5d7e9a0b2c4d6e8f0a2b4c6d8e0f2a4b6"
+
+    @impl true
+    def scan(_request) do
+      {:ok,
+       %{
+         findings: [
+           %{
+             category: "check",
+             path: "Makefile",
+             bytes: 24,
+             sha256: @sha256,
+             line_count: 2
+           }
+         ],
+         structure: [%{path: "Makefile", kind: "file"}, %{path: "lib", kind: "directory"}],
+         stats: %{discovered_paths: 6, inspected_files: 1, bytes_read: 24},
+         proposal: %{
+           commands: ["make test"],
+           required_checks: ["make test"],
+           allowed_scope: ["."],
+           gaps: ["missing_repository_instructions"],
+           conflicts: [],
+           multi_root_blockers: []
+         },
+         provenance: %{source: "fresh_scan", cache_stored: true}
        }}
     end
   end
@@ -325,6 +371,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
       E2EPreviewAdapter,
       E2EQuotaAdapter,
       E2ERepositoryMetadataAdapter,
+      E2ERepositoryScanAdapter,
       HostedUserAuth,
       UserAuth
     }
@@ -780,6 +827,15 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
         :sdd_orchestrator,
         :repository_metadata_adapter,
         E2ERepositoryMetadataAdapter
+      )
+
+      # The start now sends the scan, so the harness supplies that boundary too.
+      # Without it the screen would reach a real worker, find none, and record a
+      # failure, which is a true outcome but not the one this scenario is for.
+      Application.put_env(
+        :sdd_orchestrator,
+        :repository_scan_adapter,
+        E2ERepositoryScanAdapter
       )
 
       conn

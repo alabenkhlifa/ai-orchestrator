@@ -18,12 +18,14 @@ defmodule SddOrchestrator.Worker.Supervisor do
   use Supervisor
 
   alias SddOrchestrator.Delivery.AgentAdapter
+  alias SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache
 
   alias SddOrchestrator.Worker.{
     Configuration,
     GatewayConnection,
     ProjectConnections,
     RepositoryMetadata,
+    RepositoryScan,
     RepositorySelection,
     State
   }
@@ -116,11 +118,20 @@ defmodule SddOrchestrator.Worker.Supervisor do
   # the first join has somewhere to open. Both scopes start it, so the tree has
   # one shape; a worker already configured with a project simply opens nothing
   # under it.
+  # `WorkerRepositoryAssessmentCache` and `RepositoryScan` are the worker's
+  # side of a repository scan (specs/46-assessing-a-repository-on-a-mac
+  # Task 7). The cache starts first because the scan holder scans through it,
+  # and `RepositoryScan` starts after `RepositoryMetadata` because it reads the
+  # folder that process is holding. Both start before the gateway connection,
+  # for the same reason the others do: a `repository_scan` message can arrive
+  # on the first join.
   defp children(%Configuration{} = config),
     do: [
       {State, config},
       {RepositorySelection, []},
       {RepositoryMetadata, []},
+      {WorkerRepositoryAssessmentCache, name: WorkerRepositoryAssessmentCache},
+      {RepositoryScan, []},
       {ProjectConnections, []},
       {GatewayConnection, config}
     ]
