@@ -2,52 +2,72 @@
 
 ## Context
 
-`SddOrchestratorWeb.RepositoryAssessmentLive` serves two routes. Its `:device` action assesses a Git repository on the machine in front of the person, for an accountless device project, and it works. Its `:hosted` action assesses a hosted project's repository, and it gates on `active_hosted_project?/1`, which requires `match?(%{state: "connected"}, project.repository_connection)`.
+`SddOrchestratorWeb.RepositoryAssessmentLive` serves two routes. Its `:device` action assesses a Git repository on the machine in front of the person, for an accountless device project, and it works. Its `:hosted` action assesses a hosted project's repository, and it gated on `active_hosted_project?/1`, which required `match?(%{state: "connected"}, project.repository_connection)`.
 
-`SddOrchestrator.RepositoryAssessments.authorize_project/2` carries the same requirement at the domain boundary for `{:hosted, account_id}`.
+`SddOrchestrator.RepositoryAssessments.authorize_project/2` carried the same requirement at the domain boundary for `{:hosted, account_id}`.
 
-It is not two gates. Implementation found the same GitHub-shaped requirement in five places across four modules, each one refusing the project a step further along the flow: the screen's gate, the domain's `authorize_project/2`, `AssessmentStore.Hosted.put/2`, that store's `lock_project_binding/1`, and the profile store's `active_binding?/2` together with its own `lock_project_binding/1`. The two `lock_project_binding/1` functions return `nil` unless a `RepositoryConnection` row exists, so they refuse by failing to find the project at all. Fixing only the first gates moves the refusal later rather than removing it.
+It was not two gates. Implementation found the same GitHub-shaped requirement in five places across four modules, each one refusing the project a step further along the flow: the screen's gate, the domain's `authorize_project/2`, `AssessmentStore.Hosted.put/2`, that store's `lock_project_binding/1`, and the profile store's `active_binding?/2` together with its own `lock_project_binding/1`. The two `lock_project_binding/1` functions returned `nil` unless a `RepositoryConnection` row existed, so they refused by failing to find the project at all. The first slice replaced all five with one owned predicate, `RepositoryAssessments.assessable_hosted_project?/1`, and the screen opens.
 
-A hosted project whose repository is on a Mac falls between the two. It is hosted, so the device route does not serve it, and it has no `RepositoryConnection` row at all, because that row is GitHub-shaped and its repository id is a provider-issued integer such a repository never has. Both gates therefore refuse it, and the screen redirects to `/projects` with no explanation.
+### The screen opens, and then stops
 
-The consequence is not local to this screen. An approved execution profile is one of the five preconditions `specs/41-feature-delivery-from-the-ui/` requires before `Start development`, and the profile screen answers `No completed assessment with a verifiable minimized proposal envelope is available for this repository, so there is nothing to approve.` So a project created through `specs/44-hosted-local-repository-projects/` can never reach a run. That was proven by clicking, not inferred.
+`start_assessment` saves a pending row and sends nothing. The screen's own copy states it: `Starting saves a pending assessment. This task sends no repository scan command.` Nothing moves that row afterwards.
 
-This is the same shape `specs/45-hosted-session-project-access/` removed from the project dashboard, where the GitHub connection presentation was keyed on the project actually having a connection rather than on its storage mode. The screen is different and the gate is an authorization rather than a presentation, but the mistaken assumption is identical: that a hosted project has a GitHub repository.
+`RepositoryAssessments.finish_assessment/6` is complete and proven, and in `lib/` it has exactly one caller: `SddOrchestratorWeb.E2eBootstrapController`, which builds a scan result in Elixir and stores it. Every completed assessment in the product today was seeded by the browser-test bootstrap. Nothing a person can click has ever produced one.
 
-The machinery to assess a repository on a Mac already exists and is proven, because the device route uses it. What is missing is that the hosted route will not admit this project shape.
+The scanner is not what is missing. `RepositoryAssessments.WorkerRepositoryAssessment.scan_with_proposal/3` reads allowlisted blobs directly from the authorized commit and returns a minimized result and a strict proposal payload, and `WorkerRepositoryAssessmentCache.scan_with_proposal/4` wraps it with the exact-commit cache, the result, the envelope, and cache provenance. Both are covered by tests. Neither has a caller outside them.
+
+What is missing is only the road between the two. Nothing carries a command to the Mac, and nothing carries an answer back.
+
+### That road already exists, for a smaller question
+
+`SddOrchestrator.RepositoryMetadata` asks a Mac's worker to read a repository's identity, normalized root, and current commit. It has a blocking call, a request-lifecycle server owning correlation, expiry and cancellation, a transport behaviour with an `Unavailable` default and an `Attachment` implementation keyed by device workspace, a codec closed to the fields a request is made of, a negotiated worker capability, a `repository_metadata` and `repository_metadata_result` message pair on `WorkerWorkspaceChannel`, and a worker-side handler. `specs/47-live-repository-metadata-binding/` proved the whole of it against a real Mac.
+
+That worker-side handler already holds what a scan needs. `SddOrchestrator.Worker.RepositoryMetadata` keeps the folder the person picked in memory, keyed by `selection_ref`, precisely so a revalidate of the same binding attempt needs no second panel. A scan of the same binding carries the same `selection_ref`, so the path is already there to be scanned.
 
 ## Proposed Approach
 
-Redefine assessability by what the screen actually needs, and change nothing else.
+Send the scan as a second question over the road the metadata question already travels, and change neither the scanner nor the proposal.
 
-- A hosted project is assessable when its repository is reachable. A GitHub repository is reachable through a connected `RepositoryConnection`, which is today's rule and is unchanged. A repository on a Mac is reachable through the worker binding `specs/37-hosted-local-repository-connection/` already maintains and `specs/44-hosted-local-repository-projects/` writes at creation.
-- Both gates move together. The LiveView's `active_hosted_project?/1` and the domain's `authorize_project/2` express one rule, so they are changed as one and neither becomes more permissive than the other. The domain gate stays the authority.
-- Reachability of the Mac is a state the screen shows, not a reason to redirect. The screen opens for a bound project whose worker is not currently reachable, says so, and offers no start. That mirrors how `specs/41` already presents its own unmet start preconditions, and it is the opposite of the silent redirect that made this hard to find.
-- The repository label reuses the wording the same screen's device route already renders for this exact fact, rather than adding a second phrasing that can drift from it.
-- Nothing about the scan, the proposal, the disclosure digest, or the profile approval changes. Once such a project can be assessed, the existing path produces the proposal and the profile screen approves it.
+- One new context, `SddOrchestrator.RepositoryScan`, shaped like `RepositoryMetadata`: a blocking `run/2`, one open request per call, a server that owns correlation, expiry, and cancellation, a transport behaviour whose default refuses at once, an attachment transport aimed at one named worker in one device workspace, and a codec closed to the fields a scan command and its answer are made of.
+- Its wait window is longer than the metadata one, and its own. Reading a repository is not stat-ing one folder, and the scanner already has its own limits: it refuses on its own time, file, path, and byte bounds before this window matters.
+- The worker answers from the folder it already holds. The scan message carries the `selection_ref` the binding used, the worker resolves it to the held folder, and calls `WorkerRepositoryAssessmentCache.scan_with_proposal/4`. It opens no panel. A `selection_ref` it no longer holds is refused as expired, and the screen says the verified binding expired and offers to verify it again.
+- The control plane trusts its own command, not the answer. The worker returns the minimized scan result and the proposal payload. The control plane rebuilds the result with `RepositoryAssessmentResult.completed/2`, checks the payload with `RepositoryExecutionProfileProposalPayload.valid_for?/3` against the command it issued, and builds the envelope with `WorkerRepositoryExecutionProfileProposalEnvelope.new/3` itself. An answer that does not match its command is refused and stored as a failure.
+- The domain gets one caller behind an adapter, exactly as the metadata read already has one: a `RepositoryScanAdapter` behaviour with a `Worker` implementation and an `Unavailable` default, configured to the real one everywhere and pinned to the refusing one in tests. A test installs a double; nothing reaches a worker by accident.
+- Every ending is terminal. `RepositoryAssessmentResult.failed/2` and `canceled/1` already exist, and each ending other than a completed scan writes one of them through the same `finish_assessment/6`. A row left at `pending_scan` then means one thing, a scan still running, instead of meaning both that and a request abandoned months ago.
+- The screen waits the way it already waits. `start_async` with a stop control mirrors the binding preparation directly above it, so the screen keeps one wait behaviour rather than growing a second.
 
 ## Components Affected
 
-- `SddOrchestratorWeb.RepositoryAssessmentLive`: the hosted route's assessability gate, the repository label for a project whose repository is on a Mac, and the not-reachable state.
+- `SddOrchestratorWeb.RepositoryAssessmentLive`: the hosted route's assessability gate, the repository label for a project whose repository is on a Mac, the not-reachable state, and the scan the start now runs, with its running, completed, stopped, and failed states.
 - `SddOrchestrator.RepositoryAssessments` (`authorize_project/2`): the same assessability rule at the domain boundary, and the one place that owns it.
-- `SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted`: its own copy of the rule in `put/2`, and its `lock_project_binding/1`, which finds no project without a connection row.
-- `SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted`: `active_binding?/2` and its `lock_project_binding/1`, which block proposing and approving the profile.
+- `SddOrchestrator.RepositoryAssessments.AssessmentStore.Hosted`: its own copy of the rule in `put/2`, and its `lock_project_binding/1`.
+- `SddOrchestrator.RepositoryAssessments.ProfileStore.Hosted`: `active_binding?/2` and its `lock_project_binding/1`.
+- `SddOrchestrator.RepositoryScan`: the new context, its request and answer values, its codec, its request-lifecycle server, and its transport with an unavailable default and an attachment implementation.
+- `SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter`: the domain's boundary to that context, with a worker-backed implementation and a refusing default.
+- `SddOrchestrator.RepositoryAssessments`: the one function that takes a pending assessment to a terminal one, issuing the command and writing the answer through `finish_assessment/6`.
+- `SddOrchestrator.Worker.RepositoryScan` and `SddOrchestrator.Worker.GatewayConnection`: the worker's side of a scan message, the held folder it scans, and the declared capability that makes the worker askable.
+- `SddOrchestratorWeb.WorkerWorkspaceChannel`: the scan, cancellation, and result frames beside the metadata ones it already carries.
 
 ## Data and Access Boundaries
 
-- No new stored record. This slice changes which existing projects two gates admit, and what one screen renders.
+- No new stored record. The completed and failed assessment rows, their cache provenance, and the proposal envelope are the existing shapes `finish_assessment/6` already writes. This slice supplies real values where only a seeded scenario supplied them before.
 
 Required boundaries:
 
 - Authorization is unchanged. The acting person must still own the project, and every check that runs today still runs. Widening what counts as reachable must not widen who may act.
 - A repository on a Mac is admitted only through its own worker binding. A hosted project with neither a connected GitHub connection nor a binding stays refused.
-- Nothing this slice renders or stores may carry a repository path, remote, commit, file name, or source content. The label names the project, not the repository's location.
+- A scan command is aimed at one named worker in one device workspace, never at whoever is attached. An answer from any other attachment is refused.
+- A scan command carries opaque references and digests: the assessment's own command fields and the `selection_ref` the binding used. It carries no filesystem path, remote URL, or file name.
+- An answer carries the scanner's already-minimized result and proposal payload. Nothing this slice sends, stores, renders, or logs may carry a repository path, remote, commit message, file name, or file content.
 - The `:device` route and the accountless flow behind it are untouched.
 
 ## Interfaces
 
 - `RepositoryAssessments.authorize_project/2` admitting a hosted project whose repository is on a Mac, and refusing one that is reachable by neither route.
-- Compatibility that must hold: the GitHub assessment screen's rendering and labeling, the device route, the disclosure digest and the proposal envelope, and every refusal for a person who does not own the project. Whether a GitHub assessment can be started and approved is narrowed by `specs/47-live-repository-metadata-binding#Task 8` — see AC-05.
+- `RepositoryScan.run/2`, blocking the caller until exactly one outcome is known, and `RepositoryScan.answer/2`, the entry point one worker's attachment calls with its result.
+- `RepositoryScanAdapter.scan/1`, the domain's one way to ask, defaulting to a refusal.
+- One `RepositoryAssessments` function taking a pending assessment to a terminal one, whose outcome is a stored assessment in every case.
+- Compatibility that must hold: the GitHub assessment screen's rendering and labeling, the device route, the disclosure digest and the proposal envelope, the existing metadata question over the same attachment, and every refusal for a person who does not own the project. Whether a GitHub assessment can be started and approved is narrowed by `specs/47-live-repository-metadata-binding#Task 8`. See AC-05.
 
 ## Decisions and Tradeoffs
 
@@ -69,12 +89,39 @@ Required boundaries:
 - Reason: The product holds no repository name for such a project, only the folder name that became the project name. One wording for one fact is this repository's rule, and a second phrasing on the hosted route would drift from the device route saying the same thing.
 - Consequence: The two routes share a sentence, so changing it changes both, which is the intent.
 
+### A scan is a second question on the road the metadata question already travels
+
+- Choice: A new `RepositoryScan` context mirrors `RepositoryMetadata` rather than extending it, and reuses its attachment, its channel, its capability negotiation, and its worker process.
+- Reason: The two questions have different sizes, different wait windows, different answers, and different failure vocabularies. Folding a repository scan into a module whose contract is four fields would make one boundary that is honest about neither. Copying the shape keeps both readable and lets each move on its own.
+- Consequence: Two contexts with a visibly similar skeleton. That similarity is load-bearing rather than accidental duplication, and a later change to how a worker is reached still has two callers to update.
+
+### The worker scans the folder it already holds, and opens no panel
+
+- Choice: The scan carries the binding's `selection_ref`, the worker resolves it to the folder it is already holding, and a hold that is gone is refused as expired.
+- Reason: The person picked that folder once, for this binding. Opening a native panel on their Mac because a hold quietly lapsed is the product acting without being asked, and it would also let a scan run against a folder the binding never verified.
+- Consequence: A slow person can lose the hold and has to verify the binding again. That is one repeated step, and it is honest about what the product still knows.
+
+### The control plane rebuilds the result and the envelope from its own command
+
+- Choice: The worker's answer supplies the minimized scan result and the proposal payload, and the control plane rebuilds the result, revalidates the payload against the command it issued, and builds the envelope itself.
+- Reason: The command is the control plane's own; the answer is not. Storing an envelope the worker constructed would make the authoritative record something a worker asserted rather than something the control plane derived.
+- Consequence: The same derivation exists on both sides, and the worker's cached envelope is discarded on arrival. That is the price of the authoritative record being derived here.
+
+### Every ending is terminal, so a pending row means one thing
+
+- Choice: A refusal, a lost worker, an unanswered window, and a stopped wait all write a terminal assessment through `finish_assessment/6`.
+- Reason: `RepositoryAssessmentResult.failed/2` and `canceled/1` already exist and the store already accepts them. Leaving a row at `pending_scan` after a failure would make that state mean both a scan in flight and a scan that died, and nothing later could tell them apart.
+- Consequence: A person retries by starting a new assessment, not by resuming the old one, and the history shows each attempt. The alternative, one row per attempt with a retry, was considered and rejected for the ambiguity it puts back into `pending_scan`.
+
 ## Risks
 
-- Five gates in four modules can drift. They must read one predicate and be proven together, or a project will be admitted at one step and refused at the next, which is exactly the shape of the defect being fixed.
-- The two `lock_project_binding/1` functions refuse by answering `nil`, which reads as a missing project rather than a refused one. Widening them must keep the provider and repository-identity checks that sit beside them, so a project is still matched to its own assessment.
+- Five gates in four modules can drift. They must read one predicate and be proven together, or a project will be admitted at one step and refused at the next, which is exactly the shape of the defect that was fixed.
+- The two `lock_project_binding/1` functions refuse by answering `nil`, which reads as a missing project rather than a refused one. Widening them had to keep the provider and repository-identity checks that sit beside them, so a project is still matched to its own assessment.
 - Widening an authorization gate is the kind of change that can quietly admit more than intended. The proof has to include a hosted project that is reachable by neither route, and a person who does not own the project.
-- The proposal envelope and the profile approval are assumed to work once an assessment completes, because nothing in them reads a `RepositoryConnection`. That is checked by the slice, not assumed.
+- A long-running blocking call over a socket is a new load shape for this control plane. The scanner's own limits bound the work, but the wait window, the caller's monitor, and the transport's lost-attachment path have to resolve one outcome exactly once, or a LiveView is left waiting on a request nobody will answer.
+- The worker's held folder was designed for a revalidate that follows a prepare within seconds. A scan follows a person reading a disclosure and pressing a button, so the expired-hold path is the normal path, not the rare one, and it must be proven as such.
+- Two derivations of the same envelope, one on the worker and one on the control plane, can diverge. The control plane's revalidation of the payload against its own command is what catches that, and it has to refuse rather than store a mismatch.
+- A scan answer is much larger than a metadata answer, and it is the first worker payload big enough for a size limit to matter. A refused frame must end as a named failure, not as a silent timeout.
 
 ## Open Questions
 

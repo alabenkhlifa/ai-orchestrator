@@ -1,5 +1,19 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Second slice opened: the scan itself was never wired to a worker
+
+- The first slice's gate is closed and its result stands: the screen opens for a repository on a Mac, names it, states an unreachable Mac, and the profile is approvable. `tasks.md` moves from `Verified` to `In Progress` for the new slice, and the Verification Gate is reset to the active one.
+- Found by reading the vertical rather than by a failing check. `RepositoryAssessmentLive`'s `start_assessment` saves a pending row and stops, and the screen's own copy says so: `Starting saves a pending assessment. This task sends no repository scan command.`
+- `RepositoryAssessments.finish_assessment/6` has exactly one caller in `lib/`, `SddOrchestratorWeb.E2eBootstrapController`. Every completed assessment in the product was seeded by the browser-test bootstrap, so `Task 3`'s recorded completion was a seeded result, not a scan. What it proved stays true: a completed assessment yields an approvable profile.
+- The scanner is not the gap. `WorkerRepositoryAssessment.scan_with_proposal/3` and `WorkerRepositoryAssessmentCache.scan_with_proposal/4` are complete, tested, and have no caller outside their own tests. Only the road between the control plane and them is missing.
+- The road exists for the smaller question. `SddOrchestrator.RepositoryMetadata` already carries a request lifecycle, an attachment transport with a negotiated capability, a closed codec, channel frames, and a worker handler, and `specs/47` proved it against a real Mac. The scan mirrors that shape rather than extending it.
+- `Worker.RepositoryMetadata` already holds the picked folder keyed by `selection_ref`, so a scan for the same binding needs no second panel. The expired hold is the normal path here, not the rare one, because a scan follows a person reading a disclosure.
+- Product decisions taken with the user: the screen waits with a stop control, matching the binding wait directly above it; a hold the Mac no longer has is refused and the person verifies again rather than being re-prompted with a panel; and every ending other than a completed scan is stored as a terminal failure, so a `pending_scan` row means one thing.
+- Engineering decisions recorded in `design.md`: a separate `RepositoryScan` context rather than an extension of `RepositoryMetadata`, and the control plane rebuilding the result and deriving the envelope from its own command rather than storing what a worker asserted.
+- Scope: classified `focused specification`. The scan has no useful outcome apart from the assessment it completes, and this specification's own release gate already named it. Six active tasks, longest `Depends on:` path of five.
+- Consequence: the previous release gate is closed by delivery rather than deferred. `specs/41-feature-delivery-from-the-ui/`'s remaining click path still waits on the approved profile this slice produces.
+- No code changed in this update.
+
 ### 2026-09-04 - AC-05 narrowed: a GitHub assessment's completion was never real
 
 - Found while implementing `specs/47-live-repository-metadata-binding#Task 8`, which correctly refuses starting an assessment for a GitHub-connected repository before offering confirmation. `AC-05`'s own test proved the GitHub journey "completes and approves," but that proof ran only against a test double: no worker can match a GitHub numeric repository id to a local folder's identity, so completion was never achievable against a real one, before or after this slice. Nothing this slice actually delivered is invalidated — the screen still opens for a GitHub project, still names it correctly, and still does not redirect, and that is what Task 3's own proof actually established at the gates it owns.
