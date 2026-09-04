@@ -1,5 +1,16 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Slice gate: every automated check passes, the product proof is what remains
+
+- `mix check` ran the full suite in 587 seconds with two failures, both the recorded load-only flakes. Re-run alone together they pass: `mix test test/sdd_orchestrator/delivery/worker/isolation_test.exs test/sdd_orchestrator/ai_runtime/runtime_observations_test.exs` — 82 passed. Neither test touches this slice.
+- Credo found two issues in this slice's own test support and both were fixed rather than suppressed: an alias out of order and a function nested one level too deep.
+- Dialyzer failed on a defect this slice did not introduce. `feature_detail_live.ex`'s `readiness_message/1` kept an unreachable non-atom clause, and the same warning reproduces on `main` at the same line, byte for byte. Confirmed by checking out `main`, compiling, and running `mix dialyzer` there. Fixed in its own commit outside this slice's boundary, with the user's agreement, because the gate cannot pass while it stands. Dialyzer is now green.
+- The browser suite caught the one thing the focused proofs could not: `repository-assessment.spec.js` still asserted the `pending` stage this slice removed. The fix is a better proof than the assertion it replaced. The harness now supplies the scan boundary the way it already supplied the metadata one, so the scenario clicks from disclosure through binding, scan, and completion to the profile link, and the control plane still derives the result and the envelope from its own command.
+- Full browser suite green afterwards: 153 passed, 2 skipped, no failures, in each of the desktop and mobile projects.
+- Also green: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix deps.audit`, `mix sobelow --config`, `MIX_ENV=prod mix assets.deploy`, `MIX_ENV=prod mix release`, both specification validators, `split_progress_log.py --check`, `test_validate_spec.py` (72), `test_run_proof.py` (25), `cmp -s AGENTS.md CLAUDE.md`, no dangling skill links, and `git diff --check`.
+- Two environment incidents worth recording, both self-inflicted and both costly. Dropping the per-partition test database while `mix check` held it left the run hung for forty minutes with no output; the run was killed and restarted. Then a scoped browser run invoked the Playwright binary without the environment `run-e2e.js` sets, so it defaulted to `sdd_orchestrator_dev_slice03`, the development database, and failed at migration. Nothing ran against it, but a scoped browser run needs `E2E_DATABASE_NAME`, `E2E_MODE`, `E2E_ISOLATED_RUN`, `E2E_DEVICE_STORE_PATH`, and `MIX_BUILD_PATH` set the way that runner sets them.
+- What remains before `Verified`: the product proof. One click path from `/` in a real browser, with the worker stand-in off and no `/_e2e` seeding, against the paired Mac worker app.
+
 ### 2026-09-04 - Task 9 complete: pressing Start assessment now assesses
 
 - The screen waits the way it already waited. `start_async(:run_scan, ...)` with a stop control mirrors the binding preparation directly above it, so there is one wait behaviour on this screen rather than two.

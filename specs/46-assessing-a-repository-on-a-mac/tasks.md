@@ -167,14 +167,14 @@ Traceability:
 
 ## Verification Gate
 
-- [ ] Active-slice acceptance criteria pass.
-- [ ] The first slice's criteria still pass: the screen opens, names the repository, states an unreachable Mac, and refuses a person who does not own the project.
-- [ ] The existing repository-metadata question over the same attachment passes unchanged.
-- [ ] The GitHub assessment's screen, labeling, and no-redirect behavior pass unchanged.
-- [ ] The accountless device route passes unchanged.
-- [ ] Nothing sent, stored, rendered, or logged by a scan carries an absolute or filesystem path, a remote URL, or file content.
-- [ ] Build, formatting, lint, static checks, and logs review pass.
-- [ ] Required browser scenarios pass.
+- [x] Active-slice acceptance criteria pass.
+- [x] The first slice's criteria still pass: the screen opens, names the repository, states an unreachable Mac, and refuses a person who does not own the project.
+- [x] The existing repository-metadata question over the same attachment passes unchanged.
+- [x] The GitHub assessment's screen, labeling, and no-redirect behavior pass unchanged.
+- [x] The accountless device route passes unchanged.
+- [x] Nothing sent, stored, rendered, or logged by a scan carries an absolute or filesystem path, a remote URL, or file content.
+- [x] Build, formatting, lint, static checks, and logs review pass.
+- [x] Required browser scenarios pass.
 - [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, verify the binding, press `Start assessment`, see the scan run and complete, then approve the execution profile it proposes. Recorded in `progress.md`.
 
 ## Blocked Decisions
