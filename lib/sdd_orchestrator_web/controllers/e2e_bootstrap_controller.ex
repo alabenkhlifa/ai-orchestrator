@@ -293,6 +293,7 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
 
     alias SddOrchestrator.Portability.{
       DeviceRestore,
+      HostedLocalRepositoryBindings,
       PackageSection,
       ProjectPackage,
       RestoreDecision
@@ -748,12 +749,31 @@ if Application.compile_env(:sdd_orchestrator, :e2e_bootstrap, false) do
     # disclosure-confirmed repository-assessment start flow. The adapter is the
     # compile-time-gated metadata-only double above; no scanner or command
     # transport is configured by this scenario.
+    # The project is worker-bound and local-provider, not GitHub-shaped: the
+    # assessment screen no longer offers a confirmation at all for a
+    # GitHub-connected repository (specs/47-live-repository-metadata-binding
+    # Task 8), because no worker can match a GitHub repository id to a local
+    # folder's identity. This mirrors `hosted_local_repository_project`'s own
+    # `new_local_repository_project/2` plus the same binding write
+    # `Projects.register_project/3` performs internally for a real worker-bound
+    # registration.
     defp run(conn, "repository_assessment", _params) do
       owner = new_owner()
-      project = registered_project(owner)
-      save_owner_profile(project, owner)
       {:ok, device_workspace} = Devices.establish_workspace()
       worker = reachable_worker(device_workspace.id)
+      {:ok, repository_id} = PortableRepositoryIdentity.generate(stub_repository())
+      project = new_local_repository_project(owner, repository_id)
+
+      {:ok, _binding} =
+        HostedLocalRepositoryBindings.put_validated_binding(
+          owner.personal_workspace,
+          project.id,
+          device_workspace,
+          worker.id,
+          repository_id
+        )
+
+      save_owner_profile(project, owner)
       :ok = BindingStore.reset()
 
       Application.put_env(
