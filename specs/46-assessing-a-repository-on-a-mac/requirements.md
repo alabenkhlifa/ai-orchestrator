@@ -53,7 +53,7 @@ The first slice made the screen reachable. It stopped one step short of the poin
 - Authorization does not change. The assessment is for the owner of the project, and every check that runs today still runs.
 - A repository on a Mac is never described as a GitHub repository, and the screen states no repository name the product does not hold.
 - A person is told what is missing rather than turned away with no reason. Being unable to start is a state the screen shows, not a redirect.
-- The scan runs on the Mac. Only its minimized answer crosses back. No repository path, remote, Git history, file name, or file content is sent, stored, logged, or shown.
+- The scan runs on the Mac. Only its minimized answer crosses back: repository-relative anchors, sizes, line counts, and content digests, which is the evidence `specs/14-repository-execution-profile/` already approved. No absolute or filesystem path, no remote URL, no Git history, and no file content is sent, stored, logged, or shown.
 - The scan reads the repository the binding already verified. The Mac is not asked to find it again, and no folder panel opens unless the person asked for one.
 - A verified binding the Mac no longer holds has expired. The person is told to verify it again.
 - An assessment that does not finish is stored as failed with a plain reason. No saved request stays pending forever.
@@ -72,7 +72,7 @@ The first slice made the screen reachable. It stopped one step short of the poin
 - [AC-09] Given the Mac no longer holds the folder the binding verified, when the scan reaches its worker, then it is refused as expired, no folder panel opens on that Mac, and nothing is scanned.
 - [AC-10] Given the worker refuses the scan, the Mac drops, or nobody answers in the wait window, when the request ends, then the assessment is stored as failed with a plain reason and the owner can start a new one.
 - [AC-11] Given a scan is running, when the owner stops the wait, then the assessment does not complete and nothing keeps running on their behalf.
-- [AC-12] Given any of these outcomes, when the answer crosses back and is stored, rendered, or logged, then it carries no repository path, remote, file name, or file content.
+- [AC-12] Given any of these outcomes, when the answer crosses back and is stored, rendered, or logged, then it carries no absolute or filesystem path, no remote URL, and no file content, and anything else it names is refused whole.
 
 ## Open Questions
 

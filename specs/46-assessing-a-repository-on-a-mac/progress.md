@@ -1,5 +1,13 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Correction before Task 4: findings carry repository-relative anchors by design
+
+- The privacy statement written into this slice hours earlier was wrong. It forbade a "repository path" and a "file name" in a scan answer, but `RepositoryAssessmentResult`'s own `safe_anchor/1` requires each finding to carry a plain relative anchor such as `Makefile` or `.github/workflows/ci.yml`. That evidence is the point of a finding and is `specs/14-repository-execution-profile/`'s approved shape.
+- Corrected in place: the business rule, `AC-12`, the design boundary, `Task 4`'s and `Task 7`'s proof, and the Verification Gate now forbid what is actually forbidden, an absolute or filesystem path, a remote URL, and file content, and name what does cross.
+- Found while reading `validate_completed/2` for `Task 4`'s wire shape, before any code was written.
+- Second discovery from the same read, recorded in `design.md` as a risk: a scanner result uses atom keys, including nested ones, while a metadata answer is strings throughout. The codec has to rebuild the exact atom-keyed shape rather than pass a decoded payload through.
+- No code changed in this update.
+
 ### 2026-09-04 - Second slice opened: the scan itself was never wired to a worker
 
 - The first slice's gate is closed and its result stands: the screen opens for a repository on a Mac, names it, states an unreachable Mac, and the profile is approvable. `tasks.md` moves from `Verified` to `In Progress` for the new slice, and the Verification Gate is reset to the active one.

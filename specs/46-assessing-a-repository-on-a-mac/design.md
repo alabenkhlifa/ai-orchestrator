@@ -58,7 +58,7 @@ Required boundaries:
 - A repository on a Mac is admitted only through its own worker binding. A hosted project with neither a connected GitHub connection nor a binding stays refused.
 - A scan command is aimed at one named worker in one device workspace, never at whoever is attached. An answer from any other attachment is refused.
 - A scan command carries opaque references and digests: the assessment's own command fields and the `selection_ref` the binding used. It carries no filesystem path, remote URL, or file name.
-- An answer carries the scanner's already-minimized result and proposal payload. Nothing this slice sends, stores, renders, or logs may carry a repository path, remote, commit message, file name, or file content.
+- An answer carries the scanner's already-minimized result and proposal payload, whose evidence is repository-relative anchors, sizes, line counts, and content digests. That shape is `specs/14-repository-execution-profile/`'s and is unchanged here. Nothing this slice sends, stores, renders, or logs may carry an absolute or filesystem path, a remote URL, a commit message, or file content.
 - The `:device` route and the accountless flow behind it are untouched.
 
 ## Interfaces
@@ -122,6 +122,7 @@ Required boundaries:
 - The worker's held folder was designed for a revalidate that follows a prepare within seconds. A scan follows a person reading a disclosure and pressing a button, so the expired-hold path is the normal path, not the rare one, and it must be proven as such.
 - Two derivations of the same envelope, one on the worker and one on the control plane, can diverge. The control plane's revalidation of the payload against its own command is what catches that, and it has to refuse rather than store a mismatch.
 - A scan answer is much larger than a metadata answer, and it is the first worker payload big enough for a size limit to matter. A refused frame must end as a named failure, not as a silent timeout.
+- A scanner result uses atom keys and a metadata answer uses strings, so the wire crossing is not a pass-through. The codec has to rebuild the exact atom-keyed shape `RepositoryAssessmentResult.completed/2` validates, and a loose rebuild that accepts unknown keys would undo the closed boundary the metadata codec established.
 
 ## Open Questions
 

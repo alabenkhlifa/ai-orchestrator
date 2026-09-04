@@ -110,7 +110,7 @@ Traceability:
   - Purpose: Fix what may cross to the Mac and back before anything is built on top of it, so no later task decides that for itself.
   - Owned surfaces: `SddOrchestrator.RepositoryScan.ScanRequest` and `SddOrchestrator.RepositoryScan.ScanAnswer` values, and `SddOrchestrator.RepositoryScan.AttachmentCodec` with its request, cancellation, and answer encodings.
   - Owns: AC-12
-  - Proof: Focused tests cover a valid request and a valid answer round-tripping through the codec, a request missing any required field refused, an answer carrying an unknown field refused, an answer whose scan result or proposal payload is malformed refused, and no encoding admitting a filesystem path, a remote URL, or a file name.
+  - Proof: Focused tests cover a valid request and a valid answer round-tripping through the codec, a request missing any required field refused, an answer carrying an unknown field refused, an answer whose scan result or proposal payload is malformed refused, and no encoding admitting an absolute path, a remote URL, or file content.
 
 - [ ] Task 5 — One scan, one outcome, one wait window.
   - Size: Standard
@@ -137,7 +137,7 @@ Traceability:
   - Purpose: Scan the repository the person already verified, without asking them for the folder a second time.
   - Owned surfaces: `SddOrchestrator.Worker.RepositoryScan` with its supervision entry, the held-folder lookup by `selection_ref` it reads from `SddOrchestrator.Worker.RepositoryMetadata`, the `repository_scan` and `repository_scan_cancel` handling in `SddOrchestrator.Worker.GatewayConnection`, and the `repository_scan` capability the release declares at attach. The held folder it reads is `specs/47-live-repository-metadata-binding#Task 8`'s, recorded here rather than as a capability edge because `specs/47` already requires this specification's `Task 3` and the graph must stay acyclic.
   - Owns: AC-09
-  - Proof: Focused tests cover a scan of a held folder answering with the scanner's own result and proposal payload through the exact-commit cache, a `selection_ref` that is not held refused as expired with no panel opened, a held folder whose repository moved to another commit refused, a cancellation stopping an in-flight scan, and no path or file name in any answer or log line.
+  - Proof: Focused tests cover a scan of a held folder answering with the scanner's own result and proposal payload through the exact-commit cache, a `selection_ref` that is not held refused as expired with no panel opened, a held folder whose repository moved to another commit refused, a cancellation stopping an in-flight scan, and no absolute path, remote URL, or file content in any answer or log line.
 
 - [ ] Task 8 — Take a pending assessment to a terminal one.
   - Size: Standard
@@ -164,7 +164,7 @@ Traceability:
 - [ ] The existing repository-metadata question over the same attachment passes unchanged.
 - [ ] The GitHub assessment's screen, labeling, and no-redirect behavior pass unchanged.
 - [ ] The accountless device route passes unchanged.
-- [ ] Nothing sent, stored, rendered, or logged by a scan carries a repository path, remote, file name, or file content.
+- [ ] Nothing sent, stored, rendered, or logged by a scan carries an absolute or filesystem path, a remote URL, or file content.
 - [ ] Build, formatting, lint, static checks, and logs review pass.
 - [ ] Required browser scenarios pass.
 - [ ] Product proof: one click path from `/` in a real browser, worker stand-in off, no `/_e2e` seeding, against the paired worker app: open a hosted project whose repository is on this Mac, verify the binding, press `Start assessment`, see the scan run and complete, then approve the execution profile it proposes. Recorded in `progress.md`.
