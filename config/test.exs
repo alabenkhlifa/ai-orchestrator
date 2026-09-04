@@ -87,6 +87,10 @@ config :sdd_orchestrator,
        :repository_scan_transport,
        SddOrchestrator.RepositoryScan.Transport.Unavailable
 
+config :sdd_orchestrator,
+       :repository_scan_adapter,
+       SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter.Unavailable
+
 # Tests use the deterministic GitHub fake, never a live provider.
 config :sdd_orchestrator, :github,
   provider: SddOrchestrator.GitHubIntegration.FakeProvider,

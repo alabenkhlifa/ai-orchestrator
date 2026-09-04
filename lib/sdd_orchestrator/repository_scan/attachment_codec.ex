@@ -31,7 +31,7 @@ defmodule SddOrchestrator.RepositoryScan.AttachmentCodec do
 
   # The only keys a worker's answer may carry. Everything else is refused with
   # the whole payload, including any key that would name a location.
-  @result_keys ~w(request_id outcome findings structure stats proposal reason)
+  @result_keys ~w(request_id outcome findings structure stats proposal provenance reason)
 
   # The domain refuses a result larger than this when it builds one, so an
   # answer that could never become a result is refused before it is decoded.

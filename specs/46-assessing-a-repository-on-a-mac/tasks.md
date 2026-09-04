@@ -111,7 +111,8 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryScan.ScanRequest` and `SddOrchestrator.RepositoryScan.ScanAnswer` values, and `SddOrchestrator.RepositoryScan.AttachmentCodec` with its request, cancellation, and answer encodings.
   - Owns: AC-12
   - Proof: Focused tests cover a valid request and a valid answer round-tripping through the codec, a request missing any required field refused, an answer carrying an unknown field refused, an answer whose scan result or proposal payload is malformed refused, and no encoding admitting an absolute path, a remote URL, or file content.
-  - Delivered: a scan request leaves as four fields and an answer carries only findings, structure, stats, and the six proposal lists. The command fields a scanner result repeats are not on the wire at all, because the control plane still holds the command it issued.
+  - Delivered: a scan request leaves as four fields and an answer carries only findings, structure, stats, the six proposal lists, and the worker's two cache-provenance values. The command fields a scanner result repeats are not on the wire at all, because the control plane still holds the command it issued.
+  - Extended by `Task 8`: `provenance` was added to the answer. It is the one thing the worker knows and this side cannot re-derive, so inventing it would have made the stored cache record a guess.
 
 - [x] Task 5 — One scan, one outcome, one wait window.
   - Size: Standard
@@ -143,7 +144,7 @@ Traceability:
   - Proof: Focused tests cover a scan of a held folder answering with the scanner's own result and proposal payload through the exact-commit cache, a `selection_ref` that is not held refused as expired with no panel opened, a held folder whose repository moved to another commit refused, a cancellation stopping an in-flight scan, and no absolute path, remote URL, or file content in any answer or log line.
   - Delivered: `Worker.RepositoryMetadata.held_path/1` is the one read of the held folder, and a scan runs in its own task so a cancellation never waits on the read it is stopping.
 
-- [ ] Task 8 — Take a pending assessment to a terminal one.
+- [x] Task 8 — Take a pending assessment to a terminal one.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 6, Task 7
@@ -151,6 +152,7 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter` with its `Worker` and `Unavailable` implementations and its configuration, and the one `RepositoryAssessments` function that issues a pending assessment's command, revalidates the answer against that command, derives the authoritative envelope, and writes every ending through `finish_assessment/6`.
   - Owns: AC-10
   - Proof: Focused tests cover a completed answer stored with its derived envelope and cache provenance, an answer that does not match the command it was sent for refused and stored as failed, a refusal, a lost worker, and an unanswered window each stored as failed under their own reason, a cancelled scan stored as cancelled, a person who does not own the project refused with nothing stored, and a new assessment startable after a failed one.
+  - Delivered: `RepositoryAssessments.run_assessment/5` is the one path from a pending row to a terminal one. It rebuilds the result and the envelope from its own command and returns the worker's reason by name, so a caller can tell an expired hold from a stale commit.
 
 - [ ] Task 9 — The screen assesses, and says what happened.
   - Size: Standard

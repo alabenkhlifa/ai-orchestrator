@@ -25,6 +25,13 @@ defmodule SddOrchestrator.RepositoryScan.ScanAnswer do
   the evidence digest, and the payload digest from the result the control
   plane built.
 
+  `provenance` is the exception that proves the rule. Its `source` and
+  `cache_stored` say whether this answer came from a fresh read or the
+  worker's exact-commit cache, and whether the worker kept it. Neither is
+  derivable here, because both are facts about a cache the control plane
+  cannot see. They cross for that reason, and the two digests that complete a
+  `RepositoryAssessmentCacheProvenance` still do not.
+
   ## Why `new/1` is strict
 
   A worker answer arrives from outside the control plane, so an unknown
@@ -40,7 +47,16 @@ defmodule SddOrchestrator.RepositoryScan.ScanAnswer do
   """
 
   @enforce_keys [:request_id, :outcome]
-  defstruct [:request_id, :outcome, :findings, :structure, :stats, :proposal, :reason]
+  defstruct [
+    :request_id,
+    :outcome,
+    :findings,
+    :structure,
+    :stats,
+    :proposal,
+    :provenance,
+    :reason
+  ]
 
   @outcomes [:scanned, :refused, :cancelled]
 
@@ -57,10 +73,20 @@ defmodule SddOrchestrator.RepositoryScan.ScanAnswer do
     :total_byte_limit_exceeded
   ]
 
-  @keys [:request_id, :outcome, :findings, :structure, :stats, :proposal, :reason]
+  @keys [
+    :request_id,
+    :outcome,
+    :findings,
+    :structure,
+    :stats,
+    :proposal,
+    :provenance,
+    :reason
+  ]
   @finding_keys [:category, :path, :bytes, :sha256, :line_count]
   @structure_keys [:path, :kind]
   @stats_keys [:discovered_paths, :inspected_files, :bytes_read]
+  @provenance_keys [:source, :cache_stored]
   @proposal_keys [
     :commands,
     :required_checks,
@@ -93,6 +119,7 @@ defmodule SddOrchestrator.RepositoryScan.ScanAnswer do
           structure: [map()] | nil,
           stats: map() | nil,
           proposal: map() | nil,
+          provenance: map() | nil,
           reason: refusal_reason() | nil
         }
 
@@ -103,6 +130,10 @@ defmodule SddOrchestrator.RepositoryScan.ScanAnswer do
   @doc "The proposal fields a worker derives and this answer carries."
   @spec proposal_keys() :: [atom()]
   def proposal_keys, do: @proposal_keys
+
+  @doc "The cache-provenance values only the worker can know."
+  @spec provenance_keys() :: [atom()]
+  def provenance_keys, do: @provenance_keys
 
   @doc """
   Builds one answer from a worker's plain map, with string or atom keys.
@@ -165,8 +196,16 @@ defmodule SddOrchestrator.RepositoryScan.ScanAnswer do
     with {:ok, findings} <- fetch_entries(attrs, :findings, @finding_keys),
          {:ok, structure} <- fetch_entries(attrs, :structure, @structure_keys),
          {:ok, stats} <- fetch_map(attrs, :stats, @stats_keys),
-         {:ok, proposal} <- fetch_map(attrs, :proposal, @proposal_keys) do
-      {:ok, %{findings: findings, structure: structure, stats: stats, proposal: proposal}}
+         {:ok, proposal} <- fetch_map(attrs, :proposal, @proposal_keys),
+         {:ok, provenance} <- fetch_map(attrs, :provenance, @provenance_keys) do
+      {:ok,
+       %{
+         findings: findings,
+         structure: structure,
+         stats: stats,
+         proposal: proposal,
+         provenance: provenance
+       }}
     end
   end
 

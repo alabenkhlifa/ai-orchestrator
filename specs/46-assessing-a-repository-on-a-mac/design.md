@@ -107,6 +107,12 @@ Required boundaries:
 - Reason: The command is the control plane's own; the answer is not. Storing an envelope the worker constructed would make the authoritative record something a worker asserted rather than something the control plane derived.
 - Consequence: The same derivation exists on both sides, and the worker's cached envelope is discarded on arrival. That is the price of the authoritative record being derived here.
 
+### Two things the control plane cannot re-derive, and what bounds them instead
+
+- Choice: The worker's cache provenance crosses as `source` and `cache_stored`, and the six proposal fields are taken as the worker's word, bounded by their own validation rather than by re-derivation.
+- Reason: Both are facts this side cannot compute. A cache's provenance is a fact about a cache the control plane cannot see, and inventing `fresh_scan` for every answer would make the stored record a guess. Deriving a proposal needs the repository's file contents, which deliberately never leave the Mac, so `RepositoryExecutionProfileProposalPayload.derive/3` can only run there; `valid_for?/3` checks a payload's self-consistency and its binding to the command and result, not that the evidence implies it.
+- Consequence: A worker could assert a command its findings do not evidence. What is enforced is the payload's own validation: a known command shape, required checks drawn from the commands, a scope inside the root, allowlisted gap and conflict codes, and item and byte bounds. The two provenance digests are still derived here, so a worker can say where its answer came from but not what it is a digest of.
+
 ### Every ending is terminal, so a pending row means one thing
 
 - Choice: A refusal, a lost worker, an unanswered window, and a stopped wait all write a terminal assessment through `finish_assessment/6`.

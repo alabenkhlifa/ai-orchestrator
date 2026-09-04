@@ -10,8 +10,9 @@ defmodule SddOrchestrator.RepositoryScan do
   returns it directly:
 
     * `{:ok, evidence}` — the worker scanned the repository. The evidence is
-      the scanner's own `findings`, `structure`, and `stats`, plus the six
-      `proposal` fields it derived. It is not a result yet:
+      the scanner's own `findings`, `structure`, and `stats`, the six
+      `proposal` fields it derived, and the `provenance` of its own cache. It
+      is not a result yet:
       `SddOrchestrator.RepositoryAssessments` builds one by putting its own
       command's fields beside this evidence.
     * `{:error, :cancelled}` — the scan was cancelled.
@@ -87,7 +88,8 @@ defmodule SddOrchestrator.RepositoryScan do
           findings: [map()],
           structure: [map()],
           stats: map(),
-          proposal: map()
+          proposal: map(),
+          provenance: map()
         }
 
   @typedoc "What `run/2` needs to ask a worker to scan a repository."

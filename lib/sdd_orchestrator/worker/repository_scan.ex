@@ -194,8 +194,11 @@ defmodule SddOrchestrator.Worker.RepositoryScan do
 
   defp scan(cache, path, command) do
     case WorkerRepositoryAssessmentCache.scan_with_proposal(cache, path, command) do
-      {:ok, worker_result, payload, _envelope, _provenance} -> {:ok, worker_result, payload}
-      {:error, reason} -> {:error, reason}
+      {:ok, worker_result, payload, _envelope, provenance} ->
+        {:ok, worker_result, payload, provenance}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -204,14 +207,19 @@ defmodule SddOrchestrator.Worker.RepositoryScan do
     state
   end
 
-  defp answer(request_id, {:ok, worker_result, payload}) do
+  defp answer(request_id, {:ok, worker_result, payload, provenance}) do
     %{
       "request_id" => request_id,
       "outcome" => "scanned",
       "findings" => worker_result.findings,
       "structure" => worker_result.structure,
       "stats" => worker_result.stats,
-      "proposal" => RepositoryExecutionProfileProposalPayload.proposal_fields(payload)
+      "proposal" => RepositoryExecutionProfileProposalPayload.proposal_fields(payload),
+      # The two values the control plane cannot re-derive: whether this came
+      # from a fresh read or this worker's exact-commit cache, and whether the
+      # worker kept it. The digests that complete a provenance are derived
+      # there from the result, not taken from here.
+      "provenance" => %{source: provenance.source, cache_stored: provenance.cache_stored}
     }
   end
 

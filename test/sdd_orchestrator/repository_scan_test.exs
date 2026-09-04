@@ -64,7 +64,8 @@ defmodule SddOrchestrator.RepositoryScanTest do
                gaps: [],
                conflicts: [],
                multi_root_blockers: []
-             }
+             },
+             provenance: %{source: "fresh_scan", cache_stored: true}
            }
   end
 
@@ -258,6 +259,7 @@ defmodule SddOrchestrator.RepositoryScanTest do
       ],
       "structure" => [%{"path" => "Makefile", "kind" => "file"}],
       "stats" => %{"discovered_paths" => 4, "inspected_files" => 1, "bytes_read" => 12},
+      "provenance" => %{"source" => "fresh_scan", "cache_stored" => true},
       "proposal" => %{
         "commands" => ["make test"],
         "required_checks" => ["make test"],

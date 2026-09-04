@@ -254,7 +254,8 @@ defmodule SddOrchestrator.RepositoryScan.Server do
        findings: answer.findings,
        structure: answer.structure,
        stats: answer.stats,
-       proposal: answer.proposal
+       proposal: answer.proposal,
+       provenance: answer.provenance
      }}
   end
 

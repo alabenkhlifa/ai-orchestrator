@@ -124,6 +124,7 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelRepositoryScanTest do
       assert {:ok, evidence} = Task.await(task)
       assert evidence.stats == %{discovered_paths: 4, inspected_files: 1, bytes_read: 12}
       assert evidence.proposal.commands == ["make test"]
+      assert evidence.provenance == %{source: "fresh_scan", cache_stored: true}
     end
 
     test "a result from another attachment is refused and the blocked call keeps waiting",
@@ -252,6 +253,7 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelRepositoryScanTest do
       ],
       "structure" => [%{"path" => "Makefile", "kind" => "file"}],
       "stats" => %{"discovered_paths" => 4, "inspected_files" => 1, "bytes_read" => 12},
+      "provenance" => %{"source" => "fresh_scan", "cache_stored" => true},
       "proposal" => %{
         "commands" => ["make test"],
         "required_checks" => ["make test"],

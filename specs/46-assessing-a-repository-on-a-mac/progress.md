@@ -1,5 +1,17 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Task 8 complete: two things the control plane cannot re-derive
+
+- `RepositoryAssessments.run_assessment/5` is the one path from a pending row to a terminal one. It rebuilds the scanner result from its own command beside the answer's three evidence fields, revalidates the proposal payload, derives the envelope, and writes through the existing `finish_assessment/6`. A row is left at `pending_scan` only while a scan is genuinely running.
+- It returns the worker's reason by name rather than a narrowed union. The stored failure code is coarser than the sentence a person needs: an expired folder hold and a worker that never answered are both `repository_unavailable` in storage and two different things on screen.
+- `Task 4`'s answer shape was wrong by omission, found here. Cache provenance is a fact about a cache the control plane cannot see, so `source` and `cache_stored` now cross. Inventing `fresh_scan` for every answer would have made the stored provenance a guess about the worker's own cache. The two digests that complete a provenance are still derived on this side from the command and the result.
+- A test premise was wrong, and correcting it found a real limit worth naming. It asserted that a proposal not implied by the findings would be refused. It is not, and it cannot be: deriving a proposal needs the repository's file contents, which deliberately never leave the Mac, so `derive/3` only runs there and `valid_for?/3` checks self-consistency and command binding rather than derivation.
+- What actually bounds the six proposal fields is their own validation: a known command shape, required checks drawn from the commands, a scope inside the root, allowlisted gap and conflict codes, and item and byte limits. That is now a named decision in `design.md` and a test that states the trust rather than a test that pretends there is none.
+- The two selection values are passed, not persisted. `device_workspace_id` and `selection_ref` belong to the session that prepared the binding, and storing a worker-local correlation token in authoritative storage would be the wrong place for it.
+- `RepositoryScanAdapter` defaults to refusing, is pinned to the refusing one in `config/test.exs`, and is the real one everywhere else. Unlike `RepositoryMetadataAdapter.Worker`, it narrows nothing.
+- Proof receipt: `Task 8` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_assessments/repository_scan_run_test.exs` — exit `0`.
+- 15 tests passed. Regression run outside the focused proof: the whole scan vertical with the assessment domain suite, 65 passed after the earlier tasks' fixtures gained the new `provenance` field.
+
 ### 2026-09-04 - Task 7 complete: the worker scans what it is already holding
 
 - `Worker.RepositoryMetadata` gained one read, `held_path/1`, and nothing else. The held folder was already keyed by `selection_ref` for the revalidate path, so a scan of the same binding is the same question again and needs no second panel. `Worker.RepositoryScan` never calls `Worker.RepositorySelection`, which is what makes "no panel opens because a scan arrived" a structural property rather than a promise.

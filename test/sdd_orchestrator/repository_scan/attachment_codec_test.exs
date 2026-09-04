@@ -127,6 +127,7 @@ defmodule SddOrchestrator.RepositoryScan.AttachmentCodecTest do
 
       assert answer.structure == [%{path: "Makefile", kind: "file"}]
       assert answer.stats == %{discovered_paths: 4, inspected_files: 1, bytes_read: 12}
+      assert answer.provenance == %{source: "fresh_scan", cache_stored: true}
 
       assert answer.proposal == %{
                commands: ["make test"],
@@ -163,7 +164,7 @@ defmodule SddOrchestrator.RepositoryScan.AttachmentCodecTest do
     end
 
     test "refuses a scanned answer missing any evidence field" do
-      for key <- ~w(findings structure stats proposal) do
+      for key <- ~w(findings structure stats proposal provenance) do
         assert {:error, :invalid_result} =
                  scanned_payload() |> Map.delete(key) |> ScanAnswer.new()
       end
@@ -277,6 +278,7 @@ defmodule SddOrchestrator.RepositoryScan.AttachmentCodecTest do
       ],
       "structure" => [%{"path" => "Makefile", "kind" => "file"}],
       "stats" => %{"discovered_paths" => 4, "inspected_files" => 1, "bytes_read" => 12},
+      "provenance" => %{"source" => "fresh_scan", "cache_stored" => true},
       "proposal" => %{
         "commands" => ["make test"],
         "required_checks" => ["make test"],

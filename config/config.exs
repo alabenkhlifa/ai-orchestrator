@@ -184,6 +184,10 @@ config :sdd_orchestrator,
        :repository_scan_transport,
        SddOrchestrator.RepositoryScan.Transport.Attachment
 
+config :sdd_orchestrator,
+       :repository_scan_adapter,
+       SddOrchestrator.RepositoryAssessments.RepositoryScanAdapter.Worker
+
 # Cloak vault ciphers are configured per environment because the key is a secret.
 
 # Import environment specific config. This must remain at the bottom
