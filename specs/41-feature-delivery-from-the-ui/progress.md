@@ -1,5 +1,14 @@
 # Feature Delivery From The Product UI Progress Log
 
+### 2026-09-04 - Start development was pressed on a real Mac, and the run stalls after acceptance
+
+- The release gate's stated blocker was stale and is replaced. It said no assessment could complete against a real Mac; `specs/47-live-repository-metadata-binding/` and `specs/46-assessing-a-repository-on-a-mac/` closed that today, and an execution profile was approved on this project by clicking before the press.
+- Proven by clicking, against the paired Mac worker with the stand-in off and no seeding: a feature was added, given its four guided parts, checked ready, and made ready; all five start preconditions rendered met; `Start development` created run `f122c9fe-b944-49cb-a286-1e269a328587` on branch `sdd/run-f122c9fe-b944-49cb-a286-1e269a328587`; the feature moved to `In development`; and `run_commands` recorded `start` as `acknowledged` at 20:47:18 UTC. The worker's `run_state.json` shows the attempt `accepted` with its branch, fence token, and manifest digest.
+- Then nothing. `run_attempts` stays `pending` at `last_sequence` 0, the repository grows no branch, and the screen keeps saying development is running.
+- The cause was read in the code rather than guessed. `ExecutionPreparer.prepare/2` needs `Branch.prepare/1`, which needs `Workspace.prepare/1`, which needs `Workspace.root/0`. That returns `{:error, :workspace_root_unconfigured}` unless `:worker_workspace_root` is set, and `Worker.Supervisor.put_workspace_root/1` deletes the key for a configuration with no workspace root. This Mac's `worker.json` has neither `workspace_root` nor `project_id`, because it was paired Mac-scoped. `last_sequence` staying 0 is the matching evidence: `record_first_sequence/1` runs only after preparation succeeds.
+- The second fault is why this took a database query to see. `GatewayConnection.prepare_execution/3` logs a refusal and returns the socket unchanged, so the control plane is told nothing. A run can be accepted and then fail to prepare with no reason anywhere the product can read.
+- Recorded as this slice's remaining release blocker and assigned to an unwritten specification covering both: how a Mac-scoped worker resolves a bound project's repository folder for a run, and how a post-acceptance preparation failure reaches the person. No specification was written in this update and no code changed.
+
 ### 2026-09-03 - The remaining blocker is specs/14's release gate, not a defect
 
 - `specs/46-assessing-a-repository-on-a-mac/` is `Verified` and merged. The gates that refused to assess a hosted project whose repository is on a Mac are gone, so the path to the fifth start precondition is open in code.
