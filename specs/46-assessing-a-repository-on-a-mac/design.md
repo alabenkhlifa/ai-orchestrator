@@ -47,7 +47,7 @@ Required boundaries:
 ## Interfaces
 
 - `RepositoryAssessments.authorize_project/2` admitting a hosted project whose repository is on a Mac, and refusing one that is reachable by neither route.
-- Compatibility that must hold: the GitHub assessment and its profile approval, the device route, the disclosure digest and the proposal envelope, and every refusal for a person who does not own the project.
+- Compatibility that must hold: the GitHub assessment screen's rendering and labeling, the device route, the disclosure digest and the proposal envelope, and every refusal for a person who does not own the project. Whether a GitHub assessment can be started and approved is narrowed by `specs/47-live-repository-metadata-binding#Task 8` — see AC-05.
 
 ## Decisions and Tradeoffs
 

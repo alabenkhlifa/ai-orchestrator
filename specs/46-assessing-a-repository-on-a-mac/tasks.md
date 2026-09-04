@@ -93,11 +93,12 @@ Traceability:
   - Owns: AC-04, AC-05
   - Proof: An integration scenario assesses such a repository, completes it, and approves the execution profile from its proposal; and a GitHub project's assessment and profile approval are shown unchanged beside it.
   - Delivered: the journey runs through the screens, and the `execution_profile` start precondition is proven to flip from unmet to met, which is the thing the slice set out to unblock.
+  - Corrected by `specs/47-live-repository-metadata-binding#Task 8`: AC-05 narrowed. The proof this task recorded that a GitHub project's assessment "completes and approves" ran against a test double and was never achievable against a real worker (no worker can match a GitHub numeric id to a local folder's identity). The screen, labeling, and no-redirect behavior this task actually delivered for a GitHub project stay unchanged and verified; only the completion claim was corrected.
 
 ## Verification Gate
 
 - [x] Active-slice acceptance criteria pass.
-- [x] The GitHub assessment and its profile approval pass unchanged.
+- [x] The GitHub assessment's screen, labeling, and no-redirect behavior pass unchanged. Starting an assessment for a GitHub-connected repository is corrected by `specs/47-live-repository-metadata-binding#Task 8`; it was never achievable against a real worker.
 - [x] The accountless device route passes unchanged.
 - [x] Authorization refusals pass unchanged for a person who does not own the project.
 - [x] Build, formatting, lint, static checks, and logs review pass.

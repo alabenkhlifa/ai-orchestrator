@@ -1,5 +1,12 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - AC-05 narrowed: a GitHub assessment's completion was never real
+
+- Found while implementing `specs/47-live-repository-metadata-binding#Task 8`, which correctly refuses starting an assessment for a GitHub-connected repository before offering confirmation. `AC-05`'s own test proved the GitHub journey "completes and approves," but that proof ran only against a test double: no worker can match a GitHub numeric repository id to a local folder's identity, so completion was never achievable against a real one, before or after this slice. Nothing this slice actually delivered is invalidated — the screen still opens for a GitHub project, still names it correctly, and still does not redirect, and that is what Task 3's own proof actually established at the gates it owns.
+- `AC-05` is narrowed to what stays true, and the Verification Gate line is corrected to match. The claim that a GitHub assessment can be started and completed moves to `specs/47-live-repository-metadata-binding/`, which names why and owns the screen's wording for it.
+- `requirements.md`'s `Status` was also corrected from a stale `Draft` to `Approved`, matching `tasks.md`'s `Verified` — an unrelated pre-existing drift noticed while this file was open, not something the code depends on.
+- No code or test changed in this update. `specs/47-live-repository-metadata-binding#Task 8` makes the corresponding implementation and test change.
+
 ### 2026-09-03 - Specification created after a delivered project could not reach a run
 
 - Found by driving `specs/41-feature-delivery-from-the-ui/`'s release proof in a real browser, on a hosted project created by clicking through `specs/44-hosted-local-repository-projects/` and reached through `specs/45-hosted-session-project-access/`.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Approved
 
 ## Outcome
 
@@ -50,7 +50,7 @@ An owner of a hosted project whose repository is a Git repository on their Mac c
 - [AC-02] Given that screen is open and the Mac is reachable, when the owner confirms the processing boundary and starts the assessment, then it starts exactly as it does for a GitHub project.
 - [AC-03] Given the Mac holding the repository is not reachable, when the owner opens the assessment, then the screen renders, says the machine is not reachable, offers no start, and leaves the project unchanged.
 - [AC-04] Given an assessment of such a repository completes, when the owner opens the execution profile, then the proposal is there to approve and approving it works.
-- [AC-05] Given an owner of a GitHub project, when they use the assessment and the execution profile, then everything they see and can do is unchanged.
+- [AC-05] Given an owner of a GitHub project, when they open the assessment, then the screen still renders, names the repository, and does not redirect, exactly as before. Starting an assessment for a GitHub-connected repository is a separate, later limitation this slice does not decide: `specs/47-live-repository-metadata-binding/` records why (a worker can only verify a repository identity it can match against a local folder, and a GitHub identity has none yet) and owns the screen's wording for it.
 - [AC-06] Given a person who does not own the project, when they open its assessment, then they are refused exactly as they are today and nothing about the project is disclosed.
 
 ## Open Questions
