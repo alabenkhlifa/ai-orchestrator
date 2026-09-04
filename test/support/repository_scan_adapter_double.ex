@@ -54,11 +54,7 @@ defmodule SddOrchestrator.RepositoryScanAdapterDouble do
   @doc "Lets a held scan finish."
   @spec release() :: :ok
   def release do
-    case read(:hold, nil) do
-      gate when is_pid(gate) -> if Process.alive?(gate), do: Agent.stop(gate)
-      nil -> :ok
-    end
-
+    :hold |> read(nil) |> stop_gate()
     update(&Map.put(&1, :hold, nil))
   end
 
@@ -120,11 +116,7 @@ defmodule SddOrchestrator.RepositoryScanAdapterDouble do
 
   defp stop(agent) do
     if Process.alive?(agent) do
-      case Agent.get(agent, & &1.hold) do
-        gate when is_pid(gate) -> if Process.alive?(gate), do: Agent.stop(gate)
-        _none -> :ok
-      end
-
+      agent |> Agent.get(& &1.hold) |> stop_gate()
       Agent.stop(agent)
     end
 
@@ -132,4 +124,10 @@ defmodule SddOrchestrator.RepositoryScanAdapterDouble do
   catch
     :exit, _reason -> :ok
   end
+
+  defp stop_gate(gate) when is_pid(gate) do
+    if Process.alive?(gate), do: Agent.stop(gate), else: :ok
+  end
+
+  defp stop_gate(_absent), do: :ok
 end

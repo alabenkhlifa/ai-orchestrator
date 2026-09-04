@@ -12,8 +12,8 @@ defmodule SddOrchestrator.Worker.SupervisorTest do
   # concurrently-running tests over that shared global state.
   use ExUnit.Case, async: false
 
-  alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.RepositoryAssessments.WorkerRepositoryAssessmentCache
+  alias SddOrchestrator.Worker.Configuration
   alias SddOrchestrator.Worker.GatewayConnection
   alias SddOrchestrator.Worker.ProjectConnections
   alias SddOrchestrator.Worker.RepositoryMetadata

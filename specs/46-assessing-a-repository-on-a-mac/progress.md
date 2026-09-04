@@ -9,6 +9,7 @@
 - Three earlier tests asserted the state this task removed, and all three were correct to fail. Two live tests moved from `data-assessment-pending` to `data-assessment-scanning`, keeping their own claim about which store the row lands in.
 - The third is better for it. `MacRepositoryAssessmentTest` carried a comment that the scan "is the only step of this journey that is not a click", and finished the assessment by calling the domain directly. It now supplies the worker's answer through the scan adapter and clicks the whole way, so `specs/46`'s own integration scenario proves what the slice set out to make true.
 - One debugging detour worth recording: a helper edit silently did not apply, because an earlier edit had already changed the text it matched. The symptom read as a database-visibility problem, and two rounds of inspecting rows were spent before reading the helper itself. Check the file, not the theory.
+- All six tasks in this slice are now complete, so `capability:live-repository-scan` is ready. What remains before `Verified`: the full verification gate and the product-proof click path against the paired Mac app.
 - Proof receipt: `Task 9` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/repository_assessment_scan_test.exs` — exit `0`.
 - 9 tests passed. Regression run outside the focused proof: the Mac assessment journey, both assessment screens, the profile screen, and the assessment domain suites, 161 passed.
 
