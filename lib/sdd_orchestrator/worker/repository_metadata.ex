@@ -239,7 +239,11 @@ defmodule SddOrchestrator.Worker.RepositoryMetadata do
   # holds nothing, so the next question for the same reference opens a new
   # panel rather than reusing anything that failed the check.
   defp hold_on_success(held, request, path, {:ok, _result}),
-    do: Map.put(held, request.selection_ref, %{path: path, expires_at: parse_expiry(request.expires_at)})
+    do:
+      Map.put(held, request.selection_ref, %{
+        path: path,
+        expires_at: parse_expiry(request.expires_at)
+      })
 
   defp hold_on_success(held, _request, _path, {:error, _reason}), do: held
 

@@ -266,6 +266,8 @@ defmodule SddOrchestrator.RepositoryMetadata.Server do
   defp requester_outcome(%MetadataAnswer{outcome: :refused, reason: :repository_mismatch}),
     do: {:error, :repository_mismatch}
 
-  defp requester_outcome(%MetadataAnswer{outcome: :refused}), do: {:error, :invalid_worker_response}
+  defp requester_outcome(%MetadataAnswer{outcome: :refused}),
+    do: {:error, :invalid_worker_response}
+
   defp requester_outcome(%MetadataAnswer{outcome: :cancelled}), do: {:error, :cancelled}
 end

@@ -77,7 +77,8 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelRepositoryMetadataTest do
       assert {:error, :cancelled} = Task.await(task)
     end
 
-    test "no worker attached for the asked workspace resolves the blocked call at once", context do
+    test "no worker attached for the asked workspace resolves the blocked call at once",
+         context do
       other_workspace = Ecto.UUID.generate()
 
       assert {:error, :worker_unavailable} =
@@ -103,7 +104,8 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelRepositoryMetadataTest do
   end
 
   describe "answering" do
-    test "a metadata result from the attachment the request went to resolves the blocked call", context do
+    test "a metadata result from the attachment the request went to resolves the blocked call",
+         context do
       attrs = request_attrs(context)
       task = Task.async(fn -> RepositoryMetadata.inspect(attrs) end)
 
@@ -129,7 +131,8 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelRepositoryMetadataTest do
       assert result.commit == String.duplicate("a1", 20)
     end
 
-    test "a result from another attachment is refused and the blocked call keeps waiting", context do
+    test "a result from another attachment is refused and the blocked call keeps waiting",
+         context do
       attrs = request_attrs(context)
       task = Task.async(fn -> RepositoryMetadata.inspect(attrs) end)
 
@@ -230,7 +233,8 @@ defmodule SddOrchestratorWeb.WorkerWorkspaceChannelRepositoryMetadataTest do
       assert {:error, :cancelled} = Task.await(task)
     end
 
-    test "an answer carrying an unrecognized key is refused before it reaches the requester", context do
+    test "an answer carrying an unrecognized key is refused before it reaches the requester",
+         context do
       attrs = request_attrs(context)
       task = Task.async(fn -> RepositoryMetadata.inspect(attrs) end)
 

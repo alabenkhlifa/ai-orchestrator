@@ -547,7 +547,11 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
     render_async(view)
 
-    assert has_element?(view, ~s([data-screen="repository-assessment"][data-assessment-stage="disclosure"]))
+    assert has_element?(
+             view,
+             ~s([data-screen="repository-assessment"][data-assessment-stage="disclosure"])
+           )
+
     assert render(view) =~ "The wait could not finish."
     assert has_element?(view, "[data-confirm-boundary]:not([disabled])")
     assert AssessmentStore.count(hosted_authority(context), project.id) == 0

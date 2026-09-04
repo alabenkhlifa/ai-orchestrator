@@ -17,7 +17,13 @@ defmodule SddOrchestrator.RepositoryAssessments.RepositoryMetadataAdapter.LiveAd
   alias SddOrchestrator.Devices
   alias SddOrchestrator.Devices.{DeviceStore.Local, Pairing}
   alias SddOrchestrator.RepositoryAssessments
-  alias SddOrchestrator.RepositoryAssessments.{AssessmentStore, BindingStore, RepositoryMetadataAdapter}
+
+  alias SddOrchestrator.RepositoryAssessments.{
+    AssessmentStore,
+    BindingStore,
+    RepositoryMetadataAdapter
+  }
+
   alias SddOrchestrator.RepositoryMetadata
   alias SddOrchestrator.RepositoryMetadata.MetadataRequest
   alias SddOrchestrator.RepositoryMetadataTransportDouble, as: TransportDouble
