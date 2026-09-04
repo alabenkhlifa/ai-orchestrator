@@ -103,7 +103,7 @@ Traceability:
   - Corrected by `specs/47-live-repository-metadata-binding#Task 8`: AC-05 narrowed. The proof this task recorded that a GitHub project's assessment "completes and approves" ran against a test double and was never achievable against a real worker (no worker can match a GitHub numeric id to a local folder's identity). The screen, labeling, and no-redirect behavior this task actually delivered for a GitHub project stay unchanged and verified; only the completion claim was corrected.
   - Corrected by `Task 8` of this slice: the completion in this task's own scenario was produced by a seeded result, not by a worker. What it proved stays true, that a completed assessment yields an approvable profile. That a real scan produces one is `Task 8`'s and `Task 9`'s to prove.
 
-- [ ] Task 4 — One closed shape for a scan command and its answer.
+- [x] Task 4 — One closed shape for a scan command and its answer.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: none
@@ -111,6 +111,7 @@ Traceability:
   - Owned surfaces: `SddOrchestrator.RepositoryScan.ScanRequest` and `SddOrchestrator.RepositoryScan.ScanAnswer` values, and `SddOrchestrator.RepositoryScan.AttachmentCodec` with its request, cancellation, and answer encodings.
   - Owns: AC-12
   - Proof: Focused tests cover a valid request and a valid answer round-tripping through the codec, a request missing any required field refused, an answer carrying an unknown field refused, an answer whose scan result or proposal payload is malformed refused, and no encoding admitting an absolute path, a remote URL, or file content.
+  - Delivered: a scan request leaves as four fields and an answer carries only findings, structure, stats, and the six proposal lists. The command fields a scanner result repeats are not on the wire at all, because the control plane still holds the command it issued.
 
 - [ ] Task 5 — One scan, one outcome, one wait window.
   - Size: Standard

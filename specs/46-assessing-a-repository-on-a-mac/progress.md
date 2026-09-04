@@ -1,5 +1,18 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Task 4 complete: the answer is narrower than the plan assumed
+
+- The wire carries less than `design.md` predicted, and the narrower shape is the stricter one. A scanner result repeats the command it ran for: protocol version, assessment and project ids, repository identity, root, commit, and scanner-contract digest. None of it crosses now. `RepositoryAssessments` will rebuild the full result by putting its own command fields beside the three evidence fields, so a worker cannot state them at all rather than stating them and being checked.
+- The same held for the proposal. `RepositoryExecutionProfileProposalPayload.new/2` re-derives `cache_key_sha256`, `evidence_sha256`, and `payload_digest` from the result, so only the six fields a worker actually derives are on the wire.
+- A scan answer is therefore `findings`, `structure`, `stats`, and six lists of strings. A request is four fields, one of them `RepositoryAssessmentCommand.to_value/1`, which is already closed.
+- Key closure runs at every level, not just the top. A finding, a structure entry, the stats map, and the proposal map each refuse an unrecognised key, which is what keeps an absolute path out of a nested position where a top-level check would not look.
+- Value validation is deliberately not duplicated here. `ScanAnswer` owns shape and key closure; `RepositoryAssessmentResult.completed/2` owns categories, anchors, byte ranges, and digests, and it already refuses everything this boundary lets through.
+- The ten refusal reasons are the bounded scanner's own nine terminal errors, which are also `RepositoryAssessmentResult`'s allowlisted failure codes, plus `selection_expired` for a folder the worker no longer holds. No new failure code was added to `specs/14`'s allowlist.
+- The size bound is the domain's own `max_result_bytes` plus headroom for the proposal, applied to the encoded payload before it is decoded. A scan answer is the first worker payload large enough for that to matter.
+- One test was wrong before the code was. Asserting the request payload contains no `"path"` substring failed on `max_paths`, a limit. Replaced by walking every string value and refusing an absolute path, a home-relative path, or a URL, which is the property that was meant.
+- Proof receipt: `Task 4` — scope `Focused` — command `mix test test/sdd_orchestrator/repository_scan/attachment_codec_test.exs` — exit `0`.
+- 17 tests passed.
+
 ### 2026-09-04 - Correction before Task 4: findings carry repository-relative anchors by design
 
 - The privacy statement written into this slice hours earlier was wrong. It forbade a "repository path" and a "file name" in a scan answer, but `RepositoryAssessmentResult`'s own `safe_anchor/1` requires each finding to carry a plain relative anchor such as `Makefile` or `.github/workflows/ci.yml`. That evidence is the point of a finding and is `specs/14-repository-execution-profile/`'s approved shape.
