@@ -217,33 +217,34 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
   end
 
   describe "a GitHub project is unchanged" do
-    test "the same journey still names the connected repository and approves [AC-05]", ctx do
+    test "the same journey still names the connected repository and cannot start it [AC-05]",
+         ctx do
       project = github_project(ctx, "Roadmap Alpha")
 
       view = open_assessment(ctx, project)
-      confirm_boundary(ctx, view)
 
-      # The connected repository keeps its own name. A GitHub project must never
-      # pick up the label the local binding introduced.
-      repository = view |> element(~s([data-binding-field="repository"])) |> render()
+      # The connected repository keeps its own name. A GitHub project's
+      # repository identity is not a portable local one, so it is named on the
+      # disclosure stage's not-on-a-Mac state rather than a verified binding:
+      # this screen never reaches that stage for such a project. The name must
+      # never pick up the label the local binding introduced.
+      repository = view |> element("[data-repository-name]") |> render()
       assert repository =~ "octo/example"
       refute repository =~ "Local repository for"
 
-      start_assessment(view)
-      completed = complete_through_worker!(ctx, project)
-      assert completed.repository_provider == "github"
-
-      profile_view = open_profile(ctx, project)
-      approve_profile(profile_view)
-
-      assert {:ok, approved} =
-               RepositoryAssessments.approved_profile({:hosted, ctx.account.id}, project.id)
-
-      assert approved.version == 1
-      assert approved.assessment_id == completed.id
+      # No confirmation is offered: no worker can match a GitHub repository id
+      # to a local folder's identity.
+      assert has_element?(view, "[data-repository-not-verifiable]")
+      refute has_element?(view, "#assessment-binding-form")
+      refute has_element?(view, "[data-confirm-boundary]")
 
       feature = ready_feature(ctx, project)
-      assert met?(ctx, project, feature, "execution_profile")
+      refute met?(ctx, project, feature, "execution_profile")
+
+      refute ctx.workspace
+             |> Start.preconditions(owner_actor(ctx), %{project: project, feature: feature})
+             |> Enum.find(&(&1.key == :execution_profile))
+             |> Map.fetch!(:met?)
     end
   end
 

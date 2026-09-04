@@ -148,8 +148,13 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
   alias SddOrchestrator.RepositoryAssessments.{
     AssessmentStore,
     BindingStore,
-    RepositoryAssessment
+    RepositoryAssessment,
+    RepositoryMetadataAdapter
   }
+
+  alias SddOrchestrator.RepositoryMetadata
+  alias SddOrchestrator.RepositoryMetadata.MetadataRequest
+  alias SddOrchestrator.RepositoryMetadataTransportDouble, as: TransportDouble
 
   alias SddOrchestratorWeb.RepositoryAssessmentLive
   alias SddOrchestratorWeb.RepositoryAssessmentLiveTest.Adapter
@@ -207,7 +212,8 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
   test "the hosted owner confirms the exact disclosed contract before metadata and starts separately",
        context do
-    path = ~p"/projects/#{context.hosted_project.id}/assessment"
+    project = hosted_local_project(context)
+    path = ~p"/projects/#{project.id}/assessment"
     {:ok, view, html} = live(context.owner_conn, path)
 
     assert html =~ ~s(data-screen="repository-assessment")
@@ -215,7 +221,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert html =~ "No repository metadata call or scan command is issued before confirmation."
     refute html =~ ~s(maxlength="255")
     assert Adapter.events() == []
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
 
     for item <- RepositoryAssessmentLive.disclosure_items() do
       assert has_element?(view, ~s([data-disclosure-field="#{item.key}"]), item.title)
@@ -240,13 +246,16 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert request.selected_root == root
     assert request.disclosure_digest == RepositoryAssessmentLive.disclosure_digest()
     assert has_element?(view, "[data-verified-binding]")
-    assert view |> element(~s([data-binding-field="repository"])) |> render() =~ "octo/example"
+
+    assert view |> element(~s([data-binding-field="repository"])) |> render() =~
+             "Local repository for #{project.name}"
+
     assert view |> element(~s([data-binding-field="root"])) |> render() =~ root
 
     assert view |> element(~s([data-binding-field="commit"])) |> render() =~
              "0123456789abcdef0123456789abcdef01234567"
 
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
 
     view |> form("#assessment-start-form") |> render_submit()
 
@@ -254,7 +263,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     refute Enum.any?(Adapter.events(), fn {operation, _request} -> operation == :scan end)
     assert has_element?(view, "[data-assessment-pending]")
     assert view |> element("[data-assessment-state]") |> render() =~ "Pending scan"
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 1
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 1
   end
 
   test "the device owner uses device-authoritative storage and creates no hosted row", context do
@@ -349,10 +358,9 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     {:ok, hosted_view, _html} =
       live(context.owner_conn, ~p"/projects/#{context.hosted_project.id}/assessment")
 
-    confirm_binding(hosted_view, context.worker.id)
-
-    assert hosted_view |> element(~s([data-binding-field="repository"])) |> render() =~
-             "octo/example"
+    # A GitHub project's repository is not one a worker can verify locally, so it
+    # is named on the not-on-a-Mac disclosure state, not the verified binding.
+    assert hosted_view |> element("[data-repository-name]") |> render() =~ "octo/example"
 
     {:ok, device_view, _html} =
       live(context.conn, ~p"/local/projects/#{context.device_project.id}/assessment")
@@ -409,8 +417,10 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
   test "unavailable and stale bindings show safe actionable messages and persist nothing",
        context do
+    project = hosted_local_project(context)
+
     {:ok, unavailable_view, _html} =
-      live(context.owner_conn, ~p"/projects/#{context.hosted_project.id}/assessment")
+      live(context.owner_conn, ~p"/projects/#{project.id}/assessment")
 
     Adapter.install(%{prepare: {:error, :repository_mismatch}})
     confirm_binding(unavailable_view, context.worker.id)
@@ -419,12 +429,12 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert unavailable_html =~ "did not verify this project&#39;s connected repository"
     refute unavailable_html =~ ":repository_mismatch"
     refute unavailable_html =~ "/Users/"
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
 
     Adapter.install()
 
     {:ok, stale_view, _html} =
-      live(context.owner_conn, ~p"/projects/#{context.hosted_project.id}/assessment")
+      live(context.owner_conn, ~p"/projects/#{project.id}/assessment")
 
     confirm_binding(stale_view, context.worker.id)
     Adapter.change(%{revalidate: %{commit: String.duplicate("d", 40)}})
@@ -434,7 +444,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert stale_html =~ "changed or expired"
     assert has_element?(stale_view, "[data-binding-form]")
     refute stale_html =~ ":stale"
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
   end
 
   test "assessment navigation is owner-only and the device dashboard exposes its local route",
@@ -458,7 +468,8 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
   test "confirming shows the waiting stage before the worker answers, then the binding once it does",
        context do
-    path = ~p"/projects/#{context.hosted_project.id}/assessment"
+    project = hosted_local_project(context)
+    path = ~p"/projects/#{project.id}/assessment"
     {:ok, view, _html} = live(context.owner_conn, path)
 
     Adapter.hold_gate()
@@ -472,14 +483,14 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert has_element?(view, "[data-preparing]")
     assert has_element?(view, "[data-stop-preparing]")
     refute has_element?(view, "[data-verified-binding]")
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
 
     Adapter.release_gate()
     render_async(view)
 
     assert has_element?(view, "[data-verified-binding]")
     refute has_element?(view, "[data-preparing]")
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
   end
 
   test "stopping the wait cancels the task, returns to disclosure, and persists nothing",
@@ -522,7 +533,8 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
   test "a task that dies without answering resolves to disclosure with a retryable message",
        context do
-    path = ~p"/projects/#{context.hosted_project.id}/assessment"
+    project = hosted_local_project(context)
+    path = ~p"/projects/#{project.id}/assessment"
     {:ok, view, _html} = live(context.owner_conn, path)
 
     Adapter.install(%{prepare: :raise})
@@ -538,8 +550,123 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert has_element?(view, ~s([data-screen="repository-assessment"][data-assessment-stage="disclosure"]))
     assert render(view) =~ "The wait could not finish."
     assert has_element?(view, "[data-confirm-boundary]:not([disabled])")
-    assert AssessmentStore.count(hosted_authority(context), context.hosted_project.id) == 0
+    assert AssessmentStore.count(hosted_authority(context), project.id) == 0
     assert BindingStore.count() == 0
+  end
+
+  describe "AC-10: a repository that is not on a Mac cannot be confirmed" do
+    test "a GitHub-connected project is named and refused before any confirmation is offered",
+         context do
+      {:ok, view, html} =
+        live(context.owner_conn, ~p"/projects/#{context.hosted_project.id}/assessment")
+
+      assert html =~ ~s(data-assessment-stage="disclosure")
+      assert has_element?(view, "[data-repository-not-verifiable]")
+      assert view |> element("[data-repository-name]") |> render() =~ "octo/example"
+      refute has_element?(view, "#assessment-binding-form")
+      refute has_element?(view, "[data-confirm-boundary]")
+      assert Adapter.events() == []
+    end
+  end
+
+  # AC-02: the verified-binding readout already renders whatever `@preparation`
+  # holds; this proves it holds a real worker's answer, reached through the real
+  # adapter (`RepositoryMetadataAdapter.Worker`) and the scripted transport
+  # double, not the fake `Adapter` this file installs for every other test.
+  describe "AC-02: the verified binding renders a real worker's answer" do
+    test "prepare_binding through the live worker adapter renders the worker's own identity, root, and commit",
+         context do
+      previous_adapter = Application.get_env(:sdd_orchestrator, :repository_metadata_adapter)
+
+      Application.put_env(
+        :sdd_orchestrator,
+        :repository_metadata_adapter,
+        RepositoryMetadataAdapter.Worker
+      )
+
+      on_exit(fn ->
+        if previous_adapter do
+          Application.put_env(:sdd_orchestrator, :repository_metadata_adapter, previous_adapter)
+        else
+          Application.delete_env(:sdd_orchestrator, :repository_metadata_adapter)
+        end
+      end)
+
+      # Installs `TransportDouble` as `:repository_metadata_transport` and
+      # restores whatever was configured before, the same pattern
+      # `LiveAdapterTest` and `WorkerTest` use for this same double.
+      on_exit(TransportDouble.install())
+
+      project = hosted_local_project(context)
+      # Deliberately not "." (what every other test in this file submits) and
+      # not the fake `Adapter`'s hardcoded commit, so a passing assertion below
+      # could only be satisfied by this scripted answer actually reaching the
+      # screen through the real adapter and the double, not by the fake
+      # `Adapter` still being wired in.
+      root = "worker-verified/root"
+      commit = String.duplicate("f", 40)
+
+      {:ok, view, _html} = live(context.owner_conn, ~p"/projects/#{project.id}/assessment")
+
+      before_count = length(TransportDouble.pushed())
+
+      view
+      |> form("#assessment-binding-form",
+        assessment: %{selected_root: root, worker_ref: context.worker.id, confirmed: "true"}
+      )
+      |> render_submit()
+
+      request = wait_for_next_pushed(before_count)
+
+      attachment = %{
+        device_workspace_id: request.device_workspace_id,
+        worker_id: request.worker_id
+      }
+
+      assert :ok =
+               RepositoryMetadata.answer(attachment, %{
+                 "request_id" => request.id,
+                 "outcome" => "metadata",
+                 "repository_provider" => request.repository_provider,
+                 "repository_id" => request.repository_id,
+                 "root" => root,
+                 "commit" => commit
+               })
+
+      render_async(view)
+
+      assert has_element?(view, "[data-verified-binding]")
+
+      assert view |> element(~s([data-binding-field="identity"])) |> render() =~
+               "#{project.repository_provider}:#{project.canonical_repository_id}"
+
+      assert view |> element(~s([data-binding-field="root"])) |> render() =~ root
+      assert view |> element(~s([data-binding-field="commit"])) |> render() =~ commit
+
+      # The fake `Adapter` this file installs for every other test never saw a
+      # call: the real pipeline (LiveView -> prepare_binding/4 ->
+      # RepositoryMetadataAdapter.Worker -> RepositoryMetadata.inspect/1 -> the
+      # transport double) is what answered.
+      assert Adapter.events() == []
+    end
+  end
+
+  defp wait_for_next_pushed(before_count) do
+    assert wait_until(fn -> length(TransportDouble.pushed()) > before_count end)
+    %MetadataRequest{} = List.last(TransportDouble.pushed())
+  end
+
+  defp wait_until(check, attempts \\ 100) do
+    cond do
+      check.() -> true
+      attempts <= 0 -> false
+      true -> wait_again(check, attempts)
+    end
+  end
+
+  defp wait_again(check, attempts) do
+    Process.sleep(10)
+    wait_until(check, attempts - 1)
   end
 
   defp await_disclosure_stage(view, attempts \\ 100)

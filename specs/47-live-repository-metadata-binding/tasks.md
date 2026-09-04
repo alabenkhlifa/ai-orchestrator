@@ -143,7 +143,7 @@ Traceability:
   - Proof: Focused LiveView tests prove confirming renders the waiting stage with a stop action, that stopping cancels the request and returns the screen to the disclosure stage with nothing saved, that a task that dies without answering is reported as a retryable failure, and that the copy uses no em dash and claims nothing about the app being installed.
   - Delivered: `confirm_boundary` now stops at building `attrs` and hands `RepositoryAssessments.prepare_binding/4` to `start_async(:prepare_binding, ...)`, moving to a new `:preparing` stage. A new `handle_async(:prepare_binding, ...)` callback (not `confirm_boundary`'s own `with`/`else`) now owns success, an ordinary refusal, an explicit stop (`{:exit, {:shutdown, :cancel}}`, the exact shape `cancel_async/3` delivers, confirmed empirically through a real test rather than assumed), and any other task exit. `handle_event("stop_preparing", ...)` only calls `cancel_async/3`; it does not itself touch `:stage`, so there is one place that resets state, not two. `start_assessment` is untouched — still synchronous. The Playwright suite needed no change: its `toBeVisible()` assertions already auto-retry past the new interstitial stage.
 
-- [ ] Task 8 — Show the real repository, and name a repository that is not on a Mac.
+- [x] Task 8 — Show the real repository, and name a repository that is not on a Mac.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 7
@@ -151,6 +151,7 @@ Traceability:
   - Owned surfaces: `RepositoryAssessmentLive`'s verified-binding readout for a live answer, the refusal wording for a folder that is not this project's repository, the not-on-a-Mac disclosure state, and `capability:live-repository-metadata-binding`.
   - Owns: AC-02, AC-10
   - Proof: Focused LiveView tests prove the identity, normalized root, and full commit the worker answered are rendered before start, that a project whose repository identity is not a portable local one is told this assessment reads a repository on a paired Mac and is offered no confirmation, and that who may open the screen is unchanged.
+  - Delivered: `load_context/3` gains `repository_local?` (`repository_provider == "local"` for hosted, always `true` for device — confirmed by tracing `DeviceStore.Local`). The disclosure stage's confirm form is now gated on it; a non-local project sees a sibling section instead, naming the repository (`data-repository-name`, added since nothing on disclosure showed it before) and stating plainly that this assessment needs a repository a worker can verify locally. Admission (`assessable_hosted_project?/1`, `authorize_project/2`) is untouched — a GitHub project still opens the screen, only what disclosure offers changed. AC-02 is proven end to end through the real adapter and a scripted transport double, not the file's own fake `Adapter`, with a deliberately distinguishing root and commit. `capability:live-repository-metadata-binding`.
 
 ## Verification Gate
 

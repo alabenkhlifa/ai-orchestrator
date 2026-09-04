@@ -261,6 +261,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          denied_destination: ~p"/projects",
          back_destination: ~p"/projects/#{project.id}/overview",
          repository_display: hosted_repository_display(project),
+         repository_local?: project.repository_provider == "local",
          actor: %{
            account_id: account_id,
            hosted_identity_id:
@@ -286,6 +287,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          denied_destination: ~p"/onboarding/local",
          back_destination: ~p"/local/projects/#{project.id}",
          repository_display: local_repository_display(project),
+         repository_local?: true,
          actor: nil
        }}
     else
@@ -505,7 +507,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
         </.notice>
 
         <section
-          :if={@stage == :disclosure}
+          :if={@stage == :disclosure and @repository_local?}
           class="mt-6 rounded-xl border border-line bg-surface p-4 sm:p-5"
           aria-labelledby="binding-heading"
           data-binding-form
@@ -581,6 +583,34 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
           <p class="mt-3 text-xs text-ink-muted" data-before-confirmation>
             No repository metadata call or scan command is issued before confirmation.
           </p>
+        </section>
+
+        <section
+          :if={@stage == :disclosure and !@repository_local?}
+          class="mt-6 rounded-xl border border-line bg-surface p-4 sm:p-5"
+          aria-labelledby="repository-not-verifiable-heading"
+          data-repository-not-verifiable
+        >
+          <div class="flex items-start gap-3">
+            <span class="rounded-lg bg-warn-bg p-2 text-warn-fg">
+              <.lucide name="circle-alert" class="size-5" />
+            </span>
+            <div>
+              <h2 id="repository-not-verifiable-heading" class="text-base font-bold text-ink">
+                This repository cannot be verified here
+              </h2>
+              <p class="mt-1 text-sm font-semibold text-ink" data-repository-name>
+                {@repository_display}
+              </p>
+              <p class="mt-2 text-sm leading-relaxed text-ink-muted">
+                This assessment needs a repository the paired worker can verify against a local
+                folder.
+              </p>
+              <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+                A repository connected through GitHub does not have one yet.
+              </p>
+            </div>
+          </div>
         </section>
 
         <section
