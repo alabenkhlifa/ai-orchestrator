@@ -5,8 +5,13 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   The first submit is the processing-boundary confirmation. Only that event may
   request metadata from a currently reachable paired worker. The returned
   binding is short-lived and contains no repository path or content. A separate
-  submit consumes that binding through the authoritative assessment service and
-  persists one `pending_scan` record without issuing a scan command.
+  submit consumes that binding through the authoritative assessment service,
+  persists one `pending_scan` record, and sends the scan to the same Mac.
+
+  The scan is waited on here, in a supervised task, with a control that stops
+  it. That mirrors the binding wait directly above it, so this screen has one
+  wait behaviour rather than two. Stopping ends the assessment as cancelled
+  rather than leaving a row nobody can tell from a scan still running.
   """
   use SddOrchestratorWeb, :live_view
 
@@ -109,6 +114,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          |> assign(:stage, :disclosure)
          |> assign(:preparation, nil)
          |> assign(:assessment, nil)
+         |> assign(:scan_attrs, nil)
          |> assign(:disclosure_items, @disclosure_items)
          |> assign(:selected_root, ".")
          |> assign(:error_message, nil)
@@ -135,6 +141,14 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
        socket
        |> assign(:stage, :preparing)
        |> assign(:error_message, nil)
+       # The Mac and the selection this binding is verified under are held for
+       # the scan that follows. They are in-flight correlation values belonging
+       # to this session, which is why the domain takes them as arguments
+       # instead of storing them.
+       |> assign(:scan_attrs, %{
+         device_workspace_id: attrs.device_workspace_id,
+         selection_ref: attrs.selection_ref
+       })
        |> start_async(:prepare_binding, fn ->
          RepositoryAssessments.prepare_binding(authority, project_id, attrs)
        end)}
@@ -166,6 +180,25 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
     {:noreply, cancel_async(socket, :prepare_binding)}
   end
 
+  # Stopping kills the waiting task, which tells the worker to stop, and then
+  # ends the assessment here. The task cannot record its own cancellation,
+  # because it is the thing being killed.
+  def handle_event("stop_scanning", _params, %{assigns: %{assessment: nil}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("stop_scanning", _params, socket) do
+    socket = cancel_async(socket, :run_scan)
+
+    RepositoryAssessments.cancel_assessment(
+      socket.assigns.authority,
+      socket.assigns.project.id,
+      socket.assigns.assessment
+    )
+
+    {:noreply, reset_after_scan(socket, "The scan was stopped. Verify the repository again.")}
+  end
+
   def handle_event("start_assessment", _params, %{assigns: %{preparation: nil}} = socket) do
     {:noreply, reset_for_verification(socket, "Verify the repository binding before starting.")}
   end
@@ -179,10 +212,11 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
       {:ok, assessment} ->
         {:noreply,
          socket
-         |> assign(:stage, :pending)
+         |> assign(:stage, :scanning)
          |> assign(:assessment, assessment)
          |> assign(:preparation, nil)
-         |> assign(:error_message, nil)}
+         |> assign(:error_message, nil)
+         |> run_scan(assessment)}
 
       {:error, :unauthorized} ->
         {:noreply, push_navigate(socket, to: socket.assigns.denied_destination)}
@@ -205,6 +239,32 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
   end
 
   @impl true
+  def handle_async(:run_scan, {:ok, {:ok, assessment}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:stage, :completed)
+     |> assign(:assessment, assessment)
+     |> assign(:error_message, nil)}
+  end
+
+  def handle_async(:run_scan, {:ok, {:error, reason}}, socket)
+      when reason in [:unauthorized, :not_found] do
+    {:noreply, push_navigate(socket, to: socket.assigns.denied_destination)}
+  end
+
+  def handle_async(:run_scan, {:ok, {:error, reason}}, socket) do
+    {:noreply, reset_after_scan(socket, scan_error(reason))}
+  end
+
+  def handle_async(:run_scan, {:exit, {:shutdown, :cancel}}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_async(:run_scan, {:exit, _reason}, socket) do
+    {:noreply,
+     reset_after_scan(socket, "The scan could not finish. Verify the repository and try again.")}
+  end
+
   def handle_async(:prepare_binding, {:ok, {:ok, preparation}}, socket) do
     {:noreply,
      socket
@@ -260,6 +320,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          authority_kind: :hosted,
          denied_destination: ~p"/projects",
          back_destination: ~p"/projects/#{project.id}/overview",
+         profile_destination: ~p"/projects/#{project.id}/profile",
          repository_display: hosted_repository_display(project),
          repository_local?: project.repository_provider == "local",
          actor: %{
@@ -286,6 +347,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
          authority_kind: :device,
          denied_destination: ~p"/onboarding/local",
          back_destination: ~p"/local/projects/#{project.id}",
+         profile_destination: ~p"/local/projects/#{project.id}/profile",
          repository_display: local_repository_display(project),
          repository_local?: true,
          actor: nil
@@ -418,6 +480,53 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
     |> assign(:error_message, message)
     |> assign_workers()
   end
+
+  defp run_scan(socket, assessment) do
+    authority = socket.assigns.authority
+    project_id = socket.assigns.project.id
+    scan_attrs = socket.assigns.scan_attrs
+
+    start_async(socket, :run_scan, fn ->
+      RepositoryAssessments.run_assessment(authority, project_id, assessment, scan_attrs)
+    end)
+  end
+
+  # A scan that did not finish ended the assessment, so the screen goes back to
+  # the step a person starts from rather than offering to resume one that is
+  # already terminal.
+  defp reset_after_scan(socket, message) do
+    socket
+    |> assign(:stage, :disclosure)
+    |> assign(:assessment, nil)
+    |> assign(:preparation, nil)
+    |> assign(:scan_attrs, nil)
+    |> assign(:error_message, message)
+    |> assign_workers()
+  end
+
+  defp scan_error(:selection_expired),
+    do: "The verified repository binding expired. Verify it again, then start the assessment."
+
+  defp scan_error(:worker_unavailable), do: @worker_unavailable_message
+
+  defp scan_error(:stale_commit),
+    do: "The repository moved to a different commit while the scan was starting. Verify it again."
+
+  defp scan_error(:root_escape),
+    do: "The selected root is not inside the repository. Choose a contained root and try again."
+
+  defp scan_error(reason)
+       when reason in [
+              :file_limit_exceeded,
+              :file_size_limit_exceeded,
+              :path_limit_exceeded,
+              :time_limit_exceeded,
+              :total_byte_limit_exceeded
+            ],
+       do: "The repository is larger than one assessment may read. Choose a narrower root."
+
+  defp scan_error(_safe_failure),
+    do: "The scan did not finish. The assessment was recorded as failed. Try again."
 
   defp preparation_error(:worker_unavailable), do: @worker_unavailable_message
 
@@ -685,31 +794,73 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLive do
             </.button>
           </form>
           <p class="mt-3 text-xs text-ink-muted">
-            Starting saves a pending assessment. This task sends no repository scan command.
+            Starting saves the assessment and sends the scan to the worker you chose. The
+            repository is read there, and only the minimized result comes back.
           </p>
         </section>
 
         <section
-          :if={@stage == :pending}
+          :if={@stage == :scanning}
           class="mt-6 rounded-xl border border-line bg-surface p-4 sm:p-5"
-          aria-labelledby="pending-heading"
-          data-assessment-pending
+          aria-labelledby="scanning-heading"
+          data-assessment-scanning
         >
           <div class="flex items-start gap-3">
             <span class="rounded-lg bg-info-bg p-2 text-info-fg">
-              <.lucide name="refresh-cw" class="size-5" />
+              <.lucide name="refresh-cw" class="size-5 animate-spin" />
             </span>
             <div>
-              <h2 id="pending-heading" class="text-base font-bold text-ink">
-                Assessment request saved
+              <h2 id="scanning-heading" class="text-base font-bold text-ink">
+                Scanning on the worker you chose
               </h2>
               <p class="mt-1 text-sm leading-relaxed text-ink-muted">
-                State: <span class="font-semibold text-ink" data-assessment-state>Pending scan</span>.
-                The exact repository binding is persisted in authoritative project storage.
-                No repository scan command has been issued yet.
+                State: <span class="font-semibold text-ink" data-assessment-state>Scanning</span>.
+                The repository is being read where it lives. This takes a few seconds.
               </p>
             </div>
           </div>
+
+          <.button
+            type="button"
+            variant="secondary"
+            size="sm"
+            class="mt-4 w-full sm:w-auto"
+            phx-click="stop_scanning"
+            data-stop-scan
+          >
+            <.lucide name="x" class="size-4" /> Stop the scan
+          </.button>
+        </section>
+
+        <section
+          :if={@stage == :completed}
+          class="mt-6 rounded-xl border border-line bg-surface p-4 sm:p-5"
+          aria-labelledby="completed-heading"
+          data-assessment-completed
+        >
+          <div class="flex items-start gap-3">
+            <span class="rounded-lg bg-ok-bg p-2 text-ok-fg">
+              <.lucide name="check" class="size-5" />
+            </span>
+            <div>
+              <h2 id="completed-heading" class="text-base font-bold text-ink">
+                Assessment complete
+              </h2>
+              <p class="mt-1 text-sm leading-relaxed text-ink-muted">
+                State: <span class="font-semibold text-ink" data-assessment-state>Completed</span>.
+                The proposed execution profile is ready for you to review and approve.
+              </p>
+            </div>
+          </div>
+
+          <.button
+            navigate={@profile_destination}
+            size="sm"
+            class="mt-4 w-full sm:w-auto"
+            data-profile-link
+          >
+            <.lucide name="arrow-right" class="size-4" /> Review the execution profile
+          </.button>
         </section>
       </div>
     </.app_shell>

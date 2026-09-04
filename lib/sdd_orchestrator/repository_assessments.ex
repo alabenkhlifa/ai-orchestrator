@@ -212,6 +212,30 @@ defmodule SddOrchestrator.RepositoryAssessments do
     do: {:error, :invalid_command}
 
   @doc """
+  Ends one pending assessment as cancelled, because the person stopped waiting.
+
+  A stop is an ending like any other, so it is stored rather than left behind.
+  Without this, a caller whose process is killed mid-scan would leave a row at
+  `pending_scan` that no later reader could tell from a scan still running.
+  """
+  @spec cancel_assessment(authority(), String.t(), RepositoryAssessment.t(), keyword()) ::
+          :ok | {:error, error()}
+  def cancel_assessment(authority, project_id, assessment, opts \\ [])
+
+  def cancel_assessment(authority, project_id, %RepositoryAssessment{} = assessment, opts)
+      when is_binary(project_id) do
+    with {:ok, command} <- RepositoryAssessment.command(assessment) do
+      case store_scan_failure(authority, project_id, command, :cancelled, opts) do
+        {:error, :cancelled} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  def cancel_assessment(_authority, _project_id, _assessment, _opts),
+    do: {:error, :invalid_command}
+
+  @doc """
   Atomically records one exact command-bound terminal assessment result.
 
   The pending row remains authoritative for project, repository, root, commit,

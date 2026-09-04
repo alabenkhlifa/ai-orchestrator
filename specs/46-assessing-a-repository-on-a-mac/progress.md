@@ -1,5 +1,17 @@
 # Assessing A Repository On A Mac Progress Log
 
+### 2026-09-04 - Task 9 complete: pressing Start assessment now assesses
+
+- The screen waits the way it already waited. `start_async(:run_scan, ...)` with a stop control mirrors the binding preparation directly above it, so there is one wait behaviour on this screen rather than two.
+- Stopping needed a domain call `Task 8` did not have. `cancel_async/2` kills the waiting task, and a killed task cannot record its own cancellation, so a stop would have left a row at `pending_scan` and broken the invariant the whole slice rests on. `RepositoryAssessments.cancel_assessment/4` closes it, and the stop handler cancels and then records.
+- The two selection values ride in assigns, not in storage. `device_workspace_id` and `selection_ref` are set when the boundary is confirmed and read when the scan starts, which keeps a worker-local correlation token out of authoritative storage.
+- Every ending that is not a completion returns the person to the step they start from, with the reason named: an expired binding says to verify again, a stale commit says the repository moved, an unavailable worker renders the screen's one owned wording, and the size limits share one sentence about choosing a narrower root.
+- Three earlier tests asserted the state this task removed, and all three were correct to fail. Two live tests moved from `data-assessment-pending` to `data-assessment-scanning`, keeping their own claim about which store the row lands in.
+- The third is better for it. `MacRepositoryAssessmentTest` carried a comment that the scan "is the only step of this journey that is not a click", and finished the assessment by calling the domain directly. It now supplies the worker's answer through the scan adapter and clicks the whole way, so `specs/46`'s own integration scenario proves what the slice set out to make true.
+- One debugging detour worth recording: a helper edit silently did not apply, because an earlier edit had already changed the text it matched. The symptom read as a database-visibility problem, and two rounds of inspecting rows were spent before reading the helper itself. Check the file, not the theory.
+- Proof receipt: `Task 9` — scope `Focused` — command `mix test test/sdd_orchestrator_web/live/repository_assessment_scan_test.exs` — exit `0`.
+- 9 tests passed. Regression run outside the focused proof: the Mac assessment journey, both assessment screens, the profile screen, and the assessment domain suites, 161 passed.
+
 ### 2026-09-04 - Task 8 complete: two things the control plane cannot re-derive
 
 - `RepositoryAssessments.run_assessment/5` is the one path from a pending row to a terminal one. It rebuilds the scanner result from its own command beside the answer's three evidence fields, revalidates the proposal payload, derives the envelope, and writes through the existing `finish_assessment/6`. A row is left at `pending_scan` only while a scan is genuinely running.

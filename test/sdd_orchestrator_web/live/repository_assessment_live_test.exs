@@ -261,8 +261,12 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
 
     assert Enum.map(Adapter.events(), &elem(&1, 0)) == [:prepare, :revalidate]
     refute Enum.any?(Adapter.events(), fn {operation, _request} -> operation == :scan end)
-    assert has_element?(view, "[data-assessment-pending]")
-    assert view |> element("[data-assessment-state]") |> render() =~ "Pending scan"
+
+    # specs/46 Task 9: the start now sends the scan too, so the screen waits
+    # here rather than stopping at a saved request. The row this test is about
+    # is written before that wait begins, which is what it still asserts.
+    assert has_element?(view, "[data-assessment-scanning]")
+    assert view |> element("[data-assessment-state]") |> render() =~ "Scanning"
     assert AssessmentStore.count(hosted_authority(context), project.id) == 1
   end
 
@@ -279,7 +283,7 @@ defmodule SddOrchestratorWeb.RepositoryAssessmentLiveTest do
     assert has_element?(view, "[data-verified-binding]")
     view |> form("#assessment-start-form") |> render_submit()
 
-    assert has_element?(view, "[data-assessment-pending]")
+    assert has_element?(view, "[data-assessment-scanning]")
     assert Devices.repository_assessment_count(context.device_project.id) == 1
     assert Repo.aggregate(RepositoryAssessment, :count) == hosted_count
   end

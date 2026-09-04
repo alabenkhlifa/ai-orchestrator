@@ -44,6 +44,11 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
   `RepositoryExecutionProfileLive` at the hosted routes, ending in an approved
   profile a later read finds.
 
+  `specs/46` Task 9 removed the one step of this journey that was not a click.
+  The scan used to be finished here by calling the domain directly; now the
+  screen sends it, and the suite supplies the worker's answer through the scan
+  adapter, the same way it already supplies the metadata one.
+
   The point of the slice is what the block cost, not the two screens, so the
   journey is followed by the readout on the feature page: the `execution_profile`
   start precondition for a feature on that project is unmet before the approval
@@ -67,15 +72,8 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
   alias SddOrchestrator.RepositoryAssessments
   alias SddOrchestrator.SpecificationStore
 
-  alias SddOrchestrator.RepositoryAssessments.{
-    AssessmentStore,
-    BindingStore,
-    RepositoryAssessment,
-    RepositoryAssessmentCacheProvenance,
-    RepositoryAssessmentResult,
-    RepositoryExecutionProfileProposalPayload,
-    WorkerRepositoryExecutionProfileProposalEnvelope
-  }
+  alias SddOrchestrator.RepositoryAssessments.{AssessmentStore, BindingStore}
+  alias SddOrchestrator.RepositoryScanAdapterDouble, as: ScanAdapter
 
   alias SddOrchestratorWeb.MacRepositoryAssessmentTest.MetadataAdapter
 
@@ -121,6 +119,7 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
 
     previous_adapter = Application.get_env(:sdd_orchestrator, :repository_metadata_adapter)
     Application.put_env(:sdd_orchestrator, :repository_metadata_adapter, MetadataAdapter)
+    on_exit(ScanAdapter.install({:ok, worker_evidence()}))
 
     on_exit(fn ->
       File.rm_rf!(Path.dirname(store_path))
@@ -169,9 +168,9 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
 
       start_assessment(view)
 
-      # The scan runs on the Mac, so its result arrives over the worker
-      # boundary. It is the only step of this journey that is not a click.
-      completed = complete_through_worker!(ctx, project)
+      # The scan ran on the Mac and the screen waited for it, so the completed
+      # assessment is what the click produced rather than what a test wrote.
+      completed = completed_assessment!(ctx, project)
       assert completed.state == "completed"
       assert completed.repository_provider == "local"
       # The stored assessment is bound to the commit the screen verified.
@@ -254,7 +253,7 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
     view = open_assessment(ctx, project)
     confirm_boundary(ctx, view)
     start_assessment(view)
-    completed = complete_through_worker!(ctx, project)
+    completed = completed_assessment!(ctx, project)
 
     ctx
     |> open_profile(project)
@@ -282,9 +281,13 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
     view
   end
 
+  # specs/46 Task 9: the start sends the scan too, so the screen waits here and
+  # then shows what came back. This step used to end at a saved request.
   defp start_assessment(view) do
     view |> form("#assessment-start-form") |> render_submit()
-    assert has_element?(view, "[data-assessment-pending]")
+    assert has_element?(view, "[data-assessment-scanning]")
+    render_async(view)
+    assert has_element?(view, "[data-assessment-completed]")
     view
   end
 
@@ -302,69 +305,26 @@ defmodule SddOrchestratorWeb.MacRepositoryAssessmentTest do
 
   ## The worker boundary
 
-  # The pending assessment the screen created, finished the way a returning scan
-  # result finishes it. Nothing here decides authorization: the same stores the
-  # screens use accept or refuse it.
-  defp complete_through_worker!(ctx, project) do
-    authority = {:hosted, ctx.account.id}
-
-    assert {:ok, pending} = AssessmentStore.latest(authority, project.id)
-    assert pending.state == RepositoryAssessment.pending_state()
-    assert {:ok, command} = RepositoryAssessment.command(pending)
-    assert {:ok, result} = RepositoryAssessmentResult.completed(command, scan(command))
-
-    assert {:ok, completed} =
-             RepositoryAssessments.finish_assessment(
-               authority,
-               project.id,
-               command,
-               result,
-               provenance!(command, result),
-               proposal_envelope: envelope!(command, result)
-             )
-
-    completed
-  end
-
-  defp scan(command) do
+  # What the Mac's worker answers with. It is the only boundary this suite
+  # supplies besides the metadata one, and it carries what the bounded scanner
+  # already minimizes: anchors, sizes, digests, and the six proposal fields.
+  defp worker_evidence do
     %{
-      protocol_version: command.version,
-      assessment_id: command.assessment_id,
-      project_id: command.project_id,
-      repository: %{provider: command.repository_provider, id: command.repository_id},
-      root: command.root,
-      commit: command.commit,
-      scanner_contract_digest: command.scanner_contract_digest,
-      status: "completed",
       findings: @findings,
       structure: [%{path: "lib", kind: "directory"}],
-      stats: %{discovered_paths: 3, inspected_files: 1, bytes_read: 20}
+      stats: %{discovered_paths: 3, inspected_files: 1, bytes_read: 20},
+      proposal: @proposal_fields,
+      provenance: %{source: "fresh_scan", cache_stored: true}
     }
   end
 
-  defp envelope!(command, result) do
-    assert {:ok, payload} =
-             RepositoryExecutionProfileProposalPayload.new(result, @proposal_fields)
+  # The assessment the click produced, read back from the same store the
+  # screens use.
+  defp completed_assessment!(ctx, project) do
+    assert {:ok, completed} =
+             AssessmentStore.latest_completed({:hosted, ctx.account.id}, project.id)
 
-    assert {:ok, envelope} =
-             WorkerRepositoryExecutionProfileProposalEnvelope.new(payload, command, result)
-
-    envelope
-  end
-
-  defp provenance!(command, result) do
-    {:ok, cache_key_sha256} = RepositoryAssessmentCacheProvenance.cache_key_sha256(command)
-    {:ok, evidence_sha256} = RepositoryAssessmentCacheProvenance.evidence_sha256(result)
-
-    assert {:ok, provenance} =
-             RepositoryAssessmentCacheProvenance.new(%{
-               source: "fresh_scan",
-               cache_key_sha256: cache_key_sha256,
-               evidence_sha256: evidence_sha256,
-               cache_stored: true
-             })
-
-    provenance
+    completed
   end
 
   ## Projects and features

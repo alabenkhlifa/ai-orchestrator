@@ -153,8 +153,9 @@ Traceability:
   - Owns: AC-10
   - Proof: Focused tests cover a completed answer stored with its derived envelope and cache provenance, an answer that does not match the command it was sent for refused and stored as failed, a refusal, a lost worker, and an unanswered window each stored as failed under their own reason, a cancelled scan stored as cancelled, a person who does not own the project refused with nothing stored, and a new assessment startable after a failed one.
   - Delivered: `RepositoryAssessments.run_assessment/5` is the one path from a pending row to a terminal one. It rebuilds the result and the envelope from its own command and returns the worker's reason by name, so a caller can tell an expired hold from a stale commit.
+  - Extended by `Task 9`: `cancel_assessment/4` was added. A stop kills the waiting task, so the task cannot record its own cancellation and the invariant needed a caller that could.
 
-- [ ] Task 9 — The screen assesses, and says what happened.
+- [x] Task 9 — The screen assesses, and says what happened.
   - Size: Standard
   - Proof scope: Focused
   - Depends on: Task 8
@@ -162,6 +163,7 @@ Traceability:
   - Owned surfaces: `SddOrchestratorWeb.RepositoryAssessmentLive`'s scan that its start now runs, its running state with the stop control, its completed state with the link to the execution profile, its failed and expired-binding states, and the replaced copy that says no scan command is sent. Completing it establishes `capability:live-repository-scan`.
   - Owns: AC-07, AC-08
   - Proof: Focused LiveView tests cover pressing start running the scan and rendering the running state with its stop control, a completed answer rendering the completed state and the profile link, the stop control ending the wait and leaving a state the person can start from, a failed answer rendering its reason, an expired binding offering to verify it again, and the device route unchanged.
+  - Delivered: pressing `Start assessment` now assesses. The screen waits with a stop control, shows the completed state with the way to the profile, and names why a scan did not finish.
 
 ## Verification Gate
 
